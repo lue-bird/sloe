@@ -30,6 +30,12 @@ fn vec-sum<Origin>(<vec<Origin unt32>>vec) -> unt32 (
 )
 ```
 
+# concept: flat memory collections
+- arena: temporary arena, bumping + bulk de-allocation: just a plain vec whose elements simply get ignored after "remove" should be enough, alternatively ExternalStableVec https://github.com/LukasKalbertodt/stable-vec
+  Use for things like building a formatted string, then writing it into a file. After that, the string can be cleared.
+- vec: slot map, reusing memory, vec slices/slots need to be manually "dropped"/removed from the backing vec
+  choosing vec for deletion-heavy state will be a memory leak. This should be documented thoroughly!
+
 # concept: distinct origin of a value in your code
 (The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types")
 ```
@@ -105,7 +111,7 @@ and, more importantly, freeing owned values in branches they are not used in!
 rust does that automatically which is awesome
 ```
 type state<expressions-origin> ({
-    // ...patterns, strings etc
+    # ...patterns, strings etc
     expressions(vec<expressions-origin expression<expressions-origin>>)
     root-expression(expression<expressions-origin>)
 })
@@ -117,8 +123,8 @@ fn initial-state(<!origin(Expressions-origin)>expressions-origin) -> state<Expre
 )
 fn state-to-interface(
     <!origin<Interfaces-origin>>interfaces-origin,
-    <state<Expressions-origin>>state
-) -> arena<Interfaces-origin state<expressions-origin>> (
+    <!state<Expressions-origin>>state
+) -> arena<Interfaces-origin interface<state<expressions-origin>>> (
     let { index(_) arena(interfaces) } arena-one(interfaces-origin, Console-log<never>"hello"))
     interfaces
 )
@@ -130,16 +136,10 @@ Preferably, expressions etc. would be stored in different slices per module, eac
 However, this means that slots and slices within the AST are non-owning
 
 # TODO
-- make sure that types with ! cannot be passed as type variables without !
-- figure out how to make "immutable references" of !values possible and ergonomic.
-  possibly disallow any further mutable referencing after any immutable reference is created - check if that's too limiting.
+- remove the idea of an "immutable view over !" and just ask functions taking single-reference types to also return single-reference types. then ! can be removed and is basically baked into types. Open question: This means type variables are considered single-reference and require a clone to be passed if necessary
+- consider _requiring_ single-reference values to be used (this would imply e.g. introducing arena-free() and vec-free() and unnecessarily returning indexes and slices to the origin arena. Not very ergonomic)
 - allow last match case result to spill, allow lambda fn result to spill, change record syntax to something like rec x() y() z() and allow the last field value to spill, do not allow last call argument to spill (including in dot call)
-- make drop explicit. That would make it very clear how things are deleted and at what cost. (and most importantly, when e.g. slices or slots are dropped they need a reference to the backing vec anyway)
-- separate vec into vec (slot map, reusing memory) and arena (temporary arena, bumping + bulk de-allocation: just a plain vec whose elements simply get ignored after "remove" should be enough, alternatively ExternalStableVec https://github.com/LukasKalbertodt/stable-vec).
-  choosing vec for deletion-heavy state will be a memory leak. This should be documented thoroughly!
-  Potential quality of life: separate slot/slice types and
-    !arena-slot/slice should not require explicit drop while !vec-slot/slice should
 - consider adding vec-counting which can re-issue an index that is already in use, effectively Slab<Rc<_>> but flattened in memory and not supporting weak references. This would enable graph structures, child-parent relations etc. `fn vec-counting-add-slot-use(..., slot(Origin)) -> !{ vec() slot(!slot<Origin>) }` and `fn vec-counting-remove-slot-use(..., slot(Origin))`
 - add index-to-unt, slice-start-index, slice-end-index, slice-indexes-fold etc
-- remove the idea of an "immutable view over !" and just ask functions taking single-reference types to also return single-reference types. then ! can be removed and is basically baked into types. Open question: This means type variables are considered single-reference and require a clone to be passed if necessary
 - remove need for comma in parameter and argument list, potentially drop the outer parens
+- consider removing `let pattern (expression) result` in favor of `match(expression) pattern result`. maybe rename `match` to `is`
