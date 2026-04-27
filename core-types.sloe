@@ -1,0 +1,62 @@
+
+
+
+choice opt Present (
+    Absent<Present>
+    (Present Present)
+)
+
+type vec Origin Element ()
+
+type twice Value (& (a Value) (b Value))
+
+fn-dup (fn fn In -> Out) -> (twice (fn In -> Out))
+
+type fn-once Environment In Out (&
+    (environment Environment)
+    (fn fn& (environment Environment) (in In) -> Out)
+)
+fn fn-to-once (fn fn In -> Out) -> (fn-once Blank In Out) (&
+    (environment Blank)
+    (fn& (environment Blank) (in in In) -> Out (fn(in)))
+)
+fn fn-once-call (fn-once fn-once Environment In Out) (in In) -> Out (
+    is(fn-once) (& (environment environment) (fn fn))
+    fn environment input
+)
+
+fn fn-once-dup
+    (fn-once fn-once Environment In Out)
+    (environment-dup fn Environment -> twice Environment)
+    -> (twice (fn-once fn-once Environment In Out)) (
+    is fn-once (& (environment environment) (fn fn))
+    is (fn-dup fn) (& (a fn-a) (b fn-b))
+    is (environment-dup environment) (& (a environment-a) (b environment-b))
+    & (a & (fn fn-a) (environment environment-a))
+      (b & (fn fn-b) (environment environment-b))
+)
+
+fn vec-empty<Element> Origin -> (vec Origin Element)
+
+fn vec-increase-capacity (vec Origin Element) u32 -> (vec Origin Element)
+
+fn vec-push (vec Origin Element) Element
+    -> (& (vec vec Origin Element) (slot slot Origin))
+
+fn vec-vacate (vec Origin Element) (slot Origin)
+    -> (& (vec Origin Element) (element Element))
+
+fn vec-replace (vec Origin Element) (slot Origin) Element
+    -> (& (vec vec Origin Element) (replaced Element))
+
+fn vec-swap (vec vec Origin Element) (slot-a slot Origin) (slot-b slot Origin)
+    -> (vec Origin Element)
+
+fn vec-sort-range
+    (vec Origin Element)
+    (range Origin)
+    (order fn Element Element -> order)
+    -> (vec Origin Element)
+
+fn vec-dup (vec Origin Elment) (fn Element -> twice ELement)
+    -> (twice (vec Origin Element))
