@@ -1,0 +1,61 @@
+
+
+# a stack
+choice linked-list Origin Element (
+    Empty<Origin Element>
+    (Cons & (head Element) (tail slot Origin))
+)
+
+fn linked-list-cons
+    (backing-vec vec Origin Element)
+    (tail linked-list Origin Element)
+    (new-head Element)
+    -> (&
+        (backing-vec vec Origin Element)
+        (linked-list linked-list Origin Element)
+    )
+    (
+    is(vec-push backing-vec tail) (& (vec backing-vec) (slot tail-slot))
+    & (backing-vec backing-vec) (linked-list Cons & (head head) (tail tail-slot))
+)
+
+fn linked-list-pop
+    (backing-vec vec Origin Element)
+    (linked-list linked-list Origin Element)
+    ->
+    (&
+        (backing-vec vec Origin Element)
+        (opt
+            (&
+                (head Element)
+                (tail linked-list Origin Element)
+            )
+        )
+    )
+    (
+    is linked-list
+    (Empty & (backing-vec backing-vec) (linked-list Empty<Origin Element>))
+    ((Cons & (head head) (tail tail-slot))
+        is (vec-vacate backing-vec tail-slot) (& (vec backing-vec) (element tail))
+        & (backing-vec backing-vec) (head head) (tail tail)
+    )
+)
+
+# in case the linked list is persisted, this is how you remove it from the backing storages.
+# For elements that don't need to be vacated, set the last arguments to (fn Blank _ -> blank Blank) Blank
+fn linked-list-vacate-from-backing-vec
+    (backing-vec vec Origin Element)
+    (linked-list linked-list Origin Element)
+    (vacate-element fn Elements-backing Element -> Elements-backing)
+    (elements-backing Elements-backing)
+    -> & (backing-vec vec Origin Element) (elements-backing Elements-backing)
+    (
+    is linked-list
+    (Empty backing-vec)
+    ((Cons & (head head) (tail tail-slot))
+        is (vec-vacate backing-vec tail-slot) (& (vec backing-vec) (element tail))
+        is (fn-dup vacate-element) (& (old vacate-element) (new vacate-element-new))
+        is (vacate-element elements-backing head) elements-backing
+        linked-list-vacate-from-backing-vec backing-vec tail vacate-element-new elements-backing
+    )
+)
