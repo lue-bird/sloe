@@ -1,16 +1,22 @@
 
 
 
+choice blank (Blank)
+
 choice opt Present (
     Absent<Present>
     (Present Present)
 )
 
+# progress, like break/continue in other languages
+choice exit-or-go-on Exit Go-on (
+    (Exit Exit)
+    (Go-on Go-on)
+)
+
 type vec Origin Element ()
 
-type twice Value (& (a Value) (b Value))
-
-fn-dup (fn fn In -> Out) -> (twice (fn In -> Out))
+fn-dup (fn fn In -> Out) -> (& (old fn In -> Out) (new fn In -> Out))
 
 type fn-once Environment In Out (&
     (environment Environment)
@@ -20,21 +26,52 @@ fn fn-to-once (fn fn In -> Out) -> (fn-once Blank In Out) (&
     (environment Blank)
     (fn& (environment Blank) (in in In) -> Out (fn(in)))
 )
+# TODO the compiler should probably allow fn-once to be called directly
 fn fn-once-call (fn-once fn-once Environment In Out) (in In) -> Out (
-    is(fn-once) (& (environment environment) (fn fn))
+    is fn-once (& (environment environment) (fn fn))
     fn environment input
 )
 
 fn fn-once-dup
     (fn-once fn-once Environment In Out)
-    (environment-dup fn Environment -> twice Environment)
-    -> (twice (fn-once fn-once Environment In Out)) (
+    (environment-dup
+        fn Environment -> & (old Environment) (new New-environment)
+    )
+    -> (&
+        (old fn-once fn-once Environment In Out)
+        (new fn-once fn-once New-environment In Out)
+    ) (
     is fn-once (& (environment environment) (fn fn))
-    is (fn-dup fn) (& (a fn-a) (b fn-b))
-    is (environment-dup environment) (& (a environment-a) (b environment-b))
-    & (a & (fn fn-a) (environment environment-a))
-      (b & (fn fn-b) (environment environment-b))
+    is (fn-dup fn) (& (old fn-old) (new fn-new))
+    is (environment-dup environment) (& (old environment-old) (new environment-new))
+    &
+    (old & (fn fn-old) (environment environment-old))
+    (new & (fn fn-new) (environment environment-new))
 )
+
+# Compute work in a separate thread returning a `thread` that can be checked until the work is done.
+# Useful for running in parallel:
+#
+#       fn run-in-parallel
+#           (run-a fn-once A-environment Blank A)
+#           (run-b fn-once B-environment Blank B)
+#           -> (& (a A) (b B)) (
+#           is(spawn-thread-and-run run-a) join-a
+#           is(spawn-thread-and-run run-b) join-b
+#           & (a join-a Blank) (b join-b Blank)
+#       )
+#
+fn spawn-thread-and-run (run fn-once Environment Blank Out)
+    -> (thread Out)
+
+# Gently check if a thread has finished its work.
+# Not meant to be used while busily recursing. For that, use `thread-wait-until-done`.
+# Instead, check background tasks in the main event loop from time to time.
+fn thread-peek (thread Out) -> (exit-or-go-on Out (thread Out))
+
+fn thread-wait-until-done()
+
+type thread Out ()
 
 fn vec-empty<Element> Origin -> (vec Origin Element)
 
@@ -58,5 +95,9 @@ fn vec-sort-range
     (order fn Element Element -> order)
     -> (vec Origin Element)
 
-fn vec-dup (vec Origin Elment) (fn Element -> twice ELement)
-    -> (twice (vec Origin Element))
+# As you are creating a new vec, a new origin is required as well
+fn vec-dup
+    (vec Origin Elment)
+    New-Origin
+    (fn Element -> & (old ELement) (new New-element))
+    -> (& (old vec Origin Element) (new vec New-Origin New-Element))

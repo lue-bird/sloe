@@ -21,7 +21,8 @@ Even e.g. variables holding plain numbers have to be explicitly duplicated to us
 
 This allows
 - values know when they aren't used anymore at compile time. Their memory can be reclaimed without garbage collection or similar
-- values can mutated without mutation being detectable in another place
+- values can be mutated internally without mutation being detectable
+- representing things that can only be consumed once, like thread join handles
 
 This can feel annoying and clunky. Think e.g. `fn vec-occupied-count (vec vec ...) -> (& (vec ...) (occupied-count u32))`.
 Not ony is it clunky, it is also conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
@@ -42,18 +43,15 @@ Only bulk-de-allocating an `arena` that is introduced in the main loop (persiste
 would be a (safe but bad) memory leak.
 
 A better solution: Introduce a collection which can mark some parts of itself as onuccupied.
-This can be used to "return" memory which has become invalid with `vec-remove vec slot` and `vec-remove-range vec range`
+This can be used to "return" memory which has become invalid with `vec-vacate vec slot` and `vec-vacate-range vec range`
 
 This concept is often called slot map, reusing memory.
 Important: `vec` ranges/slots need to be manually "dropped"/removed from the backing vec if that backing vec is persistent.
 
 
 # concept: distinct origin of a value in your code
-(The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated))
-
-Since any created value has a correlated origin and explicit function result types are required, a value whose type contains an origin can't escape the function scope of it's origin
-(Unlike plain ownership in rust which can be "created" in a scope and then "move to the caller/parent".
-Values that contain linear structures in sloe follow borrowing rules of an owned (non-Copy) rust value in combination with a stored reference to a local allocator):
+Every created collection has a correlated origin.
+Since also explicit function result types are required, a value whose type contains an origin can't escape the function scope of it's origin
 ```
 fn some-arena -> arena ??origin cannot even be annotated?? u32 (
     origin arena-origin
@@ -67,6 +65,8 @@ fn add-some-values<Origin> (arena arena Origin u32) -> (arena Origin u32) (
     arena
 )
 ```
+
+Further reading if interested: In effect, collections in sloe follow rust borrowing rules similar to an owned (non-Copy) rust value in combination with a stored reference to a distinct local allocator. The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated)
 
 # examples
 ## pass in an origin from the outside (rare)
@@ -284,14 +284,23 @@ One way this helps is that nested collections aren't segmented: what is usually 
   Issue is that in general single-return-continuation is rare in sloe
 - (leaning no) consider requiring all (!) generic type parameters to be passed to calls and variants, e.g.
   ```
-  choice Choice<Value> ( (Variant Value) )
+  choice Choice Value (
+      (Variant Value)
+  )
   
   fn take-variant (Choice<u32>.Variant <u32>value) -> Blank (
-      dup3<u32> u32-dup value
+      is (dup3 u32-dup value) _
+      Blank
   )
-  fn dup3<Value> (dup : fn Value -> & (a Value) (b Value)) (value : Value) -> (& (a Value) (b Value) (c Value)) (
-      is(dup value) (& (a a) (b temp))
-      is(dup temp) (& (a b) (b c))
+
+  fn dup3
+      (dup fn Value -> & (old Value) (new Value))
+      (value Value)
+      -> (& (a Value) (b Value) (c Value))
+      (
+      is (fn-dup dup) & ((old dup0) (new dup1))
+      is (dup0 value) (& (old a) (new temp))
+      is (dup1 temp) (& (old b) (new c))
       & (a a) (b b) (c c)
   )
   ```
