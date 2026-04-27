@@ -25,7 +25,6 @@ This allows
 
 This can feel annoying and clunky. Think e.g. `fn vec-occupied-count (vec vec ...) -> (& (vec ...) (occupied-count u32))`.
 Not ony is it clunky, it is also conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
-(Note that )
 
 The _big_ advantage is that it is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
 
