@@ -76,7 +76,7 @@ fn arena-empty<Element> (origin Origin) -> arena Origin Element # external
 shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
 
-## creating a new origin, slots and slices
+## creating a new origin, slots and ranges
 `origin some-name` creates a new origin variable and a local unique type for the start offset of its scope
 Each origin does not have a `-dup` helper.
 At the end of the underlying origin of the annotated origin type, deallocate the memory of the value with that origin.
@@ -204,12 +204,40 @@ some-variable some-type
 # appending a type is required in function parameters
 _ some-type
 
-# pattern match. The last case does not need to be parenthesized
-is value (first-pattern first-result) (second-pattern second-result)
+# pattern match. The last case does not need to be parenthesized. Cases are checked for exhaustiveness
+is value (first-case-pattern first-result) (second-case-pattern second-result)
 
 # introduce a new origin
 origin new-origin-name
+
+# project function declaration
+fn function-name<Potential Type-Arguments Only-Used-In-The-Result> first-argument-pattern second-argument-pattern
+    -> result-type
+    result-expression-usually-wrapped-in-parens
+
+# note that there are no "project value declarations"
+# and that functions without arguments are automatically applied when their name is used.
+f32-pi # f32, not fn -> f32
+
+# to actually use it as a lazy function, explicitly wrap it in a local fn
+fn -> f32 f32-pi
+
+# project type alias to give a short name for a more elaborate type to shorten annotations
+type type-name-alias Potential Type-Parameters (&
+    (u32s vec Potential u32)
+    (f32s vec Type-Parameters u32)
+)
+
+# project type that can come in different shapes ("variants")
+# which each have a unique uppercase name and 0 or 1 associated value.
+# If a variant doesn't use all type variables of the type, they need to be specified within <>
+choice type-name Potential Type-Parameters (
+    First-Option<Potential Type-Parameters>
+    (Second-option<Type-Parameters> vec Potential u32)
+    (Third-option type-name-alias Potential Type-Parameters)
+)
 ```
+(This list is incomplete, examples may show more)
 
 # TODO
 - merge arena and vec types if arena is basically a vec with an empty unoccupied-list and make `arena` basically just an initialization option.
@@ -220,8 +248,7 @@ origin new-origin-name
 - add tuples: (* a b c). I dislike them conceptually but operations like `u32-dup` are much nicer with them.
   This would also make "positional arguments" not something special:
   `fn name* first second third` used as `vec-push* some-vec some-element` (as opposed to e.g. `vec-push& (vec vec) (element element)`).
-  This is more verbose and avoids makes the question "is this lazy function applied or not" more intuitive
-  (as currently they are always applied and otherwise need to be wrapped in `fn lazy-function`)
+  This is more verbose though.
 - change `is()` to `..()`
 - consider adding special syntax `fn-once` that automatically assembles the environment from the used local variables
 - verify this is corrct for all kinds of recursion! e.g. this one seems on the edge of correct:
