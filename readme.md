@@ -265,6 +265,19 @@ choice type-name Potential Type-Parameters (
   If we find a problem, creating a new `origin` should be disallowed in (mutually) recursive calls.
   This is a bit restrictive but alright I believe.
   If feeling motived, look into proof languages and make sure this is rock solid
+- figure out strings. Definitely "abc" is of type str and slicing that should give str as well. I think for dynamic strings we'll use arena<char> and vec<char> for now (memory inefficient), with potential improvements to array-of-tagged-union (choice (ascii u8) (unicode u32)) or something
+
+# potential improvements in the far future
+strongly consider ThinVec or similar that only allows u32s as indexes, lengths, capcities.
+
+I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
+- `vec Origin (& (a A) (b B))` to `A·B<Vec<A>, Vec<B>>`
+- for `choice A-or-b A B ((A A) (B B))`: `vec Origin A-or-b` to either 
+    - `Tag·ValueIndex·A·B<Vec<A_or_B_Tag>, Vec<u32>, Vec<A>, Vec<B>>` (which also has ~2 hops but makes sense when sizes of A and B are different enough)
+    - `A·B<Vec<A>, Vec<B>>` (which requires the index to hold both the tag and the value index, aka 64 bit instead of 32, which somewhat defeats the point of reducing padding of the variant when values get bigger. Potentially there could however be struct-of-arrays for individual variant values making this worth it: https://github.com/dist1ll/osmium & https://alic.dev/blog/dense-enums)
+    - `A·B<Vec<A>, Map<u32, B>>` (which is inefficient, and wasteful if `B` is common, and also doesn't scale with more than 2 variants)
+- TODO look into soa_derive for rust, maybe this already does most of the useful work.
+- consider instead leaning heavily into making variant values themselves small, e.g. using `NonZeroU32` (aka maybe `p32`?)
 
 # not coherently formulated thoughts
 in rust, collections tend to own their element data, so safely keeping references to inside is tough.
@@ -273,13 +286,12 @@ which are owned by the code that parked values there i the first place.
 
 Honestly this idea seems to overwhelmingly useful that I'm surprised I can't find other languages that lean into it (I only know of rust which at least enables it in userland).
 
-One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `vec<range<str-origin>>` + `str<str-origin>`
+One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `vec (range str-origin)` + `str str-origin`
 (in rust there is I think an oroborus crate for this)
 
 # rejected ideas
 - add slot-to-u32. Is there a use for that?
-- convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though)
-- (leaning no) consider _requiring_ single-reference values to be used (this would imply e.g. introducing arena-free() and vec-free() and unnecessarily returning slots and ranges to the origin arena. Not very ergonomic)
+- convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though): It would imply e.g. introducing arena-free() and vec-free() and unnecessarily returning slots and ranges to the origin arena. Not very ergonomic
 - (leaning no) add dot-call syntax sugar: `construct-argument0.function(argument1-up)` as potential alternative to `is construct-argument0 argument0 function(argument0, )`.
   Issue is that in general single-return-continuation is rare in sloe
 - (leaning no) consider requiring all (!) generic type parameters to be passed to calls and variants, e.g.
