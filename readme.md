@@ -77,9 +77,9 @@ shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
 
 ## creating a new origin, slots and ranges
-`origin some-name` creates a new origin variable and a local unique type for the start offset of its scope
-Each origin does not have a `-dup` helper.
-At the end of the underlying origin of the annotated origin type, deallocate the memory of the value with that origin.
+`origin some-name` creates a new origin variable and a local unique type for the start offset of its scope.
+An origin type does not have a `-dup` helper and thus can only be used for one collection.
+At the end of the underlying origin of the annotated origin type, the memory of the value with that origin will be deallocated.
 ```
 # use a temporary value within a scope
 fn use-arena -> u32 (
@@ -222,12 +222,6 @@ f32-pi # f32, not fn -> f32
 # to actually use it as a lazy function, explicitly wrap it in a local fn
 fn -> f32 f32-pi
 
-# project type alias to give a short name for a more elaborate type to shorten annotations
-type type-name-alias Potential Type-Parameters (&
-    (u32s vec Potential u32)
-    (f32s vec Type-Parameters u32)
-)
-
 # project type that can come in different shapes ("variants")
 # which each have a unique uppercase name and 0 or 1 associated value.
 # If a variant doesn't use all type variables of the type, they need to be specified within <>
@@ -290,6 +284,14 @@ One way this helps is that nested collections aren't segmented: what is usually 
 (in rust there is I think an oroborus crate for this)
 
 # rejected ideas
+- add type alias declaration syntax
+  ```
+  # project type alias to give a short name for a more elaborate type to shorten annotations
+  type type-name-alias Potential Type-Parameters (&
+      (u32s vec Potential u32)
+      (f32s vec Type-Parameters u32)
+  )
+  ```
 - add slot-to-u32. Is there a use for that?
 - convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though): It would imply e.g. introducing arena-free and vec-free and unnecessarily returning slots and ranges to the origin arena. Not very ergonomic
 - (leaning no) add dot-call syntax sugar: `construct-argument0.function(argument1-up)` as potential alternative to `is construct-argument0 argument0 function(argument0, )`.
