@@ -122,15 +122,15 @@ fn use-opt (opt opt u32) -> Blank (
 # recursive structure. One cool thing is that expression will turn every slot
 # into an exclusive slot
 choice expression Expressions-origin Patterns-origin Str-origin (
-    (Int<Expressions-origin Patterns-origin> int64)
+    (Int<Expressions-origin Patterns-origin Str-origin> int64)
     (String<Expressions-origin Patterns-origin> range Str-origin)
-    (Vec<Patterns-origin> range<Expressions-origin>)
-    (Call<Patterns-origin> &
+    (Vec<Patterns-origin Str-origin> range<Expressions-origin>)
+    (Call<Patterns-origin Str-origin> &
         (function slot Expressions-origin)
         (argument0 slot Expressions-origin)
         (argument1-up range Expressions-origin)
     )
-    (Lambda &
+    (Lambda<Str-origin> &
         (parameter0 slot Patterns-origin)
         (parameter1-up range Patterns-origin)
         (result slot Expressions-origin)
