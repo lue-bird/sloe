@@ -53,7 +53,7 @@ Important: `vec` ranges/slots need to be manually "dropped"/removed from the bac
 Every created collection has a correlated origin.
 Since also explicit function result types are required, a value whose type contains an origin can't escape the function scope of it's origin
 ```
-fn some-arena -> arena ??origin cannot even be annotated?? u32 (
+fn some-arena -> (arena ??origin cannot even be annotated?? u32) (
     origin arena-origin
     is(arena-empty<u32> arena-origin) arena
     is(arena-push arena (123 u32)) (& (arena arena) (slot _))
@@ -71,7 +71,7 @@ Further reading if interested: In effect, collections in sloe follow rust borrow
 # examples
 ## pass in an origin from the outside (rare)
 ```
-fn arena-empty<Element> (origin Origin) -> arena Origin Element # external
+fn arena-empty<Element> (origin Origin) -> (arena Origin Element) # external
 ```
 shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
@@ -291,7 +291,7 @@ One way this helps is that nested collections aren't segmented: what is usually 
 
 # rejected ideas
 - add slot-to-u32. Is there a use for that?
-- convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though): It would imply e.g. introducing arena-free() and vec-free() and unnecessarily returning slots and ranges to the origin arena. Not very ergonomic
+- convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though): It would imply e.g. introducing arena-free and vec-free and unnecessarily returning slots and ranges to the origin arena. Not very ergonomic
 - (leaning no) add dot-call syntax sugar: `construct-argument0.function(argument1-up)` as potential alternative to `is construct-argument0 argument0 function(argument0, )`.
   Issue is that in general single-return-continuation is rare in sloe
 - (leaning no) consider requiring all (!) generic type parameters to be passed to calls and variants, e.g.
