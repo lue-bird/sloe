@@ -55,13 +55,13 @@ Since also explicit function result types are required, a value whose type conta
 ```
 fn some-arena -> (arena ??origin cannot even be annotated?? u32) (
     origin arena-origin
-    is(arena-empty<u32> arena-origin) arena
-    is(arena-push arena (123 u32)) (& (arena arena) (slot _))
+    :(arena-empty<u32> arena-origin) arena
+    :(arena-push arena (123 u32)) (& (arena arena) (slot _))
     arena
 )
 # compiles
 fn add-some-values<Origin> (arena arena Origin u32) -> (arena Origin u32) (
-    is(arena-push arena (123 u32)) (& (arena arena) (slot _))
+    :(arena-push arena (123 u32)) (& (arena arena) (slot _))
     arena
 )
 ```
@@ -84,20 +84,20 @@ At the end of the underlying origin of the annotated origin type, the memory of 
 # use a temporary value within a scope
 fn use-arena -> u32 (
     origin arena-origin
-  	is(arena-empty<u32> arena-origin) arena
-  	is(arena-push arena (123 u32)) (& (arena arena) (slot first-slot))
-  	is(arena-element arena first-slot) first # 123 u32
-  	is(arena-start-range arena) range-after-first
-  	is(arena-range-push range-after-first (456 u32) range-after-first) range-after-first
-  	is(arena-range-push range-after-first (789 u32) range-after-first) range-after-first
-    is(arena-end-range range-after-first) (& (arena arena) (range range-after-first))
+  	:(arena-empty<u32> arena-origin) arena
+  	:(arena-push arena (123 u32)) (& (arena arena) (slot first-slot))
+  	:(arena-element arena first-slot) first # 123 u32
+  	:(arena-start-range arena) range-after-first
+  	:(arena-range-push range-after-first (456 u32) range-after-first) range-after-first
+  	:(arena-range-push range-after-first (789 u32) range-after-first) range-after-first
+    :(arena-end-range range-after-first) (& (arena arena) (range range-after-first))
   	first
 )
 # different branches, different scopes
 fn use-opt (opt opt u32) -> Blank (
     # this won't compile as their origins come from different branches
-    is(
-        is(opt)
+    :(
+        :(opt)
         (Absent
             origin vec-origin
             arena-empty<u32> vec-origin
@@ -110,8 +110,8 @@ fn use-opt (opt opt u32) -> Blank (
     vec
     # this will compile:
     origin vec-origin
-    is(
-        is(opt)
+    :(
+        :(opt)
         (Absent arena-empty<u32> vec-origin)
         ((Present number) arena-one vec-origin number)
     )
@@ -152,7 +152,7 @@ fn state-to-interfaces-into
     (interfaces arena Interfaces-origin)
     (state state Expressions-origin)
 -> (arena Interfaces-origin (interface state Expressions-origin)) (
-    is(arena-one interfaces-origin (Console-log<never> "hello"))) (& (slot _) (arena interfaces))
+    :(arena-one interfaces-origin (Console-log<never> "hello"))) (& (slot _) (arena interfaces))
     interfaces
 )
 ```
@@ -245,16 +245,15 @@ choice type-name Potential Type-Parameters (
   This would also make "positional arguments" not something special:
   `fn name* first second third` used as `vec-push* some-vec some-element` (as opposed to e.g. `vec-push& (vec vec) (element element)`).
   This is more verbose though.
-- change `is()` to `..()`
 - consider adding special syntax `fn-once` that automatically assembles the environment from the used local variables
 - verify this is corrct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```
   fn recurse (consume-origin Consume-origin) (result-origin Result-origin) -> (vec Result-origin u32) (
       origin local-origin
-      is(vec-empty<u32> consume-origin) temporary
-      is(recurse local-origin result-origin) result
-      is(vec-push temporary (1 u32)) (& (slot _) (vec _))
+      :(vec-empty<u32> consume-origin) temporary
+      :(recurse local-origin result-origin) result
+      :(vec-push temporary (1 u32)) (& (slot _) (vec _))
       result
   )
   ```
@@ -262,6 +261,8 @@ choice type-name Potential Type-Parameters (
   This is a bit restrictive but alright I believe.
   If feeling motived, look into proof languages and make sure this is rock solid
 - figure out strings. Definitely "abc" is of type str and slicing that should give str as well. I think for dynamic strings we'll use arena<char> and vec<char> for now (memory inefficient), with potential improvements to array-of-tagged-union (choice (ascii u8) (unicode u32)) or something
+- add something like `map Origin Key Value` which still gives out `slot Origin`s for each entry but can be queried using e.g. `map-contains-key (map ...) (key Key) (value-dup ...) -> & (map ...) (contains-key bool)`. `map-empty` will require providing a `fn Key Key -> order`.
+  Alternatively, check if implementing in userland via e.g. AVL or red-black tree backed by a regular `vec`/`arena` is fast enough
 
 # potential improvements in the far future
 I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
@@ -299,11 +300,11 @@ One way this helps is that nested collections aren't segmented: what is usually 
 - (leaning no) consider requiring all (!) generic type parameters to be passed to calls and variants, e.g.
   ```
   choice Choice Value (
-      (Variant Value)
+      Variant Value
   )
   
   fn take-variant (Choice<u32>.Variant <u32>value) -> Blank (
-      is (dup3 u32-dup value) _
+      :(dup3 u32-dup value) _
       Blank
   )
 
@@ -312,9 +313,9 @@ One way this helps is that nested collections aren't segmented: what is usually 
       (value Value)
       -> (& (a Value) (b Value) (c Value))
       (
-      is (fn-dup dup) & ((old dup0) (new dup1))
-      is (dup0 value) (& (old a) (new temp))
-      is (dup1 temp) (& (old b) (new c))
+      :(fn-dup dup) & ((old dup0) (new dup1))
+      :(dup0 value) (& (old a) (new temp))
+      :(dup1 temp) (& (old b) (new c))
       & (a a) (b b) (c c)
   )
   ```

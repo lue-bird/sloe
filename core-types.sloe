@@ -30,7 +30,7 @@ fn fn-to-once (fn fn In -> Out) -> (fn-once Blank In Out) (
 )
 # TODO the compiler should probably allow fn-once to be called directly
 fn fn-once-call (fn-once fn-once Environment In Out) (in In) -> Out (
-    is fn-once (Fn-once & (environment environment) (fn fn))
+    :fn-once (Fn-once & (environment environment) (fn fn))
     fn environment input
 )
 
@@ -43,9 +43,9 @@ fn fn-once-dup
         (old fn-once fn-once Environment In Out)
         (new fn-once fn-once New-environment In Out)
     ) (
-    is fn-once (Fn-once & (environment environment) (fn fn))
-    is (fn-dup fn) (& (old fn-old) (new fn-new))
-    is (environment-dup environment) (& (old environment-old) (new environment-new))
+    :fn-once (Fn-once & (environment environment) (fn fn))
+    :(fn-dup fn) (& (old fn-old) (new fn-new))
+    :(environment-dup environment) (& (old environment-old) (new environment-new))
     &
     (old Fn-once & (fn fn-old) (environment environment-old))
     (new Fn-once & (fn fn-new) (environment environment-new))
@@ -58,8 +58,8 @@ fn fn-once-dup
 #           (run-a fn-once A-environment Blank A)
 #           (run-b fn-once B-environment Blank B)
 #           -> (& (a A) (b B)) (
-#           is(spawn-thread-and-run run-a) join-a
-#           is(spawn-thread-and-run run-b) join-b
+#           :(spawn-thread-and-run run-a) join-a
+#           :(spawn-thread-and-run run-b) join-b
 #           & (a join-a Blank) (b join-b Blank)
 #       )
 #
