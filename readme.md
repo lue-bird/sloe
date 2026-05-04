@@ -264,8 +264,6 @@ choice type-name Potential Type-Parameters (
 - figure out strings. Definitely "abc" is of type str and slicing that should give str as well. I think for dynamic strings we'll use arena<char> and vec<char> for now (memory inefficient), with potential improvements to array-of-tagged-union (choice (ascii u8) (unicode u32)) or something
 
 # potential improvements in the far future
-strongly consider ThinVec or similar that only allows u32s as indexes, lengths, capcities.
-
 I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
 - `vec Origin (& (a A) (b B))` to `A·B<Vec<A>, Vec<B>>`
 - for `choice A-or-b A B ((A A) (B B))`: `vec Origin A-or-b` to either 
