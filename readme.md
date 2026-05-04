@@ -137,12 +137,14 @@ choice expression Expressions-origin Patterns-origin Str-origin (
     )
 )
 
-type state Expressions-origin (&
-    # ...patterns, strings etc
-    (expressions vec Expressions-origin (expression Expressions-origin))
-    (root-expression expression Expressions-origin)
+choice state Expressions-origin (
+    State &
+        # ...patterns, strings etc
+        (expressions vec Expressions-origin (expression Expressions-origin))
+        (root-expression expression Expressions-origin)
 )
-fn initial-state (expressions-origin origin Expressions-origin) -> state Expressions-origin (&
+fn initial-state (expressions-origin origin Expressions-origin) -> state Expressions-origin (
+    State &
     (expressions vec-empty<expression Expressions-origin ...> expressions-origin)
     (root-expression todo "do parsing")
 )
@@ -150,7 +152,7 @@ fn state-to-interfaces-into
     (interfaces arena Interfaces-origin)
     (state state Expressions-origin)
 -> (arena Interfaces-origin (interface state Expressions-origin)) (
-    is(arena-one interfaces-origin (Console-log<never> "hello"))) (& (index _) (arena interfaces))
+    is(arena-one interfaces-origin (Console-log<never> "hello"))) (& (slot _) (arena interfaces))
     interfaces
 )
 ```

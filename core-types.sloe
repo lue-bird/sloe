@@ -14,21 +14,23 @@ choice exit-or-go-on Exit Go-on (
     (Go-on Go-on)
 )
 
-type vec Origin Element ()
+choice vec Origin Element
 
 fn-dup (fn fn In -> Out) -> (& (old fn In -> Out) (new fn In -> Out))
 
-type fn-once Environment In Out (&
-    (environment Environment)
-    (fn fn& (environment Environment) (in In) -> Out)
+choice fn-once Environment In Out (
+    Fn-once &
+        (environment Environment)
+        (fn fn& (environment Environment) (in In) -> Out)
 )
-fn fn-to-once (fn fn In -> Out) -> (fn-once Blank In Out) (&
-    (environment Blank)
-    (fn& (environment Blank) (in in In) -> Out (fn(in)))
+fn fn-to-once (fn fn In -> Out) -> (fn-once Blank In Out) (
+    Fn-once &
+        (environment Blank)
+        (fn& (environment Blank) (in in In) -> Out (fn(in)))
 )
 # TODO the compiler should probably allow fn-once to be called directly
 fn fn-once-call (fn-once fn-once Environment In Out) (in In) -> Out (
-    is fn-once (& (environment environment) (fn fn))
+    is fn-once (Fn-once & (environment environment) (fn fn))
     fn environment input
 )
 
@@ -41,12 +43,12 @@ fn fn-once-dup
         (old fn-once fn-once Environment In Out)
         (new fn-once fn-once New-environment In Out)
     ) (
-    is fn-once (& (environment environment) (fn fn))
+    is fn-once (Fn-once & (environment environment) (fn fn))
     is (fn-dup fn) (& (old fn-old) (new fn-new))
     is (environment-dup environment) (& (old environment-old) (new environment-new))
     &
-    (old & (fn fn-old) (environment environment-old))
-    (new & (fn fn-new) (environment environment-new))
+    (old Fn-once & (fn fn-old) (environment environment-old))
+    (new Fn-once & (fn fn-new) (environment environment-new))
 )
 
 # Compute work in a separate thread returning a `thread` that can be checked until the work is done.
@@ -73,7 +75,7 @@ fn thread-peek (thread Out) -> (exit-or-go-on Out (thread Out))
 
 fn thread-wait-until-done()
 
-type thread Out ()
+choice thread Out
 
 fn vec-empty<Element> Origin -> (vec Origin Element)
 
