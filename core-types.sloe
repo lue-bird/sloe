@@ -64,7 +64,7 @@ fn fn-once-dup
 #       )
 #
 # Note that "shared memory" is not a thing expressible in sloe,
-# so you may need to dup any range of interesting values you need
+# so you may need to dup any span of interesting values you need
 fn spawn-thread-and-run (run fn-once Environment Blank Out)
     -> (thread Out)
 
@@ -93,19 +93,19 @@ fn vec-replace (vec Origin Element) (slot Origin) Element
 fn vec-swap (vec vec Origin Element) (slot-a slot Origin) (slot-b slot Origin)
     -> (vec Origin Element)
 
-fn vec-sort-range
+fn vec-sort-span
     (vec Origin Element)
-    (range Origin)
+    (span Origin)
     (order fn Element Element -> order)
     -> (vec Origin Element)
 
 # As you are creating a new vec, a new origin is required as well
-fn vec-dup-in-range
+fn vec-dup-in-span
     (vec Origin Elment)
-    (range Origin)
+    (span Origin)
     New-Origin
     (fn Element -> & (old ELement) (new New-element))
-    -> (& (old vec Origin Element) (old-range range Origin) (new vec New-Origin New-Element))
+    -> (& (old vec Origin Element) (old-span span Origin) (new vec New-Origin New-Element))
 
 fn vec-dup-element
     (vec Origin Elment)

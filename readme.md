@@ -1,7 +1,7 @@
 Small, fast pure functional programming language where indexes are valid and values can't be shared.
 
 The goal is representing tree-like data structures without segmented memory or plain index integers (along with the need to handle failure and generations),
-instead offering a safe, infallible way to refer to values and ranges stored in flat memory structures.
+instead offering a safe, infallible way to refer to values and spans stored in flat memory structures.
 
 [skip to examples](#examples)
 
@@ -43,10 +43,11 @@ Only bulk-de-allocating an `arena` that is introduced in the main loop (persiste
 would be a (safe but bad) memory leak.
 
 A better solution: Introduce a collection which can mark some parts of itself as onuccupied.
-This can be used to "return" memory which has become invalid with `vec-vacate vec slot` and `vec-vacate-range vec range`
+This can be used to "return" memory which has become invalid with `vec-vacate vec slot` and `vec-vacate-span vec span`
 
 This concept is often called slot map, reusing memory.
-Important: `vec` ranges/slots need to be manually "dropped"/removed from the backing vec if that backing vec is persistent.
+Important: `vec` spans/slots need to be manually "dropped"/removed from the backing vec if that backing vec is persistent. In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
+Various kinds of rust collections are compared here: https://donsz.nl/blog/arenas/
 
 
 # concept: distinct origin of a value in your code
@@ -66,7 +67,9 @@ fn add-some-values<Origin> (arena arena Origin u32) -> (arena Origin u32) (
 )
 ```
 
-Further reading if interested: In effect, collections in sloe follow rust borrowing rules similar to an owned (non-Copy) rust value in combination with a stored reference to a distinct local allocator. The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated)
+Further reading if interested: In effect, collections in sloe follow rust borrowing rules similar to an owned (non-Copy) rust value in combination with a stored reference to a distinct local allocator. The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
+The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
+(apart from security I'm not sure this is ever worth it for regular users, considering it is also slower).
 
 # examples
 ## pass in an origin from the outside (rare)
@@ -76,7 +79,7 @@ fn arena-empty<Element> (origin Origin) -> (arena Origin Element) # external
 shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
 
-## creating a new origin, slots and ranges
+## creating a new origin, slots and spans
 `origin some-name` creates a new origin variable and a local unique type for the start offset of its scope.
 An origin type does not have a `-dup` helper and thus can only be used for one collection.
 At the end of the underlying origin of the annotated origin type, the memory of the value with that origin will be deallocated.
@@ -86,18 +89,18 @@ fn use-arena -> u32 (
     origin arena-origin
   	:(arena-empty<u32> arena-origin) arena
   	:(arena-push arena (123 u32)) (& (arena arena) (slot first-slot))
-  	:(arena-element arena first-slot) first # 123 u32
-  	:(arena-start-range arena) range-after-first
-  	:(arena-range-push range-after-first (456 u32) range-after-first) range-after-first
-  	:(arena-range-push range-after-first (789 u32) range-after-first) range-after-first
-    :(arena-end-range range-after-first) (& (arena arena) (range range-after-first))
+  	:(arena-element arena first-slot) (& (arena arena) (element first)) # 123 u32
+  	:(arena-start-span arena) span-after-first
+  	:(arena-span-push span-after-first (456 u32) span-after-first) span-after-first
+  	:(arena-span-push span-after-first (789 u32) span-after-first) span-after-first
+    :(arena-end-span span-after-first) (& (arena arena) (span span-after-first))
   	first
 )
 # different branches, different scopes
 fn use-opt (opt opt u32) -> Blank (
     # this won't compile as their origins come from different branches
     :(
-        :(opt)
+        :opt
         (Absent
             origin vec-origin
             arena-empty<u32> vec-origin
@@ -106,7 +109,7 @@ fn use-opt (opt opt u32) -> Blank (
             origin vec-origin
             arena-one vec-origin number
         )
-      )
+     )
     vec
     # this will compile:
     origin vec-origin
@@ -123,16 +126,16 @@ fn use-opt (opt opt u32) -> Blank (
 # into an exclusive slot
 choice expression Expressions-origin Patterns-origin Str-origin (
     (Int<Expressions-origin Patterns-origin Str-origin> int64)
-    (String<Expressions-origin Patterns-origin> range Str-origin)
-    (Vec<Patterns-origin Str-origin> range<Expressions-origin>)
+    (String<Expressions-origin Patterns-origin> span Str-origin)
+    (Vec<Patterns-origin Str-origin> span<Expressions-origin>)
     (Call<Patterns-origin Str-origin> &
         (function slot Expressions-origin)
         (argument0 slot Expressions-origin)
-        (argument1-up range Expressions-origin)
+        (argument1-up span Expressions-origin)
     )
     (Lambda<Str-origin> &
         (parameter0 slot Patterns-origin)
-        (parameter1-up range Patterns-origin)
+        (parameter1-up span Patterns-origin)
         (result slot Expressions-origin)
     )
 )
@@ -161,9 +164,9 @@ fn state-to-interfaces-into
 since each variable can be used at most once, most introduced names that would traditionally be considered "shadowed" are aready out of scope in sloe
 
 # known limitations
-- nested sub-ranges/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole syntax tree and removing ranges and slots one by one, aka pointer chasing).
-Preferably, expressions etc. would be stored in different ranges per module, each with their own origin for bulk de-allocation and new-allocation.
-However, this means that slots and ranges within the AST are non-owning
+- nested sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole syntax tree and removing spans and slots one by one, aka pointer chasing).
+Preferably, expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new-allocation.
+However, this means that slots and spans within the AST are non-owning
 - the pattern of removing, then re-inserting an element at a slot just to access it (potentially immutably) is not optimal. This can be mitigated somewhat by using `vec-update vec (fn(Element) -> Element)` or compiling to/asking for code that uses `arena-set slot new-element -> & slot() old-element()` with a dummy element followed by `arena-replace vec modified-old-element` ignoring the returned dummy new-element instead
 
 # syntax
@@ -236,14 +239,16 @@ choice type-name Potential Type-Parameters (
 (This list is incomplete, examples may show more)
 
 # TODO
-- merge arena and vec types if arena is basically a vec with an empty unoccupied-list and make `arena` basically just an initialization option.
-  This makes it easy to reuse types containing vec for arena and vice versa
-- consider adding `slot-weak` which can reference a slot that is already in use, without any guarantee that it still points to an occupied slot: `slot-dup-weak (slot slot Origin) -> & (slot slot Origin) (weak slot-weak Origin)`. This would enable graph structures, child-parent relations etc.
-  **important**: This requires generational slots, so most likely a different vec and slot type
-- add slot-to-range, `fn range-pop-front/back (range Origin) -> (range range Origin) (slot slot Origin)`, `range-slots-fold` or `arena/vec-vacate-range-fold` etc
+- what should actually be done about element access into temporary collections (especially into arena)? Currently a collection deallocates its content after the lexical scope of its origin is exited.
+  If we aren't careful (copying their element content instead of referencing it!)
+- rename element_span to elements
+- consider adding `vec-generational`, `slot-strong` and `slot-weak` which can reference a slot that is already in use, without any guarantee that it still points to an occupied slot: `slot-dup-weak (slot-strong slot Origin) -> & (slot slot-strong Origin) (weak slot-weak Origin)` + `slot-weak-dup`. This would enable graph structures, child-parent relations, doubly-linked lists etc.
+  **important**: This requires generational slots.
+  Can be implemented using e.g. [slotmap](https://docs.rs/crate/slotmap/latest), [thunderdome](https://docs.rs/crate/thunderdome/latest), [riddance](https://docs.rs/riddance/latest/riddance/) or on top of `vec` with an added generation counter in slot and collection. TODO what about spans?
+- add `slot-to-span`, `fn span-pop-front/back (span Origin) -> (span span Origin) (slot slot Origin)`, `span-slots-fold` or `arena/vec-vacate-span-fold` etc
 - add tuples: (* a b c). I dislike them conceptually but operations like `u32-dup` are much nicer with them.
   This would also make "positional arguments" not something special:
-  `fn name* first second third` used as `vec-push* some-vec some-element` (as opposed to e.g. `vec-push& (vec vec) (element element)`).
+  `fn name* first second third` used as `vec-add* some-vec some-element` (as opposed to e.g. `vec-add& (vec vec) (element element)`).
   This is more verbose though.
 - consider adding special syntax `fn-once` that automatically assembles the environment from the used local variables
 - verify this is corrct for all kinds of recursion! e.g. this one seems on the edge of correct:
@@ -253,7 +258,7 @@ choice type-name Potential Type-Parameters (
       origin local-origin
       :(vec-empty<u32> consume-origin) temporary
       :(recurse local-origin result-origin) result
-      :(vec-push temporary (1 u32)) (& (slot _) (vec _))
+      :(vec-add temporary (1 u32)) (& (slot _) (vec _))
       result
   )
   ```
@@ -261,6 +266,7 @@ choice type-name Potential Type-Parameters (
   This is a bit restrictive but alright I believe.
   If feeling motived, look into proof languages and make sure this is rock solid
 - figure out strings. Definitely "abc" is of type str and slicing that should give str as well. I think for dynamic strings we'll use arena<char> and vec<char> for now (memory inefficient), with potential improvements to array-of-tagged-union (choice (ascii u8) (unicode u32)) or something
+- add `set Origin Element` with a initialization function like `set-empty (origin ...) (hash fn Element -> Hash) -> set Origin Element`
 - add something like `map Origin Key Value` which still gives out `slot Origin`s for each entry but can be queried using e.g. `map-contains-key (map ...) (key Key) (value-dup ...) -> & (map ...) (contains-key bool)`. `map-empty` will require providing a `fn Key Key -> order`.
   Alternatively, check if implementing in userland via e.g. AVL or red-black tree backed by a regular `vec`/`arena` is fast enough
 
@@ -273,15 +279,17 @@ I think in theory there should be all the bits and pieces present to allow for s
     - `A·B<Vec<A>, Map<u32, B>>` (which is inefficient, and wasteful if `B` is common, and also doesn't scale with more than 2 variants)
 - TODO look into soa_derive for rust, maybe this already does most of the useful work.
 - consider instead leaning heavily into making variant values themselves small, e.g. using `NonZeroU32` (aka maybe `p32`?)
+- try adding a compiler output to zig or similar which I think fits well (few free(), no need for lifetimes, fast compilation, anonymous structs, allocators, MultiArrayList. Downsides: pattern matching is less developed I think? ecosystem, no language-level ownership, making sloe values prone to mistakes south of the the ffi border) and the overall philosophy (explicitness, data oriented)
+- imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
 
 # not coherently formulated thoughts
 in rust, collections tend to own their element data, so safely keeping references to inside is tough.
-This relationship is flipped on it's head in sloe: All elements of collections are divided into slots and ranges
+This relationship is flipped on it's head in sloe: All elements of collections are divided into slots and spans
 which are owned by the code that parked values there i the first place.
 
 Honestly this idea seems to overwhelmingly useful that I'm surprised I can't find other languages that lean into it (I only know of rust which at least enables it in userland).
 
-One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `vec (range str-origin)` + `str str-origin`
+One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `vec (span str-origin)` + `str str-origin`
 (in rust there is I think an oroborus crate for this)
 
 # rejected ideas
@@ -294,7 +302,7 @@ One way this helps is that nested collections aren't segmented: what is usually 
   )
   ```
 - add slot-to-u32. Is there a use for that?
-- convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though): It would imply e.g. introducing arena-free and vec-free and unnecessarily returning slots and ranges to the origin arena. Not very ergonomic
+- convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though): It would imply e.g. introducing arena-free and vec-free and unnecessarily returning slots and spans to the origin arena. Not very ergonomic
 - (leaning no) add dot-call syntax sugar: `construct-argument0.function(argument1-up)` as potential alternative to `is construct-argument0 argument0 function(argument0, )`.
   Issue is that in general single-return-continuation is rare in sloe
 - (leaning no) consider requiring all (!) generic type parameters to be passed to calls and variants, e.g.
@@ -303,7 +311,7 @@ One way this helps is that nested collections aren't segmented: what is usually 
       Variant Value
   )
   
-  fn take-variant (Choice<u32>.Variant <u32>value) -> Blank (
+  fn take-variant (Choice<u32>.Variant (value u32)) -> Blank (
       :(dup3 u32-dup value) _
       Blank
   )
