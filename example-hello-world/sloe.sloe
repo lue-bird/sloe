@@ -1,0 +1,5 @@
+fn greet (& (name name str) (result-origin result-origin Origin)) (span-build (arena Origin char))
+    :(arena-span-empty (arena-empty<char> result-origin)) build
+    :(arena-opt-span-add-str & (build build) (new "Hello, ")) build
+    :(arena-opt-span-add-str & (build build) (new name)) build
+    arena-opt-span-add-str & (build build) (new "!\n")

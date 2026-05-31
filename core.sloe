@@ -1,0 +1,67 @@
+
+## incomplete. should be removed
+
+choice p32
+choice u32
+choice i32
+choice f32
+choice char
+choice str
+choice fn In Out
+choice slot Origin
+choice span-filled Origin
+choice arena Origin Element
+choice vec Origin Element
+choice span-build Backing
+choice span-filled-build Backing
+
+choice opt Present (
+    Absent<Present>
+    (Present Present)
+)
+
+# progress, like break/continue in other languages
+choice exit-or-go-on Exit Go-on (
+    (Exit Exit)
+    (Go-on Go-on)
+)
+
+choice vec Origin Element
+
+fn-dup (fn fn In -> Out) -> (& (old fn In -> Out) (new fn In -> Out))
+
+fn vec-empty<Element> Origin -> (vec Origin Element)
+
+fn vec-increase-capacity (vec Origin Element) u32 -> (vec Origin Element)
+
+fn vec-push (vec Origin Element) Element
+    -> (& (vec vec Origin Element) (slot slot Origin))
+
+fn vec-vacate (vec Origin Element) (slot Origin)
+    -> (& (vec Origin Element) (element Element))
+
+fn vec-replace (vec Origin Element) (slot Origin) Element
+    -> (& (vec vec Origin Element) (replaced Element))
+
+fn vec-swap (vec vec Origin Element) (slot-a slot Origin) (slot-b slot Origin)
+    -> (vec Origin Element)
+
+fn vec-sort-span
+    (vec Origin Element)
+    (span Origin)
+    (order fn Element Element -> order)
+    -> (vec Origin Element)
+
+# As you are creating a new vec, a new origin is required as well
+fn vec-dup-in-span
+    (vec Origin Elment)
+    (span Origin)
+    New-Origin
+    (fn Element -> & (old ELement) (new New-element))
+    -> (& (old vec Origin Element) (old-span span Origin) (new vec New-Origin New-Element))
+
+fn vec-dup-element
+    (vec Origin Elment)
+    (slot Origin)
+    (fn Element -> & (old ELement) (new New-element))
+    -> (& (vec vec Origin Element) (slot slot Origin) (element New-Element))

@@ -1,15 +1,17 @@
 #![allow(non_upper_case_globals)]
-use sloe_compile as sloe;
+use sloe_compile::{self as sloe, WithStartPosition, syntax_name_range};
 
 struct State<Expressions, Patterns, Types> {
     projects: std::collections::HashMap<lsp_types::Uri, ProjectState<Expressions, Patterns, Types>>,
-    syntax_expressions: sloe::core::Vec<Expressions, sloe::SyntaxExpression<Expressions, Patterns>>,
+    syntax_expressions:
+        sloe::core::Vec<Expressions, sloe::SyntaxExpression<Expressions, Patterns, Types>>,
     syntax_patterns: sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
     syntax_types: sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
 }
 struct ProjectState<Expressions, Patterns, Types> {
     source: String,
     syntax: sloe::SyntaxProject<Expressions, Patterns, Types>,
+    type_aliases: std::collections::HashMap<sloe::Name, sloe::CompiledTypeAliasInfo>,
     choice_types: std::collections::HashMap<sloe::Name, sloe::CompiledChoiceTypeInfo>,
     fns: std::collections::HashMap<sloe::Name, sloe::CompiledProjectFnInfo>,
     records: std::collections::HashSet<Vec<sloe::Name>>,
@@ -39,7 +41,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "doc" | "docs" | "documentation" | "core" | "stdlib" | "core-doc" | "core-docs"
             | "core-documentation" | "core-types" | "d" => {
                 println!("Here are all core declarations:\n");
-                print!(include_str!("core-types.sloe"));
+                // TODO instead print core_fns and core_choice_types
+                print_core_docs();
                 Ok(())
             }
             "init" | "initialize" | "new" | "create" | "setup" | "boilerplate" | "template"
@@ -73,6 +76,221 @@ To compile a rust project into an executable: cargo build --release
 To print this help message: sloe help
 See the source code, see the full documentation, report bugs or leave any kind of feedback at https://codeberg.org/lue-bird/sloe";
 
+fn print_core_docs() {
+    for (core_choice_type_name, core_choice_type) in sloe::core_choice_types.iter() {
+        println!(
+            "{}",
+            present_choice_type_markdown(core_choice_type_name, core_choice_type)
+        );
+    }
+    for (core_fn_name, core_fn) in sloe::core_fns.iter() {
+        println!(
+            "{}",
+            present_project_fn_with_complete_type_markdown(core_fn_name, core_fn)
+        );
+    }
+}
+fn documentation_comment_to_markdown(documentation: &str) -> String {
+    let markdown_source: &str = documentation.trim();
+    let mut markdown: String = String::new();
+    markdown_convert_code_blocks_to_sloe_into(&mut markdown, markdown_source);
+    markdown
+}
+
+fn markdown_convert_code_blocks_to_sloe_into(builder: &mut String, markdown_source: &str) {
+    // because I don't want to introduce a full markdown parser for just this tiny
+    // improvement, the code below only approximates where code blocks are.
+    let mut with_fenced_code_blocks_converted: String = String::new();
+    markdown_convert_unspecific_fenced_code_blocks_to_sloe_into(
+        &mut with_fenced_code_blocks_converted,
+        markdown_source,
+    );
+    markdown_convert_indented_code_blocks_to_sloe(builder, &with_fenced_code_blocks_converted);
+}
+/// replace fenced no-language-specified code blocks by `sloe...`
+fn markdown_convert_unspecific_fenced_code_blocks_to_sloe_into(
+    result_builder: &mut String,
+    markdown_source: &str,
+) {
+    let mut current_source_index: usize = 0;
+    'converting_fenced: while current_source_index < markdown_source.len() {
+        match markdown_source[current_source_index..]
+            .find("```")
+            .map(|i| i + current_source_index)
+        {
+            None => {
+                result_builder.push_str(&markdown_source[current_source_index..]);
+                break 'converting_fenced;
+            }
+            Some(index_at_opening_fence) => {
+                let index_after_opening_fence = index_at_opening_fence + 3;
+                match markdown_source[index_after_opening_fence..]
+                    .find("```")
+                    .map(|i| i + index_after_opening_fence)
+                {
+                    None => {
+                        result_builder.push_str(&markdown_source[current_source_index..]);
+                        break 'converting_fenced;
+                    }
+                    Some(index_at_closing_fence) => {
+                        match markdown_source[index_after_opening_fence..].chars().next() {
+                            // fenced block without a specific language
+                            Some('\n') => {
+                                result_builder.push_str(
+                                    &markdown_source[current_source_index..index_at_opening_fence],
+                                );
+                                result_builder.push_str("```sloe");
+                                result_builder.push_str(
+                                    &markdown_source
+                                        [index_after_opening_fence..index_at_closing_fence],
+                                );
+                                result_builder.push_str("```");
+                                current_source_index = index_at_closing_fence + 3;
+                            }
+                            // fenced block with a specific language
+                            _ => {
+                                result_builder.push_str(
+                                    &markdown_source
+                                        [current_source_index..(index_at_closing_fence + 3)],
+                                );
+                                current_source_index = index_at_closing_fence + 3;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+fn markdown_convert_indented_code_blocks_to_sloe(builder: &mut String, markdown_source: &str) {
+    let mut current_indent: usize = 0;
+    let mut is_in_code_block: bool = false;
+    let mut previous_line_was_blank: bool = false;
+    for source_line in markdown_source.lines() {
+        if source_line.is_empty() {
+            builder.push('\n');
+            previous_line_was_blank = true;
+        } else {
+            let current_line_indent: usize = source_line
+                .chars()
+                .take_while(char::is_ascii_whitespace)
+                .count();
+            if current_line_indent == source_line.len() {
+                // ignore blank line
+                builder.push_str(source_line);
+                builder.push('\n');
+                previous_line_was_blank = true;
+            } else {
+                if is_in_code_block {
+                    if current_line_indent <= current_indent - 1 {
+                        is_in_code_block = false;
+                        current_indent = current_line_indent;
+                        builder.push_str("```\n");
+                        builder.push_str(source_line);
+                        builder.push('\n');
+                    } else {
+                        builder.push_str(&source_line[current_indent..]);
+                        builder.push('\n');
+                    }
+                } else if previous_line_was_blank && (current_line_indent >= current_indent + 4) {
+                    is_in_code_block = true;
+                    current_indent = current_line_indent;
+                    builder.push_str("```sloe\n");
+                    builder.push_str(&source_line[current_line_indent..]);
+                    builder.push('\n');
+                } else {
+                    current_indent = current_line_indent;
+                    builder.push_str(source_line);
+                    builder.push('\n');
+                }
+                previous_line_was_blank = false;
+            }
+        }
+    }
+    if is_in_code_block {
+        builder.push_str("```\n");
+    }
+}
+fn present_project_fn_with_complete_type_markdown(
+    name: &sloe::Name,
+    fn_info: &sloe::CompiledProjectFnInfo,
+) -> String {
+    let mut type_parameters_string = String::new();
+    angled_type_parameters_format(&mut type_parameters_string, &fn_info.type_parameters);
+    let mut parameter_type_string: String = String::new();
+    let mut result_type_string: String = String::new();
+    if let Some(fn_parameter_type) = &fn_info.parameter_type {
+        sloe::type_into(&mut parameter_type_string, 8, fn_parameter_type);
+    }
+    if let Some(fn_result_type) = &fn_info.result_type {
+        sloe::type_into(&mut result_type_string, 8, fn_result_type);
+    }
+    format!(
+        "```sloe
+fn {}{} ({}) ({})
+```
+{}
+",
+        name,
+        type_parameters_string,
+        parameter_type_string,
+        result_type_string,
+        documentation_comment_to_markdown(fn_info.documentation.as_deref().unwrap_or(""))
+    )
+}
+fn present_type_alias_markdown(
+    name: &sloe::Name,
+    type_alias_info: &sloe::CompiledTypeAliasInfo,
+) -> String {
+    let mut type_string: String = String::new();
+    if let Some(type_) = &type_alias_info.type_ {
+        sloe::type_into(&mut type_string, 4, type_);
+    }
+    let description = format!(
+        "```sloe\ntype {} {} {}\n```\n",
+        name,
+        type_alias_info.parameters.join(" "),
+        type_string
+    );
+    match &type_alias_info.documentation {
+        None => description,
+        Some(documentation) => {
+            description + documentation_comment_to_markdown(documentation).as_str()
+        }
+    }
+}
+fn angled_type_parameters_format(formatted: &mut String, type_parameters: &[sloe::Name]) {
+    if let Some((type_parameter0, type_parameter1_up)) = type_parameters.split_first() {
+        formatted.push('<');
+        formatted.push_str(type_parameter0);
+        for type_parameter in type_parameter1_up {
+            formatted.push(' ');
+            formatted.push_str(type_parameter);
+        }
+        formatted.push('>');
+    }
+}
+fn present_choice_type_markdown(maybe_name: &str, info: &sloe::CompiledChoiceTypeInfo) -> String {
+    let mut variants_string: String = String::new();
+    for variant in &info.variants {
+        variants_string.push_str("\n    (");
+        variants_string.push_str(&variant.name);
+        angled_type_parameters_format(&mut variants_string, &variant.type_parameters);
+        if let Some(variant_value) = &variant.value {
+            variants_string.push(' ');
+            sloe::type_into(&mut variants_string, 8, variant_value);
+        }
+        variants_string.push_str(")");
+    }
+    format!(
+        "```sloe\nchoice {} {}{}\n```\n{}",
+        maybe_name,
+        info.parameters.join(" "),
+        variants_string,
+        documentation_comment_to_markdown(info.documentation.as_deref().unwrap_or(""))
+    )
+}
+
 fn initialize_new_sloe_hello_world_project() {
     try_generate_file(
         "sloe.sloe",
@@ -87,11 +305,7 @@ greet \:str:name >
     try_generate_file(
         "main.rs",
         "the actual program entrypoint, written in rust.",
-        r#"// enabling deref_patterns is sadly required for matching recursive choice types
-#![feature(deref_patterns)]
-#![allow(incomplete_features)]
-
-mod sloe;
+        r#"mod sloe;
 
 fn main() {
     print!("{}", sloe::greet(sloe::Str::Slice("world")));
@@ -107,13 +321,6 @@ edition = "2024"
 [[bin]]
 name = "example"
 path = "main.rs"
-"#,
-    );
-    try_generate_file(
-        "rust-toolchain.toml",
-        "this allows rust tooling to build the project with nightly features",
-        r#"[toolchain]
-channel = "nightly"
 "#,
     );
     try_generate_file(
@@ -193,18 +400,32 @@ fn build_main(
             std::process::exit(1)
         }
         Ok(project_source) => {
-            let mut expressions = sloe::core::vec_empty(sloe::core::origin_new!());
-            let mut patterns = sloe::core::vec_empty(sloe::core::origin_new!());
-            let syntax_project =
-                sloe::parse_syntax_project(&mut expressions, &mut patterns, &project_source);
+            sloe::core::origin_new!(expressions, Expressions);
+            sloe::core::origin_new!(patterns, Patterns);
+            sloe::core::origin_new!(types, Types);
+            let mut syntax_expressions = sloe::core::vec_empty(expressions);
+            let mut syntax_patterns = sloe::core::vec_empty(patterns);
+            let mut syntax_types = sloe::core::vec_empty(types);
+            let syntax_project = sloe::parse_project(
+                &mut syntax_expressions,
+                &mut syntax_patterns,
+                &mut syntax_types,
+                &project_source,
+            );
             let mut output_errors: Vec<sloe::ErrorNode> = Vec::new();
-            let compiled_project: sloe::CompiledProject =
-                sloe::project_compile_to_rust(&mut output_errors, &syntax_project);
-            for output_error in &output_errors {
+            let compiled_project: sloe::CompiledProject = sloe::project_compile_to_rust(
+                &mut output_errors,
+                &syntax_project,
+                &syntax_expressions,
+                &syntax_patterns,
+                &syntax_types,
+            );
+            for output_error in output_errors.iter().rev() {
                 eprintln!(
-                    "{input_file_path:?}:{span_start_line}:{span_start_column} {message}",
-                    span_start_line = output_error.span.start.line + 1,
-                    span_start_column = output_error.span.start.character + 1,
+                    "{input_file_path}:{span_start_line}:{span_start_column} {message}",
+                    input_file_path = input_file_path.to_string_lossy(),
+                    span_start_line = output_error.range.start.line + 1,
+                    span_start_column = output_error.range.start.character + 1,
                     message = &output_error.message
                 );
             }
@@ -250,11 +471,10 @@ fn lsp_main() -> Result<(), Box<dyn std::error::Error>> {
             }),
         })?,
     )?;
-    let state = initial_state(
-        sloe::core::origin_new!(),
-        sloe::core::origin_new!(),
-        sloe::core::origin_new!(),
-    );
+    sloe::core::origin_new!(expressions, Expressions);
+    sloe::core::origin_new!(patterns, Patterns);
+    sloe::core::origin_new!(types, Types);
+    let state = initial_state(expressions, patterns, types);
     server_loop(&connection, state)?;
     // shut down gracefully
     drop(connection);
@@ -287,7 +507,7 @@ fn server_capabilities() -> lsp_types::ServerCapabilities {
                         token_modifiers: vec![],
                         token_types: Vec::from(token_types),
                     },
-                    span: None,
+                    range: None,
                     full: Some(lsp_types::SemanticTokensFullOptions::Bool(true)),
                 },
             ),
@@ -406,6 +626,7 @@ fn update_state_on_did_open_text_document<Expressions, Patterns, Types>(
                         arguments.text_document.uri,
                         &mut state.syntax_expressions,
                         &mut state.syntax_patterns,
+                        &mut state.syntax_types,
                         arguments.text_document.text,
                     ),
                 );
@@ -416,6 +637,7 @@ fn update_state_on_did_open_text_document<Expressions, Patterns, Types>(
                     arguments.text_document.uri,
                     &mut state.syntax_expressions,
                     &mut state.syntax_patterns,
+                    &mut state.syntax_types,
                     arguments.text_document.text,
                 );
             }
@@ -522,12 +744,9 @@ fn handle_request<Expressions, Patterns, Types>(
         }),
     };
     match response {
-        Ok(response_value) => {
-            send_response_ok(connection, request_id, response_value)?;
-        }
-        Err(response_error) => send_response_error(connection, request_id, response_error)?,
+        Ok(response_value) => send_response_ok(connection, request_id, response_value),
+        Err(response_error) => send_response_error(connection, request_id, response_error),
     }
-    Ok(())
 }
 
 fn send_response_ok(
@@ -542,8 +761,8 @@ fn send_response_ok(
     };
     connection
         .sender
-        .send(lsp_server::Message::Response(response))?;
-    Ok(())
+        .send(lsp_server::Message::Response(response))
+        .map_err(|err| err.into())
 }
 fn send_response_error(
     connection: &lsp_server::Connection,
@@ -557,8 +776,8 @@ fn send_response_error(
     };
     connection
         .sender
-        .send(lsp_server::Message::Response(response))?;
-    Ok(())
+        .send(lsp_server::Message::Response(response))
+        .map_err(|err| err.into())
 }
 fn publish_diagnostics(
     connection: &lsp_server::Connection,
@@ -592,7 +811,7 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
     {
         let mut updated_source: String = std::mem::take(&mut project_state.source);
         for change in did_change_text_document.content_changes {
-            match (change.span, change.span_length) {
+            match (change.range, change.range_length) {
                 // means full replacement
                 (None, None) => {
                     updated_source = change.text;
@@ -619,22 +838,27 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
             did_change_text_document.text_document.uri,
             &mut state.syntax_expressions,
             &mut state.syntax_patterns,
+            &mut state.syntax_types,
             updated_source,
         );
     }
 }
 
-fn initialize_project_state_from_source<Expressions, Patterns>(
+fn initialize_project_state_from_source<Expressions, Patterns, Types>(
     connection: &lsp_server::Connection,
     uri: lsp_types::Uri,
-    expressions: &mut sloe::core::Vec<Expressions, sloe::SyntaxExpression<Expressions, Patterns>>,
-    patterns: &mut sloe::core::Vec<Patterns, sloe::SyntaxPattern>,
+    expressions: &mut sloe::core::Vec<
+        Expressions,
+        sloe::SyntaxExpression<Expressions, Patterns, Types>,
+    >,
+    patterns: &mut sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &mut sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
     source: String,
-) -> ProjectState<Expressions, Patterns> {
-    let parsed_project = sloe::parse_syntax_project(expressions, patterns, &source);
+) -> ProjectState<Expressions, Patterns, Types> {
+    let parsed_project = sloe::parse_project(expressions, patterns, types, &source);
     let mut errors: Vec<sloe::ErrorNode> = Vec::new();
     let compiled_project: sloe::CompiledProject =
-        sloe::project_compile_to_rust(&mut errors, &parsed_project);
+        sloe::project_compile_to_rust(&mut errors, &parsed_project, expressions, patterns, types);
     if let Some(input_file_path) = lsp_uri_to_file_path(&uri)
         && std::fs::exists(input_file_path.with_extension("")).is_ok_and(|exists| exists)
     {
@@ -656,6 +880,7 @@ fn initialize_project_state_from_source<Expressions, Patterns>(
     );
     ProjectState {
         source: source,
+        type_aliases: compiled_project.type_aliases,
         choice_types: compiled_project.choice_types,
         fns: compiled_project.fns,
         records: compiled_project.records,
@@ -664,7 +889,7 @@ fn initialize_project_state_from_source<Expressions, Patterns>(
 }
 fn sloe_error_node_to_diagnostic(problem: &sloe::ErrorNode) -> lsp_types::Diagnostic {
     lsp_types::Diagnostic {
-        span: problem.span,
+        range: problem.range,
         severity: Some(lsp_types::DiagnosticSeverity::WARNING),
         code: None,
         code_description: None,
@@ -680,35 +905,301 @@ fn respond_to_hover<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     hover_arguments: &lsp_types::HoverParams,
 ) -> Option<lsp_types::Hover> {
-    let hovered_project_state = state.projects.get(
+    let Some(project_state) = state.projects.get(
         &hover_arguments
             .text_document_position_params
             .text_document
             .uri,
-    )?;
-    todo!()
+    ) else {
+        return None;
+    };
+    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+        &project_state.syntax,
+        hover_arguments.text_document_position_params.position,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    ) else {
+        return None;
+    };
+    match symbol {
+        sloe::SyntaxSymbol::ProjectTypeOrUnknown {
+            name: symbol_name,
+            origins: _,
+        } => project_state
+            .choice_types
+            .iter()
+            .find_map(|(choice_type_name, choice_type_info)| {
+                choice_type_info.variants.iter().find_map(|variant| {
+                    if &variant.name == &symbol_name.value {
+                        let choice_type_formatted =
+                            present_choice_type_markdown(choice_type_name, choice_type_info);
+                        Some(lsp_types::Hover {
+                            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                                kind: lsp_types::MarkupKind::Markdown,
+                                value: format!("variant in\n{}", choice_type_formatted),
+                            }),
+                            range: Some(syntax_name_range(symbol_name)),
+                        })
+                    } else {
+                        None
+                    }
+                })
+            })
+            .or_else(|| {
+                project_state
+                    .type_aliases
+                    .iter()
+                    .find_map(|(type_alias_name, type_alias_info)| {
+                        if type_alias_name == &symbol_name.value {
+                            Some(lsp_types::Hover {
+                                contents: lsp_types::HoverContents::Markup(
+                                    lsp_types::MarkupContent {
+                                        kind: lsp_types::MarkupKind::Markdown,
+                                        value: present_type_alias_markdown(
+                                            type_alias_name,
+                                            type_alias_info,
+                                        ),
+                                    },
+                                ),
+                                range: Some(syntax_name_range(symbol_name)),
+                            })
+                        } else {
+                            None
+                        }
+                    })
+            }),
+        sloe::SyntaxSymbol::Origin {
+            name,
+            use_start,
+            origin: _,
+        } => Some(lsp_types::Hover {
+            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: format!(
+                    "```sloe
+origin {}
+```",
+                    name
+                ),
+            }),
+            range: Some(syntax_name_range(WithStartPosition {
+                start: use_start,
+                value: name,
+            })),
+        }),
+        sloe::SyntaxSymbol::TypeVariable {
+            name,
+            use_start,
+            scope: _,
+        } => Some(lsp_types::Hover {
+            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: format!("type variable"),
+            }),
+            range: Some(syntax_name_range(WithStartPosition {
+                start: use_start,
+                value: name,
+            })),
+        }),
+        sloe::SyntaxSymbol::VariantOrUnknown(symbol_name) => project_state
+            .choice_types
+            .iter()
+            .find_map(|(choice_type_name, choice_type_info)| {
+                choice_type_info.variants.iter().find_map(|variant| {
+                    if &variant.name == &symbol_name.value {
+                        Some(lsp_types::Hover {
+                            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                                kind: lsp_types::MarkupKind::Markdown,
+                                value: format!(
+                                    "variant in\n{}",
+                                    present_choice_type_markdown(
+                                        choice_type_name,
+                                        choice_type_info
+                                    )
+                                ),
+                            }),
+                            range: Some(syntax_name_range(symbol_name)),
+                        })
+                    } else {
+                        None
+                    }
+                })
+            }),
+        sloe::SyntaxSymbol::ProjectFnOrUnknown {
+            name: symbol_name,
+            pattern_variables: _,
+            origins: _,
+        } => project_state.fns.iter().find_map(|(fn_name, fn_info)| {
+            if fn_name == &symbol_name.value {
+                let choice_type_formatted =
+                    present_project_fn_with_complete_type_markdown(fn_name, fn_info);
+                Some(lsp_types::Hover {
+                    contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                        kind: lsp_types::MarkupKind::Markdown,
+                        value: format!("variant in\n{}", choice_type_formatted),
+                    }),
+                    range: Some(syntax_name_range(symbol_name)),
+                })
+            } else {
+                None
+            }
+        }),
+        sloe::SyntaxSymbol::PatternVariable {
+            name,
+            use_start,
+            origin: _,
+        } => {
+            // possible improvement: infer type
+            Some(lsp_types::Hover {
+                contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                    kind: lsp_types::MarkupKind::Markdown,
+                    value: format!("pattern variable"),
+                }),
+                range: Some(syntax_name_range(WithStartPosition {
+                    start: use_start,
+                    value: name,
+                })),
+            })
+        }
+    }
 }
 
 fn respond_to_goto_definition<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     goto_definition_arguments: lsp_types::GotoDefinitionParams,
 ) -> Option<lsp_types::GotoDefinitionResponse> {
-    let goto_symbol_project_state = state.projects.get(
+    let Some(project_state) = state.projects.get(
         &goto_definition_arguments
             .text_document_position_params
             .text_document
             .uri,
-    )?;
-    todo!()
+    ) else {
+        return None;
+    };
+    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+        &project_state.syntax,
+        goto_definition_arguments
+            .text_document_position_params
+            .position,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    ) else {
+        return None;
+    };
+    let origin_name_range = match symbol {
+        sloe::SyntaxSymbol::VariantOrUnknown(symbol_name) => project_state
+            .syntax
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                sloe::SyntaxProjectElement::ChoiceType {
+                    choice_keyword_start: _,
+                    name: _,
+                    parameters: _,
+                    documentation: _,
+                    variants,
+                } => variants.iter().find_map(|variant| {
+                    if let Some(variant_name) = &variant.name
+                        && &variant_name.value == &symbol_name.value
+                    {
+                        Some(syntax_name_range(sloe::with_start_position_as_ref(
+                            variant_name,
+                        )))
+                    } else {
+                        None
+                    }
+                }),
+                _ => None,
+            }),
+        sloe::SyntaxSymbol::ProjectFnOrUnknown {
+            name: symbol_name,
+            pattern_variables: _,
+            origins: _,
+        } => project_state
+            .syntax
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                sloe::SyntaxProjectElement::Fn {
+                    name: Some(fn_name),
+                    ..
+                } if &fn_name.value == &symbol_name.value => {
+                    Some(syntax_name_range(sloe::with_start_position_as_ref(fn_name)))
+                }
+                _ => None,
+            }),
+        sloe::SyntaxSymbol::ProjectTypeOrUnknown {
+            name: symbol_name,
+            origins: _,
+        } => project_state
+            .syntax
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                sloe::SyntaxProjectElement::TypeAlias {
+                    name: Some(type_alias_name),
+                    ..
+                } if type_alias_name.value == &symbol_name.value => Some(syntax_name_range(
+                    sloe::with_start_position_as_ref(type_alias_name),
+                )),
+                sloe::SyntaxProjectElement::ChoiceType {
+                    name: Some(choice_type_name),
+                    ..
+                } if choice_type_name.value == &symbol_name.value => Some(syntax_name_range(
+                    sloe::with_start_position_as_ref(choice_type_name),
+                )),
+                _ => None,
+            }),
+        sloe::SyntaxSymbol::Origin {
+            name,
+            use_start: _,
+            origin,
+        } => Some(syntax_name_range(sloe::WithStartPosition {
+            value: name,
+            start: origin.start,
+        })),
+        sloe::SyntaxSymbol::TypeVariable { .. } => None,
+        sloe::SyntaxSymbol::PatternVariable {
+            name,
+            use_start: _,
+            origin,
+        } => Some(syntax_name_range(sloe::WithStartPosition {
+            value: name,
+            start: origin.start,
+        })),
+    };
+    origin_name_range.map(|origin_name_range| {
+        lsp_types::GotoDefinitionResponse::Scalar(lsp_types::Location {
+            uri: goto_definition_arguments
+                .text_document_position_params
+                .text_document
+                .uri,
+            range: origin_name_range,
+        })
+    })
 }
 
 fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     prepare_rename_arguments: &lsp_types::TextDocumentPositionParams,
 ) -> Option<Result<lsp_types::PrepareRenameResponse, lsp_server::ResponseError>> {
-    let project_state = state
+    let Some(project_state) = state
         .projects
-        .get(&prepare_rename_arguments.text_document.uri)?;
+        .get(&prepare_rename_arguments.text_document.uri)
+    else {
+        return None;
+    };
+    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+        &project_state.syntax,
+        prepare_rename_arguments.position,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    ) else {
+        return None;
+    };
     todo!()
 }
 
@@ -716,9 +1207,21 @@ fn respond_to_rename<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     rename_arguments: lsp_types::RenameParams,
 ) -> Option<Vec<lsp_types::TextDocumentEdit>> {
-    let to_prepare_for_rename_project_state = state
+    let Some(project_state) = state
         .projects
-        .get(&rename_arguments.text_document_position.text_document.uri)?;
+        .get(&rename_arguments.text_document_position.text_document.uri)
+    else {
+        return None;
+    };
+    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+        &project_state.syntax,
+        rename_arguments.text_document_position.position,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    ) else {
+        return None;
+    };
     todo!()
 }
 
@@ -726,12 +1229,23 @@ fn respond_to_references<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     references_arguments: &lsp_types::ReferenceParams,
 ) -> Option<Vec<lsp_types::Location>> {
-    let to_find_project_state = state.projects.get(
+    let Some(project_state) = state.projects.get(
         &references_arguments
             .text_document_position
             .text_document
             .uri,
-    )?;
+    ) else {
+        return None;
+    };
+    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+        &project_state.syntax,
+        references_arguments.text_document_position.position,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    ) else {
+        return None;
+    };
     todo!()
 }
 
@@ -739,62 +1253,590 @@ fn respond_to_semantic_tokens_full<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     semantic_tokens_arguments: &lsp_types::SemanticTokensParams,
 ) -> Option<lsp_types::SemanticTokensResult> {
-    let project_state = state
+    let Some(project_state) = state
         .projects
-        .get(&semantic_tokens_arguments.text_document.uri)?;
-    let mut highlighting: Vec<sloe::SyntaxNode<sloe::SyntaxHighlightKind>> =
-        Vec::with_capacity(project_state.source.len() / 16);
-    todo!();
+        .get(&semantic_tokens_arguments.text_document.uri)
+    else {
+        return None;
+    };
+    let mut highlight_state = HighlightState {
+        tokens: Vec::with_capacity(project_state.source.len() / 16),
+        previous_token_start: lsp_types::Position {
+            line: 0,
+            character: 0,
+        },
+    };
+    sloe_project_highlight(
+        &mut highlight_state,
+        &project_state.syntax,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    );
     Some(lsp_types::SemanticTokensResult::Tokens(
         lsp_types::SemanticTokens {
             result_id: None,
-            data: highlighting
-                .into_iter()
-                .scan(
-                    lsp_types::Position {
-                        line: 0,
-                        character: 0,
-                    },
-                    |previous_start_location, segment| {
-                        if (segment.span.end.line != segment.span.start.line)
-                            || (segment.span.end.character < segment.span.start.character)
-                        {
-                            eprintln!(
-                                "bad highlight token span: must be single-line and positive {:?}",
-                                segment.span
-                            );
-                            return None;
-                        }
-                        match lsp_position_positive_delta(
-                            *previous_start_location,
-                            segment.span.start,
-                        ) {
-                            Err(error) => {
-                                eprintln!("bad highlight token order {error}");
-                                None
-                            }
-                            Ok(delta) => {
-                                let token = lsp_types::SemanticToken {
-                                    delta_line: delta.line,
-                                    delta_start: delta.character,
-                                    length: segment.span.end.character
-                                        - segment.span.start.character,
-                                    token_type: semantic_token_type_to_id(
-                                        &sloe_syntax_highlight_kind_to_lsp_semantic_token_type(
-                                            segment.value,
-                                        ),
-                                    ),
-                                    token_modifiers_bitset: 0_u32,
-                                };
-                                segment.span.start.clone_into(previous_start_location);
-                                Some(token)
-                            }
-                        }
-                    },
-                )
-                .collect::<Vec<lsp_types::SemanticToken>>(),
+            data: highlight_state.tokens,
         },
     ))
+}
+struct HighlightState {
+    tokens: Vec<lsp_types::SemanticToken>,
+    previous_token_start: lsp_types::Position,
+}
+fn highlight_state_add_token_with_start_and_length(
+    state: &mut HighlightState,
+    new_token_kind: lsp_types::SemanticTokenType,
+    new_token_start: lsp_types::Position,
+    new_token_length: usize,
+) {
+    if new_token_length == 0 {
+        return;
+    }
+    match lsp_position_positive_delta(state.previous_token_start, new_token_start) {
+        Err(error) => {
+            eprintln!("bad highlight token order {error}");
+            return;
+        }
+        Ok(delta) => {
+            let token = lsp_types::SemanticToken {
+                delta_line: delta.line,
+                delta_start: delta.character,
+                length: new_token_length as u32,
+                token_type: semantic_token_type_to_id(&new_token_kind),
+                token_modifiers_bitset: 0_u32,
+            };
+            state.previous_token_start = new_token_start;
+            state.tokens.push(token);
+        }
+    }
+}
+fn keyword_highlight(
+    state: &mut HighlightState,
+    keyword: &'static str,
+    new_token_start: lsp_types::Position,
+) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        lsp_types::SemanticTokenType::KEYWORD,
+        new_token_start,
+        keyword.len(),
+    );
+}
+fn sloe_project_highlight<Expressions, Patterns, Types>(
+    state: &mut HighlightState,
+    project: &sloe::SyntaxProject<Expressions, Patterns, Types>,
+    expressions: &sloe::core::Vec<
+        Expressions,
+        sloe::SyntaxExpression<Expressions, Patterns, Types>,
+    >,
+    patterns: &sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+) {
+    for element in &project.elements {
+        match element {
+            sloe::SyntaxProjectElement::Comments(comments) => {
+                sloe_syntax_comments_highlight(state, comments);
+            }
+            sloe::SyntaxProjectElement::TypeAlias {
+                type_keyword_start,
+                name,
+                parameters,
+                documentation,
+                type_,
+            } => {
+                keyword_highlight(state, "type", *type_keyword_start);
+                if let Some(name) = name {
+                    highlight_state_add_token_with_start_and_length(
+                        state,
+                        lsp_types::SemanticTokenType::TYPE,
+                        name.start,
+                        name.value.len(),
+                    );
+                }
+                for parameter in parameters {
+                    highlight_state_add_token_with_start_and_length(
+                        state,
+                        lsp_types::SemanticTokenType::TYPE_PARAMETER,
+                        parameter.start,
+                        parameter.value.len(),
+                    );
+                }
+                if let Some(documentation) = documentation {
+                    sloe_syntax_comments_highlight(state, documentation);
+                }
+                if let Some(type_) = type_ {
+                    sloe_syntax_type_highlight(state, types, type_);
+                }
+            }
+            sloe::SyntaxProjectElement::ChoiceType {
+                choice_keyword_start,
+                name,
+                parameters,
+                documentation,
+                variants,
+            } => {
+                keyword_highlight(state, "choice", *choice_keyword_start);
+                if let Some(name) = name {
+                    highlight_state_add_token_with_start_and_length(
+                        state,
+                        lsp_types::SemanticTokenType::TYPE,
+                        name.start,
+                        name.value.len(),
+                    );
+                }
+                for parameter in parameters {
+                    highlight_state_add_token_with_start_and_length(
+                        state,
+                        lsp_types::SemanticTokenType::TYPE_PARAMETER,
+                        parameter.start,
+                        parameter.value.len(),
+                    );
+                }
+                if let Some(documentation) = documentation {
+                    sloe_syntax_comments_highlight(state, documentation);
+                }
+                for variant in variants {
+                    sloe_syntax_variant_highlight(state, types, variant);
+                }
+            }
+            sloe::SyntaxProjectElement::Fn {
+                fn_keyword_start,
+                name,
+                type_parameters,
+                parameter,
+                result_type,
+                documentation,
+                result,
+            } => {
+                keyword_highlight(state, "fn", *fn_keyword_start);
+                if let Some(name) = name {
+                    highlight_state_add_token_with_start_and_length(
+                        state,
+                        lsp_types::SemanticTokenType::VARIABLE,
+                        name.start,
+                        name.value.len(),
+                    );
+                }
+                if let Some(result_type) = result_type {
+                    sloe_syntax_type_highlight(state, types, result_type);
+                }
+                if let Some(type_parameters) = type_parameters {
+                    sloe_angled_type_parameters_highlight(state, type_parameters);
+                }
+                if let Some(parameter) = parameter {
+                    sloe_syntax_pattern_highlight(state, patterns, types, parameter)
+                }
+                if let Some(documentation) = documentation {
+                    sloe_syntax_comments_highlight(state, documentation);
+                }
+                if let Some(result) = result {
+                    sloe_syntax_expression_highlight(state, expressions, patterns, types, result)
+                }
+            }
+            sloe::SyntaxProjectElement::Unrecognized { .. } => {}
+        }
+    }
+}
+fn sloe_syntax_variant_highlight<Types>(
+    state: &mut HighlightState,
+    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    variant: &sloe::SyntaxVariant<Types>,
+) {
+    if let Some(name) = &variant.name {
+        sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
+    }
+    if let Some(type_parameters) = &variant.type_parameters {
+        sloe_angled_type_parameters_highlight(state, type_parameters);
+    }
+    if let Some(value) = &variant.value {
+        sloe_syntax_type_highlight(state, types, value);
+    }
+}
+fn sloe_syntax_comments_highlight(state: &mut HighlightState, comments: &sloe::SyntaxComments) {
+    for line in std::iter::once(&comments.line0).chain(comments.line1_up.iter()) {
+        highlight_state_add_token_with_start_and_length(
+            state,
+            lsp_types::SemanticTokenType::VARIABLE,
+            line.start,
+            line.value.encode_utf16().count(),
+        );
+    }
+}
+fn sloe_syntax_name_highlight(
+    state: &mut HighlightState,
+    name: &sloe::WithStartPosition<sloe::Name>,
+    kind: lsp_types::SemanticTokenType,
+) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        kind,
+        name.start,
+        name.value.encode_utf16().count(),
+    );
+}
+fn sloe_angled_type_parameters_highlight(
+    state: &mut HighlightState,
+    angled_type_parameters: &sloe::SyntaxAngledTypeParameters,
+) {
+    for name in &angled_type_parameters.names {
+        sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE_PARAMETER);
+    }
+}
+fn sloe_angled_type_arguments_highlight<Types>(
+    state: &mut HighlightState,
+    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    angled_type_arguments: &sloe::SyntaxAngledTypeArguments<Types>,
+) {
+    for argument in types.opt_span_slice(sloe::core::Opt::from_option(
+        angled_type_arguments.types.as_ref(),
+    )) {
+        sloe_syntax_type_highlight(state, types, argument);
+    }
+}
+fn sloe_syntax_field_highlight<Value>(
+    state: &mut HighlightState,
+    field: &sloe::SyntaxField<Value>,
+    value_highlight: impl FnOnce(&mut HighlightState, &Value),
+) {
+    match field {
+        sloe::SyntaxField::Parenthsized {
+            open_paren_start: _,
+            name,
+            value,
+            closed_paren_start: _,
+        } => {
+            if let Some(name) = name {
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::PROPERTY);
+            }
+            if let Some(value) = value {
+                value_highlight(state, value);
+            }
+        }
+        sloe::SyntaxField::Unparenthsized { name, value } => {
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::PROPERTY);
+            if let Some(value) = value {
+                value_highlight(state, value);
+            }
+        }
+    }
+}
+fn sloe_syntax_pattern_highlight<Patterns, Types>(
+    state: &mut HighlightState,
+    patterns: &sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    pattern: &sloe::SyntaxPattern<Patterns, Types>,
+) {
+    match pattern {
+        sloe::SyntaxPattern::Variable { name, type_ } => {
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::PARAMETER);
+            if let Some(type_) = type_ {
+                sloe_syntax_type_highlight(state, types, type_)
+            }
+        }
+        sloe::SyntaxPattern::Variant {
+            name,
+            type_arguments,
+            value,
+        } => {
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
+            if let Some(type_arguments) = type_arguments {
+                sloe_angled_type_arguments_highlight(state, types, type_arguments);
+            }
+            if let Some(value) = value {
+                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(value))
+            }
+        }
+        sloe::SyntaxPattern::Record {
+            ampersand_start,
+            fields,
+        } => {
+            keyword_highlight(state, "&", *ampersand_start);
+            for field in fields {
+                sloe_syntax_field_highlight(state, field, |state, value| {
+                    sloe_syntax_pattern_highlight(state, patterns, types, value)
+                });
+            }
+        }
+        sloe::SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(inner));
+            }
+        }
+    }
+}
+fn sloe_syntax_type_highlight<Types>(
+    state: &mut HighlightState,
+    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    type_: &sloe::SyntaxType<Types>,
+) {
+    match type_ {
+        sloe::SyntaxType::Variable(name) => {
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE_PARAMETER);
+        }
+        sloe::SyntaxType::Record {
+            ampersand_start,
+            fields,
+        } => {
+            keyword_highlight(state, "&", *ampersand_start);
+            for field in fields {
+                sloe_syntax_field_highlight(state, field, |state, value| {
+                    sloe_syntax_type_highlight(state, types, value)
+                });
+            }
+        }
+        sloe::SyntaxType::Construct { name, arguments } => {
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE);
+            for argument in types.opt_span_slice(sloe::core::Opt::from_option(arguments.as_ref())) {
+                sloe_syntax_type_highlight(state, types, argument);
+            }
+        }
+        sloe::SyntaxType::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                sloe_syntax_type_highlight(state, types, types.element(inner));
+            }
+        }
+    }
+}
+fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
+    state: &mut HighlightState,
+    expressions: &sloe::core::Vec<
+        Expressions,
+        sloe::SyntaxExpression<Expressions, Patterns, Types>,
+    >,
+    patterns: &sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    expression: &sloe::SyntaxExpression<Expressions, Patterns, Types>,
+) {
+    match expression {
+        sloe::SyntaxExpression::Number { value, type_ } => {
+            highlight_state_add_token_with_start_and_length(
+                state,
+                lsp_types::SemanticTokenType::NUMBER,
+                value.start,
+                value.value.len(),
+            );
+            if let Some(type_) = type_ {
+                sloe_syntax_type_highlight(state, types, type_);
+            }
+        }
+        sloe::SyntaxExpression::Char {
+            open_quote_start,
+            content: _,
+            content_end,
+            closed_quote_exists,
+        } => {
+            highlight_state_add_token_with_start_and_length(
+                state,
+                lsp_types::SemanticTokenType::STRING,
+                *open_quote_start,
+                (content_end.character - open_quote_start.character
+                    + (if *closed_quote_exists { 1 } else { 0 })) as usize,
+            );
+        }
+        sloe::SyntaxExpression::Str {
+            open_quote_start,
+            content: _,
+            content_end,
+            closed_quote_exists,
+        } => {
+            highlight_state_add_token_with_start_and_length(
+                state,
+                lsp_types::SemanticTokenType::STRING,
+                *open_quote_start,
+                (content_end.character - open_quote_start.character
+                    + (if *closed_quote_exists { 1 } else { 0 })) as usize,
+            );
+        }
+        sloe::SyntaxExpression::ReferenceOrCall {
+            name,
+            type_arguments,
+            argument,
+        } => {
+            sloe_syntax_name_highlight(
+                state,
+                name,
+                if argument.is_some() || type_arguments.is_some() {
+                    lsp_types::SemanticTokenType::VARIABLE
+                } else {
+                    lsp_types::SemanticTokenType::FUNCTION
+                },
+            );
+            if let Some(type_arguments) = type_arguments {
+                sloe_angled_type_arguments_highlight(state, types, type_arguments);
+            }
+            if let Some(argument) = argument {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(argument),
+                );
+            }
+        }
+        sloe::SyntaxExpression::Variant {
+            name,
+            type_arguments,
+            value,
+        } => {
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
+            if let Some(type_arguments) = type_arguments {
+                sloe_angled_type_arguments_highlight(state, types, type_arguments);
+            }
+            if let Some(value) = value {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(value),
+                );
+            }
+        }
+        sloe::SyntaxExpression::Fn {
+            fn_keyword_start,
+            parameter,
+            result_type,
+            result,
+        } => {
+            keyword_highlight(state, "fn", *fn_keyword_start);
+            if let Some(parameter) = parameter {
+                sloe_syntax_pattern_highlight(state, patterns, types, parameter);
+            }
+            if let Some(result_type) = result_type {
+                sloe_syntax_type_highlight(state, types, result_type);
+            }
+            if let Some(result) = result {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(result),
+                );
+            }
+        }
+        sloe::SyntaxExpression::Record {
+            ampersand_start,
+            fields,
+        } => {
+            keyword_highlight(state, "&", *ampersand_start);
+            for field in fields {
+                sloe_syntax_field_highlight(state, field, |state, value| {
+                    sloe_syntax_expression_highlight(state, expressions, patterns, types, value);
+                });
+            }
+        }
+        sloe::SyntaxExpression::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(inner),
+                )
+            }
+        }
+        sloe::SyntaxExpression::Commented {
+            comments,
+            expression,
+        } => {
+            sloe_syntax_comments_highlight(state, comments);
+            if let Some(expression) = expression {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(expression),
+                )
+            }
+        }
+        sloe::SyntaxExpression::Query {
+            colon_start,
+            queried,
+            cases,
+        } => {
+            keyword_highlight(state, ":", *colon_start);
+            if let Some(queried) = queried {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(queried),
+                )
+            }
+            for case in cases {
+                match case {
+                    sloe::SyntaxExpressionQueryCase::Parenthesized {
+                        open_paren_start: _,
+                        pattern,
+                        result,
+                        closed_paren_start: _,
+                    } => {
+                        if let Some(pattern) = pattern {
+                            sloe_syntax_pattern_highlight(state, patterns, types, pattern);
+                        }
+                        if let Some(result) = result {
+                            sloe_syntax_expression_highlight(
+                                state,
+                                expressions,
+                                patterns,
+                                types,
+                                result,
+                            )
+                        }
+                    }
+                    sloe::SyntaxExpressionQueryCase::Unparenthesized { pattern, result } => {
+                        sloe_syntax_pattern_highlight(state, patterns, types, pattern);
+                        if let Some(result) = result {
+                            sloe_syntax_expression_highlight(
+                                state,
+                                expressions,
+                                patterns,
+                                types,
+                                result,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        sloe::SyntaxExpression::Origin {
+            origin_keyword_start,
+            name,
+            result,
+        } => {
+            keyword_highlight(state, "origin", *origin_keyword_start);
+            if let Some(name) = name {
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::VARIABLE);
+            }
+            if let Some(result) = result {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(result),
+                )
+            }
+        }
+    }
 }
 
 const token_types: [lsp_types::SemanticTokenType; 11] = [
@@ -823,22 +1865,6 @@ fn semantic_token_type_to_id(semantic_token: &lsp_types::SemanticTokenType) -> u
             }
         })
         .unwrap_or(0_u32)
-}
-fn sloe_syntax_highlight_kind_to_lsp_semantic_token_type(
-    sloe_syntax_highlight_kind: sloe::SyntaxHighlightKind,
-) -> lsp_types::SemanticTokenType {
-    match sloe_syntax_highlight_kind {
-        sloe::SyntaxHighlightKind::KeySymbol => lsp_types::SemanticTokenType::KEYWORD,
-        sloe::SyntaxHighlightKind::Field => lsp_types::SemanticTokenType::PROPERTY,
-        sloe::SyntaxHighlightKind::Type => lsp_types::SemanticTokenType::TYPE,
-        sloe::SyntaxHighlightKind::Variable => lsp_types::SemanticTokenType::VARIABLE,
-        sloe::SyntaxHighlightKind::Variant => lsp_types::SemanticTokenType::ENUM_MEMBER,
-        sloe::SyntaxHighlightKind::DeclaredVariable => lsp_types::SemanticTokenType::FUNCTION,
-        sloe::SyntaxHighlightKind::Comment => lsp_types::SemanticTokenType::COMMENT,
-        sloe::SyntaxHighlightKind::Number => lsp_types::SemanticTokenType::NUMBER,
-        sloe::SyntaxHighlightKind::String => lsp_types::SemanticTokenType::STRING,
-        sloe::SyntaxHighlightKind::TypeVariable => lsp_types::SemanticTokenType::TYPE_PARAMETER,
-    }
 }
 #[derive(Copy, Clone)]
 struct PositionDelta {
@@ -883,35 +1909,331 @@ fn respond_to_completion<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     completion_arguments: &lsp_types::CompletionParams,
 ) -> Option<lsp_types::CompletionResponse> {
-    let completion_project = state.projects.get(
+    let Some(project_state) = state.projects.get(
         &completion_arguments
             .text_document_position
             .text_document
             .uri,
-    )?;
-    todo!()
+    ) else {
+        return None;
+    };
+    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+        &project_state.syntax,
+        completion_arguments.text_document_position.position,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    ) else {
+        return None;
+    };
+    match symbol {
+        sloe::SyntaxSymbol::ProjectTypeOrUnknown { name: _, origins } => {
+            Some(lsp_types::CompletionResponse::Array(
+                project_state
+                    .choice_types
+                    .iter()
+                    .map(|(choice_type_name, choice_type_info)| {
+                        let mut inserted_text = String::new();
+                        if choice_type_info.parameters.is_empty() {
+                            inserted_text.push_str(choice_type_name);
+                        } else {
+                            inserted_text.push('(');
+                            inserted_text.push_str(choice_type_name);
+                            for parameter in &choice_type_info.parameters {
+                                inserted_text.push(' ');
+                                inserted_text.push_str(parameter);
+                            }
+                            inserted_text.push(')');
+                        }
+                        lsp_types::CompletionItem {
+                            label: choice_type_name.to_string(),
+                            kind: Some(lsp_types::CompletionItemKind::ENUM),
+                            detail: Some(present_choice_type_markdown(
+                                choice_type_name,
+                                choice_type_info,
+                            )),
+                            insert_text: Some(inserted_text),
+                            ..lsp_types::CompletionItem::default()
+                        }
+                    })
+                    .chain(project_state.type_aliases.iter().map(
+                        |(type_alias_name, type_alias_info)| {
+                            let mut inserted_text = String::new();
+                            if type_alias_info.parameters.is_empty() {
+                                inserted_text.push_str(type_alias_name);
+                            } else {
+                                inserted_text.push('(');
+                                inserted_text.push_str(type_alias_name);
+                                for parameter in &type_alias_info.parameters {
+                                    inserted_text.push(' ');
+                                    inserted_text.push_str(parameter);
+                                }
+                                inserted_text.push(')');
+                            }
+                            lsp_types::CompletionItem {
+                                label: type_alias_name.to_string(),
+                                kind: Some(lsp_types::CompletionItemKind::STRUCT),
+                                detail: Some(present_type_alias_markdown(
+                                    type_alias_name,
+                                    type_alias_info,
+                                )),
+                                insert_text: Some(inserted_text),
+                                ..lsp_types::CompletionItem::default()
+                            }
+                        },
+                    ))
+                    .chain(origins.into_iter().map(|(origin_name, _origin_origin)| {
+                        lsp_types::CompletionItem {
+                            label: origin_name.to_string(),
+                            kind: Some(lsp_types::CompletionItemKind::STRUCT),
+                            detail: Some(format!("```sloe\norigin {}\n```", origin_name)),
+                            ..lsp_types::CompletionItem::default()
+                        }
+                    }))
+                    .collect(),
+            ))
+        }
+        sloe::SyntaxSymbol::Origin { .. } => None,
+        sloe::SyntaxSymbol::TypeVariable {
+            name: _,
+            use_start,
+            scope,
+        } => {
+            let mut available_existing_variables = std::collections::HashSet::new();
+            match scope {
+                sloe::SyntaxProjectElement::TypeAlias {
+                    type_keyword_start: _,
+                    name: _,
+                    parameters,
+                    documentation: _,
+                    type_: _,
+                } => {
+                    for parameter in parameters {
+                        if parameter.start == use_start {
+                            return None;
+                        }
+                        available_existing_variables.insert(&parameter.value);
+                    }
+                }
+                sloe::SyntaxProjectElement::ChoiceType {
+                    choice_keyword_start: _,
+                    name: _,
+                    parameters,
+                    documentation: _,
+                    variants: _,
+                } => {
+                    for parameter in parameters {
+                        if parameter.start == use_start {
+                            return None;
+                        }
+                        available_existing_variables.insert(&parameter.value);
+                    }
+                }
+                sloe::SyntaxProjectElement::Fn {
+                    fn_keyword_start: _,
+                    name: _,
+                    type_parameters,
+                    parameter,
+                    result_type,
+                    documentation: _,
+                    result: _,
+                } => {
+                    for parameter in type_parameters
+                        .as_ref()
+                        .map(|type_parameters| &type_parameters.names)
+                        .into_iter()
+                        .flatten()
+                    {
+                        if parameter.start == use_start {
+                            return None;
+                        }
+                        available_existing_variables.insert(&parameter.value);
+                    }
+                    if let Some(parameter) = parameter {
+                        sloe::syntax_pattern_type_variables_into(
+                            &mut available_existing_variables,
+                            parameter,
+                            &state.syntax_patterns,
+                            &state.syntax_types,
+                        );
+                    }
+                    if let Some(result_type) = result_type {
+                        sloe::syntax_type_variables_into(
+                            &mut available_existing_variables,
+                            result_type,
+                            &state.syntax_types,
+                        );
+                    }
+                }
+                sloe::SyntaxProjectElement::Comments(_) => {}
+                sloe::SyntaxProjectElement::Unrecognized { .. } => {}
+            }
+            Some(lsp_types::CompletionResponse::Array(
+                available_existing_variables
+                    .into_iter()
+                    .map(|available_existing_variable| lsp_types::CompletionItem {
+                        label: available_existing_variable.to_string(),
+                        kind: Some(lsp_types::CompletionItemKind::TYPE_PARAMETER),
+                        detail: Some("type variable".to_string()),
+                        ..lsp_types::CompletionItem::default()
+                    })
+                    .collect(),
+            ))
+        }
+        sloe::SyntaxSymbol::VariantOrUnknown(_) => Some(lsp_types::CompletionResponse::Array(
+            project_state
+                .choice_types
+                .iter()
+                .flat_map(|(choice_type_name, choice_type_info)| {
+                    choice_type_info.variants.iter().map(|variant| {
+                        let mut inserted_text = String::new();
+                        // potential improvement: do not suggest type arguments when type is already known
+                        // (e.g. in query patterns)
+                        match &variant.value {
+                            None => {
+                                inserted_text.push_str(&variant.name);
+                                angled_type_parameters_format(
+                                    &mut inserted_text,
+                                    &variant.type_parameters,
+                                );
+                            }
+                            Some(value_type) => {
+                                inserted_text.push('(');
+                                inserted_text.push_str(&variant.name);
+                                angled_type_parameters_format(
+                                    &mut inserted_text,
+                                    &variant.type_parameters,
+                                );
+                                inserted_text.push(' ');
+                                match value_type {
+                                    sloe::Type::Record(parameter_fields) => {
+                                        inserted_text.push_str("&");
+                                        for field in parameter_fields {
+                                            inserted_text.push_str(" (");
+                                            inserted_text.push_str(&field.name);
+                                            inserted_text.push_str(" )");
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                inserted_text.push(')');
+                            }
+                        }
+                        lsp_types::CompletionItem {
+                            label: variant.name.to_string(),
+                            kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                            detail: Some(format!(
+                                "variant in\n{}",
+                                present_choice_type_markdown(choice_type_name, choice_type_info)
+                            )),
+                            insert_text: Some(inserted_text),
+                            ..lsp_types::CompletionItem::default()
+                        }
+                    })
+                })
+                .collect(),
+        )),
+        sloe::SyntaxSymbol::ProjectFnOrUnknown {
+            name: _,
+            pattern_variables,
+            origins,
+        } => Some(lsp_types::CompletionResponse::Array(
+            project_state
+                .fns
+                .iter()
+                .map(|(fn_name, fn_info)| {
+                    let mut inserted_text = String::new();
+                    match &fn_info.parameter_type {
+                        None => {
+                            inserted_text.push_str(fn_name);
+                            angled_type_parameters_format(
+                                &mut inserted_text,
+                                &fn_info.type_parameters,
+                            );
+                        }
+                        Some(parameter_type) => {
+                            inserted_text.push('(');
+                            inserted_text.push_str(fn_name);
+                            angled_type_parameters_format(
+                                &mut inserted_text,
+                                &fn_info.type_parameters,
+                            );
+                            inserted_text.push(' ');
+                            match parameter_type {
+                                sloe::Type::Record(parameter_fields) => {
+                                    inserted_text.push_str("&");
+                                    for field in parameter_fields {
+                                        inserted_text.push_str(" (");
+                                        inserted_text.push_str(&field.name);
+                                        inserted_text.push_str(" )");
+                                    }
+                                }
+                                _ => {}
+                            }
+                            inserted_text.push(')');
+                        }
+                    }
+                    lsp_types::CompletionItem {
+                        label: fn_name.to_string(),
+                        kind: Some(lsp_types::CompletionItemKind::FUNCTION),
+                        detail: Some(present_project_fn_with_complete_type_markdown(
+                            fn_name, fn_info,
+                        )),
+                        insert_text: Some(inserted_text),
+                        ..lsp_types::CompletionItem::default()
+                    }
+                })
+                .chain(pattern_variables.into_iter().map(
+                    |(pattern_variable, _pattern_variable_origin)| {
+                        // portential improvement: do not suggest variables and origins that have already been used earlier
+                        lsp_types::CompletionItem {
+                            label: pattern_variable.to_string(),
+                            kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+                            detail: Some(format!("pattern variable {}", pattern_variable)),
+                            ..lsp_types::CompletionItem::default()
+                        }
+                    },
+                ))
+                .chain(origins.into_iter().map(|(origin_name, _origin_origin)| {
+                    lsp_types::CompletionItem {
+                        label: origin_name.to_string(),
+                        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+                        detail: Some(format!("```sloe\norigin {}\n```", origin_name)),
+                        ..lsp_types::CompletionItem::default()
+                    }
+                }))
+                .collect(),
+        )),
+        sloe::SyntaxSymbol::PatternVariable { .. } => None,
+    }
 }
 
 fn respond_to_document_formatting<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     formatting_arguments: &lsp_types::DocumentFormattingParams,
 ) -> Option<Vec<lsp_types::TextEdit>> {
-    let to_format_project = state
-        .projects
-        .get(&formatting_arguments.text_document.uri)?;
-    let formatted: String = todo!();
+    let Some(project_state) = state.projects.get(&formatting_arguments.text_document.uri) else {
+        return None;
+    };
+    let formatted: String = sloe::syntax_project_format(
+        &project_state.syntax,
+        &project_state.source,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    );
     // diffing does not seem to be needed here. But maybe it's faster?
     Some(vec![lsp_types::TextEdit {
-        span: lsp_types::Span {
+        range: lsp_types::Range {
             start: lsp_types::Position {
                 line: 0,
                 character: 0,
             },
             end: lsp_types::Position {
-                line: to_format_project.source.lines().count() as u32
+                line: project_state.source.lines().count() as u32
                     + (
                         // restore last line break potentially eaten by .lines()
-                        if to_format_project.source.ends_with(['\r', '\n']) {
+                        if project_state.source.ends_with(['\r', '\n']) {
                             1
                         } else {
                             0
@@ -938,61 +2260,108 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
             .elements
             .iter()
             .filter_map(|project_element| match project_element {
-                sloe::SyntaxProjectElement::Unrecognized(_) => None,
-                sloe::SyntaxProjectElement::ChoiceType {
-                    name: maybe_name,
+                sloe::SyntaxProjectElement::Comments { .. } => None,
+                sloe::SyntaxProjectElement::Unrecognized { .. } => None,
+                sloe::SyntaxProjectElement::TypeAlias {
+                    type_keyword_start: _,
+                    name,
                     parameters: _,
+                    documentation: _,
+                    type_,
+                } => {
+                    let Some(name) = name else {
+                        return None;
+                    };
+                    Some(lsp_types::DocumentSymbol {
+                        name: name.value.to_string(),
+                        detail: None,
+                        kind: lsp_types::SymbolKind::STRUCT,
+                        tags: None,
+                        #[allow(deprecated)]
+                        deprecated: None,
+                        range: lsp_types::Range {
+                            start: name.start,
+                            end: type_
+                                .as_ref()
+                                .map(|value| sloe::type_end(value, &state.syntax_types))
+                                .unwrap_or_else(|| {
+                                    sloe::name_end(sloe::with_start_position_as_ref(name))
+                                }),
+                        },
+                        selection_range: sloe::syntax_name_range(sloe::with_start_position_as_ref(
+                            name,
+                        )),
+                        children: None,
+                    })
+                }
+                sloe::SyntaxProjectElement::ChoiceType {
+                    choice_keyword_start: _,
+                    name,
+                    parameters: _,
+                    documentation: _,
                     variants,
                 } => {
-                    let name_node = maybe_name.as_ref()?;
+                    let Some(name) = name else {
+                        return None;
+                    };
                     Some(lsp_types::DocumentSymbol {
-                        name: name_node.value.to_string(),
+                        name: name.value.to_string(),
                         detail: None,
                         kind: lsp_types::SymbolKind::ENUM,
                         tags: None,
                         #[allow(deprecated)]
                         deprecated: None,
-                        span: lsp_types::Span {
-                            start: name_node.span.start,
+                        range: lsp_types::Range {
+                            start: name.start,
                             end: variants
                                 .last()
                                 .and_then(|variant| {
                                     variant
                                         .value
                                         .as_ref()
-                                        .map(|value| value.span.end)
-                                        .or_else(|| variant.name.as_ref().map(|n| n.span.end))
+                                        .map(|value| sloe::type_end(value, &state.syntax_types))
+                                        .or_else(|| {
+                                            variant.name.as_ref().map(|name| {
+                                                sloe::name_end(sloe::with_start_position_as_ref(
+                                                    name,
+                                                ))
+                                            })
+                                        })
                                 })
-                                .unwrap_or_else(|| name_node.span.end),
+                                .unwrap_or_else(|| {
+                                    sloe::name_end(sloe::with_start_position_as_ref(name))
+                                }),
                         },
-                        selection_span: name_node.span,
+                        selection_range: sloe::syntax_name_range(sloe::with_start_position_as_ref(
+                            name,
+                        )),
                         children: Some(
                             variants
                                 .iter()
                                 .filter_map(|variant| {
-                                    let variant_name_node = variant.name.as_ref()?;
+                                    let Some(variant_name_node) = &variant.name else {
+                                        return None;
+                                    };
                                     Some((
                                         variant_name_node,
-                                        lsp_types::Span {
-                                            start: variant_name_node.span.start,
-                                            end: variant
-                                                .value
-                                                .as_ref()
-                                                .map(|node| node.span.end)
-                                                .unwrap_or(variant_name_node.span.end),
+                                        lsp_types::Range {
+                                            start: variant_name_node.start,
+                                            end: sloe::variant_end(variant, &state.syntax_types),
                                         },
                                     ))
                                 })
-                                .map(|(variant_name_node, variant_full_span)| {
+                                .map(|(variant_name, variant_full_span)| {
                                     lsp_types::DocumentSymbol {
-                                        name: variant_name_node.value.to_string(),
+                                        name: variant_name.value.to_string(),
                                         detail: None,
                                         kind: lsp_types::SymbolKind::ENUM_MEMBER,
                                         tags: None,
                                         #[allow(deprecated)]
                                         deprecated: None,
-                                        span: variant_full_span,
-                                        selection_span: variant_name_node.span,
+                                        range: variant_full_span,
+                                        selection_range: sloe::syntax_name_range(
+                                            sloe::with_start_position_as_ref(variant_name),
+                                        ),
                                         children: None,
                                     }
                                 })
@@ -1001,25 +2370,43 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                     })
                 }
                 sloe::SyntaxProjectElement::Fn {
-                    name: maybe_name,
+                    fn_keyword_start,
+                    name,
+                    type_parameters: _,
+                    parameter: _,
+                    result_type: _,
+                    documentation: _,
                     result: maybe_result,
                 } => {
-                    let name_node = maybe_name.as_ref()?;
+                    let Some(name) = name else {
+                        return None;
+                    };
                     Some(lsp_types::DocumentSymbol {
-                        name: name_node.value.to_string(),
+                        name: name.value.to_string(),
                         detail: None,
                         kind: lsp_types::SymbolKind::FUNCTION,
                         tags: None,
                         #[allow(deprecated)]
                         deprecated: None,
-                        span: lsp_types::Span {
-                            start: name_node.span.start,
+                        range: lsp_types::Range {
+                            start: *fn_keyword_start,
                             end: maybe_result
                                 .as_ref()
-                                .map(|n| n.span.end)
-                                .unwrap_or_else(|| name_node.span.end),
+                                .map(|result_slot| {
+                                    sloe::expression_end(
+                                        result_slot,
+                                        &state.syntax_expressions,
+                                        &state.syntax_patterns,
+                                        &state.syntax_types,
+                                    )
+                                })
+                                .unwrap_or_else(|| {
+                                    sloe::name_end(sloe::with_start_position_as_ref(name))
+                                }),
                         },
-                        selection_span: name_node.span,
+                        selection_range: sloe::syntax_name_range(sloe::with_start_position_as_ref(
+                            name,
+                        )),
                         children: None,
                     })
                 }
@@ -1028,41 +2415,20 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
     ))
 }
 
-fn lsp_position_add_characters(
-    position: lsp_types::Position,
-    additional_character_count: i32,
-) -> lsp_types::Position {
-    lsp_types::Position {
-        line: position.line,
-        character: (position.character as i32 + additional_character_count) as u32,
-    }
-}
-
-fn lsp_span_includes_position(span: lsp_types::Span, position: lsp_types::Position) -> bool {
-    (
-        // position >= span.start
-        (position.line > span.start.line)
-            || ((position.line == span.start.line) && (position.character >= span.start.character))
-    ) && (
-        // position <= span.end
-        (position.line < span.end.line)
-            || ((position.line == span.end.line) && (position.character <= span.end.character))
-    )
-}
-
-fn str_lsp_span_to_span(str: &str, span: lsp_types::Span) -> std::ops::Span<usize> {
-    let start_line_offset: usize = str_offset_after_n_lsp_linebreaks(str, span.start.line as usize);
+fn str_lsp_span_to_span(str: &str, range: lsp_types::Range) -> std::ops::Range<usize> {
+    let start_line_offset: usize =
+        str_offset_after_n_lsp_linebreaks(str, range.start.line as usize);
     let start_offset: usize = start_line_offset
         + str_starting_utf8_length_for_utf16_length(
             &str[start_line_offset..],
-            span.start.character as usize,
+            range.start.character as usize,
         );
     // can be optimized by only counting after the start line
-    let end_line_offset: usize = str_offset_after_n_lsp_linebreaks(str, span.end.line as usize);
+    let end_line_offset: usize = str_offset_after_n_lsp_linebreaks(str, range.end.line as usize);
     let end_offset: usize = end_line_offset
         + str_starting_utf8_length_for_utf16_length(
             &str[end_line_offset..],
-            span.end.character as usize,
+            range.end.character as usize,
         );
     start_offset..end_offset
 }
@@ -1100,26 +2466,26 @@ fn str_offset_after_n_lsp_linebreaks(str: &str, linebreak_count_to_skip: usize) 
     }
     offset_after_n_linebreaks
 }
-fn string_replace_lsp_span(string: &mut String, span: lsp_types::Span, replacement: &str) {
-    string.replace_span(str_lsp_span_to_span(string, span), replacement);
+fn string_replace_lsp_span(string: &mut String, range: lsp_types::Range, replacement: &str) {
+    string.replace_range(str_lsp_span_to_span(string, range), replacement);
 }
 /// slightly faster version of `string_replace_lsp_span` for when you know the length
 fn string_replace_lsp_span_for_length(
     string: &mut String,
-    span: lsp_types::Span,
-    span_length: usize,
+    range: lsp_types::Range,
+    range_length: usize,
     replacement: &str,
 ) {
     let start_line_offset: usize =
-        str_offset_after_n_lsp_linebreaks(string, span.start.line as usize);
+        str_offset_after_n_lsp_linebreaks(string, range.start.line as usize);
     let start_offset: usize = start_line_offset
         + str_starting_utf8_length_for_utf16_length(
             &string[start_line_offset..],
-            span.start.character as usize,
+            range.start.character as usize,
         );
     let span_length_utf8: usize =
-        str_starting_utf8_length_for_utf16_length(&string[start_offset..], span_length);
-    string.replace_span(start_offset..(start_offset + span_length_utf8), replacement);
+        str_starting_utf8_length_for_utf16_length(&string[start_offset..], range_length);
+    string.replace_range(start_offset..(start_offset + span_length_utf8), replacement);
 }
 fn str_starting_utf8_length_for_utf16_length(slice: &str, starting_utf16_length: usize) -> usize {
     let mut utf8_length: usize = 0;
