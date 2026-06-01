@@ -3119,6 +3119,7 @@ fn project_fn_to_rust<'a, Expressions, Patterns, Types>(
     ) else {
         return None;
     };
+    let mut used_pattern_variables = std::collections::HashMap::new();
     let compiled_result: CompiledExpression = syntax_expression_to_rust(
         errors,
         records_used,
@@ -3130,15 +3131,19 @@ fn project_fn_to_rust<'a, Expressions, Patterns, Types>(
         types,
         &mut parameter_introduced_bindings,
         &mut std::collections::HashMap::new(),
+        &mut std::collections::HashMap::new(),
+        &mut used_pattern_variables,
         result_node,
     );
     for parameter_introduced_binding_name in parameter_introduced_bindings.keys() {
-        push_error_if_introduced_local_binding_collides_or_is_unused(
+        push_error_if_introduced_variable_collides_or_is_unused(
             errors,
             project_fns,
             &std::collections::HashMap::new(),
-            "replace this variable by _ to explicitly never handle the incoming value",
             parameter_introduced_binding_name,
+            used_pattern_variables
+                .get(parameter_introduced_binding_name)
+                .copied(),
         );
     }
     let Some(actual_result_expression_type) = compiled_result.type_ else {
@@ -3169,7 +3174,7 @@ fn project_fn_to_rust<'a, Expressions, Patterns, Types>(
             .retain(|result_type_parameter| !input_type_parameters.contains(result_type_parameter));
         if !result_type_parameters.is_empty() {
             let mut full_type_as_string: String = String::new();
-            type_into(&mut full_type_as_string, 0, &actual_result_expression_type);
+            type_format(&mut full_type_as_string, 0, &actual_result_expression_type);
             errors.push(ErrorNode {
                 range: syntax_name_range(with_start_position_as_ref(project_fn_info.name)),
                 message: format!(
@@ -4189,17 +4194,22 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     PatternVariableCompileInfo {
                         origin_start: name.start,
                         type_: Some(compiled_variable.type_.clone()),
-                        used: false,
                     },
                 );
-                if let Some(existing_variable_with_the_same_name) =
-                    maybe_existing_variable_with_the_same_name
-                    && !existing_variable_with_the_same_name.used
-                {
+                if maybe_existing_variable_with_the_same_name.is_some() {
                     errors.push(ErrorNode {
-                        range: syntax_name_range(WithStartPosition{ value : &name.value, start: existing_variable_with_the_same_name.origin_start }),
-                        message: format!("the variable introduced in this pattern is never used. Use it or replace this pattern by _ to signal that you deliberately want to forget this value. If you believe this variable does get used, notice that there is another variable with the same name at {}", position_to_string(name.start)).into_boxed_str(),
+                        range: syntax_name_range(with_start_position_as_ref(name)),
+                        message: Box::from(
+                            "a pattern variable with this name already exists. Rename it",
+                        ),
                     });
+                    return None;
+                } else if origins.contains_key(&name.value) {
+                    errors.push(ErrorNode {
+                        range: syntax_name_range(with_start_position_as_ref(name)),
+                        message: Box::from("an origin with this name already exists. Rename it"),
+                    });
+                    return None;
                 }
             }
             maybe_compiled_variable
@@ -4294,7 +4304,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                                 let mut error_message: String = String::from(
                                     "this variant is missing its value. In the origin choice declaration, it's type is declared as\n",
                                 );
-                                type_into(&mut error_message, 0, origin_variant_value);
+                                type_format(&mut error_message, 0, origin_variant_value);
                                 errors.push(ErrorNode {
                                     range: syntax_name_range(with_start_position_as_ref(name)),
                                     message: error_message.into_boxed_str(),
@@ -4438,7 +4448,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                                 let mut error_message: String = String::from(
                                     "this variant is missing its value. In the origin choice declaration, it's type is declared as\n",
                                 );
-                                type_into(&mut error_message, 0, origin_variant_value);
+                                type_format(&mut error_message, 0, origin_variant_value);
                                 errors.push(ErrorNode {
                                     range: syntax_name_range(with_start_position_as_ref(name)),
                                     message: error_message.into_boxed_str(),
@@ -4755,12 +4765,10 @@ struct CompiledExpression {
 struct PatternVariableCompileInfo {
     origin_start: lsp_types::Position,
     type_: Option<Type>,
-    used: bool,
 }
 #[derive(Clone, Copy, Debug)]
-struct OriginCompileInfo {
+pub struct OriginCompileInfo {
     origin_start: lsp_types::Position,
-    used: bool,
 }
 fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
@@ -4772,7 +4780,15 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     pattern_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
+    used_pattern_variables: &mut std::collections::HashMap<
+        &'a Name,
+        /* start */ lsp_types::Position,
+    >,
     origins: &mut std::collections::HashMap<&'a Name, OriginCompileInfo>,
+    used_origin_variables: &mut std::collections::HashMap<
+        &'a Name,
+        /* start */ lsp_types::Position,
+    >,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
 ) -> CompiledExpression {
     match expression {
@@ -4993,18 +5009,21 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             type_arguments,
             argument: syntax_argument,
         } => {
-            if let Some(origin_info) = origins.get_mut(&name.value) {
-                if origin_info.used {
+            if let Some(_origin_info) = origins.get_mut(&name.value) {
+                let maybe_existing_origin_variable_use_start =
+                    used_origin_variables.insert(&name.value, name.start);
+                if let Some(existing_origin_variable_use_start) =
+                    maybe_existing_origin_variable_use_start
+                {
                     errors.push(ErrorNode {
                         range: syntax_name_range(with_start_position_as_ref(name)),
-                        message: Box::from("this origin variable is already used earlier. Each value can only be used once, that includes origins. Each collection needs its own origin"),
+                        message: format!("this origin variable is already used earlier starting at {}. Each value can only be used once, that includes origins. Each collection needs its own origin", position_to_string(existing_origin_variable_use_start)).into_boxed_str(),
                     });
                     return CompiledExpression {
                         rust: syn_expr_todo(),
                         type_: None,
                     };
                 }
-                origin_info.used = true;
                 let rust_reference: syn::Expr =
                     syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 if let Some(type_arguments) = type_arguments {
@@ -5039,17 +5058,20 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     }),
                 }
             } else if let Some(variable_info) = pattern_variables.get_mut(&name.value) {
-                if variable_info.used {
+                let maybe_existing_pattern_variable_use_start =
+                    used_pattern_variables.insert(&name.value, name.start);
+                if let Some(existing_pattern_variable_use_start) =
+                    maybe_existing_pattern_variable_use_start
+                {
                     errors.push(ErrorNode {
                         range: syntax_name_range(with_start_position_as_ref(name)),
-                        message: Box::from("this variable is already used earlier. Each value can only be used once, even simple numbers etc. To duplicate the value, use the helpers like u32-dup, char-dup or create your own dup helpers"),
+                        message: format!("this variable is already used earlier starting at {}. Each value can only be used once, even simple numbers etc. To duplicate the value, use the helpers like u32-dup, char-dup or create your own dup helpers", position_to_string(existing_pattern_variable_use_start)).into_boxed_str(),
                     });
                     return CompiledExpression {
                         rust: syn_expr_todo(),
                         type_: None,
                     };
                 }
-                variable_info.used = true;
                 let rust_reference: syn::Expr =
                     syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 if let Some(type_arguments) = type_arguments {
@@ -5086,7 +5108,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             pattern_variables,
+                            used_pattern_variables,
                             origins,
+                            used_origin_variables,
                             syntax_argument,
                         );
                         let Some(argument_type) = compiled_argument.type_ else {
@@ -5244,7 +5268,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             pattern_variables,
+                            used_pattern_variables,
                             origins,
+                            used_origin_variables,
                             syntax_argument,
                         );
                         let Some(argument_type) = compiled_argument.type_ else {
@@ -5392,7 +5418,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         let mut error_message: String = String::from(
                             "this variant is missing its value. In the origin choice declaration, it's type is declared as\n",
                         );
-                        type_into(&mut error_message, 0, origin_variant_value);
+                        type_format(&mut error_message, 0, origin_variant_value);
                         errors.push(ErrorNode {
                             range: syntax_name_range(with_start_position_as_ref(name)),
                             message: error_message.into_boxed_str(),
@@ -5436,7 +5462,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         patterns,
                         types,
                         pattern_variables,
+                        used_pattern_variables,
                         origins,
+                        used_origin_variables,
                         value,
                     )
                     else {
@@ -5553,6 +5581,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
+            let mut result_used_pattern_variables = std::collections::HashMap::new();
             let compiled_result = syntax_expression_to_rust(
                 errors,
                 records_used,
@@ -5563,7 +5592,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 &mut parameter_introduced_variables,
-                origins,
+                &mut result_used_pattern_variables,
+                &mut std::collections::HashMap::new(),
+                &mut std::collections::HashMap::new(),
                 expressions.element(result),
             );
             let Some(actual_result_type) = compiled_result.type_ else {
@@ -5577,12 +5608,14 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 };
             };
             for parameter_introduced_binding_name in parameter_introduced_variables.keys() {
-                push_error_if_introduced_local_binding_collides_or_is_unused(
+                push_error_if_introduced_variable_collides_or_is_unused(
                     errors,
                     project_fns,
                     &std::collections::HashMap::new(),
-                    "replace this variable by _ to explicitly never handle the incoming value",
                     parameter_introduced_binding_name,
+                    result_used_pattern_variables
+                        .get(parameter_introduced_binding_name)
+                        .copied(),
                 );
             }
             if let Some(result_type_diff) = type_diff(&expected_result_type, &actual_result_type) {
@@ -5594,6 +5627,18 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let mut type_variables = std::collections::HashSet::new();
             type_variables_into(&mut type_variables, &compiled_parameter.type_);
             type_variables_into(&mut type_variables, &actual_result_type);
+            if let Some(escaping_origins_error_message) =
+                type_escaping_origins_error_message(&actual_result_type, origins, choice_types)
+            {
+                errors.push(ErrorNode {
+                    range: symbol_range(*fn_keyword_start, "fn"),
+                    message: escaping_origins_error_message.into_boxed_str(),
+                });
+                return CompiledExpression {
+                    rust: syn_expr_todo(),
+                    type_: None,
+                };
+            }
             CompiledExpression {
                 rust: syn::Expr::Block(syn::ExprBlock {
                     attrs: vec![],
@@ -5713,7 +5758,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             pattern_variables,
-                                origins,
+                            used_pattern_variables,
+                            origins,
+                            used_origin_variables,
                             field_value,
                         ),
                     };
@@ -5787,7 +5834,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
+                used_pattern_variables,
                 origins,
+                used_origin_variables,
                 expressions.element(inner),
             ),
         },
@@ -5820,7 +5869,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
+                used_pattern_variables,
                 origins,
+                used_origin_variables,
                 expressions.element(expression),
             ),
         },
@@ -5829,8 +5880,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             queried,
             cases,
         } => {
-            // TODO correctly track origin and pattern variable use
-            // also report using a value in >= 1 branch but not all
             let Some(queried) = queried else {
                 errors.push(ErrorNode {
                     range: symbol_range(*colon_start, ":"),
@@ -5865,7 +5914,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
+                used_pattern_variables,
                 origins,
+                used_origin_variables,
                 queried,
             )
             else {
@@ -5905,7 +5956,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
-            let mut case0_pattern_introduced_bindings: std::collections::HashMap<
+            let mut case0_pattern_introduced_variables: std::collections::HashMap<
                 &Name,
                 PatternVariableCompileInfo,
             > = std::collections::HashMap::new();
@@ -5914,7 +5965,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 Some(&compiled_queried_type),
                 errors,
                 records_used,
-                &mut case0_pattern_introduced_bindings,
+                &mut case0_pattern_introduced_variables,
                 type_aliases,
                 choice_types,
                 patterns,
@@ -5927,10 +5978,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 };
             };
             pattern_variables.extend(
-                case0_pattern_introduced_bindings
+                case0_pattern_introduced_variables
                     .iter()
                     .map(|(binding, info)| (*binding, info.clone())),
             );
+            let mut case0_result_used_pattern_variables = std::collections::HashMap::new();
+            let mut case0_result_used_origin_variables = std::collections::HashMap::new();
             let CompiledExpression {
                 rust: case0_compiled_result_rust,
                 type_: Some(query_result_type),
@@ -5944,7 +5997,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
+                &mut case0_result_used_pattern_variables,
                 origins,
+                &mut case0_result_used_origin_variables,
                 case0_result,
             )
             else {
@@ -5953,15 +6008,15 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
-            for case0_introduced_binding in case0_pattern_introduced_bindings.keys() {
-                push_error_if_introduced_local_binding_collides_or_is_unused(
+            for case0_pattern_introduced_variable in case0_pattern_introduced_variables.keys() {
+                push_error_if_introduced_variable_collides_or_is_unused(
                     errors,
                     project_fns,
                     &pattern_variables,
-                    "replace this variable by _ to explicitly never handle the incoming value",
-                    case0_introduced_binding,
+                    case0_pattern_introduced_variable,
+                    case0_result_used_pattern_variables.remove(case0_pattern_introduced_variable),
                 );
-                pattern_variables.remove(case0_introduced_binding);
+                pattern_variables.remove(case0_pattern_introduced_variable);
             }
             let mut catch = pattern_catch_to_case_patterns_catch(case0_pattern_compiled.catch);
             let mut rust_arms: Vec<syn::Arm> = vec![syn::Arm {
@@ -5976,7 +6031,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 })),
                 comma: None,
             }];
-            for case in case1_up {
+            for (case_index, case) in case1_up
+                .iter()
+                .enumerate()
+                .map(|(i_in_1up, case)| (i_in_1up + 1, case))
+            {
                 let (case_pattern, case_result) = match case {
                     SyntaxExpressionQueryCase::Parenthesized {
                         open_paren_start,
@@ -6036,6 +6095,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         .iter()
                         .map(|(binding, info)| (*binding, info.clone())),
                 );
+                let mut case_result_used_pattern_variables = std::collections::HashMap::new();
+                let mut case_result_used_origin_variables = std::collections::HashMap::new();
                 let CompiledExpression {
                     rust: case_compiled_result_rust,
                     type_: Some(case_result_type),
@@ -6049,7 +6110,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     pattern_variables,
+                    &mut case_result_used_pattern_variables,
                     origins,
+                    &mut case_result_used_origin_variables,
                     case0_result,
                 )
                 else {
@@ -6058,15 +6121,69 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         type_: None,
                     };
                 };
-                for case_pattern_introduced_binding in case_pattern_introduced_bindings.keys() {
-                    push_error_if_introduced_local_binding_collides_or_is_unused(
+                for case_pattern_introduced_variable in case_pattern_introduced_bindings.keys() {
+                    push_error_if_introduced_variable_collides_or_is_unused(
                         errors,
                         project_fns,
                         &pattern_variables,
-                        "replace this variable by _ to explicitly never handle the incoming value",
-                        case_pattern_introduced_binding,
+                        case_pattern_introduced_variable,
+                        case_result_used_pattern_variables.remove(case_pattern_introduced_variable),
                     );
-                    pattern_variables.remove(case_pattern_introduced_binding);
+                    pattern_variables.remove(case_pattern_introduced_variable);
+                }
+                for (case_result_used_pattern_variable, &case_result_used_pattern_variable_start) in
+                    &case_result_used_pattern_variables
+                {
+                    if case0_result_used_pattern_variables
+                        .get(case_result_used_pattern_variable)
+                        .is_none()
+                    {
+                        errors.push(ErrorNode {
+                            range: syntax_name_range(WithStartPosition { value: case_result_used_pattern_variable, start: case_result_used_pattern_variable_start }),
+                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.")
+                        });
+                    }
+                }
+                for (
+                    case0_result_used_pattern_variable,
+                    &case0_result_used_pattern_variable_start,
+                ) in &case0_result_used_pattern_variables
+                {
+                    if case_result_used_pattern_variables
+                        .get(case0_result_used_pattern_variable)
+                        .is_none()
+                    {
+                        errors.push(ErrorNode {
+                            range: syntax_name_range(WithStartPosition { value: case0_result_used_pattern_variable, start: case0_result_used_pattern_variable_start }),
+                            message: format!("this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.", index_to_th(case_index)).into_boxed_str()
+                        });
+                    }
+                }
+                for (case_result_used_origin_variable, &case_result_used_origin_variable_start) in
+                    &case_result_used_origin_variables
+                {
+                    if case0_result_used_origin_variables
+                        .get(case_result_used_origin_variable)
+                        .is_none()
+                    {
+                        errors.push(ErrorNode {
+                            range: syntax_name_range(WithStartPosition { value: case_result_used_origin_variable, start: case_result_used_origin_variable_start }),
+                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.")
+                        });
+                    }
+                }
+                for (case0_result_used_origin_variable, &case0_result_used_origin_variable_start) in
+                    &case0_result_used_origin_variables
+                {
+                    if case_result_used_origin_variables
+                        .get(case0_result_used_origin_variable)
+                        .is_none()
+                    {
+                        errors.push(ErrorNode {
+                            range: syntax_name_range(WithStartPosition { value: case0_result_used_origin_variable, start: case0_result_used_origin_variable_start }),
+                            message: format!("this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.", index_to_th(case_index)).into_boxed_str()
+                        });
+                    }
                 }
                 if let Some(match_result_case_result_type_diff) =
                     type_diff(&query_result_type, &case_result_type)
@@ -6082,12 +6199,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         type_: Some(case_result_type),
                     };
                 }
-                if let Some(matched_pattern_type_diff) =
+                if let Some(queried_pattern_type_diff) =
                     type_diff(&compiled_queried_type, &case_pattern_compiled.type_)
                 {
                     errors.push(ErrorNode {
                         range: pattern_range(case_pattern, patterns, types),
-                        message: (type_diff_error_message(&matched_pattern_type_diff)
+                        message: (type_diff_error_message(&queried_pattern_type_diff)
                             + "\n\nA query case pattern must have the same type as the queried expression")
                                 .into_boxed_str(),
                     });
@@ -6139,6 +6256,20 @@ It might be that a case is not indented enough."),
                     });
                 }
             }
+            if let Some(escaping_origins_error_message) =
+                type_escaping_origins_error_message(&query_result_type, origins, choice_types)
+            {
+                errors.push(ErrorNode {
+                    range: expression_range(case0_result, expressions, patterns, types),
+                    message: escaping_origins_error_message.into_boxed_str(),
+                });
+                return CompiledExpression {
+                    rust: syn_expr_todo(),
+                    type_: None,
+                };
+            }
+            used_pattern_variables.extend(case0_result_used_pattern_variables);
+            used_origin_variables.extend(case0_result_used_origin_variables);
             CompiledExpression {
                 rust: syn::Expr::Match(syn::ExprMatch {
                     attrs: vec![],
@@ -6207,7 +6338,6 @@ It might be that a case is not indented enough."),
                         &origin_name.value,
                         OriginCompileInfo {
                             origin_start: origin_name.start,
-                            used: false,
                         },
                     );
                 }
@@ -6222,50 +6352,59 @@ It might be that a case is not indented enough."),
                 patterns,
                 types,
                 pattern_variables,
+                used_pattern_variables,
                 origins,
+                used_origin_variables,
                 expressions.element(result),
             );
-            match name {
-                None => result_compiled,
-                Some(origin_name) => CompiledExpression {
-                    rust: syn::Expr::Block(syn::ExprBlock {
+            let Some(origin_name) = name else {
+                return result_compiled;
+            };
+            if used_origin_variables.remove(&origin_name.value).is_none() {
+                errors.push(ErrorNode {
+                    range: syntax_name_range(with_start_position_as_ref(origin_name)),
+                    message: Box::from(
+                        "this origin is never used as a variable. Use it or remove it",
+                    ),
+                });
+                return result_compiled;
+            }
+            CompiledExpression {
+                rust: syn::Expr::Block(syn::ExprBlock {
+                    attrs: vec![],
+                    label: None,
+                    block: syn_spread_expr_block(syn::Expr::Macro(syn::ExprMacro {
                         attrs: vec![],
-                        label: None,
-                        block: syn_spread_expr_block(syn::Expr::Macro(syn::ExprMacro {
-                            attrs: vec![],
-                            mac: syn::Macro {
-                                path: syn_path_reference(["origin_new"]),
-                                bang_token: syn::token::Not(syn_span()),
-                                delimiter: syn::MacroDelimiter::Paren(
-                                    syn::token::Paren(syn_span()),
-                                ),
-                                tokens: {
-                                    let mut token_stream = proc_macro2::TokenStream::new();
-                                    proc_macro2::TokenStream::append_separated(
-                                        &mut token_stream,
-                                        [
-                                            origin_name.value.as_str(),
-                                            &name_to_uppercase_rust(origin_name.value.as_str()),
-                                        ],
-                                        syn::token::Comma(syn_span()),
-                                    );
-                                    token_stream
-                                },
+                        mac: syn::Macro {
+                            path: syn_path_reference(["origin_new"]),
+                            bang_token: syn::token::Not(syn_span()),
+                            delimiter: syn::MacroDelimiter::Paren(syn::token::Paren(syn_span())),
+                            tokens: {
+                                let mut token_stream = proc_macro2::TokenStream::new();
+                                proc_macro2::TokenStream::append_separated(
+                                    &mut token_stream,
+                                    [
+                                        origin_name.value.as_str(),
+                                        &name_to_uppercase_rust(origin_name.value.as_str()),
+                                    ],
+                                    syn::token::Comma(syn_span()),
+                                );
+                                token_stream
                             },
-                        })),
-                    }),
-                    type_: result_compiled.type_,
-                },
+                        },
+                    })),
+                }),
+                type_: result_compiled.type_,
             }
         }
     }
 }
-fn push_error_if_introduced_local_binding_collides_or_is_unused(
+fn push_error_if_introduced_variable_collides_or_is_unused(
     errors: &mut Vec<ErrorNode>,
     project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
     local_bindings: &std::collections::HashMap<&Name, PatternVariableCompileInfo>,
-    remove_message: &'static str,
     binding_name: &Name,
+    binding_use: Option<lsp_types::Position>,
 ) {
     let Some(binding_info) = local_bindings.get(binding_name) else {
         return;
@@ -6284,18 +6423,62 @@ fn push_error_if_introduced_local_binding_collides_or_is_unused(
                 ),
             });
         }
-    } else if !binding_info.used {
+    } else if binding_use.is_none() {
         errors.push(ErrorNode {
             range: syntax_name_range(WithStartPosition {
                 value: binding_name,
                 start: binding_info.origin_start,
             }),
-            message: format!(
-                "variable not used in the resulting expression. Use it or {}",
-                remove_message
+            message: Box::from(
+                "variable not used in the resulting expression. Use it or replace this variable by _ to explicitly never handle the incoming value"
             )
-            .into_boxed_str(),
         });
+    }
+}
+fn type_escaping_origins_error_message(
+    type_: &Type,
+    origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
+    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
+) -> Option<String> {
+    let mut escaping_origin_names = Vec::new();
+    type_escaping_origins(type_, origins, choice_types, &mut escaping_origin_names);
+    if escaping_origin_names.is_empty() {
+        None
+    } else {
+        let mut type_string = String::new();
+        type_format(&mut type_string, 0, type_);
+        Some(format!(
+            "its result type\n{}\nreferences origins that were created in that result expression, namely {}. This is not allowed as this would allow creating multiple collections with the origin. Move this origin creation to before the outer expression and/or pass it as an argument",
+            type_string,
+            escaping_origin_names.join(", ")
+        ))
+    }
+}
+fn type_escaping_origins<'a>(
+    type_: &'a Type,
+    origins: &std::collections::HashMap<&'a Name, OriginCompileInfo>,
+    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
+    escaping_origins: &mut Vec<&'a str>,
+) {
+    match type_ {
+        Type::Variable(_) => {}
+        Type::Record(fields) => {
+            for field in fields {
+                type_escaping_origins(&field.value, origins, choice_types, escaping_origins);
+            }
+        }
+        Type::ChoiceConstruct { name, arguments } => {
+            if arguments.is_empty()
+                && !choice_types.contains_key(name)
+                && !origins.contains_key(name)
+            {
+                escaping_origins.push(name);
+            } else {
+                for argument in arguments {
+                    type_escaping_origins(argument, origins, choice_types, escaping_origins);
+                }
+            }
+        }
     }
 }
 
@@ -6735,7 +6918,7 @@ fn type_diff_into(so_far: &mut String, indent: usize, type_diff: &TypeDiff) {
                 type_info_line_span(expected),
                 next_indent(indent),
             );
-            type_into(so_far, next_indent(indent), expected);
+            type_format(so_far, next_indent(indent), expected);
             linebreak_indented_into(so_far, indent);
             so_far.push_str("actual:");
             space_or_linebreak_indented_into(
@@ -6743,7 +6926,7 @@ fn type_diff_into(so_far: &mut String, indent: usize, type_diff: &TypeDiff) {
                 type_info_line_span(actual),
                 next_indent(indent),
             );
-            type_into(so_far, next_indent(indent), actual);
+            type_format(so_far, next_indent(indent), actual);
         }
         TypeDiff::Variable(name) => {
             so_far.push_str(name);
@@ -6830,16 +7013,16 @@ fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
             .sum(),
     }
 }
-pub fn type_into(so_far: &mut String, indent: usize, type_: &Type) {
+pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
     match type_ {
         Type::Variable(name) => {
-            so_far.push_str(name);
+            formatted.push_str(name);
         }
         Type::ChoiceConstruct { name, arguments } => {
-            so_far.push_str(name);
+            formatted.push_str(name);
             let line_span: LineSpan = type_info_line_span(type_);
             for argument in arguments {
-                space_or_linebreak_indented_into(so_far, line_span, next_indent(indent));
+                space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
                 let should_parenthesize_argument: bool = match argument {
                     Type::Variable(_) => false,
                     Type::Record(fields) => !fields.is_empty(),
@@ -6849,47 +7032,47 @@ pub fn type_into(so_far: &mut String, indent: usize, type_: &Type) {
                     } => !argument_arguments.is_empty(),
                 };
                 if should_parenthesize_argument {
-                    so_far.push('(');
-                    type_into(so_far, next_indent(indent) + 1, argument);
+                    formatted.push('(');
+                    type_format(formatted, next_indent(indent) + 1, argument);
                     if type_info_line_span(argument) == LineSpan::Multiple {
-                        linebreak_indented_into(so_far, next_indent(indent));
+                        linebreak_indented_into(formatted, next_indent(indent));
                     }
-                    so_far.push(')');
+                    formatted.push(')');
                 } else {
-                    type_into(so_far, next_indent(indent), argument);
+                    type_format(formatted, next_indent(indent), argument);
                 }
             }
         }
         Type::Record(fields) => match fields.as_slice() {
             [] => {
-                so_far.push_str("&");
+                formatted.push_str("&");
             }
             [field0, field1_up @ ..] => {
-                so_far.push_str("&");
+                formatted.push_str("&");
                 let line_span: LineSpan = type_info_line_span(type_);
-                space_or_linebreak_indented_into(so_far, line_span, indent);
-                type_field_into(so_far, indent, field0);
+                space_or_linebreak_indented_into(formatted, line_span, indent);
+                type_field_format(formatted, indent, field0);
                 for field in field1_up {
                     if line_span == LineSpan::Multiple {
-                        linebreak_indented_into(so_far, indent);
+                        linebreak_indented_into(formatted, indent);
                     }
-                    so_far.push_str(" ");
-                    type_field_into(so_far, indent, field);
+                    formatted.push_str(" ");
+                    type_field_format(formatted, indent, field);
                 }
             }
         },
     }
 }
-fn type_field_into(so_far: &mut String, indent: usize, type_field: &TypeField) {
+fn type_field_format(formatted: &mut String, indent: usize, type_field: &TypeField) {
     let line_span = type_info_line_span(&type_field.value);
-    so_far.push('(');
-    so_far.push_str(&type_field.name);
-    space_or_linebreak_indented_into(so_far, line_span, next_indent(indent));
-    type_into(so_far, next_indent(indent), &type_field.value);
+    formatted.push('(');
+    formatted.push_str(&type_field.name);
+    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+    type_format(formatted, next_indent(indent), &type_field.value);
     if line_span == LineSpan::Multiple {
-        so_far.push('\n');
+        formatted.push('\n');
     }
-    so_far.push(')');
+    formatted.push(')');
 }
 fn type_info_line_span(type_: &Type) -> LineSpan {
     if type_length_estimate(type_) <= type_info_line_length_estimate_maximum {
@@ -9039,7 +9222,7 @@ pub fn syntax_project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             syntax_pattern_variables_fold(
                                 parameter,
                                 (),
-                                |(), name, _type_| {
+                                &mut |(), name, _type_| {
                                     pattern_variables.insert(
                                         name.value,
                                         OriginStartAndScope {
@@ -9243,7 +9426,7 @@ fn syntax_expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                             syntax_pattern_variables_fold(
                                 parameter,
                                 (),
-                                |(), name, _type_| {
+                                &mut |(), name, _type_| {
                                     pattern_variables.insert(
                                         name.value,
                                         OriginStartAndScope {
@@ -9434,7 +9617,7 @@ fn syntax_expression_query_case_symbol_at_position<'a, Expressions, Patterns, Ty
                     syntax_pattern_variables_fold(
                         pattern,
                         (),
-                        |(), name, _type_| {
+                        &mut |(), name, _type_| {
                             pattern_variables.insert(
                                 name.value,
                                 OriginStartAndScope {
@@ -9481,7 +9664,7 @@ fn syntax_expression_query_case_symbol_at_position<'a, Expressions, Patterns, Ty
                 syntax_pattern_variables_fold(
                     pattern,
                     (),
-                    |(), name, _type_| {
+                    &mut |(), name, _type_| {
                         pattern_variables.insert(
                             name.value,
                             OriginStartAndScope {
@@ -9509,7 +9692,7 @@ fn syntax_expression_query_case_symbol_at_position<'a, Expressions, Patterns, Ty
 fn syntax_pattern_variables_fold<'a, Patterns, Types, State>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     state: State,
-    mut reduce: impl FnMut(State, WithStartPosition<&'a Name>, Option<&'a SyntaxType<Types>>) -> State,
+    reduce: &mut impl FnMut(State, WithStartPosition<&'a Name>, Option<&'a SyntaxType<Types>>) -> State,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
 ) -> State {
     match pattern {
@@ -9540,7 +9723,7 @@ fn syntax_pattern_variables_fold<'a, Patterns, Types, State>(
                 SyntaxField::Unparenthsized { name: _, value } => value,
             };
             if let Some(value) = value {
-                syntax_pattern_variables_fold(value, state, &mut reduce, patterns)
+                syntax_pattern_variables_fold(value, state, reduce, patterns)
             } else {
                 state
             }
@@ -10210,7 +10393,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                                 syntax_pattern_variables_fold(
                                     parameter,
                                     (),
-                                    |(), parameter_introduced_variable_name, _type_| {
+                                    &mut |(), parameter_introduced_variable_name, _type_| {
                                         parameter_introduced_variables
                                             .insert(parameter_introduced_variable_name.value);
                                     },
@@ -10471,7 +10654,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     syntax_pattern_variables_fold(
                         pattern,
                         (),
-                        |(), pattern_variable_name, _type_| {
+                        &mut |(), pattern_variable_name, _type_| {
                             pattern_variables
                                 .to_mut()
                                 .insert(&pattern_variable_name.value);
@@ -10563,4 +10746,15 @@ fn position_add_characters(
 }
 fn position_to_string(lsp_position: lsp_types::Position) -> String {
     format!("{}:{}", lsp_position.line, lsp_position.character)
+}
+fn index_to_th(index: usize) -> String {
+    let n = index + 1;
+    let last_digit = n % 10;
+    let th = match last_digit {
+        1 => "st",
+        2 => "nd",
+        3 => "rd",
+        _ => "th",
+    };
+    format!("{n}{th}")
 }

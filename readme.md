@@ -237,8 +237,7 @@ choice type-name Potential Type-Parameters
 (This list is incomplete, examples may show more)
 
 # TODO
-- (highest priority) require query case result types. This is immensely annoying, so it's likely better to infer those types but still check for escaping types a la "this query case results in a value of type ... which contains the origin ... Origin types are not allowed to escape the scope they are created in, as this could lead to co-existing collections with having same origin type. To resolve this, it's often easist to move the origin to before the whole query. Sometimes it is also possible to extract the interesting information of this result so that the result is not bound to this origin".
-  Maybe this logic can also be used for local fns?
+- remove result type of local fn
 - finish compiler, finish core, add examples
 
 # potential improvements in the (far) future

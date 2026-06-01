@@ -220,10 +220,10 @@ fn present_project_fn_with_complete_type_markdown(
     let mut parameter_type_string: String = String::new();
     let mut result_type_string: String = String::new();
     if let Some(fn_parameter_type) = &fn_info.parameter_type {
-        sloe::type_into(&mut parameter_type_string, 8, fn_parameter_type);
+        sloe::type_format(&mut parameter_type_string, 8, fn_parameter_type);
     }
     if let Some(fn_result_type) = &fn_info.result_type {
-        sloe::type_into(&mut result_type_string, 8, fn_result_type);
+        sloe::type_format(&mut result_type_string, 8, fn_result_type);
     }
     format!(
         "```sloe
@@ -244,7 +244,7 @@ fn present_type_alias_markdown(
 ) -> String {
     let mut type_string: String = String::new();
     if let Some(type_) = &type_alias_info.type_ {
-        sloe::type_into(&mut type_string, 4, type_);
+        sloe::type_format(&mut type_string, 4, type_);
     }
     let description = format!(
         "```sloe\ntype {} {} {}\n```\n",
@@ -278,7 +278,7 @@ fn present_choice_type_markdown(maybe_name: &str, info: &sloe::CompiledChoiceTyp
         angled_type_parameters_format(&mut variants_string, &variant.type_parameters);
         if let Some(variant_value) = &variant.value {
             variants_string.push(' ');
-            sloe::type_into(&mut variants_string, 8, variant_value);
+            sloe::type_format(&mut variants_string, 8, variant_value);
         }
         variants_string.push_str(")");
     }
