@@ -153,7 +153,6 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
     Fn {
         fn_keyword_start: lsp_types::Position,
         parameter: Option<SyntaxPattern<Patterns, Types>>,
-        result_type: Option<SyntaxType<Types>>,
         result: Option<core::Slot<Expressions>>,
     },
     Record {
@@ -460,7 +459,6 @@ pub fn expression_start<Expressions, Patterns, Types>(
         SyntaxExpression::Fn {
             fn_keyword_start,
             parameter: _,
-            result_type: _,
             result: _,
         } => *fn_keyword_start,
         SyntaxExpression::Record {
@@ -554,7 +552,6 @@ pub fn expression_end<Expressions, Patterns, Types>(
         SyntaxExpression::Fn {
             fn_keyword_start,
             parameter,
-            result_type,
             result,
         } => result
             .as_ref()
@@ -566,7 +563,6 @@ pub fn expression_end<Expressions, Patterns, Types>(
                     types,
                 )
             })
-            .or_else(|| result_type.as_ref().map(|result| type_end(result, types)))
             .or_else(|| {
                 parameter
                     .as_ref()
@@ -1675,13 +1671,10 @@ fn parse_expression_fn<Expressions, Patterns, Types>(
     parse_sloe_whitespace(state);
     let parameter = parse_pattern_not_open_ended(state, patterns, types);
     parse_sloe_whitespace(state);
-    let result_type = parse_type_not_open_ended(state, types);
-    parse_sloe_whitespace(state);
     let result = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Fn {
         fn_keyword_start: fn_keyword_start,
         parameter: parameter,
-        result_type: result_type,
         result: result.map(|result| expressions.add(result)),
     })
 }
@@ -2203,6 +2196,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
         }
     }
 }
+// TODO(important) track pattern_variables and origins to avoid accidental misconnection
 fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Types>(
     project_fn_graph: &mut strongly_connected_components::Graph,
     origin_project_fn_graph_node: strongly_connected_components::Node,
@@ -2256,7 +2250,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         SyntaxExpression::Fn {
             fn_keyword_start: _,
             parameter: _,
-            result_type: _,
             result,
         } => {
             if let Some(result) = result {
@@ -5514,37 +5507,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Fn {
             fn_keyword_start,
             parameter,
-            result_type,
             result,
         } => {
             let Some(parameter) = parameter else {
                 errors.push(ErrorNode {
                     range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing parameter after fn"),
+                    message: Box::from("missing parameter after fn. An example of a local fn expression is fn (n u32) u32-add & (a n) (b 1 u32)"),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
-            };
-            let Some(expected_result_type_syntax) = result_type else {
-                errors.push(ErrorNode {
-                    range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing result type after fn ..pattern.. here ..result.."),
-                });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
-            };
-            let Some(expected_result_type) = syntax_type_to_type(
-                expected_result_type_syntax,
-                errors,
-                type_aliases,
-                choice_types,
-                types,
-                origins,
-            ) else {
                 return CompiledExpression {
                     rust: syn_expr_todo(),
                     type_: None,
@@ -5553,7 +5522,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(result) = result else {
                 errors.push(ErrorNode {
                     range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing result after fn ..pattern.. ..result-type.. here"),
+                    message: Box::from("missing result after fn ..pattern.. here"),
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -5593,15 +5562,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 types,
                 &mut parameter_introduced_variables,
                 &mut result_used_pattern_variables,
-                &mut std::collections::HashMap::new(),
+                origins,
                 &mut std::collections::HashMap::new(),
                 expressions.element(result),
             );
+            // TODO if result_used_origin_variables any are from origins, report and exit
             let Some(actual_result_type) = compiled_result.type_ else {
-                errors.push(ErrorNode {
-                    range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing result after fn ..pattern.. ..result-type.. here"),
-                });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
                     type_: None,
@@ -5618,15 +5584,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         .copied(),
                 );
             }
-            if let Some(result_type_diff) = type_diff(&expected_result_type, &actual_result_type) {
-                errors.push(ErrorNode {
-                    range: type_range(expected_result_type_syntax, types),
-                    message: type_diff_error_message(&result_type_diff).into_boxed_str(),
-                });
-            }
-            let mut type_variables = std::collections::HashSet::new();
-            type_variables_into(&mut type_variables, &compiled_parameter.type_);
-            type_variables_into(&mut type_variables, &actual_result_type);
             if let Some(escaping_origins_error_message) =
                 type_escaping_origins_error_message(&actual_result_type, origins, choice_types)
             {
@@ -5639,6 +5596,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             }
+            let mut type_variables = std::collections::HashSet::new();
+            type_variables_into(&mut type_variables, &compiled_parameter.type_);
+            type_variables_into(&mut type_variables, &actual_result_type);
             CompiledExpression {
                 rust: syn::Expr::Block(syn::ExprBlock {
                     attrs: vec![],
@@ -8403,7 +8363,6 @@ fn syntax_expression_is_open_ended<Expressions, Patterns, Types>(
         SyntaxExpression::Fn {
             fn_keyword_start: _,
             parameter: _,
-            result_type: _,
             result: _,
         } => true,
         SyntaxExpression::Record {
@@ -8520,7 +8479,6 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
         SyntaxExpression::Fn {
             fn_keyword_start: _,
             parameter,
-            result_type,
             result,
         } => {
             formatted.push_str("fn ");
@@ -8531,16 +8489,6 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     formatted, indent, patterns, types, parameter,
                 );
                 space_or_linebreak_indented_into(formatted, parameter_line_span, indent);
-            }
-            if let Some(result_type) = result_type {
-                let result_type_line_span = range_line_span(type_range(result_type, types));
-                syntax_type_parenthesized_if_open_ended_format(
-                    formatted,
-                    indent,
-                    types,
-                    result_type,
-                );
-                space_or_linebreak_indented_into(formatted, result_type_line_span, indent);
             }
             if let Some(result) = result {
                 syntax_expression_unparenthesized_format(
@@ -9404,21 +9352,16 @@ fn syntax_expression_symbol_at_position<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Fn {
             fn_keyword_start: _,
             parameter,
-            result_type,
             result,
         } => {
             let result = result.as_ref().map(|result| expressions.element(result));
+            pattern_variables.clear();
             parameter
                 .as_ref()
                 .and_then(|parameter| {
                     syntax_pattern_symbol_at_position(
                         parameter, position, patterns, types, scope, result, origins,
                     )
-                })
-                .or_else(|| {
-                    result_type.as_ref().and_then(|result_type| {
-                        syntax_type_symbol_at_position(result_type, position, types, scope, origins)
-                    })
                 })
                 .or_else(|| {
                     result.as_ref().and_then(|result| {
@@ -10470,10 +10413,14 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxType::Parenthesized {
-            open_paren_start,
+            open_paren_start: _,
             inner,
-            closed_paren_start,
-        } => todo!(),
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_type_symbol_uses_into(uses, types.element(inner), symbol, types, origins)
+            }
+        }
     }
 }
 fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
@@ -10485,21 +10432,52 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
     origins: &std::collections::HashSet<&Name>,
 ) {
     match pattern {
-        SyntaxPattern::Variable { name, type_ } => todo!(),
+        SyntaxPattern::Variable { name, type_ } => {
+            if let Some(type_) = type_ {
+                syntax_type_symbol_uses_into(uses, type_, symbol, types, origins);
+            }
+        }
         SyntaxPattern::Variant {
             name,
             type_arguments,
             value,
-        } => todo!(),
+        } => {
+            for type_argument in type_arguments.iter().flat_map(|angled| {
+                types.opt_span_slice(core::Opt::from_option(angled.types.as_ref()))
+            }) {
+                syntax_type_symbol_uses_into(uses, type_argument, symbol, types, origins);
+            }
+            if let Some(value) = value {
+                syntax_pattern_symbol_uses_into(
+                    uses,
+                    patterns.element(value),
+                    symbol,
+                    patterns,
+                    types,
+                    origins,
+                );
+            }
+        }
         SyntaxPattern::Record {
-            ampersand_start,
+            ampersand_start: _,
             fields,
         } => todo!(),
         SyntaxPattern::Parenthesized {
-            open_paren_start,
+            open_paren_start: _,
             inner,
-            closed_paren_start,
-        } => todo!(),
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_pattern_symbol_uses_into(
+                    uses,
+                    patterns.element(inner),
+                    symbol,
+                    patterns,
+                    types,
+                    origins,
+                );
+            }
+        }
     }
 }
 fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
@@ -10517,39 +10495,84 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
         SyntaxExpression::Char { .. } => {}
         SyntaxExpression::Str { .. } => {}
         SyntaxExpression::ReferenceOrCall {
-            name: _,
+            name,
             type_arguments,
             argument,
         } => {
-            if let Some(type_arguments) = type_arguments {
-                for type_argument in
-                    types.opt_span_slice(core::Opt::from_option(type_arguments.types.as_ref()))
-                {
-                    syntax_type_symbol_uses_into(uses, type_argument, symbol, types, origins);
-                }
+            for type_argument in type_arguments.iter().flat_map(|angled| {
+                types.opt_span_slice(core::Opt::from_option(angled.types.as_ref()))
+            }) {
+                syntax_type_symbol_uses_into(uses, type_argument, symbol, types, origins);
             }
-        }
-        SyntaxExpression::Variant {
-            name: _,
-            type_arguments,
-            value,
-        } => todo!(),
-        SyntaxExpression::Fn {
-            fn_keyword_start: _,
-            parameter,
-            result_type,
-            result,
-        } => {
-            if let Some(result_type) = result_type {}
-            if let Some(queried) = result {
+            if let Some(argument) = argument {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(queried),
+                    expressions.element(argument),
                     symbol,
                     expressions,
                     patterns,
                     types,
                     pattern_variables,
+                    origins,
+                );
+            }
+        }
+        SyntaxExpression::Variant {
+            name,
+            type_arguments,
+            value,
+        } => {
+            for type_argument in type_arguments.iter().flat_map(|angled| {
+                types.opt_span_slice(core::Opt::from_option(angled.types.as_ref()))
+            }) {
+                syntax_type_symbol_uses_into(uses, type_argument, symbol, types, origins);
+            }
+            if let Some(value) = value {
+                syntax_expression_symbol_uses_into(
+                    uses,
+                    expressions.element(value),
+                    symbol,
+                    expressions,
+                    patterns,
+                    types,
+                    pattern_variables,
+                    origins,
+                );
+            }
+        }
+        SyntaxExpression::Fn {
+            fn_keyword_start: _,
+            parameter,
+            result,
+        } => {
+            if let Some(parameter) = parameter {
+                syntax_pattern_symbol_uses_into(uses, parameter, symbol, patterns, types, origins);
+            }
+            if let Some(result) = result {
+                let mut parameter_pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
+                if let Some(parameter) = parameter {
+                    syntax_pattern_symbol_uses_into(
+                        uses, parameter, symbol, patterns, types, origins,
+                    );
+                    syntax_pattern_variables_fold(
+                        parameter,
+                        (),
+                        &mut |(), pattern_variable_name, _type_| {
+                            parameter_pattern_variables
+                                .to_mut()
+                                .insert(&pattern_variable_name.value);
+                        },
+                        patterns,
+                    );
+                }
+                syntax_expression_symbol_uses_into(
+                    uses,
+                    expressions.element(result),
+                    symbol,
+                    expressions,
+                    patterns,
+                    types,
+                    &std::collections::HashSet::new(),
                     origins,
                 );
             }
@@ -10646,23 +10669,23 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         (Some(pattern), result)
                     }
                 };
-                let mut pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
-                if let Some(pattern) = pattern {
-                    syntax_pattern_symbol_uses_into(
-                        uses, pattern, symbol, patterns, types, origins,
-                    );
-                    syntax_pattern_variables_fold(
-                        pattern,
-                        (),
-                        &mut |(), pattern_variable_name, _type_| {
-                            pattern_variables
-                                .to_mut()
-                                .insert(&pattern_variable_name.value);
-                        },
-                        patterns,
-                    );
-                }
                 if let Some(result) = result {
+                    let mut pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
+                    if let Some(pattern) = pattern {
+                        syntax_pattern_symbol_uses_into(
+                            uses, pattern, symbol, patterns, types, origins,
+                        );
+                        syntax_pattern_variables_fold(
+                            pattern,
+                            (),
+                            &mut |(), pattern_variable_name, _type_| {
+                                pattern_variables
+                                    .to_mut()
+                                    .insert(&pattern_variable_name.value);
+                            },
+                            patterns,
+                        );
+                    }
                     syntax_expression_symbol_uses_into(
                         uses,
                         result,

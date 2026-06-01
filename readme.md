@@ -161,9 +161,6 @@ fn state-to-interfaces-into
     interfaces
 ```
 
-# on shadowing
-since each variable can be used at most once, most introduced names that would traditionally be considered "shadowed" are aready out of scope in sloe
-
 # known limitations
 - nested sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole syntax tree and removing spans and slots one by one, aka pointer chasing).
 Preferably, expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new-allocation.
@@ -199,8 +196,8 @@ some-function<Type Arguments> (inner-call-as-the-second-argument inner-first)
 & (first-field first-value) (second-field second-value)
 
 # local fn of type fn.
-# can **not** use local variables from the outer scope.
-fn parameter-pattern required-result-type result
+# can **not** use local variables or origin variables from the outer scope.
+fn parameter-pattern result
 
 # pattern variable
 # appending a type is required in function parameters. this can look confusing at first but is more consistent with fields, making the switch from positional to named arguments easy
@@ -237,7 +234,7 @@ choice type-name Potential Type-Parameters
 (This list is incomplete, examples may show more)
 
 # TODO
-- remove result type of local fn
+- check how type variables and origin types proliferate on the boundary of a local `fn`. origins (?) and local variables should be set to {} and type variables should be fully independent of existing type variables (?). This seems tricky (to type check, as this means the result type needs to actually be instantiated?)
 - finish compiler, finish core, add examples
 
 # potential improvements in the (far) future
@@ -305,6 +302,9 @@ Honestly this idea seems to overwhelmingly useful that I'm surprised I can't fin
 
 One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `vec (span str-origin)` + `str str-origin`
 (in rust there are I think crates like oroborus for this)
+
+## on shadowing
+since each variable can be used at most once, most introduced names that would traditionally be considered "shadowed" are aready out of scope in sloe. When their scopes actually overlap though, you'll get an error
 
 # rejected ideas
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas

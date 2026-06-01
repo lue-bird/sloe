@@ -1705,15 +1705,11 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         sloe::SyntaxExpression::Fn {
             fn_keyword_start,
             parameter,
-            result_type,
             result,
         } => {
             keyword_highlight(state, "fn", *fn_keyword_start);
             if let Some(parameter) = parameter {
                 sloe_syntax_pattern_highlight(state, patterns, types, parameter);
-            }
-            if let Some(result_type) = result_type {
-                sloe_syntax_type_highlight(state, types, result_type);
             }
             if let Some(result) = result {
                 sloe_syntax_expression_highlight(
