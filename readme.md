@@ -9,7 +9,6 @@ Note that while as a side effect this avoids any bounds checks,
 bounds-checking in general is not slow (typically only around 2% slower than unchecked access in practice).
 
 # install
-> This language is just a design for now. There is no tooling implementation to install. Once there is something:
 
 ```bash
 cargo install --git https://github.com/lue-bird/sloe sloe
@@ -24,26 +23,24 @@ This allows
 - values can be mutated internally without mutation being detectable
 - representing things that can only be consumed once, like thread join handles
 
-This can feel annoying and clunky. Think e.g. `fn vec-occupied-count (vec vec ...) -> (& (vec ...) (occupied-count u32))`.
+This can feel annoying and clunky. Think e.g. `fn vec-occupied-count (vec vec ...) (& (vec ...) (occupied-count u32))`.
 Not ony is it clunky, it is also conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
 
 The _big_ advantage is that it is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
 
 Further reading if interested: "affine types", rust owned values.
 
-
 # concept: flat memory collections
 ## `arena`
-temporary, append-only arena, bumping + bulk de-allocation: just a plain vec without the ability to remove, could alternatively be implemented using SmallArena https://docs.rs/compact_arena/0.5.0/compact_arena/struct.SmallArena.html or ExternalStableVec https://github.com/LukasKalbertodt/stable-vec
-Use for things like building a formatted string, then writing it into a file. After that, the string can be cleared.
+temporary, append-only arena, bumping + bulk de-allocation: just a plain vec without the ability to remove, could alternatively be implemented like [SmallArena](https://docs.rs/compact_arena/0.5.0/compact_arena/struct.SmallArena.html) or [ExternalStableVec](https://github.com/LukasKalbertodt/stable-vec).
+Use for things like building a formatted string, then writing it into a file. After that, the string can be scrapped.
 Choosing `arena` for deletion-heavy state of long-ish-running programs will be a memory leak.
 
 ## `vec`
-Only bulk-de-allocating an `arena` that is introduced in the main loop (persistent application state) once it goes out of scope (aka the program exits)
-would be a (safe but bad) memory leak.
+Only bulk-de-allocating an `arena` that is introduced in the main loop (persistent application state) once it goes out of scope (aka the program exits) would be a (safe but bad) memory leak.
 
-A better solution: Introduce a collection which can mark some parts of itself as onuccupied.
-This can be used to "return" memory which has become invalid with `vec-vacate vec slot` and `vec-vacate-span vec span`
+A better solution: a collection which can mark some parts of itself as onuccupied.
+This can be used to "return" memory which has become useless with `vec-vacate` and `vec-span-vacate`
 
 This concept is often called slot map, reusing memory.
 Important: `vec` spans/slots need to be manually "dropped"/removed from the backing vec if that backing vec is persistent. In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
@@ -99,8 +96,7 @@ fn use-arena & u32
 # different branches, different scopes
 fn use-opt (opt opt u32) &
     # this won't compile as their origins come from different branches
-    :(
-        :opt
+    :(:opt
         (Absent
             origin vec-origin
             arena-empty<u32> vec-origin
@@ -115,12 +111,12 @@ fn use-opt (opt opt u32) &
     # this will compile:
     origin vec-origin
     :(:opt
-      (Absent arena-empty<u32> vec-origin)
-      ((Present number)
-          :(arena-one vec-origin number) (& (arena arena) (slot _))
-          arena
-      )
-     )
+        (Absent arena-empty<u32> vec-origin)
+        ((Present number)
+            :(arena-one vec-origin number) (& (arena arena) (slot _))
+            arena
+        )
+    )
     vec
     &
 
@@ -153,8 +149,8 @@ fn initial-state
 
 fn state-to-interfaces-into
     (&
-     (interfaces interfaces arena Interfaces-origin)
-     (state state state Expressions-origin)
+        (interfaces interfaces arena Interfaces-origin)
+        (state state state Expressions-origin)
     )
     (arena Interfaces-origin (interface state Expressions-origin))
     :(arena-one interfaces-origin (Console-log<never> "hello"))) (& (slot _) (arena interfaces))
@@ -234,8 +230,29 @@ choice type-name Potential Type-Parameters
 (This list is incomplete, examples may show more)
 
 # TODO
-- check how type variables and origin types proliferate on the boundary of a local `fn`. origins (?) and local variables should be set to {} and type variables should be fully independent of existing type variables (?). This seems tricky (to type check, as this means the result type needs to actually be instantiated?)
-- finish compiler, finish core, add examples
+- structural choice types. type only has to be specified for expression variants. so e.g. instead of
+  ```
+  choice thing
+      (A u32)
+      (B str)
+  
+  fn thing_a (value u32) thing
+      A value
+  ```
+  you'd use
+  ```sloe
+  type thing |
+      A u32
+      B str
+  
+  fn thing_a (value u32) thing
+      A thing value
+  
+  fn anonymous_thing_a (value u32) (| a u32 b str)
+      A (| A u32 B str) value
+  ```
+  This would allow anonymous choice types just like anonymous records. I find this particularly nice for APIs as now a type is a shared understanding that doesn't have a clear owner. It would also e.g. make for a much better alternative for types like `exit-or-go-on Exit Go-on` or `Result success failure`.
+  As a disadvantage this can make constructing things like `Present 0 u32` more annoying  (`Present (opt u32) 0 u32`). Allowing local type aliases can remediate some of this.
 
 # potential improvements in the (far) future
 - add `set Origin Element` with a initialization function like `set-empty (origin ...) (hash fn Element -> Hash) -> set Origin Element`
@@ -391,3 +408,15 @@ Somehow despite it's issues (math syntax kind of sucks, even the tiny subset), o
 
 ## why no single-field access
 a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly easy to forget handling a field (now or in the future). I've identified this as the second most common source of bugs in my own code. And in sloe, not handling a field could mean leaking some memory, so it would be even worse potentially!
+
+## why no positional function arguments
+- with positional arguments it isn't really possible to make the last argument open ended (at least with keeping the current syntax)
+- it's tough (usually) to annotate a function whose arguments and argument types are unknown. E.g. what would `fn-dup`'s type be?
+- positional arguments (usually) means no passing in bulk
+  ```sloe
+  fn u32-square (n u32) u32
+      u32-add u32-dup n
+  ```
+
+"Positionality" in general is pretty much absent in sloe. E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
+Sloe had positional arguments once, largely because the rust-sloe interface is simpler in rust with positional arguments.

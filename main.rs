@@ -1,5 +1,5 @@
 #![allow(non_upper_case_globals)]
-use sloe_compile::{self as sloe, WithStartPosition, syntax_name_range};
+use sloe_compile as sloe;
 
 struct State<Expressions, Patterns, Types> {
     projects: std::collections::HashMap<lsp_types::Uri, ProjectState<Expressions, Patterns, Types>>,
@@ -276,10 +276,8 @@ fn present_choice_type_markdown(maybe_name: &str, info: &sloe::CompiledChoiceTyp
         variants_string.push_str("\n    (");
         variants_string.push_str(&variant.name);
         angled_type_parameters_format(&mut variants_string, &variant.type_parameters);
-        if let Some(variant_value) = &variant.value {
-            variants_string.push(' ');
-            sloe::type_format(&mut variants_string, 8, variant_value);
-        }
+        variants_string.push(' ');
+        sloe::type_format(&mut variants_string, 8, &variant.value);
         variants_string.push_str(")");
     }
     format!(
@@ -524,7 +522,7 @@ fn server_capabilities() -> lsp_types::ServerCapabilities {
         references_provider: Some(lsp_types::OneOf::Left(true)),
         completion_provider: Some(lsp_types::CompletionOptions {
             resolve_provider: Some(false),
-            trigger_characters: Some(vec![".".to_string()]),
+            trigger_characters: None,
             all_commit_characters: None,
             work_done_progress_options: lsp_types::WorkDoneProgressOptions {
                 work_done_progress: None,
@@ -670,20 +668,9 @@ fn handle_request<Expressions, Patterns, Types>(
         <lsp_types::request::PrepareRenameRequest as lsp_types::request::Request>::METHOD => {
             let prepare_rename_arguments: <lsp_types::request::PrepareRenameRequest as lsp_types::request::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let prepared: Option<
-                Result<lsp_types::PrepareRenameResponse, lsp_server::ResponseError>,
-            > = respond_to_prepare_rename(state, &prepare_rename_arguments);
-            let response_result: Result<
-                <lsp_types::request::PrepareRenameRequest as lsp_types::request::Request>::Result,
-                lsp_server::ResponseError,
-            > = match prepared {
-                None => Ok(None),
-                Some(result) => result.map(Some),
-            };
-            match response_result {
-                Err(error) => Err(error),
-                Ok(maybe_response) => Ok(serde_json::to_value(maybe_response)?),
-            }
+            let response: <lsp_types::request::PrepareRenameRequest as lsp_types::request::Request>::Result =
+                 respond_to_prepare_rename(state, &prepare_rename_arguments);
+            Ok(serde_json::to_value(response)?)
         }
         <lsp_types::request::Rename as lsp_types::request::Request>::METHOD => {
             let arguments: <lsp_types::request::Rename as lsp_types::request::Request>::Params =
@@ -939,7 +926,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
                                 kind: lsp_types::MarkupKind::Markdown,
                                 value: format!("variant in\n{}", choice_type_formatted),
                             }),
-                            range: Some(syntax_name_range(symbol_name)),
+                            range: Some(sloe::syntax_name_range(symbol_name)),
                         })
                     } else {
                         None
@@ -962,7 +949,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
                                         ),
                                     },
                                 ),
-                                range: Some(syntax_name_range(symbol_name)),
+                                range: Some(sloe::syntax_name_range(symbol_name)),
                             })
                         } else {
                             None
@@ -983,7 +970,7 @@ origin {}
                     name
                 ),
             }),
-            range: Some(syntax_name_range(WithStartPosition {
+            range: Some(sloe::syntax_name_range(sloe::WithStartPosition {
                 start: use_start,
                 value: name,
             })),
@@ -997,7 +984,7 @@ origin {}
                 kind: lsp_types::MarkupKind::Markdown,
                 value: format!("type variable"),
             }),
-            range: Some(syntax_name_range(WithStartPosition {
+            range: Some(sloe::syntax_name_range(sloe::WithStartPosition {
                 start: use_start,
                 value: name,
             })),
@@ -1019,7 +1006,7 @@ origin {}
                                     )
                                 ),
                             }),
-                            range: Some(syntax_name_range(symbol_name)),
+                            range: Some(sloe::syntax_name_range(symbol_name)),
                         })
                     } else {
                         None
@@ -1039,7 +1026,7 @@ origin {}
                         kind: lsp_types::MarkupKind::Markdown,
                         value: format!("variant in\n{}", choice_type_formatted),
                     }),
-                    range: Some(syntax_name_range(symbol_name)),
+                    range: Some(sloe::syntax_name_range(symbol_name)),
                 })
             } else {
                 None
@@ -1056,7 +1043,7 @@ origin {}
                     kind: lsp_types::MarkupKind::Markdown,
                     value: format!("pattern variable"),
                 }),
-                range: Some(syntax_name_range(WithStartPosition {
+                range: Some(sloe::syntax_name_range(sloe::WithStartPosition {
                     start: use_start,
                     value: name,
                 })),
@@ -1104,7 +1091,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                     if let Some(variant_name) = &variant.name
                         && &variant_name.value == &symbol_name.value
                     {
-                        Some(syntax_name_range(sloe::with_start_position_as_ref(
+                        Some(sloe::syntax_name_range(sloe::with_start_position_as_ref(
                             variant_name,
                         )))
                     } else {
@@ -1125,9 +1112,9 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::Fn {
                     name: Some(fn_name),
                     ..
-                } if &fn_name.value == &symbol_name.value => {
-                    Some(syntax_name_range(sloe::with_start_position_as_ref(fn_name)))
-                }
+                } if &fn_name.value == &symbol_name.value => Some(sloe::syntax_name_range(
+                    sloe::with_start_position_as_ref(fn_name),
+                )),
                 _ => None,
             }),
         sloe::SyntaxSymbol::ProjectTypeOrUnknown {
@@ -1141,13 +1128,13 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::TypeAlias {
                     name: Some(type_alias_name),
                     ..
-                } if type_alias_name.value == &symbol_name.value => Some(syntax_name_range(
+                } if type_alias_name.value == &symbol_name.value => Some(sloe::syntax_name_range(
                     sloe::with_start_position_as_ref(type_alias_name),
                 )),
                 sloe::SyntaxProjectElement::ChoiceType {
                     name: Some(choice_type_name),
                     ..
-                } if choice_type_name.value == &symbol_name.value => Some(syntax_name_range(
+                } if choice_type_name.value == &symbol_name.value => Some(sloe::syntax_name_range(
                     sloe::with_start_position_as_ref(choice_type_name),
                 )),
                 _ => None,
@@ -1156,7 +1143,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
             name,
             use_start: _,
             origin,
-        } => Some(syntax_name_range(sloe::WithStartPosition {
+        } => Some(sloe::syntax_name_range(sloe::WithStartPosition {
             value: name,
             start: origin.start,
         })),
@@ -1165,7 +1152,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
             name,
             use_start: _,
             origin,
-        } => Some(syntax_name_range(sloe::WithStartPosition {
+        } => Some(sloe::syntax_name_range(sloe::WithStartPosition {
             value: name,
             start: origin.start,
         })),
@@ -1184,7 +1171,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
 fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     prepare_rename_arguments: &lsp_types::TextDocumentPositionParams,
-) -> Option<Result<lsp_types::PrepareRenameResponse, lsp_server::ResponseError>> {
+) -> Option<lsp_types::PrepareRenameResponse> {
     let Some(project_state) = state
         .projects
         .get(&prepare_rename_arguments.text_document.uri)
@@ -1200,7 +1187,42 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    todo!()
+    let symbol_range = match symbol {
+        sloe_compile::SyntaxSymbol::ProjectTypeOrUnknown { name, origins: _ } => {
+            sloe::syntax_name_range(name)
+        }
+        sloe_compile::SyntaxSymbol::Origin {
+            name,
+            use_start,
+            origin: _,
+        } => sloe::syntax_name_range(sloe::WithStartPosition {
+            value: name,
+            start: use_start,
+        }),
+        sloe_compile::SyntaxSymbol::TypeVariable {
+            name,
+            use_start,
+            scope: _,
+        } => sloe::syntax_name_range(sloe::WithStartPosition {
+            value: name,
+            start: use_start,
+        }),
+        sloe_compile::SyntaxSymbol::VariantOrUnknown(name) => sloe::syntax_name_range(name),
+        sloe_compile::SyntaxSymbol::ProjectFnOrUnknown {
+            name,
+            pattern_variables: _,
+            origins: _,
+        } => sloe::syntax_name_range(name),
+        sloe_compile::SyntaxSymbol::PatternVariable {
+            name,
+            use_start,
+            origin: _,
+        } => sloe::syntax_name_range(sloe::WithStartPosition {
+            value: name,
+            start: use_start,
+        }),
+    };
+    Some(lsp_types::PrepareRenameResponse::Range(symbol_range))
 }
 
 fn respond_to_rename<Expressions, Patterns, Types>(
@@ -1222,7 +1244,33 @@ fn respond_to_rename<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    todo!()
+    let mut symbol_ranges = sloe::syntax_project_symbol_uses(
+        &project_state.syntax,
+        &symbol,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    );
+    if let Some(symbol_origin_range) =
+        sloe::syntax_project_symbol_origin_range(&project_state.syntax, &symbol)
+    {
+        symbol_ranges.push(symbol_origin_range);
+    }
+    Some(vec![lsp_types::TextDocumentEdit {
+        text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
+            uri: rename_arguments.text_document_position.text_document.uri,
+            version: None,
+        },
+        edits: symbol_ranges
+            .into_iter()
+            .map(|symbol_range| {
+                lsp_types::OneOf::Left(lsp_types::TextEdit {
+                    range: symbol_range,
+                    new_text: rename_arguments.new_name.clone(),
+                })
+            })
+            .collect(),
+    }])
 }
 
 fn respond_to_references<Expressions, Patterns, Types>(
@@ -1246,7 +1294,32 @@ fn respond_to_references<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    todo!()
+    let mut symbol_ranges = sloe::syntax_project_symbol_uses(
+        &project_state.syntax,
+        &symbol,
+        &state.syntax_expressions,
+        &state.syntax_patterns,
+        &state.syntax_types,
+    );
+    if references_arguments.context.include_declaration
+        && let Some(symbol_origin_range) =
+            sloe::syntax_project_symbol_origin_range(&project_state.syntax, &symbol)
+    {
+        symbol_ranges.push(symbol_origin_range);
+    }
+    Some(
+        symbol_ranges
+            .into_iter()
+            .map(|range| lsp_types::Location {
+                uri: references_arguments
+                    .text_document_position
+                    .text_document
+                    .uri
+                    .clone(),
+                range: range,
+            })
+            .collect(),
+    )
 }
 
 fn respond_to_semantic_tokens_full<Expressions, Patterns, Types>(
@@ -1499,26 +1572,12 @@ fn sloe_syntax_field_highlight<Value>(
     field: &sloe::SyntaxField<Value>,
     value_highlight: impl FnOnce(&mut HighlightState, &Value),
 ) {
-    match field {
-        sloe::SyntaxField::Parenthsized {
-            open_paren_start: _,
-            name,
-            value,
-            closed_paren_start: _,
-        } => {
-            if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::PROPERTY);
-            }
-            if let Some(value) = value {
-                value_highlight(state, value);
-            }
-        }
-        sloe::SyntaxField::Unparenthsized { name, value } => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::PROPERTY);
-            if let Some(value) = value {
-                value_highlight(state, value);
-            }
-        }
+    sloe_syntax_name_highlight(state, &field.name, lsp_types::SemanticTokenType::PROPERTY);
+    if let Some(left_angle_start) = field.left_angle_start {
+        keyword_highlight(state, "<", left_angle_start);
+    }
+    if let Some(value) = &field.value {
+        value_highlight(state, value);
     }
 }
 fn sloe_syntax_pattern_highlight<Patterns, Types>(
@@ -1656,7 +1715,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     + (if *closed_quote_exists { 1 } else { 0 })) as usize,
             );
         }
-        sloe::SyntaxExpression::ReferenceOrCall {
+        sloe::SyntaxExpression::VariableOrCall {
             name,
             type_arguments,
             argument,
@@ -1778,38 +1837,12 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 )
             }
             for case in cases {
-                match case {
-                    sloe::SyntaxExpressionQueryCase::Parenthesized {
-                        open_paren_start: _,
-                        pattern,
-                        result,
-                        closed_paren_start: _,
-                    } => {
-                        if let Some(pattern) = pattern {
-                            sloe_syntax_pattern_highlight(state, patterns, types, pattern);
-                        }
-                        if let Some(result) = result {
-                            sloe_syntax_expression_highlight(
-                                state,
-                                expressions,
-                                patterns,
-                                types,
-                                result,
-                            )
-                        }
-                    }
-                    sloe::SyntaxExpressionQueryCase::Unparenthesized { pattern, result } => {
-                        sloe_syntax_pattern_highlight(state, patterns, types, pattern);
-                        if let Some(result) = result {
-                            sloe_syntax_expression_highlight(
-                                state,
-                                expressions,
-                                patterns,
-                                types,
-                                result,
-                            )
-                        }
-                    }
+                sloe_syntax_pattern_highlight(state, patterns, types, &case.pattern);
+                if let Some(left_angle_start) = case.left_angle_start {
+                    keyword_highlight(state, "<", left_angle_start);
+                }
+                if let Some(result) = &case.result {
+                    sloe_syntax_expression_highlight(state, expressions, patterns, types, result)
                 }
             }
         }
@@ -2084,37 +2117,23 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     choice_type_info.variants.iter().map(|variant| {
                         let mut inserted_text = String::new();
                         // potential improvement: do not suggest type arguments when type is already known
-                        // (e.g. in query patterns)
+                        // (meaning in query patterns)
+                        inserted_text.push('(');
+                        inserted_text.push_str(&variant.name);
+                        angled_type_parameters_format(&mut inserted_text, &variant.type_parameters);
+                        inserted_text.push(' ');
                         match &variant.value {
-                            None => {
-                                inserted_text.push_str(&variant.name);
-                                angled_type_parameters_format(
-                                    &mut inserted_text,
-                                    &variant.type_parameters,
-                                );
-                            }
-                            Some(value_type) => {
-                                inserted_text.push('(');
-                                inserted_text.push_str(&variant.name);
-                                angled_type_parameters_format(
-                                    &mut inserted_text,
-                                    &variant.type_parameters,
-                                );
-                                inserted_text.push(' ');
-                                match value_type {
-                                    sloe::Type::Record(parameter_fields) => {
-                                        inserted_text.push_str("&");
-                                        for field in parameter_fields {
-                                            inserted_text.push_str(" (");
-                                            inserted_text.push_str(&field.name);
-                                            inserted_text.push_str(" )");
-                                        }
-                                    }
-                                    _ => {}
+                            sloe::Type::Record(parameter_fields) => {
+                                inserted_text.push_str("&");
+                                for field in parameter_fields {
+                                    inserted_text.push_str(" (");
+                                    inserted_text.push_str(&field.name);
+                                    inserted_text.push_str(" )");
                                 }
-                                inserted_text.push(')');
                             }
+                            _ => {}
                         }
+                        inserted_text.push(')');
                         lsp_types::CompletionItem {
                             label: variant.name.to_string(),
                             kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),

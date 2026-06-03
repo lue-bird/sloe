@@ -2,7 +2,7 @@
 # a stack
 choice linked-list Origin Element
     Empty<Origin Element>
-    (Cons & (head Element) (tail slot Origin))
+    (Cons & head Element tail < slot Origin)
 
 fn linked-list-cons
     (&
@@ -14,43 +14,43 @@ fn linked-list-cons
         (backing vec Origin Element)
         (linked-list linked-list Origin Element)
     )
-    :(vec-push backing tail) (& (vec backing) (slot tail-slot))
-    & (backing backing) (linked-list Cons & (head head) (tail tail-slot))
+    :(vec-add & vec backing new tail) (& vec backing slot tail-slot) <
+    & backing backing linked-list < Cons & head head tail tail-slot
 
 fn linked-list-pop
     (&
-        (backing backing vec Origin Element)
-        (linked-list linked-list linked-list Origin Element)
+        backing backing (vec Origin Element)
+        linked-list linked-list (linked-list Origin Element)
     )
     (&
-        (backing vec Origin Element)
-        (element opt &
-            (head Element)
-            (tail linked-list Origin Element)
+        backing (vec Origin Element)
+        element (opt &
+            head Element
+            tail < linked-list Origin Element
         )
     )
     :linked-list
-    (Empty & (backing backing) (linked-list Empty<Origin Element>))
-    ((Cons & (head head) (tail tail-slot))
-        :(vec-vacate backing tail-slot) (& (vec backing) (element tail))
-        & (backing backing) (head head) (tail tail)
+    (Empty &) (& backing backing linked-list Empty<Origin Element> &)
+    (Cons & head head tail tail-slot) (
+        :(vec-element & vec backing slot tail-slot) (& vec backing element tail) <
+        & backing backing linked-list (Cons & head head tail tail)
     )
 
 # in case the linked list is persisted, this is how you remove it from the backing storages.
 # For elements that don't need to be vacated, set the last arguments to (elements-backing &) (vacate-element fn _ & &)
 fn linked-list-vacate-from-backing
     (&
-        (backing backing vec Origin Element)
-        (linked-list linked-list linked-list Origin Element)
-        (elements-backing Elements-backing)
-        (vacate-element fn (& (backing Elements-backing) (element Element)) Elements-backing)
+        backing backing (vec Origin Element)
+        linked-list linked-list (linked-list Origin Element)
+        elements-backing Elements-backing
+        vacate-element vacate-element (fn (& backing Elements-backing element Element) Elements-backing)
     )
-    (& (backing vec Origin Element) (elements-backing Elements-backing))
+    (& backing (vec Origin Element) elements-backing Elements-backing)
     :linked-list
-    (Empty backing)
-    ((Cons & (head head) (tail tail-slot))
-        :(vec-vacate & (vec backing) (slot tail-slot)) (& (vec backing) (element tail))
-        :(fn-dup vacate-element) (& (old vacate-element) (new vacate-element-new))
-        :(vacate-element elements-backing head) elements-backing
-        linked-list-vacate-from-backing backing tail vacate-element-new elements-backing
+    (Empty &) backing
+    (Cons & head head tail tail-slot) (
+        :(vec-element & vec backing slot tail-slot) (& vec backing element tail)
+        :(fn-dup vacate-element) (& a vacate-element-a b vacate-element-b)
+        :(vacate-element-a elements-backing head) elements-backing
+        linked-list-vacate-from-backing backing tail vacate-element-b elements-backing
     )
