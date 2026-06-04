@@ -13,7 +13,6 @@ struct ProjectState<Expressions, Patterns, Types> {
     syntax: sloe::SyntaxProject<Expressions, Patterns, Types>,
     type_aliases: std::collections::HashMap<sloe::Name, sloe::CompiledTypeAliasInfo>,
     fns: std::collections::HashMap<sloe::Name, sloe::CompiledProjectFnInfo>,
-    records: std::collections::HashSet<Vec<sloe::Name>>,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut full_command = std::env::args().skip(1);
@@ -850,7 +849,6 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
         source: source,
         type_aliases: compiled_project.type_aliases,
         fns: compiled_project.fns,
-        records: compiled_project.records,
         syntax: parsed_project,
     }
 }
