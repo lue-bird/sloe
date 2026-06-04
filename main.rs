@@ -952,7 +952,7 @@ origin {}
                 Some(lsp_types::Hover {
                     contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
                         kind: lsp_types::MarkupKind::Markdown,
-                        value: format!("variant in\n{}", choice_type_formatted),
+                        value: choice_type_formatted,
                     }),
                     range: Some(sloe::syntax_name_range(symbol_name)),
                 })

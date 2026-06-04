@@ -856,6 +856,7 @@ pub fn parse_project<Expressions, Patterns, Types>(
     let mut last_parsed_was_valid = true;
     let mut last_parsed_valid_end_offset_utf8 = state.offset_utf8;
     let mut last_parsed_valid_end_position = state.position;
+    parse_sloe_whitespace(&mut state);
     'parsing_elements: loop {
         match parse_project_element(&mut state, expressions, patterns, types) {
             None => {
@@ -7887,6 +7888,7 @@ fn syntax_angled_type_parameters_format(
     }
     formatted.push('>');
 }
+// TODO inline and respect <
 fn syntax_field_format<Value>(
     formatted: &mut String,
     indent: usize,
@@ -7997,7 +7999,7 @@ fn syntax_expression_is_open_ended<Expressions, Patterns, Types>(
     match expression {
         SyntaxExpression::Number { value: _, type_ } => type_
             .as_ref()
-            .is_some_and(|type_| syntax_type_is_open_ended(type_, types)),
+            .is_none_or(|type_| syntax_type_is_open_ended(type_, types)),
         SyntaxExpression::Char { .. } => false,
         SyntaxExpression::Str { .. } => false,
         SyntaxExpression::VariableOrCall {
@@ -8009,14 +8011,14 @@ fn syntax_expression_is_open_ended<Expressions, Patterns, Types>(
             name: _,
             type_: _,
             value,
-        } => value.as_ref().is_some_and(|value| {
+        } => value.as_ref().is_none_or(|value| {
             syntax_expression_is_open_ended(expressions.element(value), expressions, types)
         }),
         SyntaxExpression::Fn {
             fn_keyword_start: _,
             parameter: _,
             result,
-        } => result.as_ref().is_some_and(|result| {
+        } => result.as_ref().is_none_or(|result| {
             syntax_expression_is_open_ended(expressions.element(result), expressions, types)
         }),
         SyntaxExpression::Record {
@@ -8033,7 +8035,7 @@ fn syntax_expression_is_open_ended<Expressions, Patterns, Types>(
         SyntaxExpression::Commented {
             comments: _,
             expression,
-        } => expression.as_ref().is_some_and(|expression| {
+        } => expression.as_ref().is_none_or(|expression| {
             syntax_expression_is_open_ended(expressions.element(expression), expressions, types)
         }),
         SyntaxExpression::Query { .. } => true,
@@ -8041,7 +8043,7 @@ fn syntax_expression_is_open_ended<Expressions, Patterns, Types>(
             origin_keyword_start: _,
             name: _,
             result,
-        } => result.as_ref().is_some_and(|result| {
+        } => result.as_ref().is_none_or(|result| {
             syntax_expression_is_open_ended(expressions.element(result), expressions, types)
         }),
     }
@@ -8097,10 +8099,11 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     range_line_span(angled_type_arguments_range(type_arguments, types));
                 syntax_angled_type_arguments_format(formatted, indent, types, type_arguments);
                 space_or_linebreak_indented_into(formatted, type_arguments_line_span, indent);
-            } else {
-                formatted.push(' ');
             }
             if let Some(argument) = argument {
+                if type_arguments.is_none() {
+                    formatted.push(' ');
+                }
                 syntax_expression_unparenthesized_format(
                     formatted,
                     indent,
@@ -8166,7 +8169,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             for field in fields {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
                 syntax_field_format(formatted, indent, field, |formatted, indent, value| {
-                    syntax_expression_unparenthesized_format(
+                    syntax_expression_parenthesized_if_open_ended_format(
                         formatted,
                         indent,
                         expressions,
@@ -8213,15 +8216,13 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Query {
-            colon_start: _,
+            colon_start,
             queried,
             cases,
         } => {
             formatted.push(':');
             if let Some(queried) = queried {
                 let queried = expressions.element(queried);
-                let queried_line_span =
-                    range_line_span(expression_range(queried, expressions, patterns, types));
                 syntax_expression_parenthesized_if_open_ended_format(
                     formatted,
                     next_indent(indent),
@@ -8230,9 +8231,20 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     types,
                     queried,
                 );
-                space_or_linebreak_indented_into(formatted, queried_line_span, indent);
             }
+            let line_span_before_last_case_pattern = match cases.last() {
+                None => LineSpan::Single,
+                Some(last_case) => range_line_span(lsp_types::Range {
+                    start: *colon_start,
+                    end: pattern_end(&last_case.pattern, patterns, types),
+                }),
+            };
             for case in cases {
+                space_or_linebreak_indented_into(
+                    formatted,
+                    line_span_before_last_case_pattern,
+                    indent,
+                );
                 syntax_expression_query_case_format(
                     formatted,
                     indent,
@@ -8276,7 +8288,6 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
     case: &SyntaxExpressionQueryCase<Expressions, Patterns, Types>,
 ) {
-    let pattern_line_span = range_line_span(pattern_range(&case.pattern, patterns, types));
     syntax_pattern_parenthesized_if_open_ended_format(
         formatted,
         indent,
@@ -8284,10 +8295,22 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
         types,
         &case.pattern,
     );
-    space_or_linebreak_indented_into(formatted, pattern_line_span, next_indent(indent));
     if case.left_angle_start.is_some() {
-        formatted.push_str(" <");
+        space_or_linebreak_indented_into(
+            formatted,
+            range_line_span(pattern_range(&case.pattern, patterns, types)),
+            next_indent(indent),
+        );
+        formatted.push('<');
         if let Some(result) = &case.result {
+            space_or_linebreak_indented_into(
+                formatted,
+                range_line_span(lsp_types::Range {
+                    start: pattern_start(&case.pattern),
+                    end: expression_start(result),
+                }),
+                indent,
+            );
             syntax_expression_unparenthesized_format(
                 formatted,
                 indent,
@@ -8299,6 +8322,14 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
         }
     } else {
         if let Some(result) = &case.result {
+            space_or_linebreak_indented_into(
+                formatted,
+                range_line_span(lsp_types::Range {
+                    start: pattern_start(&case.pattern),
+                    end: expression_start(result),
+                }),
+                indent,
+            );
             syntax_expression_parenthesized_if_open_ended_format(
                 formatted,
                 next_indent(indent),
@@ -8317,7 +8348,9 @@ fn syntax_pattern_parenthesized_if_open_ended_format<Patterns, Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
     pattern: &SyntaxPattern<Patterns, Types>,
 ) {
-    if syntax_pattern_is_open_ended(pattern, patterns) {
+    if syntax_pattern_is_open_ended(pattern, patterns, types) {
+        // consider specializing to only parenthesize at the latest point
+        // e.g. instead of result-origin (origin Origin) do (result-origin origin Origin)
         formatted.push('(');
         let line_span = range_line_span(pattern_range(pattern, patterns, types));
         syntax_pattern_unparenthesized_format(
@@ -8338,10 +8371,15 @@ fn syntax_pattern_parenthesized_if_open_ended_format<Patterns, Types>(
 fn syntax_pattern_is_open_ended<Patterns, Types>(
     pattern: &SyntaxPattern<Patterns, Types>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
 ) -> bool {
     match pattern {
-        SyntaxPattern::Variable { name: _, type_ } => type_.is_some(),
-        SyntaxPattern::Variant { name: _, value } => value.is_some(),
+        SyntaxPattern::Variable { name: _, type_ } => type_
+            .as_ref()
+            .is_some_and(|type_| syntax_type_is_open_ended(type_, types)),
+        SyntaxPattern::Variant { name: _, value } => value.as_ref().is_none_or(|value| {
+            syntax_pattern_is_open_ended(patterns.element(value), patterns, types)
+        }),
         SyntaxPattern::Record {
             ampersand_start: _,
             fields,
@@ -8350,9 +8388,9 @@ fn syntax_pattern_is_open_ended<Patterns, Types>(
             open_paren_start: _,
             inner,
             closed_paren_start: _,
-        } => inner
-            .as_ref()
-            .is_some_and(|inner| syntax_pattern_is_open_ended(patterns.element(inner), patterns)),
+        } => inner.as_ref().is_some_and(|inner| {
+            syntax_pattern_is_open_ended(patterns.element(inner), patterns, types)
+        }),
     }
 }
 fn syntax_pattern_unparenthesized_format<Types, Patterns>(
@@ -8392,7 +8430,9 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
             for field in fields {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
                 syntax_field_format(formatted, indent, field, |formatted, indent, value| {
-                    syntax_pattern_unparenthesized_format(formatted, indent, patterns, types, value)
+                    syntax_pattern_parenthesized_if_open_ended_format(
+                        formatted, indent, patterns, types, value,
+                    )
                 });
             }
         }
@@ -8531,7 +8571,7 @@ fn syntax_type_unparenthesized_format<Types>(
             for field in fields {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
                 syntax_field_format(formatted, indent, field, |formatted, indent, value| {
-                    syntax_type_unparenthesized_format(formatted, indent, types, value)
+                    syntax_type_parenthesized_if_open_ended_format(formatted, indent, types, value)
                 });
             }
         }
@@ -8539,7 +8579,7 @@ fn syntax_type_unparenthesized_format<Types>(
             bar_start: _,
             variants,
         } => {
-            formatted.push('&');
+            formatted.push('|');
             let line_span = range_line_span(type_range(type_, types));
             for variant in variants {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
@@ -8557,7 +8597,12 @@ fn syntax_type_variant_format<Types>(
     formatted.push_str(&variant.name.value);
     formatted.push(' ');
     if let Some(value) = &variant.value {
-        syntax_type_unparenthesized_format(formatted, next_indent(indent), types, value);
+        syntax_type_parenthesized_if_open_ended_format(
+            formatted,
+            next_indent(indent),
+            types,
+            value,
+        );
     }
 }
 
