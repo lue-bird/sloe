@@ -13,19 +13,19 @@ export default grammar({
   rules: {
     source_file: ($) =>
       seq(
-        // the first comment lines are not guaranteed to be formatted with linebreaks in front
-        repeat($.comment),
+        // the first project project element / comment lines are not guaranteed to be formatted with linebreaks in front
+        choice(repeat($.comment), $.project_element),
         // this is more strict than sloe's parser but works for formatted code
         repeat(
           seq(
             $.indent0,
             // optional to allow extraneous linebreaks or trailing linebreaks
-            seq(repeat($.comment), optional($.project_element)),
+            optional($.project_element),
           ),
         ),
       ),
     comment: ($) => /#[^\n]*\n/,
-    indent0: ($) => token.immediate("\n\n"),
+    indent0: ($) => token.immediate("\n"),
 
     project_element: ($) => choice($.project_fn, $.type_alias),
 
@@ -101,8 +101,8 @@ export default grammar({
     pattern_not_open_ended_typed: ($) =>
       choice(
         $.pattern_parenthesized_typed,
-        $.pattern_ignored_typed,
-        $.pattern_variable_typed,
+        $.pattern_ignored_not_open_ended_typed,
+        $.pattern_variable_not_open_ended_typed,
         $.pattern_record_empty,
       ),
     pattern_untyped: ($) =>
@@ -121,9 +121,13 @@ export default grammar({
       ),
     pattern_parenthesized_typed: ($) => seq("(", $.pattern_typed, ")"),
     pattern_parenthesized_untyped: ($) => seq("(", $.pattern_untyped, ")"),
-    pattern_variable_typed: ($) => seq($.pattern_variable_untyped, $.type_not_open_ended),
+    pattern_variable_typed: ($) => seq($.pattern_variable_untyped, $.type),
+    pattern_variable_not_open_ended_typed: ($) =>
+      seq($.pattern_variable_untyped, $.type_not_open_ended),
     pattern_variable_untyped: ($) => $.lower_name,
     pattern_ignored_typed: ($) => seq($.pattern_ignored_untyped, $.type_not_open_ended),
+    pattern_ignored_not_open_ended_typed: ($) =>
+      seq($.pattern_ignored_untyped, $.type_not_open_ended),
     pattern_ignored_untyped: ($) => "_",
     pattern_variant_typed: ($) => seq($.variant_name, $.pattern_typed),
     pattern_variant_untyped: ($) => seq($.variant_name, $.pattern_untyped),

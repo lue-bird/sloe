@@ -474,6 +474,25 @@
     }
   },
   {
+    "type": "pattern_ignored_not_open_ended_typed",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "pattern_ignored_untyped",
+          "named": true
+        },
+        {
+          "type": "type_not_open_ended",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "pattern_ignored_typed",
     "named": true,
     "fields": {},
@@ -501,7 +520,7 @@
       "required": true,
       "types": [
         {
-          "type": "pattern_ignored_typed",
+          "type": "pattern_ignored_not_open_ended_typed",
           "named": true
         },
         {
@@ -513,7 +532,7 @@
           "named": true
         },
         {
-          "type": "pattern_variable_typed",
+          "type": "pattern_variable_not_open_ended_typed",
           "named": true
         }
       ]
@@ -678,7 +697,7 @@
     }
   },
   {
-    "type": "pattern_variable_typed",
+    "type": "pattern_variable_not_open_ended_typed",
     "named": true,
     "fields": {},
     "children": {
@@ -691,6 +710,25 @@
         },
         {
           "type": "type_not_open_ended",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pattern_variable_typed",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "pattern_variable_untyped",
+          "named": true
+        },
+        {
+          "type": "type",
           "named": true
         }
       ]
@@ -930,7 +968,7 @@
           "named": true
         },
         {
-          "type": "upper_name",
+          "type": "variant_name",
           "named": true
         }
       ]
@@ -949,7 +987,7 @@
           "named": true
         },
         {
-          "type": "upper_name",
+          "type": "variant_name",
           "named": true
         }
       ]
@@ -1125,10 +1163,6 @@
     "named": false
   },
   {
-    "type": ".",
-    "named": false
-  },
-  {
     "type": ":",
     "named": false
   },
@@ -1181,7 +1215,7 @@
     "named": true
   },
   {
-    "type": "type",
+    "type": "ty",
     "named": false
   },
   {
