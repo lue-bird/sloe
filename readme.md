@@ -251,10 +251,10 @@ Some-variant its-choice-type its value
 ```
 (This list might be incomplete, examples show more)
 
-# TODO
-- rename type to ty
-
 # potential improvements in the (far) future
+- add field and variant rename and references
+- suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions (expression Expressions Patterns Types)` doesn't exactly roll easily over one's keyboard
+- consider making `<` more first-class if there is demand for it. E.g. allow it for `type-alias-name first second < last argument` and choice type, or even allow it for _any_ supposedly non-open-ended syntax
 - add `set Origin Element` with a initialization function like `set-empty (origin ...) (hash fn Element -> Hash) -> set Origin Element`
 - add something like `map Origin Key Value` which still gives out `slot Origin`s for each entry but can be queried using e.g. `map-contains-key (map ...) (key Key) (value-dup ...) -> & (map ...) (contains-key bool)`. `map-empty` will require providing a `fn Key Key -> order`.
   Alternatively, check if implementing in userland via e.g. AVL or red-black tree backed by a regular `vec`/`arena` is fast enough

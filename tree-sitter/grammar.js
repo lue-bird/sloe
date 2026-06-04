@@ -29,7 +29,7 @@ export default grammar({
 
     project_element: ($) => choice($.project_fn, $.type_alias),
 
-    type_alias: ($) => seq("type", $.type_name, repeat($.type_variable), $.type),
+    type_alias: ($) => seq("ty", $.type_name, repeat($.type_variable), $.type),
 
     project_fn: ($) =>
       seq(

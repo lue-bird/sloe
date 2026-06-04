@@ -1313,13 +1313,13 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                 sloe_syntax_comments_highlight(state, comments);
             }
             sloe::SyntaxProjectElement::TypeAlias {
-                type_keyword_start,
+                ty_keyword_start,
                 name,
                 parameters,
                 documentation,
                 type_,
             } => {
-                keyword_highlight(state, "type", *type_keyword_start);
+                keyword_highlight(state, "ty", *ty_keyword_start);
                 if let Some(name) = name {
                     highlight_state_add_token_with_start_and_length(
                         state,
@@ -1379,21 +1379,6 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
             }
             sloe::SyntaxProjectElement::Unrecognized { .. } => {}
         }
-    }
-}
-fn sloe_syntax_variant_highlight<Types>(
-    state: &mut HighlightState,
-    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
-    variant: &sloe::SyntaxVariant<Types>,
-) {
-    if let Some(name) = &variant.name {
-        sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
-    }
-    if let Some(type_parameters) = &variant.type_parameters {
-        sloe_angled_type_parameters_highlight(state, type_parameters);
-    }
-    if let Some(value) = &variant.value {
-        sloe_syntax_type_highlight(state, types, value);
     }
 }
 fn sloe_syntax_comments_highlight(state: &mut HighlightState, comments: &sloe::SyntaxComments) {
@@ -1500,17 +1485,6 @@ fn sloe_syntax_type_highlight<Types>(
         sloe::SyntaxType::Variable(name) => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE_PARAMETER);
         }
-        sloe::SyntaxType::Record {
-            ampersand_start,
-            fields,
-        } => {
-            keyword_highlight(state, "&", *ampersand_start);
-            for field in fields {
-                sloe_syntax_field_highlight(state, field, |state, value| {
-                    sloe_syntax_type_highlight(state, types, value)
-                });
-            }
-        }
         sloe::SyntaxType::Construct { name, arguments } => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE);
             for argument in types.opt_span_slice(sloe::core::Opt::from_option(arguments.as_ref())) {
@@ -1526,6 +1500,36 @@ fn sloe_syntax_type_highlight<Types>(
                 sloe_syntax_type_highlight(state, types, types.element(inner));
             }
         }
+        sloe::SyntaxType::Record {
+            ampersand_start,
+            fields,
+        } => {
+            keyword_highlight(state, "&", *ampersand_start);
+            for field in fields {
+                sloe_syntax_field_highlight(state, field, |state, value| {
+                    sloe_syntax_type_highlight(state, types, value)
+                });
+            }
+        }
+        sloe::SyntaxType::Choice {
+            bar_start,
+            variants,
+        } => {
+            keyword_highlight(state, "|", *bar_start);
+            for variant in variants {
+                sloe_syntax_type_variant_highlight(state, variant, types);
+            }
+        }
+    }
+}
+fn sloe_syntax_type_variant_highlight<Types>(
+    state: &mut HighlightState,
+    field: &sloe::SyntaxTypeVariant<Types>,
+    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+) {
+    sloe_syntax_name_highlight(state, &field.name, lsp_types::SemanticTokenType::PROPERTY);
+    if let Some(value) = &field.value {
+        sloe_syntax_type_highlight(state, types, value);
     }
 }
 fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
@@ -1864,7 +1868,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
             let mut available_existing_variables = std::collections::HashSet::new();
             match scope {
                 sloe::SyntaxProjectElement::TypeAlias {
-                    type_keyword_start: _,
+                    ty_keyword_start: _,
                     name: _,
                     parameters,
                     documentation: _,
@@ -2062,7 +2066,7 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::Comments { .. } => None,
                 sloe::SyntaxProjectElement::Unrecognized { .. } => None,
                 sloe::SyntaxProjectElement::TypeAlias {
-                    type_keyword_start: _,
+                    ty_keyword_start: _,
                     name,
                     parameters: _,
                     documentation: _,
