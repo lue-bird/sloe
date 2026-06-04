@@ -126,7 +126,7 @@ fn use-opt (opt opt u32) &
 
 # recursive structure. One cool thing is that expression will turn every slot
 # into an exclusive slot
-type expression Expressions-origin Patterns-origin Str-origin
+ty expression Expressions-origin Patterns-origin Str-origin
     |
     Int i32
     String (opt (span Str-origin))
@@ -140,7 +140,7 @@ type expression Expressions-origin Patterns-origin Str-origin
         result (slot Expressions-origin)
     )
 
-type state Expressions-origin
+ty state Expressions-origin
     &
     # ...patterns, strings etc
     expressions (vec Expressions-origin (expression Expressions-origin))
@@ -234,7 +234,7 @@ fn function-name<Potential Type-Arguments Only-Used-In-The-Result>
 # project type which is an alias for an existing type.
 # Here a "choice type" that can come in different shapes ("variants")
 # which each have a unique uppercase name and 0 or 1 associated value.
-type type-name Potential Type-Parameters
+ty type-name Potential Type-Parameters
     |
     First-Option &
     Second-option (vec Potential u32)
