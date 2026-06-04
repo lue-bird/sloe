@@ -1,0 +1,5 @@
+name = "sloe"
+grammar = "sloe"
+path_suffixes = ["sloe"]
+line_comments = ["# "]
+word_characters = ["-"]

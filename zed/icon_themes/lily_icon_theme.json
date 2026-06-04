@@ -1,0 +1,27 @@
+{
+  "$schema": "https://zed.dev/schema/icon_themes/v0.3.0.json",
+  "name": "sloe icon",
+  "author": "lue-bird",
+  "themes": [
+    {
+      "name": "sloe icon dark",
+      "appearance": "dark",
+      "file_suffixes": {
+        "sloe": "sloe"
+      },
+      "file_icons": {
+        "sloe": { "path": "./icons/file-icon-dark.svg" }
+      }
+    },
+    {
+      "name": "sloe icon light",
+      "appearance": "light",
+      "file_suffixes": {
+        "sloe": "sloe"
+      },
+      "file_icons": {
+        "sloe": { "path": "./icons/file-icon-light.svg" }
+      }
+    }
+  ]
+}

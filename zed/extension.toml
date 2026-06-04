@@ -1,0 +1,16 @@
+id = "sloe"
+name = "sloe"
+version = "0.0.1"
+schema_version = 1
+authors = ["lue-bird"]
+description = "sloe programming language support"
+repository = "https://github.com/lue-bird/sloe"
+
+[language_servers.sloe-language-server]
+name = "sloe LSP"
+languages = ["sloe"]
+
+[grammars.sloe]
+repository = "https://github.com/lue-bird/sloe"
+rev = "main"
+path = "tree-sitter"
