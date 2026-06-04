@@ -12,7 +12,6 @@ struct ProjectState<Expressions, Patterns, Types> {
     source: String,
     syntax: sloe::SyntaxProject<Expressions, Patterns, Types>,
     type_aliases: std::collections::HashMap<sloe::Name, sloe::CompiledTypeAliasInfo>,
-    choice_types: std::collections::HashMap<sloe::Name, sloe::CompiledChoiceTypeInfo>,
     fns: std::collections::HashMap<sloe::Name, sloe::CompiledProjectFnInfo>,
     records: std::collections::HashSet<Vec<sloe::Name>>,
 }
@@ -77,10 +76,10 @@ To print this help message: sloe help
 See the source code, see the full documentation, report bugs or leave any kind of feedback at https://codeberg.org/lue-bird/sloe";
 
 fn print_core_docs() {
-    for (core_choice_type_name, core_choice_type) in sloe::core_choice_types.iter() {
+    for (core_choice_type_name, core_type_alias) in sloe::core_type_aliases.iter() {
         println!(
             "{}",
-            present_choice_type_markdown(core_choice_type_name, core_choice_type)
+            present_type_alias_markdown(core_choice_type_name, core_type_alias)
         );
     }
     for (core_fn_name, core_fn) in sloe::core_fns.iter() {
@@ -247,7 +246,7 @@ fn present_type_alias_markdown(
         sloe::type_format(&mut type_string, 4, type_);
     }
     let description = format!(
-        "```sloe\ntype {} {} {}\n```\n",
+        "```sloe\ntype {} {}\n    {}\n```\n",
         name,
         type_alias_info.parameters.join(" "),
         type_string
@@ -269,24 +268,6 @@ fn angled_type_parameters_format(formatted: &mut String, type_parameters: &[sloe
         }
         formatted.push('>');
     }
-}
-fn present_choice_type_markdown(maybe_name: &str, info: &sloe::CompiledChoiceTypeInfo) -> String {
-    let mut variants_string: String = String::new();
-    for variant in &info.variants {
-        variants_string.push_str("\n    (");
-        variants_string.push_str(&variant.name);
-        angled_type_parameters_format(&mut variants_string, &variant.type_parameters);
-        variants_string.push(' ');
-        sloe::type_format(&mut variants_string, 8, &variant.value);
-        variants_string.push_str(")");
-    }
-    format!(
-        "```sloe\nchoice {} {}{}\n```\n{}",
-        maybe_name,
-        info.parameters.join(" "),
-        variants_string,
-        documentation_comment_to_markdown(info.documentation.as_deref().unwrap_or(""))
-    )
 }
 
 fn initialize_new_sloe_hello_world_project() {
@@ -480,9 +461,9 @@ fn lsp_main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn initial_state<Expressions, Patterns, Types>(
-    expressions: Expressions,
-    patterns: Patterns,
-    types: Types,
+    expressions: sloe::core::Origin<Expressions>,
+    patterns: sloe::core::Origin<Patterns>,
+    types: sloe::core::Origin<Types>,
 ) -> State<Expressions, Patterns, Types> {
     State {
         projects: std::collections::HashMap::with_capacity(1),
@@ -868,7 +849,6 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
     ProjectState {
         source: source,
         type_aliases: compiled_project.type_aliases,
-        choice_types: compiled_project.choice_types,
         fns: compiled_project.fns,
         records: compiled_project.records,
         syntax: parsed_project,
@@ -914,47 +894,20 @@ fn respond_to_hover<Expressions, Patterns, Types>(
             name: symbol_name,
             origins: _,
         } => project_state
-            .choice_types
+            .type_aliases
             .iter()
-            .find_map(|(choice_type_name, choice_type_info)| {
-                choice_type_info.variants.iter().find_map(|variant| {
-                    if &variant.name == &symbol_name.value {
-                        let choice_type_formatted =
-                            present_choice_type_markdown(choice_type_name, choice_type_info);
-                        Some(lsp_types::Hover {
-                            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
-                                kind: lsp_types::MarkupKind::Markdown,
-                                value: format!("variant in\n{}", choice_type_formatted),
-                            }),
-                            range: Some(sloe::syntax_name_range(symbol_name)),
-                        })
-                    } else {
-                        None
-                    }
-                })
-            })
-            .or_else(|| {
-                project_state
-                    .type_aliases
-                    .iter()
-                    .find_map(|(type_alias_name, type_alias_info)| {
-                        if type_alias_name == &symbol_name.value {
-                            Some(lsp_types::Hover {
-                                contents: lsp_types::HoverContents::Markup(
-                                    lsp_types::MarkupContent {
-                                        kind: lsp_types::MarkupKind::Markdown,
-                                        value: present_type_alias_markdown(
-                                            type_alias_name,
-                                            type_alias_info,
-                                        ),
-                                    },
-                                ),
-                                range: Some(sloe::syntax_name_range(symbol_name)),
-                            })
-                        } else {
-                            None
-                        }
+            .find_map(|(type_alias_name, type_alias_info)| {
+                if type_alias_name == &symbol_name.value {
+                    Some(lsp_types::Hover {
+                        contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                            kind: lsp_types::MarkupKind::Markdown,
+                            value: present_type_alias_markdown(type_alias_name, type_alias_info),
+                        }),
+                        range: Some(sloe::syntax_name_range(symbol_name)),
                     })
+                } else {
+                    None
+                }
             }),
         sloe::SyntaxSymbol::Origin {
             name,
@@ -989,30 +942,7 @@ origin {}
                 value: name,
             })),
         }),
-        sloe::SyntaxSymbol::VariantOrUnknown(symbol_name) => project_state
-            .choice_types
-            .iter()
-            .find_map(|(choice_type_name, choice_type_info)| {
-                choice_type_info.variants.iter().find_map(|variant| {
-                    if &variant.name == &symbol_name.value {
-                        Some(lsp_types::Hover {
-                            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
-                                kind: lsp_types::MarkupKind::Markdown,
-                                value: format!(
-                                    "variant in\n{}",
-                                    present_choice_type_markdown(
-                                        choice_type_name,
-                                        choice_type_info
-                                    )
-                                ),
-                            }),
-                            range: Some(sloe::syntax_name_range(symbol_name)),
-                        })
-                    } else {
-                        None
-                    }
-                })
-            }),
+        sloe::SyntaxSymbol::VariantOrUnknown(_) => None,
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name: symbol_name,
             pattern_variables: _,
@@ -1076,30 +1006,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
         return None;
     };
     let origin_name_range = match symbol {
-        sloe::SyntaxSymbol::VariantOrUnknown(symbol_name) => project_state
-            .syntax
-            .elements
-            .iter()
-            .find_map(|element| match element {
-                sloe::SyntaxProjectElement::ChoiceType {
-                    choice_keyword_start: _,
-                    name: _,
-                    parameters: _,
-                    documentation: _,
-                    variants,
-                } => variants.iter().find_map(|variant| {
-                    if let Some(variant_name) = &variant.name
-                        && &variant_name.value == &symbol_name.value
-                    {
-                        Some(sloe::syntax_name_range(sloe::with_start_position_as_ref(
-                            variant_name,
-                        )))
-                    } else {
-                        None
-                    }
-                }),
-                _ => None,
-            }),
+        sloe::SyntaxSymbol::VariantOrUnknown(_) => None,
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name: symbol_name,
             pattern_variables: _,
@@ -1130,12 +1037,6 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                     ..
                 } if type_alias_name.value == &symbol_name.value => Some(sloe::syntax_name_range(
                     sloe::with_start_position_as_ref(type_alias_name),
-                )),
-                sloe::SyntaxProjectElement::ChoiceType {
-                    name: Some(choice_type_name),
-                    ..
-                } if choice_type_name.value == &symbol_name.value => Some(sloe::syntax_name_range(
-                    sloe::with_start_position_as_ref(choice_type_name),
                 )),
                 _ => None,
             }),
@@ -1442,37 +1343,6 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                     sloe_syntax_type_highlight(state, types, type_);
                 }
             }
-            sloe::SyntaxProjectElement::ChoiceType {
-                choice_keyword_start,
-                name,
-                parameters,
-                documentation,
-                variants,
-            } => {
-                keyword_highlight(state, "choice", *choice_keyword_start);
-                if let Some(name) = name {
-                    highlight_state_add_token_with_start_and_length(
-                        state,
-                        lsp_types::SemanticTokenType::TYPE,
-                        name.start,
-                        name.value.len(),
-                    );
-                }
-                for parameter in parameters {
-                    highlight_state_add_token_with_start_and_length(
-                        state,
-                        lsp_types::SemanticTokenType::TYPE_PARAMETER,
-                        parameter.start,
-                        parameter.value.len(),
-                    );
-                }
-                if let Some(documentation) = documentation {
-                    sloe_syntax_comments_highlight(state, documentation);
-                }
-                for variant in variants {
-                    sloe_syntax_variant_highlight(state, types, variant);
-                }
-            }
             sloe::SyntaxProjectElement::Fn {
                 fn_keyword_start,
                 name,
@@ -1593,15 +1463,8 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
                 sloe_syntax_type_highlight(state, types, type_)
             }
         }
-        sloe::SyntaxPattern::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        sloe::SyntaxPattern::Variant { name, value } => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
-            if let Some(type_arguments) = type_arguments {
-                sloe_angled_type_arguments_highlight(state, types, type_arguments);
-            }
             if let Some(value) = value {
                 sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(value))
             }
@@ -1742,14 +1605,10 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
         }
-        sloe::SyntaxExpression::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        sloe::SyntaxExpression::Variant { name, type_, value } => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
-            if let Some(type_arguments) = type_arguments {
-                sloe_angled_type_arguments_highlight(state, types, type_arguments);
+            if let Some(type_) = type_ {
+                sloe_syntax_type_highlight(state, types, type_);
             }
             if let Some(value) = value {
                 sloe_syntax_expression_highlight(
@@ -1959,58 +1818,32 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::ProjectTypeOrUnknown { name: _, origins } => {
             Some(lsp_types::CompletionResponse::Array(
                 project_state
-                    .choice_types
+                    .type_aliases
                     .iter()
-                    .map(|(choice_type_name, choice_type_info)| {
+                    .map(|(type_alias_name, type_alias_info)| {
                         let mut inserted_text = String::new();
-                        if choice_type_info.parameters.is_empty() {
-                            inserted_text.push_str(choice_type_name);
+                        if type_alias_info.parameters.is_empty() {
+                            inserted_text.push_str(type_alias_name);
                         } else {
                             inserted_text.push('(');
-                            inserted_text.push_str(choice_type_name);
-                            for parameter in &choice_type_info.parameters {
+                            inserted_text.push_str(type_alias_name);
+                            for parameter in &type_alias_info.parameters {
                                 inserted_text.push(' ');
                                 inserted_text.push_str(parameter);
                             }
                             inserted_text.push(')');
                         }
                         lsp_types::CompletionItem {
-                            label: choice_type_name.to_string(),
-                            kind: Some(lsp_types::CompletionItemKind::ENUM),
-                            detail: Some(present_choice_type_markdown(
-                                choice_type_name,
-                                choice_type_info,
+                            label: type_alias_name.to_string(),
+                            kind: Some(lsp_types::CompletionItemKind::STRUCT),
+                            detail: Some(present_type_alias_markdown(
+                                type_alias_name,
+                                type_alias_info,
                             )),
                             insert_text: Some(inserted_text),
                             ..lsp_types::CompletionItem::default()
                         }
                     })
-                    .chain(project_state.type_aliases.iter().map(
-                        |(type_alias_name, type_alias_info)| {
-                            let mut inserted_text = String::new();
-                            if type_alias_info.parameters.is_empty() {
-                                inserted_text.push_str(type_alias_name);
-                            } else {
-                                inserted_text.push('(');
-                                inserted_text.push_str(type_alias_name);
-                                for parameter in &type_alias_info.parameters {
-                                    inserted_text.push(' ');
-                                    inserted_text.push_str(parameter);
-                                }
-                                inserted_text.push(')');
-                            }
-                            lsp_types::CompletionItem {
-                                label: type_alias_name.to_string(),
-                                kind: Some(lsp_types::CompletionItemKind::STRUCT),
-                                detail: Some(present_type_alias_markdown(
-                                    type_alias_name,
-                                    type_alias_info,
-                                )),
-                                insert_text: Some(inserted_text),
-                                ..lsp_types::CompletionItem::default()
-                            }
-                        },
-                    ))
                     .chain(origins.into_iter().map(|(origin_name, _origin_origin)| {
                         lsp_types::CompletionItem {
                             label: origin_name.to_string(),
@@ -2036,20 +1869,6 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     parameters,
                     documentation: _,
                     type_: _,
-                } => {
-                    for parameter in parameters {
-                        if parameter.start == use_start {
-                            return None;
-                        }
-                        available_existing_variables.insert(&parameter.value);
-                    }
-                }
-                sloe::SyntaxProjectElement::ChoiceType {
-                    choice_keyword_start: _,
-                    name: _,
-                    parameters,
-                    documentation: _,
-                    variants: _,
                 } => {
                     for parameter in parameters {
                         if parameter.start == use_start {
@@ -2109,45 +1928,10 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     .collect(),
             ))
         }
-        sloe::SyntaxSymbol::VariantOrUnknown(_) => Some(lsp_types::CompletionResponse::Array(
-            project_state
-                .choice_types
-                .iter()
-                .flat_map(|(choice_type_name, choice_type_info)| {
-                    choice_type_info.variants.iter().map(|variant| {
-                        let mut inserted_text = String::new();
-                        // potential improvement: do not suggest type arguments when type is already known
-                        // (meaning in query patterns)
-                        inserted_text.push('(');
-                        inserted_text.push_str(&variant.name);
-                        angled_type_parameters_format(&mut inserted_text, &variant.type_parameters);
-                        inserted_text.push(' ');
-                        match &variant.value {
-                            sloe::Type::Record(parameter_fields) => {
-                                inserted_text.push_str("&");
-                                for field in parameter_fields {
-                                    inserted_text.push_str(" (");
-                                    inserted_text.push_str(&field.name);
-                                    inserted_text.push_str(" )");
-                                }
-                            }
-                            _ => {}
-                        }
-                        inserted_text.push(')');
-                        lsp_types::CompletionItem {
-                            label: variant.name.to_string(),
-                            kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                            detail: Some(format!(
-                                "variant in\n{}",
-                                present_choice_type_markdown(choice_type_name, choice_type_info)
-                            )),
-                            insert_text: Some(inserted_text),
-                            ..lsp_types::CompletionItem::default()
-                        }
-                    })
-                })
-                .collect(),
-        )),
+        sloe::SyntaxSymbol::VariantOrUnknown(_) => {
+            // improvement possibility: if type is known (aka query pattern), suggest all names from the choice
+            None
+        }
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name: _,
             pattern_variables,
@@ -2307,81 +2091,6 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                             name,
                         )),
                         children: None,
-                    })
-                }
-                sloe::SyntaxProjectElement::ChoiceType {
-                    choice_keyword_start: _,
-                    name,
-                    parameters: _,
-                    documentation: _,
-                    variants,
-                } => {
-                    let Some(name) = name else {
-                        return None;
-                    };
-                    Some(lsp_types::DocumentSymbol {
-                        name: name.value.to_string(),
-                        detail: None,
-                        kind: lsp_types::SymbolKind::ENUM,
-                        tags: None,
-                        #[allow(deprecated)]
-                        deprecated: None,
-                        range: lsp_types::Range {
-                            start: name.start,
-                            end: variants
-                                .last()
-                                .and_then(|variant| {
-                                    variant
-                                        .value
-                                        .as_ref()
-                                        .map(|value| sloe::type_end(value, &state.syntax_types))
-                                        .or_else(|| {
-                                            variant.name.as_ref().map(|name| {
-                                                sloe::name_end(sloe::with_start_position_as_ref(
-                                                    name,
-                                                ))
-                                            })
-                                        })
-                                })
-                                .unwrap_or_else(|| {
-                                    sloe::name_end(sloe::with_start_position_as_ref(name))
-                                }),
-                        },
-                        selection_range: sloe::syntax_name_range(sloe::with_start_position_as_ref(
-                            name,
-                        )),
-                        children: Some(
-                            variants
-                                .iter()
-                                .filter_map(|variant| {
-                                    let Some(variant_name_node) = &variant.name else {
-                                        return None;
-                                    };
-                                    Some((
-                                        variant_name_node,
-                                        lsp_types::Range {
-                                            start: variant_name_node.start,
-                                            end: sloe::variant_end(variant, &state.syntax_types),
-                                        },
-                                    ))
-                                })
-                                .map(|(variant_name, variant_full_span)| {
-                                    lsp_types::DocumentSymbol {
-                                        name: variant_name.value.to_string(),
-                                        detail: None,
-                                        kind: lsp_types::SymbolKind::ENUM_MEMBER,
-                                        tags: None,
-                                        #[allow(deprecated)]
-                                        deprecated: None,
-                                        range: variant_full_span,
-                                        selection_range: sloe::syntax_name_range(
-                                            sloe::with_start_position_as_ref(variant_name),
-                                        ),
-                                        children: None,
-                                    }
-                                })
-                                .collect::<Vec<_>>(),
-                        ),
                     })
                 }
                 sloe::SyntaxProjectElement::Fn {

@@ -49,31 +49,33 @@ Various kinds of rust collections are compared here: https://donsz.nl/blog/arena
 
 # concept: distinct origin of a value in your code
 Every created collection has a correlated origin.
-Since also explicit function result types are required, a value whose type contains an origin can't escape the function scope of it's origin
+A value whose type contains an origin can't escape the function scope of it's origin.
+This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```
-fn some-arena & (arena ??origin cannot even be annotated?? u32)
+fn some-arena (arena arena ??origin cannot even be annotated?? u32)
     origin arena-origin
     :(arena-empty<u32> arena-origin) arena
-    :(arena-push arena (123 u32)) (& (arena arena) (slot _))
+    :(arena-add & arena arena new 123 u32) (& arena arena slot _) <
     arena
 
 # compiles
 fn add-some-values<Origin> (arena arena Origin u32) (arena Origin u32)
-    :(arena-push arena (123 u32)) (& (arena arena) (slot _))
+    :(arena-add & arena arena new 123 u32) (& arena arena slot _) <
     arena
 ```
 
-Further reading if interested: In effect, collections in sloe follow rust borrowing rules similar to an owned (non-Copy) rust value in combination with a stored reference to a distinct local allocator. The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
+Further reading if interested: The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
 The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
 (apart from security I'm not sure this is ever worth it for regular users, considering it is also slower).
 
 # examples
 ## pass in an origin from the outside (rare)
 ```
-fn arena-empty<Element> (origin Origin) (arena Origin Element)
+fn arena-empty<Element> (origin (origin Origin)) (arena Origin Element)
 ```
 shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
+For most other functions, it's more common to pass in an existing collection
 
 ## creating a new origin, slots and spans
 `origin some-name` creates a new origin variable and a local unique type for the start offset of its scope.
@@ -83,84 +85,89 @@ At the end of the underlying origin of the annotated origin type, the memory of 
 # use a temporary value within a scope
 fn use-arena & u32
     origin arena-origin
-  	:(arena-empty<u32> arena-origin) arena
-  	:(arena-add & (arena arena) (new 123 u32)) (& (arena arena) (slot first-slot))
-  	:(arena-element & (arena arena) (slot first-slot)) (& (arena arena) (element first))
-  	:(arena-span-build-empty arena) after-first
-  	:(arena-opt-span-build-add & (build after-first) (new 456 u32)) after-first
-  	:(arena-span-build-add & (build after-first) (new 789 u32)) after-first
-    :(arena-span-build after-first) (& (arena arena) (span span-after-first))
-  	first # 123 u32
-   ...
+  	:(arena-empty<u32> arena-origin) arena <
+  	:(arena-add & arena arena new 123 u32) (& arena arena slot first-slot) <
+  	:(arena-element & arena arena slot first-slot) (& arena arena element first) <
+  	:(arena-span-build-empty arena) after-first <
+  	:(arena-opt-span-build-add & build after-first new 456 u32) after-first <
+  	:(arena-span-build-add & build after-first new 789 u32) after-first <
+    :(arena-span-build after-first) (& arena arena span span-after-first) <
+  	first # = 123 u32
+    ...
 
 # different branches, different scopes
 fn use-opt (opt opt u32) &
     # this won't compile as their origins come from different branches
     :(:opt
-        (Absent
+        (Absent &) (
             origin vec-origin
             arena-empty<u32> vec-origin
         )
-        ((Present number)
+        (Present number) (
             origin vec-origin
-            :(arena-one vec-origin number) (& (arena arena) (slot _))
-            arena
-        )
-     )
-    vec
-    # this will compile:
-    origin vec-origin
-    :(:opt
-        (Absent arena-empty<u32> vec-origin)
-        ((Present number)
-            :(arena-one vec-origin number) (& (arena arena) (slot _))
+            :(arena-one & origin vec-origin element number) (& arena arena slot _) <
             arena
         )
     )
-    vec
+    vec <
+    # this will compile:
+    origin vec-origin
+    :(:opt
+        (Absent &) (
+            arena-empty<u32> vec-origin
+        )
+        (Present number) (
+            :(arena-one & origin vec-origin element number) (& arena arena slot _) <
+            arena
+        )
+    )
+    vec <
     &
 
 # recursive structure. One cool thing is that expression will turn every slot
 # into an exclusive slot
-choice expression Expressions-origin Patterns-origin Str-origin
-    (Int<Expressions-origin Patterns-origin Str-origin> i32)
-    (String<Expressions-origin Patterns-origin> opt (span Str-origin))
-    (Vec<Patterns-origin Str-origin> span Expressions-origin)
-    (Call<Patterns-origin Str-origin> &
+type expression Expressions-origin Patterns-origin Str-origin
+    |
+    Int i32
+    String (opt (span Str-origin))
+    Vec (opt (span Expressions-origin))
+    Call (&
         (function slot Expressions-origin)
         (arguments span Expressions-origin)
     )
-    (Lambda<Str-origin> &
-        (parameters span Patterns-origin)
-        (result slot Expressions-origin)
+    Lambda (&
+        parameters (span Patterns-origin)
+        result (slot Expressions-origin)
     )
 
-type state Expressions-origin &
+type state Expressions-origin
+    &
     # ...patterns, strings etc
-    (expressions vec Expressions-origin (expression Expressions-origin))
-    (root-expression expression Expressions-origin)
+    expressions (vec Expressions-origin (expression Expressions-origin))
+    root-expression (expression Expressions-origin)
 
 fn initial-state
-    (& (expressions-origin expressions-origin origin Expressions-origin))
+    (& expressions-origin expressions-origin (origin Expressions-origin))
     (state Expressions-origin)
     &
-    (expressions vec-empty<expression Expressions-origin ...> expressions-origin)
-    (root-expression todo "do parsing")
+    expressions (vec-empty<expression Expressions-origin ...> expressions-origin)
+    root-expression (..do parsing..)
 
 fn state-to-interfaces-into
     (&
-        (interfaces interfaces arena Interfaces-origin)
-        (state state state Expressions-origin)
+        interfaces interfaces (arena Interfaces-origin (interface (state Expressions-origin)))
+        state state (state Expressions-origin)
     )
     (arena Interfaces-origin (interface state Expressions-origin))
-    :(arena-one interfaces-origin (Console-log<never> "hello"))) (& (slot _) (arena interfaces))
+    :(arena-one & origin interfaces-origin element Console-log (interface (state Expressions-origin)) "hello")
+    (& slot _ arena interfaces) <
     interfaces
 ```
 
 # known limitations
-- nested sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole syntax tree and removing spans and slots one by one, aka pointer chasing).
-Preferably, expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new-allocation.
-However, this means that slots and spans within the AST are non-owning
+- scattered sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
+  For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
+  However, this would mean that slots and spans within the AST would not be owning
 - the pattern of removing, then re-inserting an element at a slot just to access it (potentially immutably) is not optimal. This can be mitigated somewhat by using `vec-update` & friends or compiling to/asking for code that uses `arena-replace (& slot new-element) (& slot old-element)` with a dummy element followed by `arena-replace` ignoring the returned dummy new-element instead
 
 # syntax
@@ -186,17 +193,20 @@ Some-variant-or-type-variable-name
 # function call.
 # Functions can require space-separated type arguments in <...>.
 # Any function is of type `fn` and always requires an argument (which does not need to be parenthesized)
-some-function<Type Arguments> (inner-call-as-the-second-argument inner-first)
+some-function<Type Arguments> inner-call-as-the-argument inner-inner-argument
 
-# record. The last field does not need to be parenthesized
-& (first-field first-value) (second-field second-value)
+# record. if values are open-ended they need to be parenthesized.
+# The last field vlue does not need to be parenthesized if you put < between name and value
+& first-field first-value second-field second-value
+& first-field first-value second-field < do anything
 
 # local fn of type fn.
-# can **not** use local variables or origin variables from the outer scope.
+# the pattern must add a type to all variables and _s
+# can **not** use variables from the outer scope.
 fn parameter-pattern result
 
 # pattern variable
-# appending a type is required in function parameters. this can look confusing at first but is more consistent with fields, making the switch from positional to named arguments easy
+# appending a type is only necessary and allowed in function parameters
 some-variable some-type
 
 # pattern (temporary) leak.
@@ -205,11 +215,13 @@ some-variable some-type
 # appending a type is required in function parameters
 _ some-type
 
-# pattern match. The last case does not need to be parenthesized. Cases are checked for exhaustiveness
-:value (first-case-pattern first-result) (second-case-pattern second-result)
+# pattern match, checked for exhaustiveness. Case patterns and expressions must be parenthesized if open ended.
+# The last case result does not need to be parenthesized if you put < between pattern and result
+:value first-case-pattern first-result second-case-pattern second-result
+:value first-case-pattern first-result second-case-pattern < do anything
 
 # introduce a new origin. The given name can be used as a variable and type
-origin new-origin-name expression-that-uses-the-origin
+origin new-origin-name expression-that uses the-origin
 
 # project function declaration
 fn function-name<Potential Type-Arguments Only-Used-In-The-Result>
@@ -219,40 +231,28 @@ fn function-name<Potential Type-Arguments Only-Used-In-The-Result>
     # comment
     result-expression
 
-# project type that can come in different shapes ("variants")
+# project type which is an alias for an existing type.
+# Here a "choice type" that can come in different shapes ("variants")
 # which each have a unique uppercase name and 0 or 1 associated value.
-# If a variant doesn't use all type variables of the type, they need to be specified within <>
-choice type-name Potential Type-Parameters
-    First-Option<Potential Type-Parameters>
-    (Second-option<Type-Parameters> vec Potential u32)
-    (Third-option type-name-alias Potential Type-Parameters)
+type type-name Potential Type-Parameters
+    |
+    First-Option &
+    Second-option (vec Potential u32)
+    Third-option (type-name-alias Potential Type-Parameters)
+
+# creating a variant. Note that the type could refer to a type alias or be a choice type directly (| ...)
+Some-variant its-choice-type its value
+
+# variant patterns in query cases
+Some-variant its value
+
+# variant patterns in fn parameter patterns
+Some-variant its-choice-type its value
 ```
-(This list is incomplete, examples may show more)
+(This list might be incomplete, examples show more)
 
 # TODO
-- structural choice types. type only has to be specified for expression variants. so e.g. instead of
-  ```
-  choice thing
-      (A u32)
-      (B str)
-  
-  fn thing_a (value u32) thing
-      A value
-  ```
-  you'd use
-  ```sloe
-  type thing |
-      A u32
-      B str
-  
-  fn thing_a (value u32) thing
-      A thing value
-  
-  fn anonymous_thing_a (value u32) (| a u32 b str)
-      A (| A u32 B str) value
-  ```
-  This would allow anonymous choice types just like anonymous records. I find this particularly nice for APIs as now a type is a shared understanding that doesn't have a clear owner. It would also e.g. make for a much better alternative for types like `exit-or-go-on Exit Go-on` or `Result success failure`.
-  As a disadvantage this can make constructing things like `Present 0 u32` more annoying  (`Present (opt u32) 0 u32`). Allowing local type aliases can remediate some of this.
+- rename type to ty
 
 # potential improvements in the (far) future
 - add `set Origin Element` with a initialization function like `set-empty (origin ...) (hash fn Element -> Hash) -> set Origin Element`

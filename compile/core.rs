@@ -176,30 +176,42 @@ pub struct Old·slot·vec<Old_element, Slot, Vec> {
     pub slot: Slot,
     pub vec: Vec,
 }
-
 #[derive(Clone, Copy, Debug)]
-pub enum Blank {
-    Blank,
-}
-#[derive(Clone, Copy, Debug)]
-pub enum Opt<Present> {
-    Absent,
+pub enum Absent·Present<Absent, Present> {
+    Absent(Absent),
     Present(Present),
 }
 #[derive(Clone, Copy, Debug)]
-pub enum Exit_or_go_on<Exit, GoOn> {
+pub enum Exit·Go_on<Exit, Go_on> {
     Exit(Exit),
-    Go_on(GoOn),
+    Go_on(Go_on),
 }
 
-#[derive(Clone, Debug)]
-pub struct Arena<Origin, Element> {
-    pub origin: Origin,
+#[derive(Clone, Copy, Debug)]
+pub struct Blank {}
+#[derive(Clone, Copy, Debug)]
+pub enum Never {}
+
+pub type P32 = std::num::NonZeroU32;
+pub type U32 = u32;
+pub type I32 = i32;
+pub type F32 = f32;
+pub type Char = char;
+pub type Str = &'static str;
+pub type Fn<In, Out> = fn(In) -> Out;
+pub type Opt<Present> = Absent·Present<Blank, Present>;
+pub type Exit_or_go_on<Exit, Go_on> = Exit·Go_on<Exit, Go_on>;
+
+#[derive(Debug)]
+pub struct Origin<LocalType>(LocalType);
+#[derive(Debug)]
+pub struct Arena<LocalOrigin, Element> {
+    pub origin: Origin<LocalOrigin>,
     elements: std::vec::Vec<Element>,
 }
 #[derive(Debug)]
-pub struct Vec<Origin, Element> {
-    pub origin: Origin,
+pub struct Vec<LocalOrigin, Element> {
+    pub origin: Origin<LocalOrigin>,
     elements: std::vec::Vec<Element>,
     // Assumption is that neighboring elements are way more likely to be vacated together.
     // Think e.g. vec_elements but also
@@ -213,14 +225,14 @@ struct SpanRaw {
     length: std::num::NonZeroU32,
 }
 #[non_exhaustive]
-pub struct Slot<Origin> {
-    pub origin: std::marker::PhantomData<Origin>,
+pub struct Slot<LocalOrigin> {
+    pub origin: std::marker::PhantomData<LocalOrigin>,
     // consider switching to NonZeroU32 to create a niche for use with Option<Slot<>>
     pub index: u32,
 }
 #[non_exhaustive]
-pub struct Span<Origin> {
-    pub start: Slot<Origin>,
+pub struct Span<LocalOrigin> {
+    pub start: Slot<LocalOrigin>,
     // consider instead: end_index: NonZeroU32.
     // This makes combining 2 opt_spans and converting to ops::Range a bit faster.
     pub length: std::num::NonZeroU32,
@@ -237,14 +249,6 @@ pub struct Span_build<Backing> {
     pub backing: Backing,
     pub start: u32,
 }
-pub type P32 = std::num::NonZeroU32;
-pub type U32 = u32;
-pub type I32 = i32;
-pub type F32 = f32;
-pub type Char = char;
-pub type Str = &'static str;
-pub type Fn<In, Out> = fn(In) -> Out;
-pub struct Origin<LocalType>(LocalType);
 
 impl<Origin> std::fmt::Debug for Slot<Origin> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -263,19 +267,19 @@ impl<Origin> std::fmt::Debug for Span<Origin> {
 impl<A> Opt<A> {
     pub fn from_option(option: std::option::Option<A>) -> Self {
         match option {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(present) => Opt::Present(present),
         }
     }
     pub fn into_option(self) -> std::option::Option<A> {
         match self {
-            Opt::Absent => std::option::Option::None,
+            Opt::Absent(Blank {}) => std::option::Option::None,
             Opt::Present(present) => std::option::Option::Some(present),
         }
     }
     pub fn as_ref(&self) -> Opt<&A> {
         match self {
-            Opt::Absent => Opt::Absent,
+            Opt::Absent(Blank {}) => Opt::Absent(Blank {}),
             Opt::Present(present) => Opt::Present(present),
         }
     }
@@ -353,7 +357,7 @@ impl<Origin, Element> Arena<Origin, Element> {
     }
     pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&Span<Origin>>) -> &'a [Element] {
         match opt_span {
-            Opt::Absent => &[],
+            Opt::Absent(Blank {}) => &[],
             Opt::Present(span) => self.span_slice(span),
         }
     }
@@ -374,7 +378,7 @@ impl<Origin, Element> Arena<Origin, Element> {
         opt_span: &mut Opt<Span<Origin>>,
     ) -> &'a mut [Element] {
         match opt_span {
-            Opt::Absent => &mut [],
+            Opt::Absent(Blank {}) => &mut [],
             Opt::Present(span) => self.span_slice_mut(span),
         }
     }
@@ -392,7 +396,7 @@ impl<Origin, Element> Arena<Origin, Element> {
         new_elements: impl std::iter::ExactSizeIterator<Item = Element>,
     ) -> Opt<Span<Origin>> {
         match std::num::NonZeroU32::new(new_elements.len() as u32) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(new_element_count) => {
                 Opt::Present(self.add_iterator_filled(new_elements, new_element_count))
             }
@@ -459,7 +463,7 @@ impl<Origin, Element> Vec<Origin, Element> {
     }
     pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&Span<Origin>>) -> &'a [Element] {
         match opt_span {
-            Opt::Absent => &[],
+            Opt::Absent(Blank {}) => &[],
             Opt::Present(span) => self.span_slice(span),
         }
     }
@@ -472,7 +476,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         opt_span: &mut Opt<Span<Origin>>,
     ) -> &'a mut [Element] {
         match opt_span {
-            Opt::Absent => &mut [],
+            Opt::Absent(Blank {}) => &mut [],
             Opt::Present(span) => self.span_slice_mut(span),
         }
     }
@@ -642,7 +646,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         new_elements: impl std::iter::ExactSizeIterator<Item = Element>,
     ) -> Opt<Span<Origin>> {
         match std::num::NonZeroU32::new(new_elements.len() as u32) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(new_element_count) => {
                 Opt::Present(self.add_iterator_filled(new_elements, new_element_count))
             }
@@ -655,7 +659,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         let std::option::Option::Some(grow_length) =
             std::num::NonZeroU32::new(std::iter::Iterator::count(new_elements.clone()) as u32)
         else {
-            return Opt::Absent;
+            return Opt::Absent(Blank {});
         };
         let grow_span = self.add_iterator_filled(new_elements, grow_length);
         Opt::Present(grow_span)
@@ -712,19 +716,19 @@ impl<Origin> Span<Origin> {
 impl<'a, Origin> Opt<&'a Span<Origin>> {
     pub fn to_range(self) -> std::ops::Range<usize> {
         match self {
-            Opt::Absent => <std::ops::Range<usize> as std::default::Default>::default(),
+            Opt::Absent(Blank {}) => <std::ops::Range<usize> as std::default::Default>::default(),
             Opt::Present(span) => span.to_range(),
         }
     }
     pub fn to_range_u32(self) -> std::ops::Range<u32> {
         match self {
-            Opt::Absent => <std::ops::Range<u32> as std::default::Default>::default(),
+            Opt::Absent(Blank {}) => <std::ops::Range<u32> as std::default::Default>::default(),
             Opt::Present(span) => span.to_range_u32(),
         }
     }
     pub fn length(self) -> u32 {
         match self {
-            Opt::Absent => 0,
+            Opt::Absent(Blank {}) => 0,
             Opt::Present(span) => span.length.get(),
         }
     }
@@ -766,13 +770,13 @@ pub fn i32_to_f32(n: I32) -> F32 {
 }
 pub fn i32_to_u32(n: I32) -> Opt<U32> {
     match <U32 as std::convert::TryFrom<I32>>::try_from(n) {
-        std::result::Result::Err(_) => Opt::Absent,
+        std::result::Result::Err(_) => Opt::Absent(Blank {}),
         std::result::Result::Ok(u) => Opt::Present(u),
     }
 }
 pub fn i32_to_p32(n: I32) -> Opt<P32> {
     match <U32 as std::convert::TryFrom<I32>>::try_from(n) {
-        std::result::Result::Err(_) => Opt::Absent,
+        std::result::Result::Err(_) => Opt::Absent(Blank {}),
         std::result::Result::Ok(u) => u32_to_p32(u),
     }
 }
@@ -918,7 +922,7 @@ pub fn slot_to_span<Origin>(slot: Slot<Origin>) -> Span<Origin> {
 pub fn span_start<Origin>(span: Span<Origin>) -> After·start<Opt<Span<Origin>>, Slot<Origin>> {
     After·start {
         after: match std::num::NonZeroU32::new(non_zero_u32_predecessor(span.length)) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(after_length) => Opt::Present(Span {
                 start: index_to_slot::<Origin>(span.start.index + 1),
                 length: after_length,
@@ -931,7 +935,7 @@ pub fn span_end<Origin>(span: Span<Origin>) -> Before·end<Opt<Span<Origin>>, Sl
     Before·end {
         end: index_to_slot::<Origin>(span.end_index().get()),
         before: match std::num::NonZeroU32::new(non_zero_u32_predecessor(span.length)) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(before_length) => Opt::Present(Span {
                 start: index_to_slot::<Origin>(span.start.index - 1),
                 length: before_length,
@@ -953,13 +957,13 @@ pub fn opt_span_take_start<Origin>(
 ) -> After·start<Opt<Span<Origin>>, Opt<Span<Origin>>> {
     match std::num::NonZeroU32::new(length_to_take) {
         std::option::Option::None => After·start {
-            start: Opt::Absent,
+            start: Opt::Absent(Blank {}),
             after: opt_span,
         },
         std::option::Option::Some(positive_length_to_take) => match opt_span {
-            Opt::Absent => After·start {
-                start: Opt::Absent,
-                after: Opt::Absent,
+            Opt::Absent(Blank {}) => After·start {
+                start: Opt::Absent(Blank {}),
+                after: Opt::Absent(Blank {}),
             },
             Opt::Present(span) => {
                 let After·start {
@@ -983,7 +987,7 @@ pub fn span_take_start_filled<Origin>(
             span.length.get(),
             length_to_take.get(),
         )) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(after_length) => Opt::Present(Span {
                 start: index_to_slot(span.start.index + length_to_take.get()),
                 length: after_length,
@@ -1066,7 +1070,7 @@ pub fn span_connect_slot<Origin>(
                 start: span.start,
                 length: span.length.saturating_add(1),
             },
-            apart: Opt::Absent,
+            apart: Opt::Absent(Blank {}),
         }
     } else if slot_to_add.index + 1 == span.start.index {
         Apart·connected {
@@ -1074,7 +1078,7 @@ pub fn span_connect_slot<Origin>(
                 start: slot_to_add,
                 length: span.length.saturating_add(1),
             },
-            apart: Opt::Absent,
+            apart: Opt::Absent(Blank {}),
         }
     } else {
         Apart·connected {
@@ -1093,7 +1097,7 @@ pub fn span_connect<Origin>(
                 start: span.start,
                 length: span.length.saturating_add(span_to_add.length.get()),
             },
-            apart: Opt::Absent,
+            apart: Opt::Absent(Blank {}),
         }
     } else if span_to_add.end_index().get() + 1 == span.start.index {
         Apart·connected {
@@ -1101,7 +1105,7 @@ pub fn span_connect<Origin>(
                 start: span_to_add.start,
                 length: span.length.saturating_add(span_to_add.length.get()),
             },
-            apart: Opt::Absent,
+            apart: Opt::Absent(Blank {}),
         }
     } else {
         Apart·connected {
@@ -1131,7 +1135,9 @@ pub fn arena_to_vec<Origin, Element>(arena: Arena<Origin, Element>) -> Vec<Origi
     }
 }
 
-pub fn arena_empty<Origin, Element>(origin: Origin) -> Arena<Origin, Element> {
+pub fn arena_empty<LocalOrigin, Element>(
+    origin: Origin<LocalOrigin>,
+) -> Arena<LocalOrigin, Element> {
     Arena {
         origin: origin,
         elements: std::vec::Vec::new(),
@@ -1211,7 +1217,7 @@ pub fn arena_add_str<Origin>(
     std::iter::Extend::extend(&mut arena.elements, str.chars());
     Arena·span {
         span: match std::num::NonZeroU32::new(arena.elements.len() as u32 - previous_length) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(grow_length) => Opt::Present(Span {
                 start: index_to_slot(previous_length),
                 length: grow_length,
@@ -1329,7 +1335,7 @@ pub fn arena_opt_span_build<Origin, Element>(
         span: match std::num::NonZeroU32::new(
             span_build.backing.elements.len() as u32 - span_build.start,
         ) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(span_length) => Opt::Present(Span {
                 start: index_to_slot::<Origin>(span_build.start),
                 length: span_length,
@@ -1356,7 +1362,7 @@ pub fn arena_span_build<Origin, Element>(
     }
 }
 
-pub fn vec_empty<Origin, Element>(origin: Origin) -> Vec<Origin, Element> {
+pub fn vec_empty<LocalOrigin, Element>(origin: Origin<LocalOrigin>) -> Vec<LocalOrigin, Element> {
     Vec {
         origin: origin,
         elements: std::vec::Vec::new(),
@@ -1394,7 +1400,7 @@ pub fn vec_opt_span_fold<Origin, Element, State>(
     reduce: Fn<Element·in<Element, State>, State>,
 ) -> Vec<Origin, Element> {
     match span {
-        Opt::Absent => vec,
+        Opt::Absent(Blank {}) => vec,
         Opt::Present(shrink_span) => vec_span_fold(vec, shrink_span, state, reduce),
     }
 }
@@ -1594,7 +1600,7 @@ pub fn vec_opt_span_ignoring_vacant<Origin, Element>(
         span: match std::num::NonZeroU32::new(
             span_build.backing.elements.len() as u32 - span_build.start,
         ) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(span_length) => Opt::Present(Span {
                 start: index_to_slot::<Origin>(span_build.start),
                 length: span_length,
@@ -1657,7 +1663,7 @@ pub fn vec_opt_span_build<Origin, Element>(
         span: match std::num::NonZeroU32::new(
             span_build.backing.elements.len() as u32 - span_build.start,
         ) {
-            std::option::Option::None => Opt::Absent,
+            std::option::Option::None => Opt::Absent(Blank {}),
             std::option::Option::Some(span_length) => {
                 let potentially_moved_opt_span = vec_span_with_length(&mut span_build, span_length);
                 Opt::Present(potentially_moved_opt_span)

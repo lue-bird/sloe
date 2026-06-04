@@ -24,13 +24,6 @@ pub enum SyntaxProjectElement<Expressions, Patterns, Types> {
         documentation: Option<SyntaxComments>,
         type_: Option<SyntaxType<Types>>,
     },
-    ChoiceType {
-        choice_keyword_start: lsp_types::Position,
-        name: Option<WithStartPosition<Name>>,
-        parameters: Vec<WithStartPosition<Name>>,
-        documentation: Option<SyntaxComments>,
-        variants: Vec<SyntaxVariant<Types>>,
-    },
     Fn {
         fn_keyword_start: lsp_types::Position,
         name: Option<WithStartPosition<Name>>,
@@ -81,6 +74,7 @@ pub enum SyntaxType<Types> {
         inner: Option<core::Slot<Types>>,
         closed_paren_start: Option<lsp_types::Position>,
     },
+    // TODO Choice { bar_start: lsp_types::Position, variants: Vec<SyntaxVariant<Types>> }
 }
 #[derive(Debug)]
 pub enum SyntaxPattern<Patterns, Types> {
@@ -90,7 +84,6 @@ pub enum SyntaxPattern<Patterns, Types> {
     },
     Variant {
         name: WithStartPosition<Name>,
-        type_arguments: Option<SyntaxAngledTypeArguments<Types>>,
         value: Option<core::Slot<Patterns>>,
     },
     Record {
@@ -140,7 +133,7 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
     },
     Variant {
         name: WithStartPosition<Name>,
-        type_arguments: Option<SyntaxAngledTypeArguments<Types>>,
+        type_: Option<SyntaxType<Types>>,
         value: Option<core::Slot<Expressions>>,
     },
     Fn {
@@ -275,11 +268,7 @@ pub fn pattern_start<Patterns, Types>(
 ) -> lsp_types::Position {
     match pattern {
         SyntaxPattern::Variable { name, type_: _ } => name.start,
-        SyntaxPattern::Variant {
-            name,
-            type_arguments: _,
-            value: _,
-        } => name.start,
+        SyntaxPattern::Variant { name, value: _ } => name.start,
         SyntaxPattern::Record {
             ampersand_start,
             fields: _,
@@ -301,18 +290,9 @@ pub fn pattern_end<Patterns, Types>(
             .as_ref()
             .map(|type_| type_end(type_, types))
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
-        SyntaxPattern::Variant {
-            name,
-            type_arguments,
-            value,
-        } => value
+        SyntaxPattern::Variant { name, value } => value
             .as_ref()
             .map(|value| pattern_end(patterns.element(value), patterns, types))
-            .or_else(|| {
-                type_arguments
-                    .as_ref()
-                    .map(|type_arguments| angled_type_arguments_end(type_arguments, types))
-            })
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxPattern::Record {
             ampersand_start,
@@ -421,7 +401,7 @@ pub fn expression_start<Expressions, Patterns, Types>(
         } => name.start,
         SyntaxExpression::Variant {
             name,
-            type_arguments: _,
+            type_: _,
             value: _,
         } => name.start,
         SyntaxExpression::Fn {
@@ -504,18 +484,10 @@ pub fn expression_end<Expressions, Patterns, Types>(
                     .map(|type_arguments| angled_type_arguments_end(type_arguments, types))
             })
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
-        SyntaxExpression::Variant {
-            name,
-            type_arguments,
-            value,
-        } => value
+        SyntaxExpression::Variant { name, type_, value } => value
             .as_ref()
             .map(|value| expression_end(expressions.element(value), expressions, patterns, types))
-            .or_else(|| {
-                type_arguments
-                    .as_ref()
-                    .map(|type_arguments| angled_type_arguments_end(type_arguments, types))
-            })
+            .or_else(|| type_.as_ref().map(|type_| type_end(type_, types)))
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxExpression::Fn {
             fn_keyword_start,
@@ -900,7 +872,6 @@ fn parse_project_element<Expressions, Patterns, Types>(
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
     parse_project_fn(state, expressions, patterns, types)
-        .or_else(|| parse_choice(state, types))
         .or_else(|| parse_project_type(state, types))
         .or_else(|| parse_sloe_comments(state).map(SyntaxProjectElement::Comments))
 }
@@ -928,36 +899,6 @@ fn parse_project_type<Expressions, Patterns, Types>(
         parameters: parameters,
         documentation: documentation,
         type_: type_,
-    })
-}
-fn parse_choice<Expressions, Patterns, Types>(
-    state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
-) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
-    let Some(choice_keyword_start) = parse_symbol_as_start(state, "choice") else {
-        return None;
-    };
-    parse_sloe_whitespace(state);
-    let name = parse_sloe_lowercase_name_with_start(state);
-    parse_sloe_whitespace(state);
-    let mut parameters = Vec::new();
-    while let Some(parameter) = parse_sloe_uppercase_name_with_start(state) {
-        parameters.push(parameter);
-        parse_sloe_whitespace(state);
-    }
-    let documentation = parse_sloe_comments(state);
-    parse_sloe_whitespace(state);
-    let mut variants = Vec::new();
-    while let Some(variant) = parse_sloe_variant(state, types) {
-        variants.push(variant);
-        parse_sloe_whitespace(state);
-    }
-    Some(SyntaxProjectElement::ChoiceType {
-        choice_keyword_start: choice_keyword_start,
-        name: name,
-        parameters: parameters,
-        documentation: documentation,
-        variants: variants,
     })
 }
 fn parse_sloe_variant<Types>(
@@ -1151,12 +1092,9 @@ fn parse_pattern_variant_typed<Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_arguments = parse_type_arguments(state, types);
-    parse_sloe_whitespace(state);
     let value = parse_pattern_typed(state, patterns, types);
     Some(SyntaxPattern::Variant {
         name: name,
-        type_arguments: type_arguments,
         value: value.map(|value| patterns.add(value)),
     })
 }
@@ -1169,12 +1107,9 @@ fn parse_pattern_variant_untyped<Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_arguments = parse_type_arguments(state, types);
-    parse_sloe_whitespace(state);
     let value = parse_pattern_untyped(state, patterns, types);
     Some(SyntaxPattern::Variant {
         name: name,
-        type_arguments: type_arguments,
         value: value.map(|value| patterns.add(value)),
     })
 }
@@ -1187,12 +1122,9 @@ fn parse_pattern_variant_not_open_ended_typed<Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_arguments = parse_type_arguments(state, types);
-    parse_sloe_whitespace(state);
     let value = parse_pattern_not_open_ended_typed(state, patterns, types);
     Some(SyntaxPattern::Variant {
         name: name,
-        type_arguments: type_arguments,
         value: value.map(|value| patterns.add(value)),
     })
 }
@@ -1205,12 +1137,9 @@ fn parse_pattern_variant_not_open_ended_untyped<Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_arguments = parse_type_arguments(state, types);
-    parse_sloe_whitespace(state);
     let value = parse_pattern_not_open_ended_untyped(state, patterns, types);
     Some(SyntaxPattern::Variant {
         name: name,
-        type_arguments: type_arguments,
         value: value.map(|value| patterns.add(value)),
     })
 }
@@ -1786,12 +1715,12 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_arguments = parse_type_arguments(state, types);
+    let type_ = parse_type_not_open_ended(state, types);
     parse_sloe_whitespace(state);
     let value = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Variant {
         name: name,
-        type_arguments: type_arguments,
+        type_: type_,
         value: value.map(|argument| expressions.add(argument)),
     })
 }
@@ -1805,12 +1734,12 @@ fn parse_expression_variant_not_open_ended<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_arguments = parse_type_arguments(state, types);
+    let type_ = parse_type_not_open_ended(state, types);
     parse_sloe_whitespace(state);
     let value = parse_expression_not_open_ended(state, expressions, patterns, types);
     Some(SyntaxExpression::Variant {
         name: name,
-        type_arguments: type_arguments,
+        type_: type_,
         value: value.map(|argument| expressions.add(argument)),
     })
 }
@@ -1948,25 +1877,10 @@ fn parse_expression_query_case<Expressions, Patterns, Types>(
 pub struct CompiledProject {
     pub rust: syn::File,
     pub type_aliases: std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    pub choice_types: std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
     pub fns: std::collections::HashMap<Name, CompiledProjectFnInfo>,
     pub records: std::collections::HashSet<Vec<Name>>,
 }
 #[derive(Clone, Debug)]
-pub struct CompiledChoiceTypeInfo {
-    pub name_range: Option<lsp_types::Range>,
-    pub parameters: Vec<Name>,
-    pub documentation: Option<Box<str>>,
-    pub variants: Vec<CompiledVariantInfo>,
-    pub is_copy: bool,
-}
-#[derive(Clone, Debug)]
-pub struct CompiledVariantInfo {
-    pub name: Name,
-    pub type_parameters: Vec<Name>,
-    pub value: Type,
-}
-#[derive(Debug)]
 pub struct CompiledTypeAliasInfo {
     pub name_range: Option<lsp_types::Range>,
     pub parameters: Vec<Name>,
@@ -1977,12 +1891,18 @@ pub struct CompiledTypeAliasInfo {
 #[derive(Clone, Debug)]
 pub enum Type {
     Variable(Name),
+    Origin(Name),
     Record(Vec<TypeField>),
-    // can also be an origin
-    ChoiceConstruct { name: Name, arguments: Vec<Type> },
+    Choice(Vec<TypeVariant>),
+    CoreConstruct { name: Name, arguments: Vec<Type> },
 }
 #[derive(Clone, Debug)]
 pub struct TypeField {
+    pub name: Name,
+    pub value: Type,
+}
+#[derive(Clone, Debug)]
+pub struct TypeVariant {
     pub name: Name,
     pub value: Type,
 }
@@ -1994,25 +1914,24 @@ pub struct CompiledProjectFnInfo {
     pub result_type: Option<Type>,
 }
 
-fn type_is_copy(
-    variables_are_copy: bool,
-    type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
-    type_: &Type,
-) -> bool {
+fn type_is_copy(variables_are_copy: bool, type_: &Type) -> bool {
     match type_ {
         Type::Variable(_) => variables_are_copy,
-        Type::Record(fields) => fields.iter().all(|field| {
-            type_is_copy(variables_are_copy, type_aliases, choice_types, &field.value)
-        }),
-        Type::ChoiceConstruct { name, arguments } => {
-            choice_types
+        Type::Origin(_) => false,
+        Type::CoreConstruct { name, arguments } => {
+            core_type_aliases
                 .get(name)
-                .is_some_and(|origin_choice_type| origin_choice_type.is_copy)
-                || arguments.iter().all(|argument| {
-                    type_is_copy(variables_are_copy, type_aliases, choice_types, argument)
-                })
+                .is_some_and(|core_type_info| core_type_info.is_copy)
+                && arguments
+                    .iter()
+                    .all(|argument| type_is_copy(variables_are_copy, argument))
         }
+        Type::Record(fields) => fields
+            .iter()
+            .all(|field| type_is_copy(variables_are_copy, &field.value)),
+        Type::Choice(variants) => variants
+            .iter()
+            .all(|variant| type_is_copy(variables_are_copy, &variant.value)),
     }
 }
 
@@ -2088,46 +2007,6 @@ If you wanted to start a declaration, try one of:
                     }).into_boxed_str(),
                 });
             }
-            SyntaxProjectElement::ChoiceType {
-                choice_keyword_start,
-                name: maybe_name,
-                parameters,
-                documentation,
-                variants,
-            } => match maybe_name {
-                None => {
-                    errors.push(ErrorNode { range: symbol_range(*choice_keyword_start, "choice"), message: Box::from("missing type name after choice. Type names start with a lowercase letter any only use ascii alphanumeric characters and -") });
-                }
-                Some(name) => {
-                    let choice_type_declaration_graph_node: strongly_connected_components::Node =
-                        type_graph.new_node();
-                    let existing_type_with_same_name: Option<strongly_connected_components::Node> =
-                        type_graph_node_by_name
-                            .insert(&name.value, choice_type_declaration_graph_node);
-                    type_declaration_by_graph_node.insert(
-                        choice_type_declaration_graph_node,
-                        SyntaxProjectTypeInfo::ChoiceType {
-                            documentation: &documentation,
-                            name: &name,
-                            parameters: &parameters,
-                            variants: &variants,
-                        },
-                    );
-                    if existing_type_with_same_name.is_some() {
-                        errors.push(ErrorNode {
-                            range: syntax_name_range(with_start_position_as_ref(name)),
-                            message: Box::from(
-                                "a type with this name is already declared. Rename one of them",
-                            ),
-                        });
-                    } else if core_choice_types.contains_key(name.value.as_str()) {
-                        errors.push(ErrorNode {
-                            range: syntax_name_range(with_start_position_as_ref(name)),
-                            message: Box::from("a type with this name is already part of core (core types are for example vec, int, str). Rename this type")
-                        });
-                    }
-                }
-            },
             SyntaxProjectElement::TypeAlias {
                 type_keyword_start,
                 name: maybe_name,
@@ -2146,7 +2025,7 @@ If you wanted to start a declaration, try one of:
                             .insert(&name_node.value, type_alias_declaration_graph_node);
                     type_declaration_by_graph_node.insert(
                         type_alias_declaration_graph_node,
-                        SyntaxProjectTypeInfo::TypeAlias {
+                        SyntaxProjectTypeInfo {
                             documentation: &documentation,
                             name: &name_node,
                             parameters: &parameters,
@@ -2267,41 +2146,16 @@ fn syntax_proect_type_connect_type_names_in_graph_from<Types>(
     origin_project_type_graph_node: strongly_connected_components::Node,
     type_graph_node_by_name: &std::collections::HashMap<&str, strongly_connected_components::Node>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    type_declaration_info: SyntaxProjectTypeInfo<Types>,
+    project_type_info: SyntaxProjectTypeInfo<Types>,
 ) {
-    match type_declaration_info {
-        SyntaxProjectTypeInfo::ChoiceType {
-            documentation: _,
-            name: _,
-            parameters: _,
-            variants,
-        } => {
-            for variant_value in variants.iter().filter_map(|variant| variant.value.as_ref()) {
-                syntax_type_connect_type_names_in_graph_from(
-                    type_graph,
-                    origin_project_type_graph_node,
-                    type_graph_node_by_name,
-                    types,
-                    variant_value,
-                );
-            }
-        }
-        SyntaxProjectTypeInfo::TypeAlias {
-            documentation: _,
-            name: _,
-            parameters: _,
-            type_: maybe_type,
-        } => {
-            if let Some(aliased_type) = maybe_type {
-                syntax_type_connect_type_names_in_graph_from(
-                    type_graph,
-                    origin_project_type_graph_node,
-                    type_graph_node_by_name,
-                    types,
-                    aliased_type,
-                );
-            }
-        }
+    if let Some(aliased_type) = &project_type_info.type_ {
+        syntax_type_connect_type_names_in_graph_from(
+            type_graph,
+            origin_project_type_graph_node,
+            type_graph_node_by_name,
+            types,
+            aliased_type,
+        );
     }
 }
 fn syntax_type_connect_type_names_in_graph_from<Types>(
@@ -2403,7 +2257,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         }
         SyntaxExpression::Variant {
             name: _,
-            type_arguments: _,
+            type_: _,
             value,
         } => {
             if let Some(value) = value {
@@ -2530,20 +2384,12 @@ struct SyntaxProjectFnInfo<'a, Expressions, Patterns, Types> {
     result: &'a Option<SyntaxExpression<Expressions, Patterns, Types>>,
 }
 #[derive(Debug)]
-enum SyntaxProjectTypeInfo<'a, Types> {
+struct SyntaxProjectTypeInfo<'a, Types> {
     // consider introducing separate structs instead of separately referencing each field
-    ChoiceType {
-        name: &'a WithStartPosition<Name>,
-        parameters: &'a Vec<WithStartPosition<Name>>,
-        documentation: &'a Option<SyntaxComments>,
-        variants: &'a Vec<SyntaxVariant<Types>>,
-    },
-    TypeAlias {
-        name: &'a WithStartPosition<Name>,
-        documentation: &'a Option<SyntaxComments>,
-        parameters: &'a Vec<WithStartPosition<Name>>,
-        type_: &'a Option<SyntaxType<Types>>,
-    },
+    name: &'a WithStartPosition<Name>,
+    documentation: &'a Option<SyntaxComments>,
+    parameters: &'a Vec<WithStartPosition<Name>>,
+    type_: &'a Option<SyntaxType<Types>>,
 }
 // Copy & Clone need to be manually implemented because derive(Clone) introduces unnecessary Expressions/Patterns/Types:Clone bounds
 impl<'a, Expressions, Patterns, Types> Copy
@@ -2568,29 +2414,11 @@ impl<'a, Expressions, Patterns, Types> Clone
 impl<'a, Types> Copy for SyntaxProjectTypeInfo<'a, Types> {}
 impl<'a, Types> Clone for SyntaxProjectTypeInfo<'a, Types> {
     fn clone(&self) -> Self {
-        match self {
-            Self::ChoiceType {
-                documentation,
-                name,
-                parameters,
-                variants,
-            } => Self::ChoiceType {
-                documentation: documentation,
-                name: name,
-                parameters: parameters,
-                variants: variants,
-            },
-            Self::TypeAlias {
-                documentation,
-                name,
-                parameters,
-                type_,
-            } => Self::TypeAlias {
-                documentation: documentation,
-                name: name,
-                parameters: parameters,
-                type_: type_,
-            },
+        Self {
+            documentation: self.documentation,
+            name: self.name,
+            parameters: self.parameters,
+            type_: self.type_,
         }
     }
 }
@@ -2614,12 +2442,13 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
     let mut rust_items: Vec<syn::Item> =
         Vec::with_capacity(type_graph.len() * 3 + project_fn_graph.len());
     let mut compiled_type_aliases: std::collections::HashMap<Name, CompiledTypeAliasInfo> =
-        std::collections::HashMap::with_capacity(project_type_by_graph_node.len());
-    let mut compiled_choice_types: std::collections::HashMap<Name, CompiledChoiceTypeInfo> =
-        core_choice_types.clone();
-    compiled_choice_types.reserve(project_type_by_graph_node.len());
+        core_type_aliases.clone();
+    compiled_type_aliases.reserve(project_type_by_graph_node.len());
     let mut records_used: std::collections::HashSet<Vec<Name>> =
-        std::collections::HashSet::with_capacity(8);
+        std::collections::HashSet::with_capacity(16);
+    // TODO actually populate choices_used
+    let mut choices_used: std::collections::HashSet<Vec<Name>> =
+        std::collections::HashSet::with_capacity(4);
     for project_type_strongly_connected_component in type_graph.find_sccs().iter_sccs() {
         // TODO report and skip (mutually) recursive project types. Currently these are reported as "not found" at best
         for project_type in project_type_strongly_connected_component
@@ -2629,121 +2458,59 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             })
             .copied()
         {
-            match project_type {
-                SyntaxProjectTypeInfo::TypeAlias {
-                    documentation: maybe_documentation,
+            // TODO inline
+            let name = &project_type.name;
+            let maybe_compiled_type_alias: Option<CompiledTypeAlias> =
+                type_alias_declaration_to_rust(
+                    errors,
+                    &mut records_used,
+                    &compiled_type_aliases,
+                    types,
+                    project_type.documentation.as_ref(),
                     name,
-                    parameters,
-                    type_: maybe_type,
-                } => {
-                    let maybe_compiled_type_alias: Option<CompiledTypeAlias> =
-                        type_alias_declaration_to_rust(
-                            errors,
-                            &mut records_used,
-                            &compiled_type_aliases,
-                            &compiled_choice_types,
-                            types,
-                            maybe_documentation.as_ref(),
-                            name,
-                            parameters,
-                            maybe_type.as_ref(),
-                        );
-                    let documentation = maybe_documentation.as_ref().map(|documentation| {
-                        documentation
-                            .line1_up
-                            .iter()
-                            .fold(documentation.line0.value.to_string(), |so_far, line| {
-                                so_far + "\n" + &line.value
-                            })
-                            .into_boxed_str()
-                    });
-                    let parameters = parameters
-                        .iter()
-                        .map(|parameter| parameter.value.clone())
-                        .collect();
-                    match maybe_compiled_type_alias {
-                        Some(compiled_type_alias) => {
-                            rust_items.push(compiled_type_alias.rust);
-                            compiled_type_aliases.insert(
-                                name.value.clone(),
-                                CompiledTypeAliasInfo {
-                                    name_range: Some(syntax_name_range(
-                                        with_start_position_as_ref(name),
-                                    )),
-                                    documentation: documentation,
-                                    parameters: parameters,
-                                    type_: Some(compiled_type_alias.type_),
-                                    is_copy: compiled_type_alias.is_copy,
-                                },
-                            );
-                        }
-                        None => {
-                            compiled_type_aliases.insert(
-                                name.value.clone(),
-                                CompiledTypeAliasInfo {
-                                    name_range: Some(syntax_name_range(
-                                        with_start_position_as_ref(name),
-                                    )),
-                                    documentation: documentation,
-                                    parameters: parameters,
-                                    type_: None,
-                                    // dummy values that should not be read in practice
-                                    is_copy: false,
-                                },
-                            );
-                        }
-                    }
-                }
-                SyntaxProjectTypeInfo::ChoiceType {
-                    documentation: maybe_documentation,
-                    name,
-                    parameters,
-                    variants,
-                } => {
-                    let maybe_compiled_choice_type_info: Option<CompiledChoiceType> =
-                        choice_type_declaration_to_rust_into(
-                            &mut rust_items,
-                            errors,
-                            &mut records_used,
-                            &compiled_type_aliases,
-                            &compiled_choice_types,
-                            types,
-                            maybe_documentation.as_ref(),
-                            name,
-                            parameters,
-                            variants,
-                        );
-                    let documentation = maybe_documentation.as_ref().map(|documentation| {
-                        documentation
-                            .line1_up
-                            .iter()
-                            .fold(documentation.line0.value.to_string(), |so_far, line| {
-                                so_far + "\n" + &line.value
-                            })
-                            .into_boxed_str()
-                    });
-                    let parameters = parameters
-                        .iter()
-                        .map(|parameter| parameter.value.clone())
-                        .collect();
-                    let info = match maybe_compiled_choice_type_info {
-                        Some(compiled_choice_type_info) => CompiledChoiceTypeInfo {
+                    &project_type.parameters,
+                    project_type.type_.as_ref(),
+                );
+            let documentation = project_type.documentation.as_ref().map(|documentation| {
+                documentation
+                    .line1_up
+                    .iter()
+                    .fold(documentation.line0.value.to_string(), |so_far, line| {
+                        so_far + "\n" + &line.value
+                    })
+                    .into_boxed_str()
+            });
+            let parameters = project_type
+                .parameters
+                .iter()
+                .map(|parameter| parameter.value.clone())
+                .collect();
+            match maybe_compiled_type_alias {
+                Some(compiled_type_alias) => {
+                    rust_items.push(compiled_type_alias.rust);
+                    compiled_type_aliases.insert(
+                        name.value.clone(),
+                        CompiledTypeAliasInfo {
                             name_range: Some(syntax_name_range(with_start_position_as_ref(name))),
                             documentation: documentation,
                             parameters: parameters,
-                            variants: compiled_choice_type_info.variants,
-                            is_copy: compiled_choice_type_info.is_copy,
+                            type_: Some(compiled_type_alias.type_),
+                            is_copy: compiled_type_alias.is_copy,
                         },
-                        None => CompiledChoiceTypeInfo {
+                    );
+                }
+                None => {
+                    compiled_type_aliases.insert(
+                        name.value.clone(),
+                        CompiledTypeAliasInfo {
                             name_range: Some(syntax_name_range(with_start_position_as_ref(name))),
                             documentation: documentation,
                             parameters: parameters,
-                            // dummy
-                            variants: vec![],
+                            type_: None,
+                            // dummy values that should not be read in practice
                             is_copy: false,
                         },
-                    };
-                    compiled_choice_types.insert(name.value.clone(), info);
+                    );
                 }
             }
         }
@@ -2780,7 +2547,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                     &mut std::collections::HashSet::new(),
                     &mut std::collections::HashMap::new(),
                     &compiled_type_aliases,
-                    &compiled_choice_types,
                     patterns,
                     types,
                     &std::collections::HashMap::new(),
@@ -2804,7 +2570,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                         syntax_result_type,
                         &mut Vec::new(),
                         &compiled_type_aliases,
-                        &compiled_choice_types,
                         types,
                         &std::collections::HashMap::new(),
                     );
@@ -2825,7 +2590,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                 errors,
                 &mut records_used,
                 &compiled_type_aliases,
-                &compiled_choice_types,
                 &compiledproject_fns,
                 expressions,
                 patterns,
@@ -2867,6 +2631,12 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             .filter(|fields| !core_records.contains(fields.as_slice()))
             .map(|used_record_fields| syntax_record_to_rust(used_record_fields)),
     );
+    rust_items.extend(
+        choices_used
+            .iter()
+            .filter(|choice| !core_choices.contains(choice.as_slice()))
+            .map(|used_choice_variants| syntax_choice_to_rust(used_choice_variants)),
+    );
     CompiledProject {
         rust: syn::File {
             shebang: None,
@@ -2874,16 +2644,67 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             items: rust_items,
         },
         type_aliases: compiled_type_aliases,
-        choice_types: compiled_choice_types,
         fns: compiledproject_fns,
         records: records_used,
         // fn_graph: project_fn_graph,
         // fn_by_graph_node: project_fn_by_graph_node,
     }
 }
-fn syntax_record_to_rust(used_sloe_record_fields: &[Name]) -> syn::Item {
+fn syntax_choice_to_rust(used_choice_variants: &[Name]) -> syn::Item {
+    let rust_enum_name: String = variant_names_to_rust_enum_name(used_choice_variants.iter());
+    let rust_struct: syn::Item = syn::Item::Enum(syn::ItemEnum {
+        attrs: vec![syn_attribute_derive(["Copy", "Clone", "Debug"].into_iter())],
+        vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
+        enum_token: syn::token::Enum(syn_span()),
+        ident: syn_ident(&rust_enum_name),
+        generics: syn::Generics {
+            lt_token: Some(syn::token::Lt(syn_span())),
+            params: used_choice_variants
+                .iter()
+                .map(|field_name| {
+                    syn::GenericParam::Type(syn::TypeParam {
+                        attrs: vec![],
+                        ident: syn_ident(&type_variable_to_rust(field_name)),
+                        colon_token: None,
+                        bounds: syn::punctuated::Punctuated::new(),
+                        eq_token: None,
+                        default: None,
+                    })
+                })
+                .collect(),
+            gt_token: Some(syn::token::Gt(syn_span())),
+            where_clause: None,
+        },
+        brace_token: syn::token::Brace(syn_span()),
+        variants: used_choice_variants
+            .iter()
+            .map(|variant_name| syn::Variant {
+                attrs: vec![],
+                ident: syn_ident(&name_to_uppercase_rust(variant_name)),
+                fields: syn::Fields::Unnamed(syn::FieldsUnnamed {
+                    paren_token: syn::token::Paren(syn_span()),
+                    unnamed: std::iter::once(syn::Field {
+                        attrs: vec![],
+                        mutability: syn::FieldMutability::None,
+                        vis: syn::Visibility::Inherited,
+                        ident: None,
+                        colon_token: None,
+                        ty: syn::Type::Path(syn::TypePath {
+                            qself: None,
+                            path: syn_path_reference([&type_variable_to_rust(variant_name)]),
+                        }),
+                    })
+                    .collect(),
+                }),
+                discriminant: None,
+            })
+            .collect(),
+    });
+    rust_struct
+}
+fn syntax_record_to_rust(used_choice_variants: &[Name]) -> syn::Item {
     let rust_struct_name: String =
-        field_names_to_rust_record_struct_name(used_sloe_record_fields.iter());
+        field_names_to_rust_record_struct_name(used_choice_variants.iter());
     let rust_struct: syn::Item = syn::Item::Struct(syn::ItemStruct {
         attrs: vec![syn_attribute_derive(["Copy", "Clone", "Debug"].into_iter())],
         vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
@@ -2891,7 +2712,7 @@ fn syntax_record_to_rust(used_sloe_record_fields: &[Name]) -> syn::Item {
         ident: syn_ident(&rust_struct_name),
         generics: syn::Generics {
             lt_token: Some(syn::token::Lt(syn_span())),
-            params: used_sloe_record_fields
+            params: used_choice_variants
                 .iter()
                 .map(|field_name| {
                     syn::GenericParam::Type(syn::TypeParam {
@@ -2909,7 +2730,7 @@ fn syntax_record_to_rust(used_sloe_record_fields: &[Name]) -> syn::Item {
         },
         fields: syn::Fields::Named(syn::FieldsNamed {
             brace_token: syn::token::Brace(syn_span()),
-            named: used_sloe_record_fields
+            named: used_choice_variants
                 .iter()
                 .map(|field_name| syn::Field {
                     attrs: vec![],
@@ -2938,7 +2759,6 @@ fn type_alias_declaration_to_rust<Types>(
     errors: &mut Vec<ErrorNode>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     maybe_documentation: Option<&SyntaxComments>,
     name: &WithStartPosition<Name>,
@@ -2957,7 +2777,6 @@ fn type_alias_declaration_to_rust<Types>(
         aliased_syntax_type,
         errors,
         type_aliases,
-        choice_types,
         types,
         &std::collections::HashMap::new(),
     ) else {
@@ -3001,128 +2820,8 @@ fn type_alias_declaration_to_rust<Types>(
             ty: Box::new(type_rust),
             semi_token: syn::token::Semi(syn_span()),
         }),
-        is_copy: type_is_copy(true, type_aliases, choice_types, &aliased_type),
+        is_copy: type_is_copy(true, &aliased_type),
         type_: aliased_type,
-    })
-}
-
-struct CompiledChoiceType {
-    is_copy: bool,
-    variants: Vec<CompiledVariantInfo>,
-}
-fn choice_type_declaration_to_rust_into<'a, Types>(
-    rust_items: &mut Vec<syn::Item>,
-    errors: &mut Vec<ErrorNode>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
-    maybe_documentation: Option<&SyntaxComments>,
-    name: &WithStartPosition<Name>,
-    parameters: &'a [WithStartPosition<Name>],
-    variants: &'a [SyntaxVariant<Types>],
-) -> Option<CompiledChoiceType> {
-    let mut rust_variants: syn::punctuated::Punctuated<syn::Variant, syn::token::Comma> =
-        syn::punctuated::Punctuated::new();
-    let mut type_variants: Vec<CompiledVariantInfo> = Vec::with_capacity(rust_variants.len());
-    let mut is_copy: bool = true;
-    let mut actually_used_type_variables: std::collections::HashSet<Name> =
-        std::collections::HashSet::with_capacity(parameters.len());
-    'compiling_variants: for variant in variants {
-        let Some(variant_name) = &variant.name else {
-            errors.push(ErrorNode {
-                range: symbol_range(variant.open_paren_start, "("),
-                message: Box::from("missing variant name"),
-            });
-            continue 'compiling_variants;
-        };
-        // TODO verify these variant_type_prameters + the variables contained in the variant value add up to parameters
-        let variant_type_prameters = variant
-            .type_parameters
-            .as_ref()
-            .map(|type_parameters| type_parameters.names.iter().map(|name| name.value.clone()))
-            .into_iter()
-            .flatten()
-            .collect();
-        let Some(variant_value) = &variant.value else {
-            errors.push(ErrorNode { range: syntax_name_range(with_start_position_as_ref(variant_name)), message: Box::from("missing variant value after this name. Every variant needs to have an associated value. If there's no extra info, simply use &.") });
-            continue 'compiling_variants;
-        };
-        let Some(value_type) = syntax_type_to_type(
-            variant_value,
-            errors,
-            type_aliases,
-            choice_types,
-            types,
-            &std::collections::HashMap::new(),
-        ) else {
-            continue 'compiling_variants;
-        };
-        is_copy = is_copy && type_is_copy(true, type_aliases, choice_types, &value_type);
-        type_variables_and_records_into(
-            &mut actually_used_type_variables,
-            records_used,
-            &value_type,
-        );
-        let rust_variant_value: syn::Type = type_to_rust(&value_type);
-        type_variants.push(CompiledVariantInfo {
-            name: variant_name.value.clone(),
-            type_parameters: variant_type_prameters,
-            value: value_type,
-        });
-        rust_variants.push(syn::Variant {
-            attrs: vec![],
-            ident: syn_ident(&name_to_uppercase_rust(&variant_name.value)),
-            fields: syn::Fields::Unnamed(syn::FieldsUnnamed {
-                paren_token: syn::token::Paren(syn_span()),
-                unnamed: std::iter::once(syn::Field {
-                    attrs: vec![],
-                    vis: syn::Visibility::Inherited,
-                    mutability: syn::FieldMutability::None,
-                    ident: None,
-                    colon_token: None,
-                    ty: rust_variant_value,
-                })
-                .collect(),
-            }),
-            discriminant: None,
-        });
-    }
-    let mut rust_parameters: syn::punctuated::Punctuated<syn::GenericParam, syn::token::Comma> =
-        syn::punctuated::Punctuated::new();
-    if let Err(()) = parameters_to_rust_into_error_if_different_to_actual_type_parameters(
-        errors,
-        &mut rust_parameters,
-        syntax_name_range(with_start_position_as_ref(name)),
-        parameters,
-        actually_used_type_variables,
-    ) {
-        return None;
-    }
-    let rust_enum_name: String = name_to_uppercase_rust(name.value.as_str());
-    rust_items.push(syn::Item::Enum(syn::ItemEnum {
-        attrs: maybe_documentation
-            .map(|comments| syn_attribute_doc(&syntax_comments_to_string(comments)))
-            .into_iter()
-            .chain(std::iter::once(syn_attribute_derive(
-                std::iter::once("Clone").chain(if is_copy { Some("Copy") } else { None }),
-            )))
-            .collect::<Vec<_>>(),
-        vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
-        enum_token: syn::token::Enum(syn_span()),
-        ident: syn_ident(&rust_enum_name),
-        generics: syn::Generics {
-            lt_token: Some(syn::token::Lt(syn_span())),
-            params: rust_parameters,
-            gt_token: Some(syn::token::Gt(syn_span())),
-            where_clause: None,
-        },
-        brace_token: syn::token::Brace(syn_span()),
-        variants: rust_variants,
-    }));
-    Some(CompiledChoiceType {
-        is_copy: is_copy,
-        variants: type_variants,
     })
 }
 
@@ -3135,7 +2834,6 @@ fn project_fn_to_rust<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
     project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -3168,7 +2866,6 @@ fn project_fn_to_rust<'a, Expressions, Patterns, Types>(
         records_used,
         &mut parameter_introduced_bindings,
         type_aliases,
-        choice_types,
         patterns,
         types,
         &std::collections::HashMap::new(),
@@ -3180,7 +2877,6 @@ fn project_fn_to_rust<'a, Expressions, Patterns, Types>(
         errors,
         records_used,
         type_aliases,
-        choice_types,
         project_fns,
         expressions,
         patterns,
@@ -3305,7 +3001,6 @@ pub fn syntax_type_to_type<Types>(
     type_: &SyntaxType<Types>,
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
 ) -> Option<Type> {
@@ -3328,14 +3023,9 @@ pub fn syntax_type_to_type<Types>(
                 });
                 None
             }
-            Some(inner) => syntax_type_to_type(
-                types.element(inner),
-                errors,
-                type_aliases,
-                choice_types,
-                types,
-                origins,
-            ),
+            Some(inner) => {
+                syntax_type_to_type(types.element(inner), errors, type_aliases, types, origins)
+            }
         },
         SyntaxType::Construct { name, arguments } => {
             if origins.contains_key(&name.value) {
@@ -3345,27 +3035,17 @@ pub fn syntax_type_to_type<Types>(
                         message : Box::from("this type refers to an origin but has type arguments. As origin types don't have type parameters, the arguments need to be removed")
                     });
                 }
-                return Some(Type::ChoiceConstruct {
-                    name: name.value.clone(),
-                    arguments: vec![],
-                });
+                return Some(Type::Origin(name.value.clone()));
             }
-            let argument_types = types
-                .opt_span_slice(core::Opt::from_option(arguments.as_ref()))
-                .iter()
-                .map(|argument| {
-                    syntax_type_to_type(
-                        argument,
-                        errors,
-                        type_aliases,
-                        choice_types,
-                        types,
-                        origins,
-                    )
-                })
-                .collect::<Option<Vec<Type>>>()?;
-            let argument_count = core::Opt::from_option(arguments.as_ref()).length() as usize;
             if let Some(origin_type_alias) = type_aliases.get(&name.value) {
+                let argument_types = types
+                    .opt_span_slice(core::Opt::from_option(arguments.as_ref()))
+                    .iter()
+                    .map(|argument| {
+                        syntax_type_to_type(argument, errors, type_aliases, types, origins)
+                    })
+                    .collect::<Option<Vec<Type>>>()?;
+                let argument_count = core::Opt::from_option(arguments.as_ref()).length() as usize;
                 match origin_type_alias.parameters.len().cmp(&argument_count) {
                     std::cmp::Ordering::Equal => {}
                     std::cmp::Ordering::Less => {
@@ -3392,41 +3072,11 @@ pub fn syntax_type_to_type<Types>(
                 }
                 return type_construct_resolve_type_alias(origin_type_alias, &argument_types);
             }
-            let Some(origin_choice_type) = choice_types.get(&name.value) else {
-                errors.push(ErrorNode {
-                    range: syntax_name_range(with_start_position_as_ref(name)),
-                    message: Box::from("no type alias or choice type is declared with this name"),
-                });
-                return None;
-            };
-            match origin_choice_type.parameters.len().cmp(&argument_count) {
-                std::cmp::Ordering::Equal => {}
-                std::cmp::Ordering::Less => {
-                    errors.push(ErrorNode {
-                        range: syntax_name_range(with_start_position_as_ref(name)),
-                        message: format!(
-                            "this choice type has {} less parameters than arguments are provided here.",
-                            argument_count - origin_choice_type.parameters.len(),
-                        ).into_boxed_str()
-                    });
-                    return None;
-                }
-                std::cmp::Ordering::Greater => {
-                    errors.push(ErrorNode {
-                        range: syntax_name_range(with_start_position_as_ref(name)),
-                        message: format!(
-                            "this choice type has {} more parameters than arguments are provided here. The additional parameters are called {}",
-                            origin_choice_type.parameters.len() - argument_count,
-                            origin_choice_type.parameters.iter().map(|parameter| parameter.as_str()).skip(argument_count).collect::<Vec<_>>().join(", ")
-                        ).into_boxed_str()
-                    });
-                    // later arguments will be ignored
-                }
-            }
-            Some(Type::ChoiceConstruct {
-                name: name.value.clone(),
-                arguments: argument_types,
-            })
+            errors.push(ErrorNode {
+                range: syntax_name_range(with_start_position_as_ref(name)),
+                message: Box::from("no type alias or origin exists with this name"),
+            });
+            None
         }
         SyntaxType::Record {
             ampersand_start: _,
@@ -3456,14 +3106,7 @@ pub fn syntax_type_to_type<Types>(
                     });
                     return None;
                 };
-                match syntax_type_to_type(
-                    field_value,
-                    errors,
-                    type_aliases,
-                    choice_types,
-                    types,
-                    origins,
-                ) {
+                match syntax_type_to_type(field_value, errors, type_aliases, types, origins) {
                     None => {
                         any_field_value_has_error = true;
                     }
@@ -3514,7 +3157,8 @@ fn type_replace_variables(
                 *type_ = replacement_type_node.as_ref().clone();
             }
         }
-        Type::ChoiceConstruct { name: _, arguments } => {
+        Type::Origin(_) => {}
+        Type::CoreConstruct { name: _, arguments } => {
             for argument_type in arguments {
                 type_replace_variables(type_parameter_replacements, argument_type);
             }
@@ -3524,13 +3168,42 @@ fn type_replace_variables(
                 type_replace_variables(type_parameter_replacements, &mut field.value);
             }
         }
+        Type::Choice(variants) => {
+            for variant in variants {
+                type_replace_variables(type_parameter_replacements, &mut variant.value);
+            }
+        }
     }
 }
 
 fn type_to_rust(type_: &Type) -> syn::Type {
     match type_ {
         Type::Variable(variable) => syn_type_variable(&type_variable_to_rust(variable)),
-        Type::ChoiceConstruct { name, arguments } => syn::Type::Path(syn::TypePath {
+        Type::Origin(name) => syn::Type::Path(syn::TypePath {
+            qself: None,
+            path: syn::Path {
+                leading_colon: None,
+                segments: std::iter::once(syn::PathSegment {
+                    ident: syn_ident("Origin"),
+                    arguments: syn::PathArguments::AngleBracketed(
+                        syn::AngleBracketedGenericArguments {
+                            colon2_token: None,
+                            lt_token: syn::token::Lt(syn_span()),
+                            args: std::iter::once({
+                                syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {
+                                    qself: None,
+                                    path: syn_path_reference([name]),
+                                }))
+                            })
+                            .collect(),
+                            gt_token: syn::token::Gt(syn_span()),
+                        },
+                    ),
+                })
+                .collect(),
+            },
+        }),
+        Type::CoreConstruct { name, arguments } => syn::Type::Path(syn::TypePath {
             qself: None,
             path: syn::Path {
                 leading_colon: None,
@@ -3582,6 +3255,35 @@ fn type_to_rust(type_: &Type) -> syn::Type {
                 },
             })
         }
+        Type::Choice(variants) => {
+            let mut variants_sorted: Vec<&TypeVariant> = variants.iter().collect();
+            variants_sorted.sort_unstable_by_key(|a| &a.name);
+            syn::Type::Path(syn::TypePath {
+                qself: None,
+                path: syn::Path {
+                    leading_colon: None,
+                    segments: std::iter::once(syn::PathSegment {
+                        ident: syn_ident(&variant_names_to_rust_enum_name(
+                            variants_sorted.iter().map(|variant| &variant.name),
+                        )),
+                        arguments: syn::PathArguments::AngleBracketed(
+                            syn::AngleBracketedGenericArguments {
+                                colon2_token: None,
+                                lt_token: syn::token::Lt(syn_span()),
+                                gt_token: syn::token::Gt(syn_span()),
+                                args: variants_sorted
+                                    .into_iter()
+                                    .map(|field| {
+                                        syn::GenericArgument::Type(type_to_rust(&field.value))
+                                    })
+                                    .collect(),
+                            },
+                        ),
+                    })
+                    .collect(),
+                },
+            })
+        }
     }
 }
 fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, type_: &Type) {
@@ -3589,7 +3291,8 @@ fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, typ
         Type::Variable(name) => {
             type_variables.insert(name.clone());
         }
-        Type::ChoiceConstruct { name: _, arguments } => {
+        Type::Origin(_) => {}
+        Type::CoreConstruct { name: _, arguments } => {
             for argument in arguments {
                 type_variables_into(type_variables, argument);
             }
@@ -3597,6 +3300,11 @@ fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, typ
         Type::Record(fields) => {
             for field in fields {
                 type_variables_into(type_variables, &field.value);
+            }
+        }
+        Type::Choice(variants) => {
+            for variant in variants {
+                type_variables_into(type_variables, &variant.value);
             }
         }
     }
@@ -3610,7 +3318,8 @@ fn type_variables_and_records_into(
         Type::Variable(name) => {
             type_variables.insert(name.clone());
         }
-        Type::ChoiceConstruct { name: _, arguments } => {
+        Type::Origin(_) => {}
+        Type::CoreConstruct { name: _, arguments } => {
             for argument in arguments {
                 type_variables_and_records_into(type_variables, records_used, argument);
             }
@@ -3619,6 +3328,11 @@ fn type_variables_and_records_into(
             records_used.insert(sorted_field_names(fields.iter().map(|field| &field.name)));
             for field in fields {
                 type_variables_and_records_into(type_variables, records_used, &field.value);
+            }
+        }
+        Type::Choice(variants) => {
+            for variant in variants {
+                type_variables_and_records_into(type_variables, records_used, &variant.value);
             }
         }
     }
@@ -4152,7 +3866,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     introduced_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
@@ -4181,14 +3894,9 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     }),
                 },
                 Some(actual_type) => {
-                    let Some(actual_type) = syntax_type_to_type(
-                        actual_type,
-                        errors,
-                        type_aliases,
-                        choice_types,
-                        types,
-                        origins,
-                    ) else {
+                    let Some(actual_type) =
+                        syntax_type_to_type(actual_type, errors, type_aliases, types, origins)
+                    else {
                         return None;
                     };
                     match expected_type {
@@ -4251,114 +3959,23 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
             }
             maybe_compiled_variable
         }
-        SyntaxPattern::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
-            let Some((origin_choice_type_name, origin_choice_type, origin_variant)) =
-                choice_type_containing_variant(choice_types, &name.value)
-            else {
-                errors.push(ErrorNode { range: syntax_name_range(with_start_position_as_ref(name)), message: Box::from("this variant name is not declared in any choice type. Check for typos or declare this variant") });
-                return None;
-            };
-            let syntax_type_arguments = match type_arguments {
-                None => &[],
-                Some(type_arguments) => {
-                    types.opt_span_slice(core::Opt::from_option(type_arguments.types.as_ref()))
-                }
-            };
-            let mut type_arguments = Vec::new();
-            for syntax_type_argument in syntax_type_arguments {
-                let Some(type_argument) = syntax_type_to_type(
-                    syntax_type_argument,
-                    errors,
-                    type_aliases,
-                    choice_types,
-                    types,
-                    origins,
-                ) else {
-                    return None;
-                };
-                type_arguments.push(type_argument);
-            }
-            let rust_variant_path: syn::Path = syn_path_reference([
-                &name_to_uppercase_rust(origin_choice_type_name),
-                &name_to_uppercase_rust(&name.value),
-            ]);
+        SyntaxPattern::Variant { name, value } => {
             match expected_type {
-                Some(expected_type) => {
-                    let Type::ChoiceConstruct {
-                        name: expected_choice_type_construct_name,
-                        arguments: expected_choice_type_construct_arguments,
-                    } = expected_type
-                    else {
-                        // TODO report diff?
-                        return None;
-                    };
-                    if origin_choice_type_name != expected_choice_type_construct_name {
-                        // TODO report diff?
-                        return None;
-                    }
-                    let expected_type_parameter_replacements = origin_choice_type
-                        .parameters
-                        .iter()
-                        .zip(expected_choice_type_construct_arguments)
-                        .map(|(parameter, expected_argument)| {
-                            (
-                                parameter.as_str(),
-                                std::borrow::Cow::Borrowed(expected_argument),
-                            )
-                        })
-                        .collect::<std::collections::HashMap<&str, _>>();
-                    for (variant_argument_index, (variant_type_parameter, type_argument)) in
-                        origin_variant
-                            .type_parameters
-                            .iter()
-                            .zip(&type_arguments)
-                            .enumerate()
-                    {
-                        if let Some(expected_type_argument) = expected_type_parameter_replacements
-                            .get(variant_type_parameter.as_str())
-                            && let Some(variant_type_argument_diff) =
-                                type_diff(expected_type_argument, type_argument)
-                        {
-                            let mut error_message: String = format!(
-                                "the type arguments of this variant do not match those of the expected type. See the argument at index {}\n",
-                                variant_argument_index,
-                            );
-                            type_diff_into(&mut error_message, 0, &variant_type_argument_diff);
-                            error_message.push_str("\nNote that providing type arguments is completely optional here. I would just remove them");
-                            errors.push(ErrorNode {
-                                range: syntax_name_range(with_start_position_as_ref(name)),
-                                message: error_message.into_boxed_str(),
-                            });
-                        }
-                    }
+                None => {
                     let Some(value) = value else {
-                        let mut error_message: String =
-                            String::from("this variant is missing its associated value of type\n");
-                        type_format(&mut error_message, 0, &origin_variant.value);
                         errors.push(ErrorNode {
                             range: syntax_name_range(with_start_position_as_ref(name)),
-                            message: error_message.into_boxed_str(),
+                            message: Box::from("missing variant value after this variant name. Each variants has a value, even if just &")
                         });
                         return None;
                     };
-                    let value = patterns.element(value);
-                    let mut expected_value_type = origin_variant.value.clone();
-                    type_replace_variables(
-                        &expected_type_parameter_replacements,
-                        &mut expected_value_type,
-                    );
                     let Some(compiled_value) = syntax_pattern_to_rust(
-                        value,
-                        Some(&expected_value_type),
+                        patterns.element(value),
+                        None,
                         errors,
                         records_used,
                         introduced_variables,
                         type_aliases,
-                        choice_types,
                         patterns,
                         types,
                         origins,
@@ -4369,70 +3986,59 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         rust: syn::Pat::TupleStruct(syn::PatTupleStruct {
                             attrs: vec![],
                             qself: None,
-                            path: rust_variant_path,
+                            path: syn_path_reference([
+                                &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
+                                    std::iter::once(&name.value),
+                                )),
+                                &name_to_uppercase_rust(&name.value),
+                            ]),
                             paren_token: syn::token::Paren(syn_span()),
                             elems: std::iter::once(compiled_value.rust).collect(),
                         }),
-                        type_: expected_type.clone(),
-                        catch: if origin_choice_type.variants.len() == 1 {
-                            compiled_value.catch
-                        } else {
-                            let mut variants: std::collections::BTreeMap<
-                                Name,
-                                VariantCatch<PatternCatch>,
-                            > = origin_choice_type
-                                .variants
-                                .iter()
-                                .map(|variant_info| {
-                                    (
-                                        variant_info.name.clone(),
-                                        VariantCatch::Uncaught { has_value: true },
-                                    )
-                                })
-                                .collect();
-                            if let Some(variant_catch) = variants.get_mut(&name.value) {
-                                *variant_catch = VariantCatch::Caught(compiled_value.catch);
-                            }
-                            PatternCatch::Variant(variants)
-                        },
+                        type_: Type::Choice(vec![TypeVariant {
+                            name: name.value.clone(),
+                            value: compiled_value.type_,
+                        }]),
+                        catch: compiled_value.catch,
                     })
                 }
-                None => {
-                    if type_arguments.len() != origin_variant.type_parameters.len() {
+                Some(expected_type) => {
+                    // TODO check for value diff
+                    let Type::Choice(origin_choice_type_variants) = &expected_type else {
+                        let mut error_message: String = String::from(
+                            "A variant is of type that is a choice (for example | A u32 B str) but the expected type here is\n",
+                        );
+                        type_format(&mut error_message, 0, &expected_type);
                         errors.push(ErrorNode {
                             range: syntax_name_range(with_start_position_as_ref(name)),
-                            message: format!("incorrect number of type parameters. The project fn has {parameter_count} type parameters, but you only provided {argument_count} as arguments. Type arguments are provided in a space-separated list enclosed in angle brackets after the fn name, like in arena-empty<u32> origin, each type paranthesized if necessary.",
-                                parameter_count = origin_variant.type_parameters.len(),
-                                argument_count = syntax_type_arguments.len()
-                            ).into_boxed_str()
+                            message: error_message.into_boxed_str(),
                         });
                         return None;
-                    }
-                    // can be optimized (probably)
-                    let type_parameter_replacements = origin_variant
-                        .type_parameters
-                        .iter()
-                        .zip(type_arguments)
-                        .map(|(type_parameter, type_argument): (&Name, Type)| {
-                            (
-                                type_parameter.as_str(),
-                                std::borrow::Cow::Owned(type_argument),
-                            )
-                        })
-                        .collect();
-                    let mut variant_type = Type::ChoiceConstruct {
-                        name: origin_choice_type_name.clone(),
-                        arguments: origin_choice_type
-                            .parameters
-                            .iter()
-                            .map(|parameter| Type::Variable(parameter.clone()))
-                            .collect(),
                     };
-                    type_replace_variables(&type_parameter_replacements, &mut variant_type);
+                    let Some(expected_value_type) =
+                        origin_choice_type_variants.iter().find_map(|variant| {
+                            if variant.name == name.value {
+                                Some(&variant.value)
+                            } else {
+                                None
+                            }
+                        })
+                    else {
+                        let mut error_message: String = format!(
+                            "this variant name {} is not included in it's expected type\n",
+                            name.value
+                        );
+                        type_format(&mut error_message, 0, expected_type);
+                        errors.push(ErrorNode {
+                            range: syntax_name_range(with_start_position_as_ref(name)),
+                            message: error_message.into_boxed_str(),
+                        });
+                        return None;
+                    };
                     let Some(value) = value else {
                         let mut error_message: String =
                             String::from("this variant is missing its associated value of type\n");
-                        type_format(&mut error_message, 0, &origin_variant.value);
+                        type_format(&mut error_message, 0, expected_value_type);
                         errors.push(ErrorNode {
                             range: syntax_name_range(with_start_position_as_ref(name)),
                             message: error_message.into_boxed_str(),
@@ -4440,37 +4046,21 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         return None;
                     };
                     let value = patterns.element(value);
-                    let mut variant_value_type = origin_variant.value.clone();
-                    type_replace_variables(&type_parameter_replacements, &mut variant_value_type);
                     let Some(compiled_value) = syntax_pattern_to_rust(
                         value,
-                        None,
+                        Some(expected_value_type),
                         errors,
                         records_used,
                         introduced_variables,
                         type_aliases,
-                        choice_types,
                         patterns,
                         types,
                         origins,
                     ) else {
                         return None;
                     };
-                    let variant_value_type_without_concrete_value_type_variables =
-                        variant_value_type.clone();
-                    let mut value_type_variable_replacements = std::collections::HashMap::new();
-                    type_collect_variables_that_are_concrete_into(
-                        &mut value_type_variable_replacements,
-                        &variant_value_type_without_concrete_value_type_variables,
-                        &compiled_value.type_,
-                    );
-                    type_replace_variables(&value_type_variable_replacements, &mut variant_type);
-                    type_replace_variables(
-                        &value_type_variable_replacements,
-                        &mut variant_value_type,
-                    );
                     if let Some(variant_value_type_diff) =
-                        type_diff(&variant_value_type, &compiled_value.type_)
+                        type_diff(expected_value_type, &compiled_value.type_)
                     {
                         errors.push(ErrorNode {
                             range: pattern_range(value, patterns, types),
@@ -4483,23 +4073,29 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         rust: syn::Pat::TupleStruct(syn::PatTupleStruct {
                             attrs: vec![],
                             qself: None,
-                            path: rust_variant_path,
+                            path: syn_path_reference([
+                                &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
+                                    origin_choice_type_variants
+                                        .iter()
+                                        .map(|variant| &variant.name),
+                                )),
+                                &name_to_uppercase_rust(&name.value),
+                            ]),
                             paren_token: syn::token::Paren(syn_span()),
                             elems: std::iter::once(compiled_value.rust).collect(),
                         }),
-                        type_: variant_type,
-                        catch: if origin_choice_type.variants.len() == 1 {
+                        type_: expected_type.clone(),
+                        catch: if origin_choice_type_variants.len() == 1 {
                             compiled_value.catch
                         } else {
                             let mut variants: std::collections::BTreeMap<
                                 Name,
                                 VariantCatch<PatternCatch>,
-                            > = origin_choice_type
-                                .variants
+                            > = origin_choice_type_variants
                                 .iter()
-                                .map(|variant_info| {
+                                .map(|variant| {
                                     (
-                                        variant_info.name.clone(),
+                                        variant.name.clone(),
                                         VariantCatch::Uncaught { has_value: true },
                                     )
                                 })
@@ -4546,7 +4142,10 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 }
                 let maybe_expected_type_record =
                     expected_type.and_then(|expected_type| match expected_type {
-                        Type::Variable(_) | Type::ChoiceConstruct { .. } => None,
+                        Type::Variable(_)
+                        | Type::Origin(_)
+                        | Type::CoreConstruct { .. }
+                        | Type::Choice { .. } => None,
                         Type::Record(type_fields) => Some(type_fields),
                     });
                 let compiled_field_value = syntax_pattern_to_rust(
@@ -4562,7 +4161,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     records_used,
                     introduced_variables,
                     type_aliases,
-                    choice_types,
                     patterns,
                     types,
                     origins,
@@ -4639,32 +4237,12 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 records_used,
                 introduced_variables,
                 type_aliases,
-                choice_types,
                 patterns,
                 types,
                 origins,
             ),
         },
     }
-}
-// TODO pack into struct
-pub fn choice_type_containing_variant<'a>(
-    choice_types: &'a std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
-    variant_name: &str,
-) -> Option<(
-    &'a Name,
-    &'a CompiledChoiceTypeInfo,
-    &'a CompiledVariantInfo,
-)> {
-    choice_types
-        .iter()
-        .find_map(|(choice_type_name, choice_type)| {
-            choice_type
-                .variants
-                .iter()
-                .find(|variant| variant.name == variant_name)
-                .map(|variant| (choice_type_name, choice_type, variant))
-        })
 }
 
 struct CompiledExpression {
@@ -4684,7 +4262,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
-    choice_types: &std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
     project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -4717,21 +4294,16 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
             }
             Some(syntax_type) => {
-                let Some(type_) = syntax_type_to_type(
-                    syntax_type,
-                    errors,
-                    type_aliases,
-                    choice_types,
-                    types,
-                    origins,
-                ) else {
+                let Some(type_) =
+                    syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
+                else {
                     return CompiledExpression {
                         rust: syn_expr_todo(),
                         type_: None,
                     };
                 };
                 let maybe_compiled = match &type_ {
-                    Type::ChoiceConstruct { name, arguments: _ } => match name.as_str() {
+                    Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
                         "p32" => match name.parse::<std::num::NonZeroU32>() {
                             Ok(number) => {
                                 let rust_number_predecessor = syn::Expr::Lit(syn::ExprLit {
@@ -4962,10 +4534,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
                 CompiledExpression {
                     rust: rust_reference,
-                    type_: Some(Type::ChoiceConstruct {
-                        name: name.value.clone(),
-                        arguments: vec![],
-                    }),
+                    type_: Some(Type::Origin(name.value.clone())),
                 }
             } else if let Some(variable_info) = pattern_variables.get_mut(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
@@ -5012,7 +4581,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             errors,
                             records_used,
                             type_aliases,
-                            choice_types,
                             project_fns,
                             expressions,
                             patterns,
@@ -5029,7 +4597,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 type_: None,
                             };
                         };
-                        let Type::ChoiceConstruct {
+                        let Type::CoreConstruct {
                             name: variable_type_name,
                             arguments: variable_type_arguments,
                         } = variable_type
@@ -5133,7 +4701,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         syntax_type_argument,
                         errors,
                         type_aliases,
-                        choice_types,
                         types,
                         origins,
                     ) else {
@@ -5172,7 +4739,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             errors,
                             records_used,
                             type_aliases,
-                            choice_types,
                             project_fns,
                             expressions,
                             patterns,
@@ -5243,89 +4809,64 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
             }
         }
-        SyntaxExpression::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
-            let Some((origin_choice_type_name, origin_choice_type, origin_variant)) =
-                choice_type_containing_variant(choice_types, &name.value)
-            else {
-                errors.push(ErrorNode { range: syntax_name_range(with_start_position_as_ref(name)), message: Box::from("this variant name is not declared in any choice type. Check for typos or declare this variant") });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
-            };
-            let syntax_type_arguments = match type_arguments {
-                None => &[],
-                Some(type_arguments) => {
-                    types.opt_span_slice(core::Opt::from_option(type_arguments.types.as_ref()))
-                }
-            };
-            if syntax_type_arguments.len() != origin_variant.type_parameters.len() {
+        SyntaxExpression::Variant { name, type_, value } => {
+            let Some(syntax_type) = type_ else {
                 errors.push(ErrorNode {
                     range: syntax_name_range(with_start_position_as_ref(name)),
-                    message: format!("incorrect number of type parameters. The project fn has {parameter_count} type parameters, but you only provided {argument_count} as arguments. Type arguments are provided in a space-separated list enclosed in angle brackets after the fn name, like in arena-empty<u32> origin, each type paranthesized if necessary.",
-                        parameter_count = origin_variant.type_parameters.len(),
-                        argument_count = syntax_type_arguments.len()
-                    ).into_boxed_str()
+                    message: Box::from("missing type after this variant name. An example of a valid variant is Present (opt u32) 123 u32"),
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
                     type_: None,
                 };
-            }
-            let mut type_arguments = Vec::new();
-            for syntax_type_argument in syntax_type_arguments {
-                let Some(type_argument) = syntax_type_to_type(
-                    syntax_type_argument,
-                    errors,
-                    type_aliases,
-                    choice_types,
-                    types,
-                    origins,
-                ) else {
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
-                };
-                type_arguments.push(type_argument);
-            }
-            // can be optimized (probably)
-            let type_parameter_replacements = origin_variant
-                .type_parameters
-                .iter()
-                .zip(type_arguments)
-                .map(|(type_parameter, type_argument): (&Name, Type)| {
-                    (
-                        type_parameter.as_str(),
-                        std::borrow::Cow::Owned(type_argument),
-                    )
-                })
-                .collect();
-            let mut variant_type = Type::ChoiceConstruct {
-                name: origin_choice_type_name.clone(),
-                arguments: origin_choice_type
-                    .parameters
-                    .iter()
-                    .map(|parameter| Type::Variable(parameter.clone()))
-                    .collect(),
             };
-            type_replace_variables(&type_parameter_replacements, &mut variant_type);
-            let rust_variant_expr_path = syn::Expr::Path(syn::ExprPath {
-                attrs: vec![],
-                qself: None,
-                path: syn_path_reference([
-                    &name_to_uppercase_rust(origin_choice_type_name),
-                    &name_to_uppercase_rust(&name.value),
-                ]),
-            });
+            let Some(type_) =
+                syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
+            else {
+                return CompiledExpression {
+                    rust: syn_expr_todo(),
+                    type_: None,
+                };
+            };
+            let Type::Choice(origin_choice_type) = &type_ else {
+                let mut error_message: String = String::from(
+                    "this variant type should be a choice (for example | A u32 B str) but it's\n",
+                );
+                type_format(&mut error_message, 0, &type_);
+                errors.push(ErrorNode {
+                    range: syntax_name_range(with_start_position_as_ref(name)),
+                    message: error_message.into_boxed_str(),
+                });
+                return CompiledExpression {
+                    rust: syn_expr_todo(),
+                    type_: None,
+                };
+            };
+            let Some(expected_value_type) = origin_choice_type.iter().find_map(|variant| {
+                if variant.name == name.value {
+                    Some(&variant.value)
+                } else {
+                    None
+                }
+            }) else {
+                let mut error_message: String = format!(
+                    "the actual variant name {} is not included in this type\n",
+                    name.value
+                );
+                type_format(&mut error_message, 0, &type_);
+                errors.push(ErrorNode {
+                    range: type_range(syntax_type, types),
+                    message: error_message.into_boxed_str(),
+                });
+                return CompiledExpression {
+                    rust: syn_expr_todo(),
+                    type_: None,
+                };
+            };
             let Some(value) = value else {
                 let mut error_message: String =
                     String::from("this variant is missing its associated value of type\n");
-                type_format(&mut error_message, 0, &origin_variant.value);
+                type_format(&mut error_message, 0, expected_value_type);
                 errors.push(ErrorNode {
                     range: syntax_name_range(with_start_position_as_ref(name)),
                     message: error_message.into_boxed_str(),
@@ -5336,8 +4877,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 };
             };
             let value = expressions.element(value);
-            let mut variant_value_type = origin_variant.value.clone();
-            type_replace_variables(&type_parameter_replacements, &mut variant_value_type);
             let CompiledExpression {
                 type_: Some(compiled_value_type),
                 rust: compiled_value_rust,
@@ -5345,7 +4884,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 errors,
                 records_used,
                 type_aliases,
-                choice_types,
                 project_fns,
                 expressions,
                 patterns,
@@ -5362,18 +4900,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
-            let variant_value_type_without_concrete_value_type_variables =
-                variant_value_type.clone();
-            let mut value_type_variable_replacements = std::collections::HashMap::new();
-            type_collect_variables_that_are_concrete_into(
-                &mut value_type_variable_replacements,
-                &variant_value_type_without_concrete_value_type_variables,
-                &compiled_value_type,
-            );
-            type_replace_variables(&value_type_variable_replacements, &mut variant_type);
-            type_replace_variables(&value_type_variable_replacements, &mut variant_value_type);
             if let Some(variant_value_type_diff) =
-                type_diff(&variant_value_type, &compiled_value_type)
+                type_diff(expected_value_type, &compiled_value_type)
             {
                 errors.push(ErrorNode {
                     range: expression_range(value, expressions, patterns, types),
@@ -5387,11 +4915,20 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             CompiledExpression {
                 rust: syn::Expr::Call(syn::ExprCall {
                     attrs: vec![],
-                    func: Box::new(rust_variant_expr_path),
+                    func: Box::new(syn::Expr::Path(syn::ExprPath {
+                        attrs: vec![],
+                        qself: None,
+                        path: syn_path_reference([
+                            &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
+                                origin_choice_type.iter().map(|variant| &variant.name),
+                            )),
+                            &name_to_uppercase_rust(&name.value),
+                        ]),
+                    })),
                     paren_token: syn::token::Paren(syn_span()),
                     args: std::iter::once(compiled_value_rust).collect(),
                 }),
-                type_: Some(variant_type),
+                type_: Some(compiled_value_type),
             }
         }
         SyntaxExpression::Fn {
@@ -5430,7 +4967,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 records_used,
                 &mut parameter_introduced_variables,
                 type_aliases,
-                choice_types,
                 patterns,
                 types,
                 origins,
@@ -5446,7 +4982,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 errors,
                 records_used,
                 type_aliases,
-                choice_types,
                 project_fns,
                 expressions,
                 patterns,
@@ -5556,10 +5091,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         ],
                     },
                 }),
-                type_: Some(Type::ChoiceConstruct {
-                    name: Name::const_new("fn"),
-                    arguments: vec![compiled_parameter.type_, actual_result_type],
-                }),
+                type_: Some(type_fn(compiled_parameter.type_, actual_result_type)),
             }
         }
         SyntaxExpression::Record {
@@ -5589,7 +5121,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             errors,
                             records_used,
                             type_aliases,
-                            choice_types,
                             project_fns,
                             expressions,
                             patterns,
@@ -5665,7 +5196,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 errors,
                 records_used,
                 type_aliases,
-                choice_types,
                 project_fns,
                 expressions,
                 patterns,
@@ -5700,7 +5230,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 errors,
                 records_used,
                 type_aliases,
-                choice_types,
                 project_fns,
                 expressions,
                 patterns,
@@ -5745,7 +5274,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 errors,
                 records_used,
                 type_aliases,
-                choice_types,
                 project_fns,
                 expressions,
                 patterns,
@@ -5783,7 +5311,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 records_used,
                 &mut case0_pattern_introduced_variables,
                 type_aliases,
-                choice_types,
                 patterns,
                 types,
                 origins,
@@ -5807,7 +5334,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 errors,
                 records_used,
                 type_aliases,
-                choice_types,
                 project_fns,
                 expressions,
                 patterns,
@@ -5873,7 +5399,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     records_used,
                     &mut case_pattern_introduced_bindings,
                     type_aliases,
-                    choice_types,
                     patterns,
                     types,
                     origins,
@@ -5897,7 +5422,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     errors,
                     records_used,
                     type_aliases,
-                    choice_types,
                     project_fns,
                     expressions,
                     patterns,
@@ -6093,14 +5617,7 @@ It might be that a case is not indented enough."),
                         )
                         .into_boxed_str(),
                     });
-                } else if choice_types.contains_key(&origin_name.value) {
-                    errors.push(ErrorNode {
-                        range: syntax_name_range(with_start_position_as_ref(origin_name)),
-                        message: Box::from(
-                            "a choice type with this name already exists. Rename this origin",
-                        ),
-                    });
-                } else if core_choice_types.contains_key(&origin_name.value) {
+                } else if core_type_aliases.contains_key(&origin_name.value) {
                     errors.push(ErrorNode {
                         range: syntax_name_range(with_start_position_as_ref(origin_name)),
                         message: Box::from(
@@ -6127,7 +5644,6 @@ It might be that a case is not indented enough."),
                 errors,
                 records_used,
                 type_aliases,
-                choice_types,
                 project_fns,
                 expressions,
                 patterns,
@@ -6236,15 +5752,16 @@ fn push_error_if_introduced_variable_collides_or_is_unused(
 fn type_references_origin(type_: &Type, origin: &Name) -> bool {
     match type_ {
         Type::Variable(_) => false,
+        Type::Origin(name) => name == origin,
         Type::Record(fields) => fields
             .iter()
             .any(|field| type_references_origin(&field.value, origin)),
-        Type::ChoiceConstruct { name, arguments } => {
-            (name == origin)
-                || arguments
-                    .iter()
-                    .any(|argument| type_references_origin(argument, origin))
-        }
+        Type::Choice(variants) => variants
+            .iter()
+            .any(|variant| type_references_origin(&variant.value, origin)),
+        Type::CoreConstruct { name: _, arguments } => arguments
+            .iter()
+            .any(|argument| type_references_origin(argument, origin)),
     }
 }
 
@@ -6295,18 +5812,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
                 syntax_type_variables_into(type_variables, type_, types);
             }
         }
-        SyntaxPattern::Variant {
-            name: _,
-            type_arguments,
-            value,
-        } => {
-            if let Some(type_arguments) = type_arguments {
-                for type_argument in
-                    types.opt_span_slice(core::Opt::from_option(type_arguments.types.as_ref()))
-                {
-                    syntax_type_variables_into(type_variables, type_argument, types);
-                }
-            }
+        SyntaxPattern::Variant { name: _, value } => {
             if let Some(value) = value {
                 syntax_pattern_type_variables_into(
                     type_variables,
@@ -6351,14 +5857,21 @@ enum TypeDiff {
         actual: Type,
     },
     Variable(Name),
-    ChoiceConstruct {
+    Origin(Name),
+    CoreConstruct {
         name: Name,
         arguments: Vec<TypeDiff>,
     },
     Record(Vec<TypeDiffField>),
+    Choice(Vec<TypeDiffVariant>),
 }
 #[derive(Clone, Debug)]
 struct TypeDiffField {
+    name: Name,
+    value: TypeDiff,
+}
+#[derive(Clone, Debug)]
+struct TypeDiffVariant {
     name: Name,
     value: TypeDiff,
 }
@@ -6411,6 +5924,7 @@ fn type_collect_variables_that_are_concrete_into<'a>(
     concrete_type: &'a Type,
 ) {
     match type_with_variables {
+        Type::Origin(_) => {}
         Type::Variable(variable_name) => {
             type_parameter_replacements
                 .entry(variable_name.as_str())
@@ -6424,8 +5938,8 @@ fn type_collect_variables_that_are_concrete_into<'a>(
                 })
                 .or_insert_with(|| std::borrow::Cow::Borrowed(concrete_type));
         }
-        Type::ChoiceConstruct { name, arguments } => {
-            if let Type::ChoiceConstruct {
+        Type::CoreConstruct { name, arguments } => {
+            if let Type::CoreConstruct {
                 name: concrete_choice_type_construct_name,
                 arguments: concrete_choice_type_construct_arguments,
             } = concrete_type
@@ -6459,23 +5973,40 @@ fn type_collect_variables_that_are_concrete_into<'a>(
                 }
             }
         }
+        Type::Choice(variants) => {
+            if let Type::Choice(concrete_variants) = concrete_type {
+                for variant in variants {
+                    if let Some(matching_concrete_variant) = concrete_variants
+                        .iter()
+                        .find(|concrete_variant| concrete_variant.name == variant.name)
+                    {
+                        type_collect_variables_that_are_concrete_into(
+                            type_parameter_replacements,
+                            &variant.value,
+                            &matching_concrete_variant.value,
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 /// consider taking a_type: &mut Type instead
 fn type_unify(a_type: &Type, b_type: &Type) -> Type {
     match a_type {
         Type::Variable(_) => b_type.clone(),
-        Type::ChoiceConstruct {
+        Type::Origin(_) => b_type.clone(),
+        Type::CoreConstruct {
             name: a_name,
             arguments: a_arguments,
         } => {
-            if let Type::ChoiceConstruct {
+            if let Type::CoreConstruct {
                 name: b_name,
                 arguments: b_arguments,
             } = b_type
                 && a_name == b_name
             {
-                Type::ChoiceConstruct {
+                Type::CoreConstruct {
                     name: a_name.clone(),
                     arguments: a_arguments
                         .iter()
@@ -6505,6 +6036,24 @@ fn type_unify(a_type: &Type, b_type: &Type) -> Type {
                 a_type.clone()
             }
         }
+        Type::Choice(a_variants) => {
+            if let Type::Choice(b_variants) = b_type {
+                Type::Choice(
+                    a_variants
+                        .iter()
+                        .map(|a| TypeVariant {
+                            name: a.name.clone(),
+                            value: match b_variants.iter().find(|b| b.name == a.name) {
+                                None => a.value.clone(),
+                                Some(b) => type_unify(&a.value, &b.value),
+                            },
+                        })
+                        .collect(),
+                )
+            } else {
+                a_type.clone()
+            }
+        }
     }
 }
 
@@ -6523,11 +6072,11 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                 })
             }
         }
-        Type::ChoiceConstruct {
+        Type::CoreConstruct {
             name: expected_name,
             arguments: expected_arguments,
         } => {
-            if let Type::ChoiceConstruct {
+            if let Type::CoreConstruct {
                 name: actual_choice_type_construct_name,
                 arguments: actual_choice_type_construct_arguments,
             } = actual_type
@@ -6542,7 +6091,7 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                 {
                     return None;
                 }
-                Some(TypeDiff::ChoiceConstruct {
+                Some(TypeDiff::CoreConstruct {
                     name: expected_name.clone(),
                     arguments: expected_arguments
                         .iter()
@@ -6553,6 +6102,18 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                         })
                         .collect(),
                 })
+            } else {
+                Some(TypeDiff::Conflict {
+                    expected: expected_type.clone(),
+                    actual: actual_type.clone(),
+                })
+            }
+        }
+        Type::Origin(expected_name) => {
+            if let Type::Origin(actual_name) = actual_type
+                && expected_name == actual_name
+            {
+                Some(TypeDiff::Origin(expected_name.clone()))
             } else {
                 Some(TypeDiff::Conflict {
                     expected: expected_type.clone(),
@@ -6608,18 +6169,76 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                 })
             }
         }
+        Type::Choice(expected_variants) => {
+            if let Type::Choice(actual_variants) = actual_type
+                && expected_variants.len() == actual_variants.len()
+                && expected_variants.iter().all(|expected_variant| {
+                    actual_variants
+                        .iter()
+                        .any(|actual_variant| actual_variant.name == expected_variant.name)
+                })
+            {
+                if expected_variants
+                    .iter()
+                    .filter_map(|expected_variant| {
+                        actual_variants
+                            .iter()
+                            .find(|actual_variant| actual_variant.name == expected_variant.name)
+                            .map(|actual_variant| (&expected_variant.value, &actual_variant.value))
+                    })
+                    .all(|(expected_variant_value, actual_variant_value)| {
+                        type_diff(expected_variant_value, actual_variant_value).is_none()
+                    })
+                {
+                    return None;
+                }
+                Some(TypeDiff::Choice(
+                    expected_variants
+                        .iter()
+                        .filter_map(|expected_variant| {
+                            actual_variants
+                                .iter()
+                                .find(|actual_variant| actual_variant.name == expected_variant.name)
+                                .map(|actual_variant| (expected_variant, &actual_variant.value))
+                        })
+                        .map(|(expected_variant, actual_variant_value)| TypeDiffVariant {
+                            name: expected_variant.name.clone(),
+                            value: type_diff(&expected_variant.value, actual_variant_value)
+                                .unwrap_or_else(|| {
+                                    type_to_diff_without_conflict(&expected_variant.value)
+                                }),
+                        })
+                        .collect(),
+                ))
+            } else {
+                Some(TypeDiff::Conflict {
+                    expected: expected_type.clone(),
+                    actual: actual_type.clone(),
+                })
+            }
+        }
     }
 }
 fn type_to_diff_without_conflict(type_: &Type) -> TypeDiff {
     match type_ {
         Type::Variable(name) => TypeDiff::Variable(name.clone()),
-        Type::ChoiceConstruct { name, arguments } => TypeDiff::ChoiceConstruct {
+        Type::Origin(name) => TypeDiff::Origin(name.clone()),
+        Type::CoreConstruct { name, arguments } => TypeDiff::CoreConstruct {
             name: name.clone(),
             arguments: arguments
                 .iter()
                 .map(type_to_diff_without_conflict)
                 .collect(),
         },
+        Type::Choice(variants) => TypeDiff::Choice(
+            variants
+                .iter()
+                .map(|variant| TypeDiffVariant {
+                    name: variant.name.clone(),
+                    value: type_to_diff_without_conflict(&variant.value),
+                })
+                .collect(),
+        ),
         Type::Record(fields) => TypeDiff::Record(
             fields
                 .iter()
@@ -6637,84 +6256,113 @@ fn type_diff_error_message(type_diff: &TypeDiff) -> String {
     type_diff_into(&mut builder, 0, type_diff);
     builder
 }
-fn type_diff_into(so_far: &mut String, indent: usize, type_diff: &TypeDiff) {
+fn type_diff_into(formatted: &mut String, indent: usize, type_diff: &TypeDiff) {
     match type_diff {
         TypeDiff::Conflict { expected, actual } => {
-            so_far.push_str("expected:");
+            formatted.push_str("expected:");
             space_or_linebreak_indented_into(
-                so_far,
-                type_info_line_span(expected),
+                formatted,
+                type_line_span(expected),
                 next_indent(indent),
             );
-            type_format(so_far, next_indent(indent), expected);
-            linebreak_indented_into(so_far, indent);
-            so_far.push_str("actual:");
+            type_format(formatted, next_indent(indent), expected);
+            linebreak_indented_into(formatted, indent);
+            formatted.push_str("actual:");
             space_or_linebreak_indented_into(
-                so_far,
-                type_info_line_span(actual),
+                formatted,
+                type_line_span(actual),
                 next_indent(indent),
             );
-            type_format(so_far, next_indent(indent), actual);
+            type_format(formatted, next_indent(indent), actual);
         }
         TypeDiff::Variable(name) => {
-            so_far.push_str(name);
+            formatted.push_str(name);
         }
-        TypeDiff::ChoiceConstruct { name, arguments } => {
-            so_far.push_str(name);
+        TypeDiff::Origin(name) => {
+            formatted.push_str(name);
+        }
+        TypeDiff::CoreConstruct { name, arguments } => {
+            formatted.push_str(name);
             let line_span: LineSpan = type_diff_line_span(type_diff);
             for argument in arguments {
-                space_or_linebreak_indented_into(so_far, line_span, next_indent(indent));
-                let should_parenthesize_argument: bool = match argument {
-                    TypeDiff::Variable(_) => false,
-                    TypeDiff::Conflict { .. } => true,
-                    TypeDiff::ChoiceConstruct {
-                        name: _,
-                        arguments: argument_arguments,
-                    } => !argument_arguments.is_empty(),
-                    TypeDiff::Record(fields) => !fields.is_empty(),
-                };
-                if should_parenthesize_argument {
-                    so_far.push('(');
-                    type_diff_into(so_far, next_indent(indent) + 1, argument);
-                    if type_diff_line_span(argument) == LineSpan::Multiple {
-                        linebreak_indented_into(so_far, next_indent(indent));
-                    }
-                    so_far.push(')');
-                } else {
-                    type_diff_into(so_far, next_indent(indent), argument);
-                }
+                space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+                type_diff_parenthesized_if_open_ended_into(formatted, next_indent(indent), argument)
             }
         }
-        TypeDiff::Record(fields) => match fields.as_slice() {
-            [] => {
-                so_far.push_str("&");
+        TypeDiff::Record(fields) => {
+            formatted.push('&');
+            let line_span: LineSpan = type_diff_line_span(type_diff);
+            for field in fields {
+                space_or_linebreak_indented_into(formatted, line_span, indent);
+                type_diff_field_format(formatted, indent, field);
             }
-            [field0, field1_up @ ..] => {
-                so_far.push_str("& ");
-                let line_span: LineSpan = type_diff_line_span(type_diff);
-                type_diff_field_into(so_far, indent, field0);
-                for field in field1_up {
-                    if line_span == LineSpan::Multiple {
-                        linebreak_indented_into(so_far, indent);
-                    }
-                    so_far.push(' ');
-                    type_diff_field_into(so_far, indent, field);
-                }
+        }
+        TypeDiff::Choice(variants) => {
+            formatted.push('|');
+            let line_span: LineSpan = type_diff_line_span(type_diff);
+            for variant in variants {
+                space_or_linebreak_indented_into(formatted, line_span, indent);
+                type_diff_variant_format(formatted, indent, variant);
             }
-        },
+        }
     }
 }
-fn type_diff_field_into(so_far: &mut String, indent: usize, type_diff_field: &TypeDiffField) {
-    so_far.push('(');
-    so_far.push_str(&type_diff_field.name);
+fn type_diff_parenthesized_if_open_ended_into(
+    formatted: &mut String,
+    indent: usize,
+    type_diff: &TypeDiff,
+) {
+    let should_parenthesize_argument: bool = match type_diff {
+        TypeDiff::Variable(_) => false,
+        TypeDiff::Origin(_) => false,
+        TypeDiff::Conflict { .. } => true,
+        TypeDiff::CoreConstruct {
+            name: _,
+            arguments: argument_arguments,
+        } => !argument_arguments.is_empty(),
+        TypeDiff::Record(fields) => !fields.is_empty(),
+        TypeDiff::Choice(variants) => !variants.is_empty(),
+    };
+    if should_parenthesize_argument {
+        formatted.push('(');
+        type_diff_into(formatted, indent, type_diff);
+        if type_diff_line_span(type_diff) == LineSpan::Multiple {
+            linebreak_indented_into(formatted, indent);
+        }
+        formatted.push(')');
+    } else {
+        type_diff_into(formatted, indent, type_diff);
+    }
+}
+fn type_diff_field_format(formatted: &mut String, indent: usize, type_diff_field: &TypeDiffField) {
+    formatted.push_str(&type_diff_field.name);
     space_or_linebreak_indented_into(
-        so_far,
+        formatted,
         type_diff_line_span(&type_diff_field.value),
         next_indent(indent),
     );
-    type_diff_into(so_far, next_indent(indent), &type_diff_field.value);
-    // TODO sometimes linebreak
-    so_far.push(')');
+    type_diff_parenthesized_if_open_ended_into(
+        formatted,
+        next_indent(indent),
+        &type_diff_field.value,
+    );
+}
+fn type_diff_variant_format(
+    formatted: &mut String,
+    indent: usize,
+    type_diff_variant: &TypeDiffVariant,
+) {
+    formatted.push_str(&type_diff_variant.name);
+    space_or_linebreak_indented_into(
+        formatted,
+        type_diff_line_span(&type_diff_variant.value),
+        next_indent(indent),
+    );
+    type_diff_parenthesized_if_open_ended_into(
+        formatted,
+        next_indent(indent),
+        &type_diff_variant.value,
+    );
 }
 const type_info_line_length_estimate_maximum: usize = 56;
 fn type_diff_line_span(type_diff: &TypeDiff) -> LineSpan {
@@ -6728,7 +6376,8 @@ fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
     match type_diff {
         TypeDiff::Conflict { .. } => type_info_line_length_estimate_maximum + 1,
         TypeDiff::Variable(variable_name) => variable_name.len(),
-        TypeDiff::ChoiceConstruct { name, arguments } => {
+        TypeDiff::Origin(name) => name.len(),
+        TypeDiff::CoreConstruct { name, arguments } => {
             name.len()
                 + arguments
                     .iter()
@@ -6739,6 +6388,10 @@ fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
             .iter()
             .map(|field| field.name.len() + type_diff_length_estimate(&field.value))
             .sum(),
+        TypeDiff::Choice(variants) => variants
+            .iter()
+            .map(|variant| variant.name.len() + type_diff_length_estimate(&variant.value))
+            .sum(),
     }
 }
 pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
@@ -6746,63 +6399,70 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
         Type::Variable(name) => {
             formatted.push_str(name);
         }
-        Type::ChoiceConstruct { name, arguments } => {
+        Type::Origin(name) => {
             formatted.push_str(name);
-            let line_span: LineSpan = type_info_line_span(type_);
+        }
+        Type::CoreConstruct { name, arguments } => {
+            formatted.push_str(name);
+            let line_span: LineSpan = type_line_span(type_);
             for argument in arguments {
                 space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-                let should_parenthesize_argument: bool = match argument {
-                    Type::Variable(_) => false,
-                    Type::Record(fields) => !fields.is_empty(),
-                    Type::ChoiceConstruct {
-                        name: _,
-                        arguments: argument_arguments,
-                    } => !argument_arguments.is_empty(),
-                };
-                if should_parenthesize_argument {
-                    formatted.push('(');
-                    type_format(formatted, next_indent(indent) + 1, argument);
-                    if type_info_line_span(argument) == LineSpan::Multiple {
-                        linebreak_indented_into(formatted, next_indent(indent));
-                    }
-                    formatted.push(')');
-                } else {
-                    type_format(formatted, next_indent(indent), argument);
-                }
+                type_parenthesized_if_open_ended_format(formatted, next_indent(indent), argument)
             }
         }
-        Type::Record(fields) => match fields.as_slice() {
-            [] => {
-                formatted.push_str("&");
-            }
-            [field0, field1_up @ ..] => {
-                formatted.push_str("&");
-                let line_span: LineSpan = type_info_line_span(type_);
+        Type::Record(fields) => {
+            formatted.push('&');
+            let line_span: LineSpan = type_line_span(type_);
+            for field in fields {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
-                type_field_format(formatted, indent, field0);
-                for field in field1_up {
-                    if line_span == LineSpan::Multiple {
-                        linebreak_indented_into(formatted, indent);
-                    }
-                    formatted.push_str(" ");
-                    type_field_format(formatted, indent, field);
-                }
+                type_field_format(formatted, indent, field);
             }
-        },
+        }
+        Type::Choice(variants) => {
+            formatted.push('|');
+            let line_span: LineSpan = type_line_span(type_);
+            for variant in variants {
+                space_or_linebreak_indented_into(formatted, line_span, indent);
+                type_variant_format(formatted, indent, variant);
+            }
+        }
+    }
+}
+fn type_parenthesized_if_open_ended_format(formatted: &mut String, indent: usize, type_: &Type) {
+    let should_parenthesize_argument: bool = match type_ {
+        Type::Variable(_) => false,
+        Type::Origin(_) => false,
+        Type::Record(fields) => !fields.is_empty(),
+        Type::Choice(variants) => !variants.is_empty(),
+        Type::CoreConstruct {
+            name: _,
+            arguments: arguments,
+        } => !arguments.is_empty(),
+    };
+    if should_parenthesize_argument {
+        formatted.push('(');
+        type_format(formatted, next_indent(indent) + 1, type_);
+        if type_line_span(type_) == LineSpan::Multiple {
+            linebreak_indented_into(formatted, next_indent(indent));
+        }
+        formatted.push(')');
+    } else {
+        type_format(formatted, next_indent(indent), type_);
     }
 }
 fn type_field_format(formatted: &mut String, indent: usize, type_field: &TypeField) {
-    let line_span = type_info_line_span(&type_field.value);
-    formatted.push('(');
     formatted.push_str(&type_field.name);
+    let line_span = type_line_span(&type_field.value);
     space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-    type_format(formatted, next_indent(indent), &type_field.value);
-    if line_span == LineSpan::Multiple {
-        formatted.push('\n');
-    }
-    formatted.push(')');
+    type_parenthesized_if_open_ended_format(formatted, next_indent(indent), &type_field.value);
 }
-fn type_info_line_span(type_: &Type) -> LineSpan {
+fn type_variant_format(formatted: &mut String, indent: usize, type_variant: &TypeVariant) {
+    formatted.push_str(&type_variant.name);
+    let line_span = type_line_span(&type_variant.value);
+    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+    type_parenthesized_if_open_ended_format(formatted, next_indent(indent), &type_variant.value);
+}
+fn type_line_span(type_: &Type) -> LineSpan {
     if type_length_estimate(type_) <= type_info_line_length_estimate_maximum {
         LineSpan::Single
     } else {
@@ -6812,13 +6472,17 @@ fn type_info_line_span(type_: &Type) -> LineSpan {
 fn type_length_estimate(type_: &Type) -> usize {
     match type_ {
         Type::Variable(variable_name) => variable_name.len(),
-
-        Type::ChoiceConstruct { name, arguments } => {
+        Type::Origin(name) => name.len(),
+        Type::CoreConstruct { name, arguments } => {
             name.len() + arguments.iter().map(type_length_estimate).sum::<usize>()
         }
         Type::Record(fields) => fields
             .iter()
             .map(|field| field.name.len() + type_length_estimate(&field.value))
+            .sum(),
+        Type::Choice(variants) => variants
+            .iter()
+            .map(|variant| variant.name.len() + type_length_estimate(&variant.value))
             .sum(),
     }
 }
@@ -6839,24 +6503,9 @@ fn name_to_uppercase_rust(name: &str) -> String {
         first.make_ascii_uppercase();
     }
     if [
-        "Self",
-        "Clone",
-        "Copy",
-        "PartialEq",
-        "Eq",
-        "Debug",
-        "Hash",
-        "PartialOrd",
-        "Ord",
-        "Blank",
-        "Fn",
+        "Self", "Clone", "Copy", "Debug", "Blank", "Never", "Fn",
         // type variables used in core
-        "A",
-        "B",
-        "C",
-        "E",
-        "N",
-        "S",
+        "A", "B", "C", "E", "N", "S",
     ]
     .contains(&sanitized.as_str())
     {
@@ -6972,6 +6621,25 @@ fn field_names_to_rust_record_struct_name<'a>(
         None => "Blank".to_string(),
     }
 }
+fn variant_names_to_rust_enum_name<'a>(field_names: impl Iterator<Item = &'a Name>) -> String {
+    let mut rust_variant_names_vec: Vec<String> = field_names
+        .map(|variant_name| name_to_uppercase_rust(variant_name))
+        .collect::<Vec<_>>();
+    rust_variant_names_vec.sort_unstable();
+    // same separator as field_names_to_rust_record_struct_name
+    // but an additional separator appended to single-variant which could otherwise collide with single-field
+    let mut variant_names_joined: String = rust_variant_names_vec.join("·");
+    match variant_names_joined.get_mut(0..=0) {
+        Some(first) => {
+            first.make_ascii_uppercase();
+            if rust_variant_names_vec.len() == 1 {
+                variant_names_joined.push_str("··");
+            }
+            variant_names_joined
+        }
+        None => "Never".to_string(),
+    }
+}
 fn syn_span() -> proc_macro2::Span {
     proc_macro2::Span::call_site()
 }
@@ -7079,7 +6747,7 @@ fn type_variable(name: &'static str) -> Type {
     Type::Variable(Name::const_new(name))
 }
 fn type_fn(in_: Type, out: Type) -> Type {
-    Type::ChoiceConstruct {
+    Type::CoreConstruct {
         name: Name::const_new("fn"),
         arguments: vec![in_, out],
     }
@@ -7095,71 +6763,95 @@ fn type_record(fields: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
             .collect(),
     )
 }
-const type_p32: Type = Type::ChoiceConstruct {
+const type_p32: Type = Type::CoreConstruct {
     name: Name::const_new("p32"),
     arguments: vec![],
 };
-const type_u32: Type = Type::ChoiceConstruct {
+const type_u32: Type = Type::CoreConstruct {
     name: Name::const_new("u32"),
     arguments: vec![],
 };
-const type_i32: Type = Type::ChoiceConstruct {
+const type_i32: Type = Type::CoreConstruct {
     name: Name::const_new("i32"),
     arguments: vec![],
 };
-const type_f32: Type = Type::ChoiceConstruct {
+const type_f32: Type = Type::CoreConstruct {
     name: Name::const_new("f32"),
     arguments: vec![],
 };
-const type_char: Type = Type::ChoiceConstruct {
+const type_char: Type = Type::CoreConstruct {
     name: Name::const_new("char"),
     arguments: vec![],
 };
-const type_str: Type = Type::ChoiceConstruct {
+const type_str: Type = Type::CoreConstruct {
     name: Name::const_new("str"),
     arguments: vec![],
 };
+fn type_origin(origin: Type) -> Type {
+    Type::CoreConstruct {
+        name: Name::const_new("origin"),
+        arguments: vec![origin],
+    }
+}
 fn type_vec(origin: Type, element: Type) -> Type {
-    Type::ChoiceConstruct {
+    Type::CoreConstruct {
         name: Name::const_new("vec"),
         arguments: vec![origin, element],
     }
 }
 fn type_arena(origin: Type, element: Type) -> Type {
-    Type::ChoiceConstruct {
+    Type::CoreConstruct {
         name: Name::const_new("arena"),
         arguments: vec![origin, element],
     }
 }
 fn type_slot(origin: Type) -> Type {
-    Type::ChoiceConstruct {
+    Type::CoreConstruct {
         name: Name::const_new("slot"),
         arguments: vec![origin],
     }
 }
 fn type_span(origin: Type) -> Type {
-    Type::ChoiceConstruct {
+    Type::CoreConstruct {
         name: Name::const_new("span"),
         arguments: vec![origin],
     }
 }
 fn type_opt_span_build(backing: Type) -> Type {
-    Type::ChoiceConstruct {
+    Type::CoreConstruct {
         name: Name::const_new("opt-span-build"),
         arguments: vec![backing],
     }
 }
 fn type_span_build(backing: Type) -> Type {
-    Type::ChoiceConstruct {
+    Type::CoreConstruct {
         name: Name::const_new("span-build"),
         arguments: vec![backing],
     }
 }
 fn type_opt(present: Type) -> Type {
-    Type::ChoiceConstruct {
-        name: Name::const_new("opt"),
-        arguments: vec![present],
-    }
+    Type::Choice(vec![
+        TypeVariant {
+            name: Name::const_new("Absent"),
+            value: type_record([]),
+        },
+        TypeVariant {
+            name: Name::const_new("Present"),
+            value: present,
+        },
+    ])
+}
+fn type_exit_or_go_on(exit: Type, go_on: Type) -> Type {
+    Type::Choice(vec![
+        TypeVariant {
+            name: Name::const_new("Exit"),
+            value: exit,
+        },
+        TypeVariant {
+            name: Name::const_new("Go-on"),
+            value: go_on,
+        },
+    ])
 }
 pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, CompiledProjectFnInfo>> =
     std::sync::LazyLock::new(|| {
@@ -7207,7 +6899,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                         "Initialize an `arena` with 0 elements. Modify with `arena-pre-allocate-at-least`, `arena-add` etc.",
                     )),
                     type_parameters: vec![Name::const_new("Element")],
-                    parameter_type: Some(type_variable("Origin")),
+                    parameter_type: Some(type_origin(type_variable("Origin"))),
                     result_type: Some(type_arena(
                         type_variable("Origin"),
                         type_variable("Element"),
@@ -7367,7 +7059,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                         "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc.",
                     )),
                     type_parameters: vec![Name::const_new("Element")],
-                    parameter_type: Some(type_variable("Origin")),
+                    parameter_type: Some(type_origin(type_variable("Origin"))),
                     result_type: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
                 },
             ),
@@ -7493,82 +7185,82 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
             ),
         ])
     });
-pub static core_choice_types: std::sync::LazyLock<
-    std::collections::HashMap<Name, CompiledChoiceTypeInfo>,
+pub static core_type_aliases: std::sync::LazyLock<
+    std::collections::HashMap<Name, CompiledTypeAliasInfo>,
 > = std::sync::LazyLock::new(|| {
     std::collections::HashMap::from([
         (
             Name::const_new("p32"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A natural number >= 1 (positive integer) with 32 bits.
 ```sloe
 fn answer & p32
-    p32-add (2 p32) (40 u32)
+    p32-add a 2 p32 b 40 u32
 ```
 ",
                 )),
                 parameters: vec![],
-                variants: vec![],
+                type_: Some(type_p32),
                 is_copy: true,
             },
         ),
         (
             Name::const_new("u32"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A natural number >= 0 (unsigned integer) with 32 bits.
 ```sloe
 fn answer & u32
-    u32-add (2 u32) (40 u32)
+    u32-add a 2 u32 b 40 u32
 ```
 ",
                 )),
                 parameters: vec![],
-                variants: vec![],
+                type_: Some(type_u32),
                 is_copy: true,
             },
         ),
         (
             Name::const_new("i32"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A signed whole number (integer) with 32 bits.
 ```sloe
 fn answer & i32
-    i32-add (-8 i32) (50 i32)
+    i32-add a -8 i32 b 50 i32
 ```
 ",
                 )),
                 parameters: vec![],
-                variants: vec![],
+                type_: Some(type_i32),
                 is_copy: true,
             },
         ),
         (
             Name::const_new("f32"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A signed decimal number (floating-point) with 32 bit precision.
 Does not allow infinities or NaN. If you need these error states, explicitly model them with a choice type.
 ```sloe
 fn answer & i32
-    i32-add (-8.5 f32) (50.5 f32)
+    i32-add a -8.5 f32 b 50.5 f32
 ```
 ",
                 )),
                 parameters: vec![],
-                variants: vec![],
+                type_: Some(type_f32),
                 is_copy: true,
             },
         ),
         (
             Name::const_new("char"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r#"A unicode scalar like `'a'` or `'👀'` or `\u{2665}` (hex code for ♥).
@@ -7582,13 +7274,13 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
 "#,
                 )),
                 parameters: vec![],
-                variants: vec![],
+                type_: Some(type_char),
                 is_copy: true,
             },
         ),
         (
             Name::const_new("str"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r#"Text valid for the entire program like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""` (`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
@@ -7597,113 +7289,108 @@ When building strings, use functions like `arena-add-str`.
 "#,
                 )),
                 parameters: vec![],
-                variants: vec![],
+                type_: Some(type_str),
                 is_copy: false,
             },
         ),
         (
             Name::const_new("opt"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"Either you have some value or you have nothing.",
                 )),
                 parameters: vec![Name::const_new("A")],
-                variants: vec![
-                    CompiledVariantInfo {
-                        name: Name::const_new("Absent"),
-                        type_parameters: vec![Name::const_new("A")],
-                        value: type_record([]),
-                    },
-                    CompiledVariantInfo {
-                        name: Name::const_new("Present"),
-                        type_parameters: vec![],
-                        value: type_variable("A"),
-                    },
-                ],
+                type_: Some(type_opt(type_variable("A"))),
                 is_copy: true,
             },
         ),
         (
             Name::const_new("exit-or-go-on"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"Either done with a final result or continuing with a partial result.
 Typically used for operations that can shortcut, see for example `span-fold-while-from`.
 ```sloe
-fn loop-from (& (state state State) (step step fn State go-on-or-exit State Exit))
+fn loop-from
+    (& state state State step step (fn State (| Go-on State Exit Exit)))
+    (| Go-on State Exit Exit)
     :(step state)
-    ((Exit exit) exit)
-    ((Go-on updated-state)
-        loop-from updated-state step
-    )
+    (Exit exit) exit
+    (Go-on updated-state) (loop-from updated-state step)
 ```
 ",
                 )),
                 parameters: vec![Name::const_new("Exit"), Name::const_new("Go-on")],
-                variants: vec![
-                    CompiledVariantInfo {
-                        name: Name::const_new("Exit"),
-                        type_parameters: vec![Name::const_new("Go-on")],
-                        value: type_variable("Exit"),
-                    },
-                    CompiledVariantInfo {
-                        name: Name::const_new("Go-on"),
-                        type_parameters: vec![Name::const_new("Exit")],
-                        value: type_variable("Go-on"),
-                    },
-                ],
+                type_: Some(type_exit_or_go_on(type_variable("Exit"), type_variable("Go-on"))),
                 is_copy: true,
             },
         ),
         (
-            Name::const_new("vec"),
-            CompiledChoiceTypeInfo {
+            Name::const_new("origin"),
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A grow- and shrinkable array of elements. Arrays have constant time access and mutation and amortized constant time push.
+                    "Each variable created with `origin some-origin expression` is of this type.
+Origins can not be arbitrary values because values like `u32` could be duplicated leading to different collections with the same origin type.
+This is not possible for values of type `origin`.
+The type argument to an `origin` is the type that also gets created with `origin some-origin expression`.
+This type argument is also used in slot, span, arena, vec as the first type argument.
+"
+                )),
+                parameters: vec![Name::const_new("LocalType")],
+                type_: Some(type_origin(type_variable("LocalType"))),
+                is_copy: false,
+            },
+        ),
+        (
+            Name::const_new("vec"),
+            CompiledTypeAliasInfo {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "A grow- and shrinkable array of elements. Arrays have constant time access and update and constant time add.
 ```sloe
 fn use-a-vec & u32
     origin my-elements-origin
-    :(vec-empty<u32> my-elements-origin) my-elements-vec
-    :(vec-add & (vec my-elements-vec) (element 609 u32)) (& (vec my-elements-vec) (slot first-element-slot))
-    :(vec-vacate & (vec _) (slot first-element-slot))
-    first-element-slot # 609 u32
+    :(vec-empty<u32> my-elements-origin) my-elements <
+    :(vec-add & vec my-elements element 609 u32) (& vec my-elements slot first-element-slot) <
+    :(vec-element & vec my-elements slot first-element-slot) (& vec _ element first-element) <
+    first-element # = 609 u32
 ```
-For temporary, non-shrinkable arrays, use `arena`
+For temporary, non-shrinkable arrays use `arena`
 "
                 )),
                 parameters: vec![Name::const_new("Origin"), Name::const_new("Element")],
-                variants: vec![],
+                type_: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
                 is_copy: false,
             },
         ),
         (
             Name::const_new("arena"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A grow- and shrinkable array of elements. Arrays have constant time access and mutation and amortized constant time push.
+                    "A growable array of elements. Arrays have constant time access and update and constant time add.
 ```sloe
 fn use-an-arena & u32
     origin my-elements-origin
-    :(arena-empty<u32> my-elements-origin) my-elements-arena
-    :(arena-add & (arena my-elements-arena) (element 609 u32)) (& (arena my-elements-arena) (slot first-element-slot))
-    :(arena-element & (arena _) (slot first-element-slot))
-    first-element-slot # 609 u32
+    :(arena-empty<u32> my-elements-origin) my-elements <
+    :(arena-add & arena my-elements element 609 u32) (& arena my-elements-arena slot first-element-slot) <
+    :(arena-element & arena my-elements slot first-element-slot) (& arena _ element first-element) <
+    first-element # = 609 u32
 ```
-For temporary, non-shrinkable arrays, use `arena`
+For persistent, shrinkable arrays use `vec`
 "
                 )),
                 parameters: vec![Name::const_new("Origin"), Name::const_new("Element")],
-                variants: vec![],
+                type_: Some(type_arena(type_variable("Origin"), type_variable("Element"))),
                 is_copy: false,
             },
         ),
         (
             Name::const_new("slot"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A valid index into a collection.
@@ -7711,13 +7398,13 @@ This works because each collection has a unique origin and only gives out one sl
 "
                 )),
                 parameters: vec![Name::const_new("Origin")],
-                variants: vec![],
+                type_: Some(type_slot(type_variable("Origin"))),
                 is_copy: false,
             },
         ),
         (
-            Name::const_new("span-filled"),
-            CompiledChoiceTypeInfo {
+            Name::const_new("span"),
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A range of consecutive valid indexes into a collection with at least one known index.
@@ -7725,13 +7412,27 @@ This works because each collection has a unique origin and only gives out one sp
 "
                 )),
                 parameters: vec![Name::const_new("Origin")],
-                variants: vec![],
+                type_: Some(type_span(type_variable("Origin"))),
+                is_copy: false,
+            },
+        ),
+        (
+            Name::const_new("opt-span-build"),
+            CompiledTypeAliasInfo {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "An `opt span` at the end of a backing collecion, plus that collection.
+This makes it easy to add elements to the end, as we know there's enough space to occupy.
+"
+                )),
+                parameters: vec![Name::const_new("Backing")],
+                type_: Some(type_opt_span_build(type_variable("Backing"))),
                 is_copy: false,
             },
         ),
         (
             Name::const_new("span-build"),
-            CompiledChoiceTypeInfo {
+            CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A `span` at the end of a backing collecion, plus that collection.
@@ -7739,21 +7440,7 @@ This makes it easy to add elements to the end, as we know there's enough space t
 "
                 )),
                 parameters: vec![Name::const_new("Backing")],
-                variants: vec![],
-                is_copy: false,
-            },
-        ),
-        (
-            Name::const_new("span-filled-build"),
-            CompiledChoiceTypeInfo {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "A `span-filled` at the end of a backing collecion, plus that collection.
-This makes it easy to add elements to the end, as we know there's enough space to occupy.
-"
-                )),
-                parameters: vec![Name::const_new("Backing")],
-                variants: vec![],
+                type_: Some(type_span_build(type_variable("Backing"))),
                 is_copy: false,
             },
         ),
@@ -7777,7 +7464,13 @@ pub static core_records: std::sync::LazyLock<std::collections::HashSet<&'static 
                         type_records(&field.value, records);
                     }
                 }
-                Type::ChoiceConstruct { name: _, arguments } => {
+                Type::Origin(_) => {}
+                Type::Choice(variants) => {
+                    for variant in variants {
+                        type_records(&variant.value, records);
+                    }
+                }
+                Type::CoreConstruct { name: _, arguments } => {
                     for argument in arguments {
                         type_records(argument, records);
                     }
@@ -7794,6 +7487,48 @@ pub static core_records: std::sync::LazyLock<std::collections::HashSet<&'static 
             }
         }
         records
+    });
+pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static [Name]>> =
+    std::sync::LazyLock::new(|| {
+        fn type_choices(type_: &Type, records: &mut std::collections::HashSet<&'static [Name]>) {
+            match type_ {
+                Type::Variable(_) => {}
+                Type::Record(fields) => {
+                    for field in fields {
+                        type_choices(&field.value, records);
+                    }
+                }
+                Type::Origin(_) => {}
+                Type::Choice(variants) => {
+                    records.insert(
+                        variants
+                            .iter()
+                            .map(|field| field.name.clone())
+                            .collect::<Vec<Name>>()
+                            // static variables will only be created once and won't be dropped anyway
+                            .leak(),
+                    );
+                    for variant in variants {
+                        type_choices(&variant.value, records);
+                    }
+                }
+                Type::CoreConstruct { name: _, arguments } => {
+                    for argument in arguments {
+                        type_choices(argument, records);
+                    }
+                }
+            }
+        }
+        let mut variants = std::collections::HashSet::new();
+        for core_fn_info in core_fns.values() {
+            if let Some(parameter_type) = &core_fn_info.parameter_type {
+                type_choices(parameter_type, &mut variants);
+            }
+            if let Some(result_type) = &core_fn_info.result_type {
+                type_choices(result_type, &mut variants);
+            }
+        }
+        variants
     });
 
 pub struct ErrorNode {
@@ -7894,30 +7629,6 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                         types,
                         type_,
                     );
-                }
-            }
-            SyntaxProjectElement::ChoiceType {
-                choice_keyword_start: _,
-                name,
-                parameters,
-                documentation,
-                variants,
-            } => {
-                formatted.push_str("choice ");
-                if let Some(name) = name {
-                    formatted.push_str(&name.value);
-                }
-                for parameter in parameters {
-                    formatted.push(' ');
-                    formatted.push_str(&parameter.value);
-                }
-                if let Some(documentation) = documentation {
-                    linebreak_indented_into(&mut formatted, next_indent(0));
-                    syntax_comments_format(&mut formatted, next_indent(0), documentation);
-                }
-                for variant in variants {
-                    linebreak_indented_into(&mut formatted, next_indent(0));
-                    syntax_variant_format(&mut formatted, next_indent(0), types, &variant);
                 }
             }
             SyntaxProjectElement::Fn {
@@ -8152,7 +7863,7 @@ fn syntax_expression_is_open_ended<Expressions, Patterns, Types>(
         } => type_arguments.is_some() || argument.is_some(),
         SyntaxExpression::Variant {
             name: _,
-            type_arguments: _,
+            type_: _,
             value,
         } => value.as_ref().is_some_and(|value| {
             syntax_expression_is_open_ended(expressions.element(value), expressions, types)
@@ -8256,16 +7967,11 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 );
             }
         }
-        SyntaxExpression::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        SyntaxExpression::Variant { name, type_, value } => {
             formatted.push_str(&name.value);
-            if let Some(type_arguments) = type_arguments {
-                let type_arguments_line_span =
-                    range_line_span(angled_type_arguments_range(type_arguments, types));
-                syntax_angled_type_arguments_format(formatted, indent, types, type_arguments);
+            if let Some(type_) = type_ {
+                let type_arguments_line_span = range_line_span(type_range(type_, types));
+                syntax_type_parenthesized_if_open_ended_format(formatted, indent, types, type_);
                 space_or_linebreak_indented_into(formatted, type_arguments_line_span, indent);
             } else {
                 formatted.push(' ');
@@ -8497,11 +8203,7 @@ fn syntax_pattern_is_open_ended<Patterns, Types>(
 ) -> bool {
     match pattern {
         SyntaxPattern::Variable { name: _, type_ } => type_.is_some(),
-        SyntaxPattern::Variant {
-            name: _,
-            type_arguments: _,
-            value,
-        } => value.is_some(),
+        SyntaxPattern::Variant { name: _, value } => value.is_some(),
         SyntaxPattern::Record {
             ampersand_start: _,
             fields,
@@ -8530,15 +8232,8 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                 syntax_type_unparenthesized_format(formatted, indent, types, type_);
             }
         }
-        SyntaxPattern::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        SyntaxPattern::Variant { name, value } => {
             formatted.push_str(&name.value);
-            if let Some(angled_type_arguments) = type_arguments {
-                syntax_angled_type_arguments_format(formatted, indent, types, angled_type_arguments)
-            }
             if let Some(value) = value {
                 formatted.push(' ');
                 syntax_pattern_unparenthesized_format(
@@ -8825,46 +8520,6 @@ pub fn syntax_project_symbol_at_position<'a, Expressions, Patterns, Types>(
                     })
                 })
         }
-        SyntaxProjectElement::ChoiceType {
-            choice_keyword_start: _,
-            name,
-            parameters,
-            documentation: _,
-            variants,
-        } => {
-            if let Some(name) = name
-                && range_includes_position(
-                    syntax_name_range(with_start_position_as_ref(name)),
-                    position,
-                )
-            {
-                return Some(SyntaxSymbol::ProjectTypeOrUnknown {
-                    name: with_start_position_as_ref(name),
-                    origins: std::collections::HashMap::new(),
-                });
-            }
-            parameters
-                .iter()
-                .find_map(|name| {
-                    if range_includes_position(
-                        syntax_name_range(with_start_position_as_ref(name)),
-                        position,
-                    ) {
-                        Some(SyntaxSymbol::TypeVariable {
-                            name: &name.value,
-                            use_start: name.start,
-                            scope: element,
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .or_else(|| {
-                    variants.iter().find_map(|variant| {
-                        syntax_variant_symbol_at_position(variant, position, types, element)
-                    })
-                })
-        }
         SyntaxProjectElement::Fn {
             fn_keyword_start: _,
             name,
@@ -9066,11 +8721,7 @@ fn syntax_expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     })
                 })
         }
-        SyntaxExpression::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        SyntaxExpression::Variant { name, type_, value } => {
             if range_includes_position(
                 syntax_name_range(with_start_position_as_ref(name)),
                 position,
@@ -9079,16 +8730,10 @@ fn syntax_expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     name,
                 )));
             }
-            type_arguments
+            type_
                 .as_ref()
-                .and_then(|type_arguments| {
-                    syntax_angled_type_arguments_symbol_at_position(
-                        type_arguments,
-                        position,
-                        types,
-                        scope,
-                        origins,
-                    )
+                .and_then(|type_| {
+                    syntax_type_symbol_at_position(type_, position, types, scope, origins)
                 })
                 .or_else(|| {
                     value.as_ref().and_then(|value| {
@@ -9338,11 +8983,7 @@ fn syntax_pattern_variables_fold<'a, Patterns, Types, State>(
         SyntaxPattern::Variable { name, type_ } => {
             reduce(state, with_start_position_as_ref(name), type_.as_ref())
         }
-        SyntaxPattern::Variant {
-            name: _,
-            type_arguments: _,
-            value,
-        } => match value {
+        SyntaxPattern::Variant { name: _, value } => match value {
             None => state,
             Some(value) => {
                 syntax_pattern_variables_fold(patterns.element(value), state, reduce, patterns)
@@ -9410,11 +9051,7 @@ fn syntax_pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                 )
             })
         }
-        SyntaxPattern::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        SyntaxPattern::Variant { name, value } => {
             if range_includes_position(
                 syntax_name_range(with_start_position_as_ref(name)),
                 position,
@@ -9423,30 +9060,17 @@ fn syntax_pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                     name,
                 )));
             }
-            type_arguments
-                .as_ref()
-                .and_then(|type_arguments| {
-                    syntax_angled_type_arguments_symbol_at_position(
-                        type_arguments,
-                        position,
-                        types,
-                        project_element_scope,
-                        origins,
-                    )
-                })
-                .or_else(|| {
-                    value.as_ref().and_then(|value| {
-                        syntax_pattern_symbol_at_position(
-                            patterns.element(value),
-                            position,
-                            patterns,
-                            types,
-                            project_element_scope,
-                            expression_scope,
-                            origins,
-                        )
-                    })
-                })
+            value.as_ref().and_then(|value| {
+                syntax_pattern_symbol_at_position(
+                    patterns.element(value),
+                    position,
+                    patterns,
+                    types,
+                    project_element_scope,
+                    expression_scope,
+                    origins,
+                )
+            })
         }
         SyntaxPattern::Record {
             ampersand_start: _,
@@ -9624,23 +9248,6 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                     None
                 }
             }
-            SyntaxProjectElement::ChoiceType {
-                choice_keyword_start: _,
-                name: choice_type_name,
-                parameters: _,
-                documentation: _,
-                variants: _,
-            } => {
-                if let Some(choice_type_name) = choice_type_name
-                    && choice_type_name.value == symbol_name.value
-                {
-                    Some(syntax_name_range(with_start_position_as_ref(
-                        choice_type_name,
-                    )))
-                } else {
-                    None
-                }
-            }
             SyntaxProjectElement::Fn { .. } => None,
             SyntaxProjectElement::Comments(_) => None,
             SyntaxProjectElement::Unrecognized { .. } => None,
@@ -9671,19 +9278,6 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                     None
                 }
             }),
-            SyntaxProjectElement::ChoiceType {
-                choice_keyword_start: _,
-                name: _,
-                parameters,
-                documentation: _,
-                variants: _,
-            } => parameters.iter().find_map(|parameter| {
-                if &parameter.value == symbol_name {
-                    Some(syntax_name_range(with_start_position_as_ref(parameter)))
-                } else {
-                    None
-                }
-            }),
             SyntaxProjectElement::Fn {
                 fn_keyword_start: _,
                 name: _,
@@ -9706,26 +9300,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
             SyntaxProjectElement::Comments(_) => None,
             SyntaxProjectElement::Unrecognized { .. } => None,
         },
-        SyntaxSymbol::VariantOrUnknown(symbol_name) => {
-            project.elements.iter().find_map(|element| match element {
-                SyntaxProjectElement::ChoiceType {
-                    choice_keyword_start: _,
-                    name: _,
-                    parameters: _,
-                    documentation: _,
-                    variants,
-                } => variants.iter().find_map(|variant| {
-                    if let Some(variant_name) = &variant.name
-                        && variant_name.value == symbol_name.value
-                    {
-                        Some(syntax_name_range(with_start_position_as_ref(variant_name)))
-                    } else {
-                        None
-                    }
-                }),
-                _ => None,
-            })
-        }
+        SyntaxSymbol::VariantOrUnknown(_) => None,
         SyntaxSymbol::ProjectFnOrUnknown {
             name: symbol_name,
             pattern_variables: _,
@@ -9800,35 +9375,6 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                         types,
                         &std::collections::HashSet::new(),
                     );
-                }
-            }
-            SyntaxProjectElement::ChoiceType {
-                choice_keyword_start: _,
-                name: _,
-                parameters: _,
-                documentation: _,
-                variants,
-            } => {
-                for variant in variants.iter() {
-                    if let Some(type_parameters) = &variant.type_parameters
-                        && let Some(type_parameter_use) = type_parameters
-                            .names
-                            .iter()
-                            .find(|name| name.value == symbol_name)
-                    {
-                        uses.push(syntax_name_range(with_start_position_as_ref(
-                            type_parameter_use,
-                        )));
-                    }
-                    if let Some(value) = &variant.value {
-                        syntax_type_symbol_uses_into(
-                            &mut uses,
-                            value,
-                            symbol,
-                            types,
-                            &std::collections::HashSet::new(),
-                        );
-                    }
                 }
             }
             SyntaxProjectElement::Fn {
@@ -9954,25 +9500,6 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                             );
                         }
                     }
-                    SyntaxProjectElement::ChoiceType {
-                        choice_keyword_start: _,
-                        name: _,
-                        parameters: _,
-                        documentation: _,
-                        variants,
-                    } => {
-                        for variant_value in
-                            variants.iter().filter_map(|variant| variant.value.as_ref())
-                        {
-                            syntax_type_symbol_uses_into(
-                                &mut uses,
-                                variant_value,
-                                symbol,
-                                types,
-                                &std::collections::HashSet::new(),
-                            );
-                        }
-                    }
                     SyntaxProjectElement::Comments(_) => {}
                     SyntaxProjectElement::Unrecognized { .. } => {}
                 }
@@ -10036,7 +9563,6 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                         }
                     }
                     SyntaxProjectElement::TypeAlias { .. } => {}
-                    SyntaxProjectElement::ChoiceType { .. } => {}
                     SyntaxProjectElement::Comments(_) => {}
                     SyntaxProjectElement::Unrecognized { .. } => {}
                 }
@@ -10109,20 +9635,11 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
                 syntax_type_symbol_uses_into(uses, type_, symbol, types, origins);
             }
         }
-        SyntaxPattern::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        SyntaxPattern::Variant { name, value } => {
             if let SyntaxSymbol::VariantOrUnknown(symbol_name) = symbol
                 && name.value == symbol_name.value
             {
                 uses.push(syntax_name_range(with_start_position_as_ref(name)));
-            }
-            for type_argument in type_arguments.iter().flat_map(|angled| {
-                types.opt_span_slice(core::Opt::from_option(angled.types.as_ref()))
-            }) {
-                syntax_type_symbol_uses_into(uses, type_argument, symbol, types, origins);
             }
             if let Some(value) = value {
                 syntax_pattern_symbol_uses_into(
@@ -10240,20 +9757,14 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 );
             }
         }
-        SyntaxExpression::Variant {
-            name,
-            type_arguments,
-            value,
-        } => {
+        SyntaxExpression::Variant { name, type_, value } => {
             if let SyntaxSymbol::VariantOrUnknown(symbol_name) = symbol
                 && name.value == symbol_name.value
             {
                 uses.push(syntax_name_range(with_start_position_as_ref(name)));
             }
-            for type_argument in type_arguments.iter().flat_map(|angled| {
-                types.opt_span_slice(core::Opt::from_option(angled.types.as_ref()))
-            }) {
-                syntax_type_symbol_uses_into(uses, type_argument, symbol, types, origins);
+            if let Some(type_) = type_ {
+                syntax_type_symbol_uses_into(uses, type_, symbol, types, origins);
             }
             if let Some(value) = value {
                 syntax_expression_symbol_uses_into(
