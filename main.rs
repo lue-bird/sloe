@@ -225,7 +225,9 @@ fn present_project_fn_with_complete_type_markdown(
     }
     format!(
         "```sloe
-fn {}{} ({}) ({})
+fn {}{}
+    ({})
+    ({})
 ```
 {}
 ",
@@ -391,7 +393,7 @@ fn build_main(
                 &project_source,
             );
             let mut output_errors: Vec<sloe::ErrorNode> = Vec::new();
-            let compiled_project: sloe::CompiledProject = sloe::project_compile_to_rust(
+            let compiled_project: sloe::CompiledProject = sloe::syntax_project_to_rust(
                 &mut output_errors,
                 &syntax_project,
                 &syntax_expressions,
@@ -825,7 +827,7 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
     let parsed_project = sloe::parse_project(expressions, patterns, types, &source);
     let mut errors: Vec<sloe::ErrorNode> = Vec::new();
     let compiled_project: sloe::CompiledProject =
-        sloe::project_compile_to_rust(&mut errors, &parsed_project, expressions, patterns, types);
+        sloe::syntax_project_to_rust(&mut errors, &parsed_project, expressions, patterns, types);
     if let Some(input_file_path) = lsp_uri_to_file_path(&uri)
         && std::fs::exists(input_file_path.with_extension("")).is_ok_and(|exists| exists)
     {

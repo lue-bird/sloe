@@ -426,3 +426,7 @@ to re-compile
 ```bash
 cargo install --offline --debug --path . sloe
 ```
+# TODO
+- revamp formatting of "overhang".
+  only opening parens should overhang, otherwise just space or next-indented line break
+- fix bugs
