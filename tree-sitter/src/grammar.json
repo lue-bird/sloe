@@ -55,8 +55,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "ty"
+          "type": "SYMBOL",
+          "name": "keyword_ty"
         },
         {
           "type": "SYMBOL",
@@ -86,8 +86,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "fn"
+          "type": "SYMBOL",
+          "name": "keyword_fn"
         },
         {
           "type": "SYMBOL",
@@ -287,8 +287,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "origin"
+          "type": "SYMBOL",
+          "name": "keyword_origin"
         },
         {
           "type": "SYMBOL",
@@ -304,8 +304,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "origin"
+          "type": "SYMBOL",
+          "name": "keyword_origin"
         },
         {
           "type": "SYMBOL",
@@ -432,8 +432,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": ":"
+          "type": "SYMBOL",
+          "name": "key_symbol_colon"
         },
         {
           "type": "SYMBOL",
@@ -468,8 +468,8 @@
           "name": "pattern_not_open_ended_untyped"
         },
         {
-          "type": "STRING",
-          "value": "<"
+          "type": "SYMBOL",
+          "name": "key_symbol_angle_left"
         },
         {
           "type": "SYMBOL",
@@ -491,15 +491,15 @@
       ]
     },
     "expression_record_empty": {
-      "type": "STRING",
-      "value": "&"
+      "type": "SYMBOL",
+      "name": "key_symbol_ampersand"
     },
     "expression_record": {
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "&"
+          "type": "SYMBOL",
+          "name": "key_symbol_ampersand"
         },
         {
           "type": "REPEAT",
@@ -530,8 +530,8 @@
           "name": "field_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
+          "type": "SYMBOL",
+          "name": "key_symbol_angle_left"
         },
         {
           "type": "SYMBOL",
@@ -556,8 +556,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "fn"
+          "type": "SYMBOL",
+          "name": "keyword_fn"
         },
         {
           "type": "SYMBOL",
@@ -573,8 +573,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "fn"
+          "type": "SYMBOL",
+          "name": "keyword_fn"
         },
         {
           "type": "SYMBOL",
@@ -795,15 +795,15 @@
       ]
     },
     "pattern_record_empty": {
-      "type": "STRING",
-      "value": "&"
+      "type": "SYMBOL",
+      "name": "key_symbol_ampersand"
     },
     "pattern_record_typed": {
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "&"
+          "type": "SYMBOL",
+          "name": "key_symbol_ampersand"
         },
         {
           "type": "REPEAT",
@@ -847,8 +847,8 @@
           "name": "field_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
+          "type": "SYMBOL",
+          "name": "key_symbol_angle_left"
         },
         {
           "type": "SYMBOL",
@@ -860,8 +860,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "&"
+          "type": "SYMBOL",
+          "name": "key_symbol_ampersand"
         },
         {
           "type": "REPEAT",
@@ -905,8 +905,8 @@
           "name": "field_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
+          "type": "SYMBOL",
+          "name": "key_symbol_angle_left"
         },
         {
           "type": "SYMBOL",
@@ -1023,15 +1023,15 @@
       ]
     },
     "type_choice_empty": {
-      "type": "STRING",
-      "value": "|"
+      "type": "SYMBOL",
+      "name": "key_symbol_bar"
     },
     "type_choice": {
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "|"
+          "type": "SYMBOL",
+          "name": "key_symbol_bar"
         },
         {
           "type": "REPEAT",
@@ -1062,8 +1062,8 @@
           "name": "variant_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
+          "type": "SYMBOL",
+          "name": "key_symbol_angle_left"
         },
         {
           "type": "SYMBOL",
@@ -1085,15 +1085,15 @@
       ]
     },
     "type_record_empty": {
-      "type": "STRING",
-      "value": "&"
+      "type": "SYMBOL",
+      "name": "key_symbol_ampersand"
     },
     "type_record": {
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "&"
+          "type": "SYMBOL",
+          "name": "key_symbol_ampersand"
         },
         {
           "type": "REPEAT",
@@ -1207,6 +1207,34 @@
     "lower_name": {
       "type": "PATTERN",
       "value": "[a-z][a-zA-Z0-9-]*"
+    },
+    "keyword_origin": {
+      "type": "STRING",
+      "value": "origin"
+    },
+    "keyword_fn": {
+      "type": "STRING",
+      "value": "fn"
+    },
+    "keyword_ty": {
+      "type": "STRING",
+      "value": "ty"
+    },
+    "key_symbol_bar": {
+      "type": "STRING",
+      "value": "|"
+    },
+    "key_symbol_ampersand": {
+      "type": "STRING",
+      "value": "&"
+    },
+    "key_symbol_colon": {
+      "type": "STRING",
+      "value": ":"
+    },
+    "key_symbol_angle_left": {
+      "type": "STRING",
+      "value": "<"
     }
   },
   "extras": [

@@ -24,7 +24,7 @@ export default grammar({
 
     type_alias: ($) =>
       seq(
-        "ty",
+        $.keyword_ty,
         $.type_name,
         repeat($.type_variable),
         repeat($.comment),
@@ -33,7 +33,7 @@ export default grammar({
 
     project_fn: ($) =>
       seq(
-        "fn",
+        $.keyword_fn,
         $.lower_name,
         $.pattern_not_open_ended_typed,
         $.type_not_open_ended,
@@ -81,9 +81,9 @@ export default grammar({
       seq($.comment, $.expression_not_open_ended),
     expression_number: ($) => seq($.number, $.type),
     expression_number_not_open_ended: ($) => seq($.number, $.type_not_open_ended),
-    expression_origin: ($) => seq("origin", $.lower_name, $.expression),
+    expression_origin: ($) => seq($.keyword_origin, $.lower_name, $.expression),
     expression_origin_not_open_ended: ($) =>
-      seq("origin", $.lower_name, $.expression_not_open_ended),
+      seq($.keyword_origin, $.lower_name, $.expression_not_open_ended),
     expression_variant: ($) => seq($.variant_name, $.type_not_open_ended, $.expression),
     expression_variant_not_open_ended: ($) =>
       seq($.variant_name, $.type_not_open_ended, $.expression_not_open_ended),
@@ -98,24 +98,28 @@ export default grammar({
     angled_type_parameters: ($) => seq("<", repeat($.type_variable), ">"),
     expression_query: ($) =>
       seq(
-        ":",
+        $.key_symbol_colon,
         $.expression_not_open_ended,
         repeat($.expression_query_case_not_open_ended),
         optional($.expression_query_case),
       ),
     expression_query_case: ($) =>
-      seq($.pattern_not_open_ended_untyped, "<", $.expression),
+      seq($.pattern_not_open_ended_untyped, $.key_symbol_angle_left, $.expression),
     expression_query_case_not_open_ended: ($) =>
       seq($.pattern_not_open_ended_untyped, $.expression_not_open_ended),
-    expression_record_empty: ($) => "&",
+    expression_record_empty: ($) => $.key_symbol_ampersand,
     expression_record: ($) =>
-      seq("&", repeat($.expression_field_not_open_ended), optional($.expression_field)),
-    expression_field: ($) => seq($.field_name, "<", $.expression),
+      seq(
+        $.key_symbol_ampersand,
+        repeat($.expression_field_not_open_ended),
+        optional($.expression_field),
+      ),
+    expression_field: ($) => seq($.field_name, $.key_symbol_angle_left, $.expression),
     expression_field_not_open_ended: ($) =>
       seq($.field_name, $.expression_not_open_ended),
-    expression_fn: ($) => seq("fn", $.pattern_not_open_ended_typed, $.expression),
+    expression_fn: ($) => seq($.keyword_fn, $.pattern_not_open_ended_typed, $.expression),
     expression_fn_not_open_ended: ($) =>
-      seq("fn", $.pattern_not_open_ended_typed, $.expression_not_open_ended),
+      seq($.keyword_fn, $.pattern_not_open_ended_typed, $.expression_not_open_ended),
 
     pattern_typed: ($) =>
       choice(
@@ -158,25 +162,27 @@ export default grammar({
     pattern_ignored_untyped: ($) => "_",
     pattern_variant_typed: ($) => seq($.variant_name, $.pattern_typed),
     pattern_variant_untyped: ($) => seq($.variant_name, $.pattern_untyped),
-    pattern_record_empty: ($) => "&",
+    pattern_record_empty: ($) => $.key_symbol_ampersand,
     pattern_record_typed: ($) =>
       seq(
-        "&",
+        $.key_symbol_ampersand,
         repeat($.pattern_field_not_open_ended_typed),
         optional($.pattern_field_typed),
       ),
     pattern_field_not_open_ended_typed: ($) =>
       seq($.field_name, $.pattern_not_open_ended_typed),
-    pattern_field_typed: ($) => seq($.field_name, "<", $.pattern_typed),
+    pattern_field_typed: ($) =>
+      seq($.field_name, $.key_symbol_angle_left, $.pattern_typed),
     pattern_record_untyped: ($) =>
       seq(
-        "&",
+        $.key_symbol_ampersand,
         repeat($.pattern_field_not_open_ended_untyped),
         optional($.pattern_field_untyped),
       ),
     pattern_field_not_open_ended_untyped: ($) =>
       seq($.field_name, $.pattern_not_open_ended_untyped),
-    pattern_field_untyped: ($) => seq($.field_name, "<", $.pattern_untyped),
+    pattern_field_untyped: ($) =>
+      seq($.field_name, $.key_symbol_angle_left, $.pattern_untyped),
 
     type: ($) =>
       choice(
@@ -199,17 +205,17 @@ export default grammar({
     type_parenthesized: ($) => seq("(", $.type, ")"),
     type_variable: ($) => $.upper_name,
     type_construct: ($) => seq($.type_name, repeat($.type_not_open_ended)),
-    type_choice_empty: ($) => "|",
+    type_choice_empty: ($) => $.key_symbol_bar,
     type_choice: ($) =>
       seq(
-        "|",
+        $.key_symbol_bar,
         repeat($.type_choice_variant_not_open_ended),
         optional($.type_choice_variant),
       ),
-    type_choice_variant: ($) => seq($.variant_name, "<", $.type),
+    type_choice_variant: ($) => seq($.variant_name, $.key_symbol_angle_left, $.type),
     type_choice_variant_not_open_ended: ($) => seq($.variant_name, $.type_not_open_ended),
-    type_record_empty: ($) => "&",
-    type_record: ($) => seq("&", repeat($.type_field)),
+    type_record_empty: ($) => $.key_symbol_ampersand,
+    type_record: ($) => seq($.key_symbol_ampersand, repeat($.type_field)),
     type_field: ($) => seq($.field_name, $.type_not_open_ended),
 
     variant_name: ($) => $.upper_name,
@@ -221,5 +227,12 @@ export default grammar({
     number: ($) => /-?\+?\d+\.?\d*/,
     upper_name: ($) => /[A-Z][a-zA-Z0-9-]*/,
     lower_name: ($) => /[a-z][a-zA-Z0-9-]*/,
+    keyword_origin: ($) => "origin",
+    keyword_fn: ($) => "fn",
+    keyword_ty: ($) => "ty",
+    key_symbol_bar: ($) => "|",
+    key_symbol_ampersand: ($) => "&",
+    key_symbol_colon: ($) => ":",
+    key_symbol_angle_left: ($) => "<",
   },
 });
