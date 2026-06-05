@@ -6689,7 +6689,7 @@ fn name_to_uppercase_rust(name: &str) -> String {
         first.make_ascii_uppercase();
     }
     if [
-        "Self", "Clone", "Copy", "Debug", "Blank", "Never", "Fn",
+        "Self", "Clone", "Copy", "Debug", "Blank", "Never",
         // type variables used in core
         "A", "B", "C", "E", "N", "S",
     ]
@@ -7884,10 +7884,7 @@ pub static core_records: std::sync::LazyLock<std::collections::HashSet<&'static 
                 Type::Variable(_) => {}
                 Type::Record(fields) => {
                     records.insert(
-                        fields
-                            .iter()
-                            .map(|field| field.name.clone())
-                            .collect::<Vec<Name>>()
+                        sorted_field_names(fields.iter().map(|field| &field.name))
                             // static variables will only be created once and won't be dropped anyway
                             .leak(),
                     );
@@ -7932,10 +7929,7 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
                 Type::Origin(_) => {}
                 Type::Choice(variants) => {
                     records.insert(
-                        variants
-                            .iter()
-                            .map(|field| field.name.clone())
-                            .collect::<Vec<Name>>()
+                        sorted_variant_names(variants.iter().map(|field| &field.name))
                             // static variables will only be created once and won't be dropped anyway
                             .leak(),
                     );
