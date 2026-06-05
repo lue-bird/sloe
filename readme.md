@@ -420,3 +420,9 @@ a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly
 
 "Positionality" in general is pretty much absent in sloe. E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
 Sloe had positional arguments once, largely because the rust-sloe interface is simpler in rust with positional arguments.
+
+# dev setup
+to re-compile
+```bash
+cargo install --offline --debug --path . sloe
+```
