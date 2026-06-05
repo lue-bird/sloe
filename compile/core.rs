@@ -1,6 +1,7 @@
 #![no_implicit_prelude]
 #![allow(
     dead_code,
+    unused_imports,
     non_shorthand_field_patterns,
     non_camel_case_types,
     non_upper_case_globals,
@@ -12,7 +13,7 @@
     clippy::needless_update
 )]
 extern crate std;
-// core //
+// core starts below, specifics start at // compiled code // //
 
 #[derive(Clone, Copy, Debug)]
 pub struct A·b<A, B> {
