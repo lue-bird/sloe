@@ -21,7 +21,7 @@ node_modules/
 zombie
 
 # Generated rust code
-sloe/
+sloe/mod.rs
 
 # for experimentation
 perf.data
