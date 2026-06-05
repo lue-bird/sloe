@@ -20,6 +20,9 @@ node_modules/
 
 zombie
 
+# Generated rust code
+sloe/
+
 # for experimentation
 perf.data
 testing/
