@@ -14,20 +14,13 @@ export default grammar({
     source_file: ($) =>
       seq(
         // the first project project element / comment lines are not guaranteed to be formatted with linebreaks in front
-        choice(repeat($.comment), $.project_element),
+        $.project_element,
         // this is more strict than sloe's parser but works for formatted code
-        repeat(
-          seq(
-            $.indent0,
-            // optional to allow extraneous linebreaks or trailing linebreaks
-            optional($.project_element),
-          ),
-        ),
+        repeat(seq("\n\n", $.project_element)),
       ),
     comment: ($) => /#[^\n]*\n/,
-    indent0: ($) => token.immediate("\n"),
 
-    project_element: ($) => choice($.project_fn, $.type_alias),
+    project_element: ($) => choice(repeat1($.comment), $.project_fn, $.type_alias),
 
     type_alias: ($) =>
       seq(
@@ -65,7 +58,18 @@ export default grammar({
         $.expression_origin,
       ),
     expression_not_open_ended: ($) =>
-      choice($.expression_parenthesized, $.string, $.char, $.expression_variable),
+      choice(
+        $.expression_parenthesized,
+        $.string,
+        $.char,
+        $.expression_variable,
+        $.expression_number_not_open_ended,
+        $.expression_record_empty,
+        $.expression_fn_not_open_ended,
+        $.expression_origin_not_open_ended,
+        $.expression_variant_not_open_ended,
+        $.expression_commented_not_open_ended,
+      ),
     expression_parenthesized: ($) => seq("(", $.expression, ")"),
     expression_commented: ($) =>
       seq(
@@ -73,9 +77,16 @@ export default grammar({
         $.comment,
         $.expression,
       ),
-    expression_number: ($) => seq($.number, $.expression),
+    expression_commented_not_open_ended: ($) =>
+      seq($.comment, $.expression_not_open_ended),
+    expression_number: ($) => seq($.number, $.type),
+    expression_number_not_open_ended: ($) => seq($.number, $.type_not_open_ended),
     expression_origin: ($) => seq("origin", $.lower_name, $.expression),
-    expression_variant: ($) => seq($.variant_name, $.expression),
+    expression_origin_not_open_ended: ($) =>
+      seq("origin", $.lower_name, $.expression_not_open_ended),
+    expression_variant: ($) => seq($.variant_name, $.type_not_open_ended, $.expression),
+    expression_variant_not_open_ended: ($) =>
+      seq($.variant_name, $.type_not_open_ended, $.expression_not_open_ended),
     expression_reference_or_call: ($) =>
       seq(
         $.lower_name,
@@ -103,6 +114,8 @@ export default grammar({
     expression_field_not_open_ended: ($) =>
       seq($.field_name, $.expression_not_open_ended),
     expression_fn: ($) => seq("fn", $.pattern_not_open_ended_typed, $.expression),
+    expression_fn_not_open_ended: ($) =>
+      seq("fn", $.pattern_not_open_ended_typed, $.expression_not_open_ended),
 
     pattern_typed: ($) =>
       choice(
