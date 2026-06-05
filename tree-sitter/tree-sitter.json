@@ -8,11 +8,11 @@
       "scope": "source.sloe",
       "file-types": ["sloe"],
       "injection-regex": "^sloe$",
-      "class-name": "TreeSittersloe"
+      "class-name": "TreeSitterSloe"
     }
   ],
   "metadata": {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "license": "Unlicense",
     "description": "sloe grammar for tree-sitter",
     "authors": [
@@ -21,7 +21,7 @@
       }
     ],
     "links": {
-      "repository": "https://github.com/tree-sitter/tree-sitter-sloe"
+      "repository": "https://github.com/lue-bird/sloe"
     }
   },
   "bindings": {
