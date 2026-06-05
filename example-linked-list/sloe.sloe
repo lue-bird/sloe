@@ -1,0 +1,64 @@
+
+ty linked-list Origin Element
+    # a stack
+    |
+    Empty &
+    Cons (& head Element tail (slot Origin))
+
+fn linked-list-cons
+    (&
+        backing (backing vec Origin (linked-list Origin Element))
+        tail (tail linked-list Origin Element)
+        new-head new-head Element
+    )
+    (&
+        backing (vec Origin (linked-list Origin Element))
+        linked-list (linked-list Origin Element)
+    )
+    :(vec-add & vec backing new tail) (& vec backing slot tail-slot) <
+    & backing backing linked-list (Cons (linked-list Origin Element) & head new-head tail tail-slot)
+
+fn linked-list-pop
+    (&
+        backing (backing vec Origin Element)
+        linked-list (linked-list linked-list Origin Element)
+    )
+    (&
+        backing (vec Origin (linked-list Origin Element))
+        element (opt
+            (&
+                head Element
+                tail (linked-list Origin Element)
+            )
+        )
+    )
+    :linked-list
+    Empty & (& backing backing linked-list Empty (linked-list Origin Element) &)
+    (Cons & head head tail tail-slot)
+        (:(vec-element & vec backing slot tail-slot) (& vec backing element tail) <
+            & backing backing linked-list (Cons (linked-list Origin Element) & head head tail tail)
+        )
+
+fn linked-list-vacate-from-backing
+    (&
+        backing (backing vec Origin (linked-list Origin Element))
+        linked-list (linked-list linked-list Origin Element)
+        elements-backing elements-backing Elements-backing
+        vacate-element (vacate-element fn (& backing Elements-backing element Element) Elements-backing)
+    )
+    (&
+        backing (vec Origin (linked-list Origin Element))
+        elements-backing Elements-backing
+    )
+    :linked-list
+    Empty & (& backing backing elements-backing elements-backing)
+    (Cons & head head tail tail-slot)
+        (:(vec-element & vec backing slot tail-slot) (& vec backing element tail) <
+            :(fn-dup vacate-element) (& a vacate-element-a b vacate-element-b) <
+            :(vacate-element-a elements-backing head) elements-backing <
+            linked-list-vacate-from-backing backing tail vacate-element-b elements-backing
+        )
+
+fn example & u32
+    3 u32
+
