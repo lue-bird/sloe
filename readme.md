@@ -1,14 +1,14 @@
 Small, fast pure functional programming language where indexes are valid and values can't be shared.
 
 The goal is representing tree-like data structures without segmented memory or plain index integers (along with the need to handle failure and generations),
-instead offering a safe, infallible way to refer to values and spans stored in flat memory structures.
+instead offering a safe, infallible way to refer to values and slices stored in flat memory structures.
 
 [skip to examples](#examples)
 
 Note that while as a side effect this avoids any bounds checks,
 bounds-checking in general is not slow (typically only around 2% slower than unchecked access in practice).
 
-# install
+Install with
 
 ```bash
 cargo install --git https://github.com/lue-bird/sloe sloe
@@ -23,7 +23,7 @@ This allows
 - values can be mutated internally without mutation being detectable
 - representing things that can only be consumed once, like thread join handles
 
-This can feel annoying and clunky. Think e.g. `fn vec-occupied-count (vec vec ...) (& (vec ...) (occupied-count u32))`.
+This can feel annoying and clunky. Think e.g. `fn vec-occupied-count (vec vec ...) (& vec ... occupied-count u32)`.
 Not ony is it clunky, it is also conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
 
 The _big_ advantage is that it is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
