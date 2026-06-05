@@ -4,13 +4,17 @@
 
 (comment) @comment
 
-[
-    "ty"
-    ":"
-    "&"
-    "|"
-    "fn"
-] @keyword
+(keyword_fn) @keyword
+
+(keyword_ty) @keyword
+
+(key_symbol_colon) @keyword
+
+(key_symbol_ampersand) @keyword
+
+(key_symbol_bar) @keyword
+
+(key_symbol_angle_left) @keyword
 
 (field_name) @property
 
