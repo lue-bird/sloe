@@ -90,8 +90,15 @@
           }
         },
         {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "comment"
+          }
+        },
+        {
           "type": "SYMBOL",
-          "name": "type"
+          "name": "type_not_variable"
         }
       ]
     },
@@ -832,6 +839,27 @@
         {
           "type": "SYMBOL",
           "name": "type_variable"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "type_construct"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "type_record"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "type_choice"
+        }
+      ]
+    },
+    "type_not_variable": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "type_parenthesized"
         },
         {
           "type": "SYMBOL",

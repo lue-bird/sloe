@@ -5,7 +5,7 @@
 (comment) @comment
 
 [
-    "type"
+    "ty"
     ":"
     "&"
     "|"

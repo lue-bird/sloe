@@ -29,7 +29,14 @@ export default grammar({
 
     project_element: ($) => choice($.project_fn, $.type_alias),
 
-    type_alias: ($) => seq("ty", $.type_name, repeat($.type_variable), $.type),
+    type_alias: ($) =>
+      seq(
+        "ty",
+        $.type_name,
+        repeat($.type_variable),
+        repeat($.comment),
+        $.type_not_variable,
+      ),
 
     project_fn: ($) =>
       seq(
@@ -37,6 +44,8 @@ export default grammar({
         $.lower_name,
         $.pattern_not_open_ended_typed,
         $.type_not_open_ended,
+        // no repeat($.comment), these can already be prepended to the resulting expression
+        // which is syntactically equivalent
         $.expression,
       ),
 
@@ -58,7 +67,12 @@ export default grammar({
     expression_not_open_ended: ($) =>
       choice($.expression_parenthesized, $.string, $.char, $.expression_variable),
     expression_parenthesized: ($) => seq("(", $.expression, ")"),
-    expression_commented: ($) => seq($.comment, $.expression),
+    expression_commented: ($) =>
+      seq(
+        // semantically repeat1($.comment) but for simplicity the syntactic equivalent
+        $.comment,
+        $.expression,
+      ),
     expression_number: ($) => seq($.number, $.expression),
     expression_origin: ($) => seq("origin", $.lower_name, $.expression),
     expression_variant: ($) => seq($.variant_name, $.expression),
@@ -159,6 +173,8 @@ export default grammar({
         $.type_record,
         $.type_choice,
       ),
+    type_not_variable: ($) =>
+      choice($.type_parenthesized, $.type_construct, $.type_record, $.type_choice),
     type_not_open_ended: ($) =>
       choice(
         $.type_parenthesized,
