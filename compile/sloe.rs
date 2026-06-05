@@ -4769,24 +4769,26 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 type_: None,
                             };
                         };
-                        let Type::CoreConstruct {
-                            name: variable_type_name,
-                            arguments: variable_type_arguments,
-                        } = variable_type
-                        else {
-                            errors.push(ErrorNode { range: syntax_name_range(with_start_position_as_ref(name)), message: Box::from("calling a variable whose type is not a function. Maybe you forgot some parens or similar?") });
-                            return CompiledExpression {
-                                rust: syn_expr_todo(),
-                                type_: None,
-                            };
+                        let variable_type_arguments = match variable_type {
+                            Type::CoreConstruct {
+                                name: variable_type_name,
+                                arguments: variable_type_arguments,
+                            } if variable_type_name == "fn" => variable_type_arguments,
+                            variable_type => {
+                                let mut error_message = String::from(
+                                    "calling a variable whose type is not a function. Maybe you forgot some parens or similar? Its full type is\n",
+                                );
+                                type_format(&mut error_message, 4, &variable_type);
+                                errors.push(ErrorNode {
+                                    range: syntax_name_range(with_start_position_as_ref(name)),
+                                    message: error_message.into_boxed_str(),
+                                });
+                                return CompiledExpression {
+                                    rust: syn_expr_todo(),
+                                    type_: None,
+                                };
+                            }
                         };
-                        if variable_type_name != "fn" {
-                            errors.push(ErrorNode { range: syntax_name_range(with_start_position_as_ref(name)), message: Box::from("calling a variable whose type is not a function. Maybe you forgot some parens or similar?") });
-                            return CompiledExpression {
-                                rust: syn_expr_todo(),
-                                type_: None,
-                            };
-                        }
                         let [variable_type_input, variable_type_output] =
                             variable_type_arguments.as_slice()
                         else {
@@ -4995,7 +4997,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
-            let Some(type_) = syntax_type_to_type(
+            let Some(compiled_type) = syntax_type_to_type(
                 syntax_type,
                 errors,
                 type_aliases,
@@ -5009,11 +5011,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
-            let Type::Choice(origin_choice_type) = &type_ else {
+            let Type::Choice(origin_choice_type) = &compiled_type else {
                 let mut error_message: String = String::from(
                     "this variant type should be a choice (for example | A u32 B str) but it's\n",
                 );
-                type_format(&mut error_message, 0, &type_);
+                type_format(&mut error_message, 0, &compiled_type);
                 errors.push(ErrorNode {
                     range: syntax_name_range(with_start_position_as_ref(name)),
                     message: error_message.into_boxed_str(),
@@ -5034,7 +5036,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     "the actual variant name {} is not included in this type\n",
                     name.value
                 );
-                type_format(&mut error_message, 0, &type_);
+                type_format(&mut error_message, 0, &compiled_type);
                 errors.push(ErrorNode {
                     range: type_range(syntax_type, types),
                     message: error_message.into_boxed_str(),
@@ -5110,7 +5112,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     paren_token: syn::token::Paren(syn_span()),
                     args: std::iter::once(compiled_value_rust).collect(),
                 }),
-                type_: Some(compiled_value_type),
+                type_: Some(compiled_type),
             }
         }
         SyntaxExpression::Fn {
@@ -5572,7 +5574,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             {
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
-                        range: case.left_angle_start.map(|left_angle_start| symbol_range(left_angle_start, "<")).unwrap_or_else(||pattern_range(&case0.pattern, patterns, types)),
+                        range: case.left_angle_start.map(|left_angle_start| symbol_range(left_angle_start, "<")).unwrap_or_else(||pattern_range(&case.pattern, patterns, types)),
                         message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. A full query could look like :option ((Present n) n) (Absent 0 u32)")
                     });
                     return CompiledExpression {
@@ -5624,7 +5626,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     &mut case_result_used_pattern_variables,
                     origins,
                     &mut case_result_used_origin_variables,
-                    case0_result,
+                    case_result,
                 )
                 else {
                     return CompiledExpression {
@@ -5632,6 +5634,17 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         type_: None,
                     };
                 };
+                for (case_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
+                    case_pattern_introduced_variables
+                {
+                    push_error_if_introduced_pattern_variable_is_unused(
+                        errors,
+                        case0_pattern_introduced_variable_origin.origin_start,
+                        case_pattern_introduced_variable,
+                        case_result_used_pattern_variables.remove(case_pattern_introduced_variable),
+                    );
+                    pattern_variables.remove(case_pattern_introduced_variable);
+                }
                 for (case_result_used_pattern_variable, &case_result_used_pattern_variable_start) in
                     &case_result_used_pattern_variables
                 {
@@ -5685,17 +5698,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             message: format!("this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.", index_to_th(case_index)).into_boxed_str()
                         });
                     }
-                }
-                for (case_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
-                    case_pattern_introduced_variables
-                {
-                    push_error_if_introduced_pattern_variable_is_unused(
-                        errors,
-                        case0_pattern_introduced_variable_origin.origin_start,
-                        case_pattern_introduced_variable,
-                        case_result_used_pattern_variables.remove(case_pattern_introduced_variable),
-                    );
-                    pattern_variables.remove(case_pattern_introduced_variable);
                 }
                 if let Some(match_result_case_result_type_diff) =
                     type_diff(&query_result_type, &case_result_type)
@@ -7046,12 +7048,56 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
     std::sync::LazyLock::new(|| {
         std::collections::HashMap::from([
             (
+                Name::const_new("p32-dup"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Split the p32 in two values with the same content",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_p32),
+                    result_type: Some(type_record([("a", type_p32), ("b", type_p32)])),
+                },
+            ),
+            (
+                Name::const_new("p32-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given p32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_p32),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
                 Name::const_new("p32-add"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from("Saturating a + b")),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([("p", type_p32), ("u", type_u32)])),
                     result_type: Some(type_p32),
+                },
+            ),
+            (
+                Name::const_new("u32-dup"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Split the u32 in two values with the same content",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_u32),
+                    result_type: Some(type_record([("a", type_u32), ("b", type_u32)])),
+                },
+            ),
+            (
+                Name::const_new("u32-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given u32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_u32),
+                    result_type: Some(type_record([])),
                 },
             ),
             (
@@ -7064,6 +7110,28 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
+                Name::const_new("i32-dup"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Split the i32 in two values with the same content",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_i32),
+                    result_type: Some(type_record([("a", type_i32), ("b", type_i32)])),
+                },
+            ),
+            (
+                Name::const_new("i32-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given i32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_i32),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
                 Name::const_new("i32-add"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from("Saturating a + b")),
@@ -7073,12 +7141,103 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
+                Name::const_new("f32-dup"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Split the f32 in two values with the same content",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_f32),
+                    result_type: Some(type_record([("a", type_f32), ("b", type_f32)])),
+                },
+            ),
+            (
+                Name::const_new("f32-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given f32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_f32),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
                 Name::const_new("f32-add"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from("Saturating a + b")),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([("a", type_f32), ("b", type_f32)])),
                     result_type: Some(type_f32),
+                },
+            ),
+            (
+                Name::const_new("char-dup"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Split the char in two values with the same content",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_char),
+                    result_type: Some(type_record([("a", type_char), ("b", type_char)])),
+                },
+            ),
+            (
+                Name::const_new("char-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given char value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_char),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
+                Name::const_new("str-dup"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Split the str in two values with the same content",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_str),
+                    result_type: Some(type_record([("a", type_str), ("b", type_str)])),
+                },
+            ),
+            (
+                Name::const_new("str-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given str value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_str),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
+                Name::const_new("fn-dup"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Split the fn in two values with the same content",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_fn(type_variable("In"), type_variable("Out"))),
+                    result_type: Some(type_record([
+                        ("a", type_fn(type_variable("In"), type_variable("Out"))),
+                        ("b", type_fn(type_variable("In"), type_variable("Out"))),
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("fn-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given fn value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_fn(type_variable("In"), type_variable("Out"))),
+                    result_type: Some(type_record([])),
                 },
             ),
             (
@@ -7119,7 +7278,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 Name::const_new("arena-add"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Reserves capacity for at least `length` more elements to be added. This can prevent frequent re-allocation of the underlying array.",
+                        "Add a new element into the vec and keep a slot to it.",
                     )),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([
@@ -7135,6 +7294,29 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                             type_arena(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("arena-element"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Retrieve an element from the arena at a given slot (the inverse of arena-add).",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
+                        (
+                            "arena",
+                            type_arena(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_slot(type_variable("Origin"))),
+                    ])),
+                    result_type: Some(type_record([
+                        (
+                            "arena",
+                            type_arena(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("element", type_variable("Element")),
                     ])),
                 },
             ),
@@ -7273,7 +7455,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 Name::const_new("vec-add"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Reserves capacity for at least `length` more elements to be added. This can prevent frequent re-allocation of the underlying array.",
+                        "Add a new element into the vec and keep a slot to it.",
                     )),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([
@@ -7289,6 +7471,29 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("vec-element"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Remove and retrieve an element from the vec at a given slot (the inverse of vec-add).",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_slot(type_variable("Origin"))),
+                    ])),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("element", type_variable("Element")),
                     ])),
                 },
             ),
@@ -7988,22 +8193,6 @@ fn syntax_angled_type_parameters_format(
     }
     formatted.push('>');
 }
-// TODO inline and respect <
-fn syntax_field_format<Value>(
-    formatted: &mut String,
-    indent: usize,
-    field: &SyntaxField<Value>,
-    value_format: impl FnOnce(&mut String, usize, &Value),
-) {
-    formatted.push_str(&field.name.value);
-    if field.left_angle_start.is_some() {
-        formatted.push_str(" <");
-    }
-    formatted.push(' ');
-    if let Some(value) = &field.value {
-        value_format(formatted, indent, value);
-    }
-}
 fn syntax_char_format(formatted: &mut String, maybe_char: Option<char>) {
     match maybe_char {
         None => {
@@ -8057,7 +8246,11 @@ fn syntax_string_format(formatted: &mut String, content: &str) {
     }
     formatted.push('"');
 }
-fn syntax_expression_parenthesized_if_open_ended_format<Expressions, Patterns, Types>(
+fn syntax_expression_parenthesized_with_linebreak_after_open_paren_if_multiline<
+    Expressions,
+    Patterns,
+    Types,
+>(
     formatted: &mut String,
     indent: usize,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
@@ -8065,31 +8258,49 @@ fn syntax_expression_parenthesized_if_open_ended_format<Expressions, Patterns, T
     types: &core::Vec<Types, SyntaxType<Types>>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
 ) {
-    if syntax_expression_is_open_ended(expression, expressions, types) {
-        formatted.push('(');
-        let line_span = range_line_span(expression_range(expression, expressions, patterns, types));
-        syntax_expression_unparenthesized_format(
-            formatted,
-            next_indent(indent),
-            expressions,
-            patterns,
-            types,
-            expression,
-        );
-        if line_span == LineSpan::Multiple {
-            linebreak_indented_into(formatted, indent);
-        }
-        formatted.push(')');
-    } else {
-        syntax_expression_unparenthesized_format(
-            formatted,
-            indent,
-            expressions,
-            patterns,
-            types,
-            expression,
-        );
+    formatted.push('(');
+    let line_span = range_line_span(expression_range(expression, expressions, patterns, types));
+    if line_span == LineSpan::Multiple {
+        linebreak_indented_into(formatted, next_indent(indent));
     }
+    syntax_expression_unparenthesized_format(
+        formatted,
+        next_indent(indent),
+        expressions,
+        patterns,
+        types,
+        expression,
+    );
+    if line_span == LineSpan::Multiple {
+        linebreak_indented_into(formatted, indent);
+    }
+    formatted.push(')');
+}
+fn syntax_expression_parenthesized<Expressions, Patterns, Types>(
+    formatted: &mut String,
+    indent: usize,
+    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    expression: &SyntaxExpression<Expressions, Patterns, Types>,
+) {
+    formatted.push('(');
+    let line_span = range_line_span(expression_range(expression, expressions, patterns, types));
+    if line_span == LineSpan::Multiple {
+        linebreak_indented_into(formatted, next_indent(indent));
+    }
+    syntax_expression_unparenthesized_format(
+        formatted,
+        next_indent(indent),
+        expressions,
+        patterns,
+        types,
+        expression,
+    );
+    if line_span == LineSpan::Multiple {
+        linebreak_indented_into(formatted, indent);
+    }
+    formatted.push(')');
 }
 fn syntax_expression_is_open_ended<Expressions, Patterns, Types>(
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
@@ -8267,16 +8478,44 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 range_line_span(expression_range(expression, expressions, patterns, types));
             for field in fields {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
-                syntax_field_format(formatted, indent, field, |formatted, indent, value| {
-                    syntax_expression_parenthesized_if_open_ended_format(
-                        formatted,
-                        indent,
-                        expressions,
-                        patterns,
-                        types,
-                        value,
-                    )
-                });
+                // TODO respect <
+                formatted.push_str(&field.name.value);
+                if field.left_angle_start.is_some() {
+                    formatted.push_str(" <");
+                }
+                formatted.push(' ');
+                if let Some(value) = &field.value {
+                    (|formatted, indent, value| {
+                        if syntax_expression_is_open_ended(value, expressions, types) {
+                            syntax_expression_parenthesized_with_linebreak_after_open_paren_if_multiline(
+                                        formatted,
+                                        indent,
+                                        expressions,
+                                        patterns,
+                                        types,
+                                        value,
+                                    );
+                        } else {
+                            if range_line_span(expression_range(
+                                value,
+                                expressions,
+                                patterns,
+                                types,
+                            )) == LineSpan::Multiple
+                            {
+                                linebreak_indented_into(formatted, indent);
+                            }
+                            syntax_expression_unparenthesized_format(
+                                formatted,
+                                indent,
+                                expressions,
+                                patterns,
+                                types,
+                                value,
+                            );
+                        }
+                    })(formatted, indent, value);
+                }
             }
         }
         SyntaxExpression::Parenthesized {
@@ -8322,14 +8561,25 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             formatted.push(':');
             if let Some(queried) = queried {
                 let queried = expressions.element(queried);
-                syntax_expression_parenthesized_if_open_ended_format(
-                    formatted,
-                    next_indent(indent),
-                    expressions,
-                    patterns,
-                    types,
-                    queried,
-                );
+                if syntax_expression_is_open_ended(queried, expressions, types) {
+                    syntax_expression_parenthesized_with_linebreak_after_open_paren_if_multiline(
+                        formatted,
+                        next_indent(indent),
+                        expressions,
+                        patterns,
+                        types,
+                        queried,
+                    );
+                } else {
+                    syntax_expression_unparenthesized_format(
+                        formatted,
+                        next_indent(indent),
+                        expressions,
+                        patterns,
+                        types,
+                        queried,
+                    );
+                }
             }
             let line_span_before_last_case_pattern = match cases.last() {
                 None => LineSpan::Single,
@@ -8418,19 +8668,58 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
         }
     } else {
         if let Some(result) = &case.result {
-            let case_line_span = range_line_span(lsp_types::Range {
-                start: pattern_start(&case.pattern),
-                end: expression_end(result, expressions, patterns, types),
-            });
-            space_or_linebreak_indented_into(formatted, case_line_span, next_indent(indent));
-            syntax_expression_parenthesized_if_open_ended_format(
-                formatted,
-                next_indent(indent),
-                expressions,
-                patterns,
-                types,
-                result,
-            );
+            let pattern_line_span = range_line_span(pattern_range(&case.pattern, patterns, types));
+            match pattern_line_span {
+                LineSpan::Multiple => {
+                    linebreak_indented_into(formatted, next_indent(indent));
+                    if syntax_expression_is_open_ended(result, expressions, types) {
+                        syntax_expression_parenthesized(
+                            formatted,
+                            next_indent(indent),
+                            expressions,
+                            patterns,
+                            types,
+                            result,
+                        );
+                    } else {
+                        syntax_expression_unparenthesized_format(
+                            formatted,
+                            next_indent(indent),
+                            expressions,
+                            patterns,
+                            types,
+                            result,
+                        );
+                    };
+                }
+                LineSpan::Single => {
+                    if syntax_expression_is_open_ended(result, expressions, types) {
+                        formatted.push(' ');
+                        syntax_expression_parenthesized_with_linebreak_after_open_paren_if_multiline(
+                            formatted,
+                            indent,
+                            expressions,
+                            patterns,
+                            types,
+                            result,
+                        );
+                    } else {
+                        space_or_linebreak_indented_into(
+                            formatted,
+                            range_line_span(expression_range(result, expressions, patterns, types)),
+                            indent,
+                        );
+                        syntax_expression_unparenthesized_format(
+                            formatted,
+                            indent,
+                            expressions,
+                            patterns,
+                            types,
+                            result,
+                        );
+                    };
+                }
+            }
         }
     }
 }
@@ -8522,11 +8811,17 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
             let line_span = range_line_span(pattern_range(pattern, patterns, types));
             for field in fields {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
-                syntax_field_format(formatted, indent, field, |formatted, indent, value| {
+                // TODO respect <
+                formatted.push_str(&field.name.value);
+                if field.left_angle_start.is_some() {
+                    formatted.push_str(" <");
+                }
+                formatted.push(' ');
+                if let Some(value) = &field.value {
                     syntax_pattern_parenthesized_if_open_ended_format(
                         formatted, indent, patterns, types, value,
-                    )
-                });
+                    );
+                }
             }
         }
         SyntaxPattern::Parenthesized {
@@ -8663,9 +8958,15 @@ fn syntax_type_unparenthesized_format<Types>(
             let line_span = range_line_span(type_range(type_, types));
             for field in fields {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
-                syntax_field_format(formatted, indent, field, |formatted, indent, value| {
-                    syntax_type_parenthesized_if_open_ended_format(formatted, indent, types, value)
-                });
+                // TODO respect <
+                formatted.push_str(&field.name.value);
+                if field.left_angle_start.is_some() {
+                    formatted.push_str(" <");
+                }
+                formatted.push(' ');
+                if let Some(value) = &field.value {
+                    syntax_type_parenthesized_if_open_ended_format(formatted, indent, types, value);
+                }
             }
         }
         SyntaxType::Choice {
@@ -9525,9 +9826,9 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                     None
                 }
             }
-            SyntaxProjectElement::Fn { .. } => None,
-            SyntaxProjectElement::Comments(_) => None,
-            SyntaxProjectElement::Unrecognized { .. } => None,
+            SyntaxProjectElement::Fn { .. }
+            | SyntaxProjectElement::Comments(_)
+            | SyntaxProjectElement::Unrecognized { .. } => None,
         }),
         SyntaxSymbol::Origin {
             name,
@@ -9574,8 +9875,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                         None
                     }
                 }),
-            SyntaxProjectElement::Comments(_) => None,
-            SyntaxProjectElement::Unrecognized { .. } => None,
+            SyntaxProjectElement::Comments(_) | SyntaxProjectElement::Unrecognized { .. } => None,
         },
         SyntaxSymbol::VariantOrUnknown(_) => None,
         SyntaxSymbol::ProjectFnOrUnknown {
@@ -9591,7 +9891,9 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 result_type: _,
                 documentation: _,
                 result: _,
-            } if fn_name.value == symbol_name.value => todo!(),
+            } if fn_name.value == symbol_name.value => {
+                Some(syntax_name_range(with_start_position_as_ref(fn_name)))
+            }
             _ => None,
         }),
         SyntaxSymbol::PatternVariable {
@@ -9991,36 +10293,34 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             type_arguments,
             argument,
         } => {
-            {
-                match symbol {
-                    SyntaxSymbol::TypeVariable { .. }
-                    | SyntaxSymbol::ProjectTypeOrUnknown { .. }
-                    | SyntaxSymbol::VariantOrUnknown(_) => todo!(),
-                    SyntaxSymbol::Origin {
-                        name: symbol_name,
-                        use_start: _,
-                        origin: _,
-                    }
-                    | SyntaxSymbol::PatternVariable {
-                        name: symbol_name,
-                        use_start: _,
-                        origin: _,
-                    }
-                    | SyntaxSymbol::ProjectFnOrUnknown {
-                        name:
-                            WithStartPosition {
-                                start: _,
-                                value: symbol_name,
-                            },
-                        pattern_variables: _,
-                        origins: _,
-                    } => {
-                        if symbol_name == &name.value
-                            && !pattern_variables.contains(&name.value)
-                            && !origins.contains(&name.value)
-                        {
-                            uses.push(syntax_name_range(with_start_position_as_ref(name)));
-                        }
+            match symbol {
+                SyntaxSymbol::TypeVariable { .. }
+                | SyntaxSymbol::ProjectTypeOrUnknown { .. }
+                | SyntaxSymbol::VariantOrUnknown(_) => {}
+                SyntaxSymbol::Origin {
+                    name: symbol_name,
+                    use_start: _,
+                    origin: _,
+                }
+                | SyntaxSymbol::PatternVariable {
+                    name: symbol_name,
+                    use_start: _,
+                    origin: _,
+                }
+                | SyntaxSymbol::ProjectFnOrUnknown {
+                    name:
+                        WithStartPosition {
+                            start: _,
+                            value: symbol_name,
+                        },
+                    pattern_variables: _,
+                    origins: _,
+                } => {
+                    if symbol_name == &name.value
+                        && !pattern_variables.contains(&name.value)
+                        && !origins.contains(&name.value)
+                    {
+                        uses.push(syntax_name_range(with_start_position_as_ref(name)));
                     }
                 }
             }

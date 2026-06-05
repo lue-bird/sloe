@@ -427,6 +427,5 @@ to re-compile
 cargo install --offline --debug --path . sloe
 ```
 # TODO
-- revamp formatting of "overhang".
-  only opening parens should overhang, otherwise just space or next-indented line break
-- fix bugs
+- unify vec and arena by introducing vec-element-without-vacating and mentioning that not handling a vec that's created temporarily is safe and not a leak
+- fix bugs and inline TODOs

@@ -741,6 +741,9 @@ fn non_zero_u32_predecessor(p32: std::num::NonZeroU32) -> u32 {
 pub fn p32_dup(n: P32) -> A·b<P32, P32> {
     A·b { a: n, b: n }
 }
+pub fn p32_rid(_: P32) -> Blank {
+    Blank {}
+}
 pub fn p32_predecessor(n: P32) -> U32 {
     non_zero_u32_predecessor(n)
 }
@@ -753,6 +756,9 @@ pub fn p32_to_u32(n: P32) -> U32 {
 pub fn u32_to_p32(n: U32) -> Opt<P32> {
     Opt::from_option(P32::new(n))
 }
+pub fn u32_rid(_: U32) -> Blank {
+    Blank {}
+}
 pub fn u32_dup(n: U32) -> A·b<U32, U32> {
     A·b { a: n, b: n }
 }
@@ -764,6 +770,9 @@ pub fn u32_add(A·b { a, b }: A·b<U32, U32>) -> U32 {
 }
 pub fn i32_dup(n: I32) -> A·b<I32, I32> {
     A·b { a: n, b: n }
+}
+pub fn i32_rid(_: I32) -> Blank {
+    Blank {}
 }
 pub fn i32_to_f32(n: I32) -> F32 {
     n as F32
@@ -789,6 +798,9 @@ pub fn i32_negate(n: I32) -> I32 {
 pub fn f32_dup(n: F32) -> A·b<F32, F32> {
     A·b { a: n, b: n }
 }
+pub fn f32_rid(_: F32) -> Blank {
+    Blank {}
+}
 pub fn f32_add(A·b { a, b }: A·b<F32, F32>) -> F32 {
     a + b
 }
@@ -802,9 +814,22 @@ pub fn f32_truncate_to_i32(n: F32) -> I32 {
 pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> A·b<Fn<In, Out>, Fn<In, Out>> {
     A·b { a: fn_, b: fn_ }
 }
+pub fn fn_rid<In, Out>(_: Fn<In, Out>) -> Blank {
+    Blank {}
+}
+
+pub fn char_dup(char: Char) -> A·b<Char, Char> {
+    A·b { a: char, b: char }
+}
+pub fn char_rid(_: Char) -> Blank {
+    Blank {}
+}
 
 pub fn str_dup(str: Str) -> A·b<Str, Str> {
     A·b { a: str, b: str }
+}
+pub fn str_rid(_: Str) -> Blank {
+    Blank {}
 }
 pub fn str_byte_count(str: Str) -> u32 {
     str.len() as u32
