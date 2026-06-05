@@ -2062,7 +2062,7 @@ If you wanted to start a declaration, try one of:
                 type_,
             } => match maybe_name {
                 None => {
-                    errors.push(ErrorNode { range: symbol_range(*ty_keyword_start, "ty"), message: Box::from("missing name. Type names start with a lowercase letter any only use ascii alphanumeric characters and -") });
+                    errors.push(ErrorNode { range: symbol_range(*ty_keyword_start, "ty"), message: Box::from("missing name. Type names start with a lowercase letter and only use ascii letters, digits and -") });
                 }
                 Some(name_node) => {
                     let type_alias_declaration_graph_node: strongly_connected_components::Node =
@@ -2099,7 +2099,7 @@ If you wanted to start a declaration, try one of:
                 result: maybe_result,
             } => match maybe_name {
                 None => {
-                    errors.push(ErrorNode { range: symbol_range(*fn_keyword_start, "fn"), message: Box::from("missing name. Function names start with a lowercase letter any only use ascii alphanumeric characters and -") });
+                    errors.push(ErrorNode { range: symbol_range(*fn_keyword_start, "fn"), message: Box::from("missing name. Function names start with a lowercase letter and only use ascii letters, digits and -") });
                 }
                 Some(name) => {
                     let project_fn_graph_node: strongly_connected_components::Node =
@@ -3153,7 +3153,7 @@ pub fn syntax_type_to_type<Types>(
                                 origin_type_alias.parameters.iter().map(|parameter| parameter.as_str()).skip(argument_count).collect::<Vec<_>>().join(", ")
                             ).into_boxed_str()
                         });
-                        // later arguments will be ignored
+                        return None;
                     }
                 }
                 return type_construct_resolve_type_alias(origin_type_alias, &argument_types);
@@ -7758,10 +7758,12 @@ fn next_indent(current_indent: usize) -> usize {
 }
 
 fn syntax_comments_format(formatted: &mut String, indent: usize, comments: &SyntaxComments) {
-    formatted.push_str(&comments.line0.value);
+    formatted.push_str("# ");
+    formatted.push_str(comments.line0.value.trim());
     linebreak_indented_into(formatted, indent);
     for line in &comments.line1_up {
-        formatted.push_str(&line.value);
+        formatted.push_str("# ");
+        formatted.push_str(line.value.trim());
         linebreak_indented_into(formatted, indent);
     }
 }
@@ -7792,18 +7794,28 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                     formatted.push(' ');
                     formatted.push_str(&parameter.value);
                 }
-                if let Some(documentation) = documentation {
-                    linebreak_indented_into(&mut formatted, next_indent(0));
-                    syntax_comments_format(&mut formatted, next_indent(0), documentation);
+                match documentation {
+                    Some(documentation) => {
+                        linebreak_indented_into(&mut formatted, next_indent(0));
+                        syntax_comments_format(&mut formatted, next_indent(0), documentation);
+                    }
+                    None => {
+                        formatted.push(' ');
+                    }
                 }
-                formatted.push(' ');
                 if let Some(type_) = type_ {
-                    syntax_type_unparenthesized_format(
-                        &mut formatted,
-                        next_indent(0),
-                        types,
-                        type_,
-                    );
+                    if let SyntaxType::Variable(variable) = type_to_unparenthesized(type_, types) {
+                        formatted.push('(');
+                        formatted.push_str(&variable.value);
+                        formatted.push(')');
+                    } else {
+                        syntax_type_unparenthesized_format(
+                            &mut formatted,
+                            next_indent(0),
+                            types,
+                            type_,
+                        );
+                    }
                 }
             }
             SyntaxProjectElement::Fn {
@@ -7873,6 +7885,25 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
         formatted.push_str("\n\n");
     }
     formatted
+}
+fn type_to_unparenthesized<'a, Types>(
+    type_: &'a SyntaxType<Types>,
+    types: &'a core::Vec<Types, SyntaxType<Types>>,
+) -> &'a SyntaxType<Types> {
+    match type_ {
+        SyntaxType::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => type_,
+            Some(inner) => type_to_unparenthesized(types.element(inner), types),
+        },
+        SyntaxType::Variable(_)
+        | SyntaxType::Construct { .. }
+        | SyntaxType::Record { .. }
+        | SyntaxType::Choice { .. } => type_,
+    }
 }
 fn syntax_angled_type_parameters_format(
     formatted: &mut String,

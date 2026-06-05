@@ -245,7 +245,7 @@ fn present_type_alias_markdown(
         sloe::type_format(&mut type_string, 4, type_);
     }
     let description = format!(
-        "```sloe\ntype {} {}\n    {}\n```\n",
+        "```sloe\nty {} {}\n    {}\n```\n",
         name,
         type_alias_info.parameters.join(" "),
         type_string
