@@ -1,6 +1,6 @@
 mod sloe;
 
 fn main() {
-    let greeting = sloe::example(sloe::Blank {});
-    print!("{}", greeting);
+    let example_result = sloe::example(sloe::Blank {});
+    println!("{:?}", example_result);
 }

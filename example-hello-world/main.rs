@@ -2,14 +2,14 @@ mod sloe;
 
 fn main() {
     sloe::origin_new!(result, Result);
-    let greeting = sloe::arena_opt_span_build(sloe::greet(sloe::Name·result_origin {
+    let greeting = sloe::vec_opt_span_build(sloe::greet(sloe::Name·result_origin {
         name: "world",
         result_origin: result,
     }));
     print!(
         "{}",
         greeting
-            .arena
+            .vec
             .opt_span_slice(greeting.span.as_ref())
             .iter()
             .copied()

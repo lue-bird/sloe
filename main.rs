@@ -1840,9 +1840,8 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         lsp_types::CompletionItem {
                             label: type_alias_name.to_string(),
                             kind: Some(lsp_types::CompletionItemKind::STRUCT),
-                            detail: Some(present_type_alias_markdown(
-                                type_alias_name,
-                                type_alias_info,
+                            documentation: Some(lsp_documentation_markdown(
+                                present_type_alias_markdown(type_alias_name, type_alias_info),
                             )),
                             insert_text: Some(inserted_text),
                             ..lsp_types::CompletionItem::default()
@@ -1852,7 +1851,10 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         lsp_types::CompletionItem {
                             label: origin_name.to_string(),
                             kind: Some(lsp_types::CompletionItemKind::STRUCT),
-                            detail: Some(format!("```sloe\norigin {}\n```", origin_name)),
+                            documentation: Some(lsp_documentation_markdown(format!(
+                                "```sloe\norigin {}\n```",
+                                origin_name
+                            ))),
                             ..lsp_types::CompletionItem::default()
                         }
                     }))
@@ -1979,8 +1981,8 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     lsp_types::CompletionItem {
                         label: fn_name.to_string(),
                         kind: Some(lsp_types::CompletionItemKind::FUNCTION),
-                        detail: Some(present_project_fn_with_complete_type_markdown(
-                            fn_name, fn_info,
+                        documentation: Some(lsp_documentation_markdown(
+                            present_project_fn_with_complete_type_markdown(fn_name, fn_info),
                         )),
                         insert_text: Some(inserted_text),
                         ..lsp_types::CompletionItem::default()
@@ -1988,11 +1990,12 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 })
                 .chain(pattern_variables.into_iter().map(
                     |(pattern_variable, _pattern_variable_origin)| {
-                        // portential improvement: do not suggest variables and origins that have already been used earlier
+                        // portential improvement: do not suggest variables and origins that have already been used earlier;
+                        // also types for both
                         lsp_types::CompletionItem {
                             label: pattern_variable.to_string(),
                             kind: Some(lsp_types::CompletionItemKind::VARIABLE),
-                            detail: Some(format!("pattern variable {}", pattern_variable)),
+                            detail: Some(format!("pattern variable")),
                             ..lsp_types::CompletionItem::default()
                         }
                     },
@@ -2001,7 +2004,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     lsp_types::CompletionItem {
                         label: origin_name.to_string(),
                         kind: Some(lsp_types::CompletionItemKind::VARIABLE),
-                        detail: Some(format!("```sloe\norigin {}\n```", origin_name)),
+                        detail: Some(format!("origin variable")),
                         ..lsp_types::CompletionItem::default()
                     }
                 }))
@@ -2009,6 +2012,12 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         )),
         sloe::SyntaxSymbol::PatternVariable { .. } => None,
     }
+}
+fn lsp_documentation_markdown(markdown: String) -> lsp_types::Documentation {
+    lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
+        kind: lsp_types::MarkupKind::Markdown,
+        value: markdown,
+    })
 }
 
 fn respond_to_document_formatting<Expressions, Patterns, Types>(

@@ -14,6 +14,8 @@ Install with
 cargo install --git https://github.com/lue-bird/sloe sloe
 ```
 
+> ⚠️ do not use, yet
+
 # concept: each value can only be used used/consumed at most once
 Matching a value? Consumes it. Passing a value as an argument? Consumes it.
 Even e.g. variables holding plain numbers have to be explicitly duplicated to use them in multiple places.
@@ -23,45 +25,39 @@ This allows
 - values can be mutated internally without mutation being detectable
 - representing things that can only be consumed once, like thread join handles
 
-This can feel annoying and clunky. Think e.g. `fn vec-occupied-count (vec vec ...) (& vec ... occupied-count u32)`.
+This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec vec ... -> .vec ... .occupied-count u32`.
 Not ony is it clunky, it is also conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
 
 The _big_ advantage is that it is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
 
 Further reading if interested: "affine types", rust owned values.
 
-# concept: flat memory collections
-## `arena`
-temporary, append-only arena, bumping + bulk de-allocation: just a plain vec without the ability to remove, could alternatively be implemented like [SmallArena](https://docs.rs/compact_arena/0.5.0/compact_arena/struct.SmallArena.html) or [ExternalStableVec](https://github.com/LukasKalbertodt/stable-vec).
-Use for things like building a formatted string, then writing it into a file. After that, the string can be scrapped.
-Choosing `arena` for deletion-heavy state of long-ish-running programs will be a memory leak.
-
-## `vec`
-Only bulk-de-allocating an `arena` that is introduced in the main loop (persistent application state) once it goes out of scope (aka the program exits) would be a (safe but bad) memory leak.
-
-A better solution: a collection which can mark some parts of itself as onuccupied.
-This can be used to "return" memory which has become useless with `vec-vacate` and `vec-span-vacate`
+# concept: flat memory collection `vec`
+A collection which can mark some spans within itself as vacant.
+This can be used to "return" memory which has become outdated or useless with for example `vec-element` and `vec-span-add-vec-span`.
+Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc.
 
 This concept is often called slot map, reusing memory.
-Important: `vec` spans/slots need to be manually "dropped"/removed from the backing vec if that backing vec is persistent. In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
-Various kinds of rust collections are compared here: https://donsz.nl/blog/arenas/
+In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
+Various kinds of similar rust collections are compared here: https://donsz.nl/blog/arenas/
 
-
-# concept: distinct origin of a value in your code
+# concept: distinct origin of a collection in your code
 Every created collection has a correlated origin.
 A value whose type contains an origin can't escape the function scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```
-fn some-arena (arena arena ??origin cannot even be annotated?? u32)
-    origin arena-origin
-    :(arena-empty<u32> arena-origin) arena
-    :(arena-add & arena arena new 123 u32) (& arena arena slot _) <
-    arena
+fn some-vec . -> vec vec ??origin cannot even be annotated??, u32)
+    origin vec-origin
+    :vec-empty<u32> vec-origin = vec >
+    :vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
+    ...
+    vec
 
 # compiles
-fn add-some-values<Origin> (arena arena Origin u32) (arena Origin u32)
-    :(arena-add & arena arena new 123 u32) (& arena arena slot _) <
-    arena
+fn add-some-values<Origin> vec vec Origin, u32 -> vec Origin, u32 >
+    :vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
+    ...
+    vec
 ```
 
 Further reading if interested: The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
@@ -71,7 +67,7 @@ The same idea but with runtime checking instead of compile-time checking can qui
 # examples
 ## pass in an origin from the outside (rare)
 ```
-fn arena-empty<Element> (origin (origin Origin)) (arena Origin Element)
+fn vec-empty<Element> origin origin Origin -> vec Origin, Element
 ```
 shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
@@ -83,84 +79,82 @@ An origin type does not have a `-dup` helper and thus can only be used for one c
 At the end of the underlying origin of the annotated origin type, the memory of the value with that origin will be deallocated.
 ```
 # use a temporary value within a scope
-fn use-arena & u32
-    origin arena-origin
-  	:(arena-empty<u32> arena-origin) arena <
-  	:(arena-add & arena arena new 123 u32) (& arena arena slot first-slot) <
-  	:(arena-element & arena arena slot first-slot) (& arena arena element first) <
-  	:(arena-span-build-empty arena) after-first <
-  	:(arena-opt-span-build-add & build after-first new 456 u32) after-first <
-  	:(arena-span-build-add & build after-first new 789 u32) after-first <
-    :(arena-span-build after-first) (& arena arena span span-after-first) <
-  	first # = 123 u32
+fn use-vec . -> u32 >
+    origin vec-origin
+  	:vec-empty<u32> vec-origin = vec >
+  	:vec-add .vec vec .new 123 u32 = .vec vec .slot first-slot >
+  	:vec-element .vec vec .slot first-slot = .vec vec .element first >
+  	:vec-span-build-empty vec = after-first >
+  	:vec-opt-span-build-add .build after-first .new 456 u32 = after-first >
+  	:vec-span-build-add .build after-first .new 789 u32 after-first >
+    :vec-span-build after-first = .vec vec .span span-after-first >
     ...
+  	first # = 123 u32
 
 # different branches, different scopes
-fn use-opt (opt opt u32) &
+fn use-opt opt opt u32 -> ... >
     # this won't compile as their origins come from different branches
     :(:opt
-        (Absent &) (
+        = |absent . >
             origin vec-origin
-            arena-empty<u32> vec-origin
-        )
-        (Present number) (
+            vec-empty<u32> vec-origin
+        = |present number > (
             origin vec-origin
-            :(arena-one & origin vec-origin element number) (& arena arena slot _) <
-            arena
+            :vec-one .origin vec-origin .element number = .vec vec .slot slot >
+            ...
+            vec
         )
     )
-    vec <
+    = vec >
     # this will compile:
     origin vec-origin
     :(:opt
-        (Absent &) (
-            arena-empty<u32> vec-origin
-        )
-        (Present number) (
-            :(arena-one & origin vec-origin element number) (& arena arena slot _) <
-            arena
+        = |absent . >
+            vec-empty<u32> vec-origin
+        = |present number > (
+            :vec-one .origin vec-origin .element number = .vec vec .slot slot >
+            ...
+            vec
         )
     )
-    vec <
-    &
+    = vec >
+    ...
 
 # recursive structure. One cool thing is that expression will turn every slot
 # into an exclusive slot
 ty expression Expressions-origin Patterns-origin Str-origin
-    |
-    Int i32
-    String (opt (span Str-origin))
-    Vec (opt (span Expressions-origin))
-    Call (&
-        (function slot Expressions-origin)
-        (arguments span Expressions-origin)
-    )
-    Lambda (&
-        parameters (span Patterns-origin)
-        result (slot Expressions-origin)
-    )
+    |int i32
+    |string opt span Str-origin
+    |vec opt span Expressions-origin
+    |call
+        .function slot Expressions-origin
+        .arguments span Expressions-origin
+    |lambda
+        .parameters span Patterns-origin
+        .result slot Expressions-origin
 
 ty state Expressions-origin
-    &
     # ...patterns, strings etc
-    expressions (vec Expressions-origin (expression Expressions-origin))
-    root-expression (expression Expressions-origin)
+    .expressions vec Expressions-origin, expression Expressions-origin
+    .root-expression expression Expressions-origin
 
 fn initial-state
-    (& expressions-origin expressions-origin (origin Expressions-origin))
-    (state Expressions-origin)
-    &
-    expressions (vec-empty<expression Expressions-origin ...> expressions-origin)
-    root-expression (..do parsing..)
+    .expressions-origin expressions-origin origin Expressions-origin
+    -> state Expressions-origin >
+    .expressions vec-empty<expression Expressions-origin, ...> expressions-origin
+    .root-expression (..do parsing..)
 
 fn state-to-interfaces-into
-    (&
-        interfaces interfaces (arena Interfaces-origin (interface (state Expressions-origin)))
-        state state (state Expressions-origin)
+    .interfaces interfaces vec Interfaces-origin, interface state Expressions-origin
+    .state state state Expressions-origin
+    -> vec Interfaces-origin, interface state Expressions-origin >
+    :(
+        vec-one
+        .origin interfaces-origin
+        .element |console-log (interface state Expressions-origin) "hello"
     )
-    (arena Interfaces-origin (interface state Expressions-origin))
-    :(arena-one & origin interfaces-origin element Console-log (interface (state Expressions-origin)) "hello")
-    (& slot _ arena interfaces) <
+    = .slot slot .vec interfaces >
+    ...
     interfaces
 ```
 
@@ -168,7 +162,7 @@ fn state-to-interfaces-into
 - scattered sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
   For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
   However, this would mean that slots and spans within the AST would not be owning
-- the pattern of removing, then re-inserting an element at a slot just to access it (potentially immutably) is not optimal. This can be mitigated somewhat by using `vec-update` & friends or compiling to/asking for code that uses `arena-replace (& slot new-element) (& slot old-element)` with a dummy element followed by `arena-replace` ignoring the returned dummy new-element instead
+- the pattern of removing, then re-inserting an element at a slot just to access it (potentially immutably) is not optimal. This can be mitigated somewhat by using `vec-update` & friends or compiling to/asking for code that uses `vec-replace .slot new-element .slot old-element` with a dummy element followed by `vec-replace` ignoring the returned dummy new-element instead
 
 # syntax
 Syntax is secondary but I tried to make it coherent and practical, avoiding parens and indentation when possible, especially for trailing syntax.
@@ -196,24 +190,21 @@ Some-variant-or-type-variable-name
 some-function<Type Arguments> inner-call-as-the-argument inner-inner-argument
 
 # record. if values are open-ended they need to be parenthesized.
-# The last field vlue does not need to be parenthesized if you put < between name and value
-& first-field first-value second-field second-value
-& first-field first-value second-field < do anything
+# The last field value can end in a record without needing to be parenthesized
+.first-field first-value .second-field second-value
+
+# "empty value", like an empty record/void/unit.
+# commonly used for variants "without a value" or empty state
+.
 
 # local fn of type fn.
-# the pattern must add a type to all variables and _s
+# the pattern must add a type to all variables
 # can **not** use variables from the outer scope.
-fn parameter-pattern result
+fn parameter-pattern > result
 
 # pattern variable
 # appending a type is only necessary and allowed in function parameters
 some-variable some-type
-
-# pattern (temporary) leak.
-# Conveniently skip handling a value and let it leak until the structure that contains it goes out of scope.
-# (Therefore, you should avoid it for slots and spans stored in a persisted state vec)
-# appending a type is required in function parameters
-_ some-type
 
 # pattern match, checked for exhaustiveness. Case patterns and expressions must be parenthesized if open ended.
 # The last case result does not need to be parenthesized if you put < between pattern and result
@@ -235,10 +226,9 @@ fn function-name<Potential Type-Arguments Only-Used-In-The-Result>
 # Here a "choice type" that can come in different shapes ("variants")
 # which each have a unique uppercase name and 0 or 1 associated value.
 ty type-name Potential Type-Parameters
-    |
-    First-Option &
-    Second-option (vec Potential u32)
-    Third-option (type-name-alias Potential Type-Parameters)
+    |first-option .
+    |second-option vec Potential, u32
+    |third-option type-name-alias Potential, Type-Arguments
 
 # creating a variant. Note that the type could refer to a type alias or be a choice type directly (| ...)
 Some-variant its-choice-type its value
@@ -253,59 +243,40 @@ Some-variant its-choice-type its value
 
 # potential improvements in the (far) future
 - add field and variant rename and references
-- suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions (expression Expressions Patterns Types)` doesn't exactly roll easily over one's keyboard
-- consider making `<` more first-class if there is demand for it. E.g. allow it for `type-alias-name first second < last argument` and choice type, or even allow it for _any_ supposedly non-open-ended syntax
-- add `set Origin Element` with a initialization function like `set-empty (origin ...) (hash fn Element -> Hash) -> set Origin Element`
-- add something like `map Origin Key Value` which still gives out `slot Origin`s for each entry but can be queried using e.g. `map-contains-key (map ...) (key Key) (value-dup ...) -> & (map ...) (contains-key bool)`. `map-empty` will require providing a `fn Key Key -> order`.
-  Alternatively, check if implementing in userland via e.g. AVL or red-black tree backed by a regular `vec`/`arena` is fast enough
-- add record update syntax
-- consider adding `vec-generational`, `slot-strong` and `slot-weak` which can reference a slot that is already in use, without any guarantee that it still points to an occupied slot: `slot-dup-weak (slot-strong slot Origin) -> & (slot slot-strong Origin) (weak slot-weak Origin)` + `slot-weak-dup`. This would enable graph structures, child-parent relations, doubly-linked lists etc.
+- suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
+- add `set Origin, Element` with an initialization function like `set-empty .origin ... .hash fn Element, Hash -> set Origin Element`
+- add something like `map Origin, Key, Value` which still gives out `slot Origin`s for each entry but can be queried using e.g. `map-contains-key .map ... .key Key .value-dup ... -> .map ... .contains-key bool`. `map-empty` will require providing a `fn .a Key .b Key, order`.
+  Alternatively, check if implementing in userland via e.g. AVL or red-black tree backed by a regular `vec` is fast enough
+- consider adding record update syntax
+- consider adding `vec-generational`, `slot-strong` (and `slot-weak`?) which can reference a slot that is already in use, without any guarantee that it still points to an occupied slot: `slot-dup-weak slot-strong slot Origin -> .slot slot-strong, Origin .weak slot-weak Origin` + `slot-weak-dup`. This would enable graph structures, child-parent relations, doubly-linked lists etc.
   **important**: This requires generational slots.
   Can be implemented using e.g. [slotmap](https://docs.rs/crate/slotmap/latest), [thunderdome](https://docs.rs/crate/thunderdome/latest), [riddance](https://docs.rs/riddance/latest/riddance/) or on top of `vec` with an added generation counter in slot and collection.
   Shelved for now because the model is quite different and I don't yet have a use case
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```
-  fn recurse (consume-origin Consume-origin) (result-origin Result-origin) -> (vec Result-origin u32) (
+  fn recurse
+      .consume-origin consume-origin Consume-origin
+      .result-origin result-origin Result-origin
+      -> vec Result-origin, u32 >
       origin local-origin
-      :(vec-empty<u32> consume-origin) temporary
-      :(recurse local-origin result-origin) result
-      :(vec-add temporary (1 u32)) (& (slot _) (vec _))
+      :vec-empty<u32> consume-origin = temporary >
+      :recurse local-origin result-origin = result >
+      :vec-add .a temporary .b 1 u32 = .slot slot .vec temporary >
+      ...
       result
-  )
   ```
   If we find a problem, creating a new `origin` should be disallowed in (mutually) recursive calls.
   This is a bit restrictive but alright I believe.
   If feeling motived, look into proof languages and make sure this is rock solid
-- improve memory efficiency of string operations (currently vec/arena of char)
+- improve memory efficiency of string operations (currently vec of char)
 - allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`. This preferably builds on a stabilized allocator feature
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
-    - `vec Origin (& (a A) (b B))` to `A·B<Vec<A>, Vec<B>>`
-    - for `choice A-or-b A B ((A A) (B B))`: `vec Origin A-or-b` to either 
+    - `vec Origin, .a A .b B` to `A·B<Vec<A>, Vec<B>>`
+    - for `vec Origin, |a A |b B` to either 
         - `Tag·ValueIndex·A·B<Vec<A_or_B_Tag>, Vec<u32>, Vec<A>, Vec<B>>` (which also has ~2 hops but makes sense when sizes of A and B are different enough)
         - `A·B<Vec<A>, Vec<B>>` (which requires the index to hold both the tag and the value index, aka 64 bit instead of 32, which somewhat defeats the point of reducing padding of the variant when values get bigger. Potentially there could however be struct-of-arrays for individual variant values making this worth it: https://github.com/dist1ll/osmium & https://alic.dev/blog/dense-enums)
         - `A·B<Vec<A>, Map<u32, B>>` (which is inefficient, and wasteful if `B` is common, and also doesn't scale with more than 2 variants)
-- strongly consider making `vec`/`arena` etc store multiple kinds of data (heterogenous) and let them give out `slot origin data-type` and `span origin data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
-  This makes the porpose of `arena`/`vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end (expression expression Origin) (data vec Origin) -> & (vec vec Origin) (end text-position)`.
-  This would also in theory enable a crazy representation of tagged unions as:
-  ```
-  expression-slot origin (
-      (Int slot origin i32)
-      (Plus slot origin (& (left expression-slot origin) (right expression-slot origin)))
-      ...
-  )
-  ```
-  This also means slices etc need to be stored separately in the origin vec.
-  The issue currently is that it feels hard to optimally construct/query such a heterogenous structure.
-  Its structure _must_ be created at compile-time. Dynamically this doesn't fly: `vec origin = { bucket: Map<for type_byte_size: { key: type_byte_size, value: Vec<type_byte_size> }> }`.
-  However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
-  ```
-  origin arena-origin
-  :(arena-empty<& (expression expression) (pattern pattern arena-origin)> arena-origin) arena
-  :(arena-add arena some-expression) (& (arena arena) (slot some-expression-slot))
-  :(arena-add arena some-pattern) (& (arena arena) (slot some-pattern-slot))
-  ```
-  This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
 - look into soa_derive for rust, maybe this already does most of the useful work
 - try adding a compiler output to zig or similar which I think fits well (few free(), no need for lifetimes, fast compilation, anonymous structs, allocators, MultiArrayList. Downsides: pattern matching is underdeveloped, less-utilized memory niches (e.g. I think no NonZeroU32 and variant-in-variant niche usage for example), ecosystem, no language-level ownership, making sloe values prone to mistakes south of the the ffi border) and the overall philosophy (explicitness, data oriented)
 - imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
@@ -334,33 +305,33 @@ As a hobby language that deliberately cannot by itself interface with the operat
 - consider allowing `origin name` at the project scope. This allows reducing the number of type parameters flying around in things like `expression Expressions Patterns Types Source Cases ...` if desired.
 It also makes initial_state much easier to call from the rust side (though we need to be careful how...).
   Rejected because this makes it more or less impossible to run multiple sloe instances from a single rust program
-- convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of unreasonable cleanup for arena members (which most likely would get optimized away though): It would imply e.g. introducing arena-free and vec-free and unnecessarily returning slots and spans to the origin arena. Not very ergonomic
   Issue is that in general single-return-continuation is rare in sloe
-- requiring all (!) generic type parameters to be passed to calls and variants, e.g.
-  ```
-  choice Choice Value (
-      Variant Value
-  )
-  
-  fn take-variant (Choice<u32>.Variant (value u32)) -> Blank (
-      :(dup3 u32-dup value) _
-      Blank
-  )
-
-  fn dup3
-      (dup fn Value -> & (old Value) (new Value))
-      (value Value)
-      -> (& (a Value) (b Value) (c Value))
-      (
-      :(fn-dup dup) & ((old dup0) (new dup1))
-      :(dup0 value) (& (old a) (new temp))
-      :(dup1 temp) (& (old b) (new c))
-      & (a a) (b b) (c c)
-  )
-  ```
-  I feel like this is more "natural", easier to type-check but way more verbose / redundant
-- adding function call syntax sugar `argument0 .function<Type Arguments> argument1-up`.
+- requiring all (!) generic type parameters to be passed to calls
+  I feel like this is more "natural", easier to type-check but way more verbose / redundant.
+  And especially because having _many_ origin type variables is common, this sadly won't fly
+- adding function call syntax sugar similar to piping.
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
+- making `vec` etc store multiple kinds of data (heterogenous) and letting them give out `slot origin data-type` and `span origin data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
+  This makes the porpose of `vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression expression Origin .data vec Origin -> .vec vec Origin .end text-position`.
+  This would also in theory enable a crazy representation of tagged unions as:
+  ```sloe
+  expression-slot origin
+      |int slot origin, i32
+      |plus slot origin, .left expression-slot origin .right expression-slot origin
+      ...
+  ```
+  This also means slices etc need to be stored separately in the origin vec.
+  The issue currently is that it feels hard to optimally construct/query such a heterogenous structure.
+  Its structure _must_ be created at compile-time. Dynamically this doesn't fly: `vec origin = { bucket: Map<for type_byte_size: { key: type_byte_size, value: Vec<type_byte_size> }> }`.
+  However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
+  ```
+  origin vec-origin
+  :vec-empty<.expression expression .pattern pattern vec-origin> vec-origin = vec >
+  :vec-add .vec vec .new some-expression = .vec vec slot some-expression-slot >
+  :vec-add .vec vec .new some-pattern  = .vec vec .slot some-pattern-slot >
+  ...
+  ```
+  This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
 
 
 ## why no `&mut`/`inout`
@@ -370,9 +341,9 @@ While seemingly convenient and magnitudes better than regular mutable pointers,
 - there's no way to "reconstruct" a different out value. Especially for non-trivial edits the &mut approach can get messy or it's straight up impossible and parts will need to get cloned unnecessarily
 - there's no way to change the type (e.g. from `span` to `span-filled`)
 - there's no there's two ways to specify most conversions, with usually no clear method of converting one to the other
-- it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn (& (context context) ...) (exit-or-go-on found context)` where found contains some parts of the context). This isn't modelled well with `&mut`
+- it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn .context context ... -> |exit found |go-on context` where found contains some parts of the context). This isn't modelled well with `&mut`
 - `&mut` means the resulting changed collection is not returned, making use as the input to another function impossible. This almost necessarily results in the classic procedural-style statement form as opposed to the functional-style expression form. Minor gripe: especially in languages that don't allow local scopes with local returns (far, far too many) this basically makes it impossible to locally introduce a value, change it and implant it somewhere; instead you have to move the variable up to the top level.
-- returning `&` (like returning `Unit` in gleam) feels super awkward to my brain. Most often, languages then automatically return void/... in the absence of a return and introduce all kinds of constructs like re-assignable variables, additional constructs for looping and branching that all can only return void/... . To my brain, this just confuses matters; it loves simple to follow flow of state!
+- returning `.` (like returning `Unit` in gleam) feels super awkward to my brain. Most often, languages then automatically return void/... in the absence of a return and introduce all kinds of constructs like re-assignable variables, additional constructs for looping and branching that all can only return void/... . To my brain, this just confuses matters; it loves simple to follow flow of state!
 - &mut usually comes with the need to check for non-overlapping references to the same parts of data. This isn't possible with owned data passing in the first place
 
 rusts immutable references `&` have some similar trade-offs but seem kind of unavoidable at least for languages like rust.
@@ -383,7 +354,7 @@ rusts immutable references `&` have some similar trade-offs but seem kind of una
 - I personally never had a need for this. Usually you can just make the environment a type variable and you're golden
 
 I'm strangely really convinced that this is the obvious, correct design decision (for most programming languages at that!) which really surprises me.
-Note that the current design does not natively have a `dyn Fn`; it needs to be manually emulated via an explicit `choice`.
+Note that the current design does not natively have a `dyn Fn`; it needs to be manually emulated via an explicit `|` choice type.
 
 ## why no traits / type classes / (duck) (static) dispatch 
 - traits introduce a crazy amount of complexity
@@ -427,5 +398,27 @@ to re-compile
 cargo install --offline --debug --path . sloe
 ```
 # TODO
-- unify vec and arena by introducing vec-element-without-vacating and mentioning that not handling a vec that's created temporarily is safe and not a leak
-- fix bugs and inline TODOs
+- switch to a different style of syntax which favors separators in most places:
+  ```sloe
+  fn greet .name name str .result-origin result-origin origin Origin -> span-build vec Origin, char >
+    :vec-span-empty vec-empty<char> result-origin = build >
+    :vec-opt-span-add-str .build build .new "Hello, " = build >
+    :vec-opt-span-add-str .build build .new name = build >
+    vec-opt-span-add-str .build build .new "!\n"
+  ```
+    - fields are prefixed with `.`, cases are prefixed with `=`, type arguments are separated with `,`, variants are prefixed with `|`
+    - if the last case result "open-ends" with `:` it's the last case
+    - if the queried expression "open-ends" with `:` it fails to parse. needs to be parenthesized
+    - if the last field value "open-ends" with `.` it's the last field
+    - if the last field value "open-ends" with `|` it's the last variant
+    - if the last type argument "open-ends" with a type construct that uses `,` it's the last type argument
+    - represent unit/blank as `.`
+    - change local `fn pattern result` syntax to `fn pattern > result`
+  
+  This gets rid of the admittedly weird `<` syntax and is likely more intuitive, readable and convenient.
+  I do think this is more annoying to express correctly in tree-sitter though.
+
+- fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
+
+- officially convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of cleanup for temporary vec members (which most likely would get optimized away though).
+  Doing this "change" mostly means changing error messages and documentation

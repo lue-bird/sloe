@@ -1441,6 +1441,7 @@ pub fn parse_expression<Expressions, Patterns, Types>(
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
+    // fn and origin must be checked before variable or call
     parse_expression_number(state, types)
         .or_else(|| parse_expression_char(state))
         .or_else(|| parse_expression_str(state))
@@ -1459,15 +1460,16 @@ pub fn parse_expression_not_open_ended<Expressions, Patterns, Types>(
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
+    // fn and origin must be checked before variable
     parse_expression_number_not_open_ended(state, types)
         .or_else(|| parse_expression_char(state))
         .or_else(|| parse_expression_str(state))
+        .or_else(|| parse_expression_fn_not_open_ended(state, expressions, patterns, types))
+        .or_else(|| parse_expression_origin_not_open_ended(state, expressions, patterns, types))
         .or_else(|| parse_expression_variable(state))
         .or_else(|| parse_expression_variant_not_open_ended(state, expressions, patterns, types))
         .or_else(|| parse_expression_parenthesized(state, expressions, patterns, types))
         .or_else(|| parse_expression_record_empty(state))
-        .or_else(|| parse_expression_fn_not_open_ended(state, expressions, patterns, types))
-        .or_else(|| parse_expression_origin_not_open_ended(state, expressions, patterns, types))
 }
 fn parse_expression_record_empty<Expressions, Patterns, Types>(
     state: &mut ParseState,
@@ -3294,10 +3296,10 @@ pub fn syntax_type_to_type<Types>(
                     None => {
                         any_variant_value_has_error = true;
                     }
-                    Some(field_value_type) => {
+                    Some(variant_value_type) => {
                         variant_types.push(TypeVariant {
                             name: syntax_variant.name.value.clone(),
-                            value: field_value_type,
+                            value: variant_value_type,
                         });
                     }
                 }
@@ -3365,27 +3367,7 @@ fn type_to_rust(type_: &Type) -> syn::Type {
         Type::Variable(variable) => syn_type_variable(&type_variable_to_rust(variable)),
         Type::Origin(name) => syn::Type::Path(syn::TypePath {
             qself: None,
-            path: syn::Path {
-                leading_colon: None,
-                segments: std::iter::once(syn::PathSegment {
-                    ident: syn_ident("Origin"),
-                    arguments: syn::PathArguments::AngleBracketed(
-                        syn::AngleBracketedGenericArguments {
-                            colon2_token: None,
-                            lt_token: syn::token::Lt(syn_span()),
-                            args: std::iter::once({
-                                syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {
-                                    qself: None,
-                                    path: syn_path_reference([name]),
-                                }))
-                            })
-                            .collect(),
-                            gt_token: syn::token::Gt(syn_span()),
-                        },
-                    ),
-                })
-                .collect(),
-            },
+            path: syn_path_reference([&name_to_uppercase_rust(name)]),
         }),
         Type::CoreConstruct { name, arguments } => syn::Type::Path(syn::TypePath {
             qself: None,
@@ -4705,7 +4687,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
                 CompiledExpression {
                     rust: rust_reference,
-                    type_: Some(Type::Origin(name.value.clone())),
+                    type_: Some(type_origin(Type::Origin(name.value.clone()))),
                 }
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
@@ -5567,21 +5549,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 })),
                 comma: None,
             }];
-            for (case_index, case) in case1_up
+            let mut cases_were_skipped = false;
+            'compiling_case1_up: for (case_index, case) in case1_up
                 .iter()
                 .enumerate()
                 .map(|(i_in_1up, case)| (i_in_1up + 1, case))
             {
-                let Some(case_result) = &case.result else {
-                    errors.push(ErrorNode {
-                        range: case.left_angle_start.map(|left_angle_start| symbol_range(left_angle_start, "<")).unwrap_or_else(||pattern_range(&case.pattern, patterns, types)),
-                        message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. A full query could look like :option ((Present n) n) (Absent 0 u32)")
-                    });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
-                };
                 let mut case_pattern_introduced_variables: std::collections::HashMap<
                     &Name,
                     PatternVariableCompileInfo,
@@ -5598,16 +5571,40 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     types,
                     origins,
                 ) else {
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    cases_were_skipped = true;
+                    continue 'compiling_case1_up;
                 };
                 pattern_variables.extend(
                     case_pattern_introduced_variables
                         .iter()
                         .map(|(binding, info)| (*binding, info.clone())),
                 );
+                if let Some(queried_pattern_type_diff) =
+                    type_diff(&compiled_queried_type, &case_pattern_compiled.type_)
+                {
+                    errors.push(ErrorNode {
+                        range: pattern_range(&case.pattern, patterns, types),
+                        message: (type_diff_error_message(&queried_pattern_type_diff)
+                            + "\n\nA query case pattern must have the same type as the queried expression")
+                                .into_boxed_str(),
+                    });
+                    cases_were_skipped = true;
+                    continue 'compiling_case1_up;
+                }
+                pattern_catch_merge_with(
+                    errors,
+                    pattern_range(&case.pattern, patterns, types),
+                    &mut catch,
+                    case_pattern_compiled.catch,
+                );
+                let Some(case_result) = &case.result else {
+                    errors.push(ErrorNode {
+                        range: case.left_angle_start.map(|left_angle_start| symbol_range(left_angle_start, "<")).unwrap_or_else(||pattern_range(&case.pattern, patterns, types)),
+                        message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. A full query could look like :option ((Present n) n) (Absent 0 u32)")
+                    });
+                    rust_arms.push(syn_arm(case_pattern_compiled.rust, syn_expr_todo()));
+                    continue 'compiling_case1_up;
+                };
                 let mut case_result_used_pattern_variables = std::collections::HashMap::new();
                 let mut case_result_used_origin_variables = std::collections::HashMap::new();
                 let CompiledExpression {
@@ -5629,10 +5626,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     case_result,
                 )
                 else {
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    rust_arms.push(syn_arm(case_pattern_compiled.rust, syn_expr_todo()));
+                    continue 'compiling_case1_up;
                 };
                 for (case_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
                     case_pattern_introduced_variables
@@ -5708,53 +5703,39 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             + "\n\nAll query case results must have the same type")
                             .into_boxed_str(),
                     });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: Some(case_result_type),
-                    };
+                    rust_arms.push(syn_arm(case_pattern_compiled.rust, syn_expr_todo()));
+                    continue 'compiling_case1_up;
                 }
-                if let Some(queried_pattern_type_diff) =
-                    type_diff(&compiled_queried_type, &case_pattern_compiled.type_)
-                {
-                    errors.push(ErrorNode {
-                        range: pattern_range(&case.pattern, patterns, types),
-                        message: (type_diff_error_message(&queried_pattern_type_diff)
-                            + "\n\nA query case pattern must have the same type as the queried expression")
-                                .into_boxed_str(),
-                    });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: Some(case_result_type),
-                    };
-                }
-                pattern_catch_merge_with(
-                    errors,
-                    pattern_range(&case.pattern, patterns, types),
-                    &mut catch,
-                    case_pattern_compiled.catch,
-                );
-                rust_arms.push(syn::Arm {
-                    attrs: vec![],
-                    pat: case_pattern_compiled.rust,
-                    guard: None,
-                    fat_arrow_token: syn::token::FatArrow(syn_span()),
-                    body: Box::new(syn::Expr::Block(syn::ExprBlock {
+                fn syn_arm(pattern: syn::Pat, result: syn::Expr) -> syn::Arm {
+                    syn::Arm {
                         attrs: vec![],
-                        label: None,
-                        block: syn_spread_expr_block(case_compiled_result_rust),
-                    })),
-                    comma: None,
-                })
+                        pat: pattern,
+                        guard: None,
+                        fat_arrow_token: syn::token::FatArrow(syn_span()),
+                        body: Box::new(syn::Expr::Block(syn::ExprBlock {
+                            attrs: vec![],
+                            label: None,
+                            block: syn_spread_expr_block(result),
+                        })),
+                        comma: None,
+                    }
+                }
+                rust_arms.push(syn_arm(
+                    case_pattern_compiled.rust,
+                    case_compiled_result_rust,
+                ));
             }
             match catch {
                 CasePatternsCatch::Exhaustive => {}
                 _catch_not_exhaustive => {
-                    errors.push(ErrorNode {
-                        range: symbol_range(*colon_start, ":"),
-                        message: Box::from("inexhaustive pattern match.
-A pattern match must cover all possible cases, otherwise the program would need to crash if such a value was matched on.
-It might be that a case is not indented enough."),
-                    });
+                    if !cases_were_skipped {
+                        errors.push(ErrorNode {
+                            range: symbol_range(*colon_start, ":"),
+                            message: Box::from("inexhaustive pattern match.
+    A pattern match must cover all possible cases, otherwise the program would need to crash if such a value was matched on.
+    It might be that a case is not indented enough."),
+                        });
+                    }
                     // _ => todo!() is appended to still make inexhaustive matching compile
                     // and be able to be run, rust will emit a warning
                     rust_arms.push(syn::Arm {
@@ -5884,26 +5865,39 @@ It might be that a case is not indented enough."),
                 rust: syn::Expr::Block(syn::ExprBlock {
                     attrs: vec![],
                     label: None,
-                    block: syn_spread_expr_block(syn::Expr::Macro(syn::ExprMacro {
-                        attrs: vec![],
-                        mac: syn::Macro {
-                            path: syn_path_reference(["origin_new"]),
-                            bang_token: syn::token::Not(syn_span()),
-                            delimiter: syn::MacroDelimiter::Paren(syn::token::Paren(syn_span())),
-                            tokens: {
-                                let mut token_stream = proc_macro2::TokenStream::new();
-                                proc_macro2::TokenStream::append_separated(
-                                    &mut token_stream,
-                                    [
-                                        origin_name.value.as_str(),
-                                        &name_to_uppercase_rust(origin_name.value.as_str()),
-                                    ],
-                                    syn::token::Comma(syn_span()),
-                                );
-                                token_stream
-                            },
-                        },
-                    })),
+                    block: syn::Block {
+                        brace_token: syn::token::Brace(syn_span()),
+                        stmts: vec![
+                            syn::Stmt::Macro(syn::StmtMacro {
+                                attrs: vec![],
+                                mac: syn::Macro {
+                                    path: syn_path_reference(["origin_new"]),
+                                    bang_token: syn::token::Not(syn_span()),
+                                    delimiter: syn::MacroDelimiter::Paren(syn::token::Paren(
+                                        syn_span(),
+                                    )),
+                                    tokens: {
+                                        let mut token_stream = proc_macro2::TokenStream::new();
+                                        proc_macro2::TokenStream::append_separated(
+                                            &mut token_stream,
+                                            [
+                                                syn_ident(&name_to_lowercase_rust(
+                                                    origin_name.value.as_str(),
+                                                )),
+                                                syn_ident(&name_to_uppercase_rust(
+                                                    origin_name.value.as_str(),
+                                                )),
+                                            ],
+                                            syn::token::Comma(syn_span()),
+                                        );
+                                        token_stream
+                                    },
+                                },
+                                semi_token: None,
+                            }),
+                            syn::Stmt::Expr(result_compiled.rust, None),
+                        ],
+                    },
                 }),
                 type_: result_compiled.type_,
             }
@@ -6302,7 +6296,7 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
             if let Type::Origin(actual_name) = actual_type
                 && expected_name == actual_name
             {
-                Some(TypeDiff::Origin(expected_name.clone()))
+                None
             } else {
                 Some(TypeDiff::Conflict {
                     expected: expected_type.clone(),
@@ -6688,16 +6682,11 @@ fn name_to_uppercase_rust(name: &str) -> String {
     if let Some(first) = sanitized.get_mut(0..=0) {
         first.make_ascii_uppercase();
     }
-    if [
-        "Self", "Clone", "Copy", "Debug", "Blank", "Never",
-        // type variables used in core
-        "A", "B", "C", "E", "N", "S",
-    ]
-    .contains(&sanitized.as_str())
-    {
-        sanitized + "ø_"
-    } else {
-        sanitized
+    // Not sure if type variables in core code can actually collide with generated type names?
+    match sanitized.as_str() {
+        "Self" | "Clone" | "Copy" | "Debug" | "Blank" | "Never" | "OwnedSliceIterator"
+        | "SpanRaw" | "VecIter" | "Element" | "State" => sanitized + "ø_",
+        _ => sanitized,
     }
 }
 fn name_to_lowercase_rust(name: &str) -> String {
@@ -6705,9 +6694,12 @@ fn name_to_lowercase_rust(name: &str) -> String {
     if let Some(first) = sanitized.get_mut(0..=0) {
         first.make_ascii_lowercase();
     }
-    if rust_lowercase_keywords.contains(&sanitized.as_str())
-        || sanitized == local_unnamed_function_name
-    {
+    let needs_to_be_disambiguated = rust_lowercase_keywords.contains(&sanitized.as_str())
+        || match sanitized.as_str() {
+            local_unnamed_function_name | "copy_ref_to_owned" | "origin_new" => true,
+            _ => false,
+        };
+    if needs_to_be_disambiguated {
         sanitized + "ø"
     } else {
         sanitized
@@ -6954,6 +6946,17 @@ fn type_record(fields: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
             .collect(),
     )
 }
+fn type_choice(variants: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
+    Type::Choice(
+        variants
+            .into_iter()
+            .map(|(variant_name, variant_value)| TypeVariant {
+                name: Name::const_new(variant_name),
+                value: variant_value,
+            })
+            .collect(),
+    )
+}
 const type_p32: Type = Type::CoreConstruct {
     name: Name::const_new("p32"),
     arguments: vec![],
@@ -6984,15 +6987,15 @@ fn type_origin(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
+fn type_origin_rid(origin: Type) -> Type {
+    Type::CoreConstruct {
+        name: Name::const_new("origin-rid"),
+        arguments: vec![origin],
+    }
+}
 fn type_vec(origin: Type, element: Type) -> Type {
     Type::CoreConstruct {
         name: Name::const_new("vec"),
-        arguments: vec![origin, element],
-    }
-}
-fn type_arena(origin: Type, element: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::const_new("arena"),
         arguments: vec![origin, element],
     }
 }
@@ -7021,28 +7024,7 @@ fn type_span_build(backing: Type) -> Type {
     }
 }
 fn type_opt(present: Type) -> Type {
-    Type::Choice(vec![
-        TypeVariant {
-            name: Name::const_new("Absent"),
-            value: type_record([]),
-        },
-        TypeVariant {
-            name: Name::const_new("Present"),
-            value: present,
-        },
-    ])
-}
-fn type_exit_or_go_on(exit: Type, go_on: Type) -> Type {
-    Type::Choice(vec![
-        TypeVariant {
-            name: Name::const_new("Exit"),
-            value: exit,
-        },
-        TypeVariant {
-            name: Name::const_new("Go-on"),
-            value: go_on,
-        },
-    ])
+    type_choice([("Absent", type_record([])), ("Present", present)])
 }
 pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, CompiledProjectFnInfo>> =
     std::sync::LazyLock::new(|| {
@@ -7241,186 +7223,70 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
-                Name::const_new("arena-empty"),
+                Name::const_new("origin-rid"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Initialize an `arena` with 0 elements. Modify with `arena-pre-allocate-at-least`, `arena-add` etc.",
-                    )),
-                    type_parameters: vec![Name::const_new("Element")],
-                    parameter_type: Some(type_origin(type_variable("Origin"))),
-                    result_type: Some(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    )),
-                },
-            ),
-            (
-                Name::const_new("arena-pre-allocate-at-least"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Reserves capacity for at least `length` more elements to be added. This can prevent frequent re-allocation of the underlying array.",
+                        "Split the origin-rid in two values with the same content",
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
-                        (
-                            "arena",
-                            type_arena(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("length", type_u32),
-                    ])),
-                    result_type: Some(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    )),
-                },
-            ),
-            (
-                Name::const_new("arena-add"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Add a new element into the vec and keep a slot to it.",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_record([
-                        (
-                            "arena",
-                            type_arena(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("new", type_variable("Element")),
-                    ])),
+                    parameter_type: Some(type_origin_rid(type_variable("Origin"))),
                     result_type: Some(type_record([
-                        (
-                            "arena",
-                            type_arena(type_variable("Origin"), type_variable("Element")),
-                        ),
+                        ("a", type_origin_rid(type_variable("Origin"))),
+                        ("b", type_origin_rid(type_variable("Origin"))),
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("origin-rid-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given origin-rid value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to ignore it only in some case",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_origin_rid(type_variable("Origin"))),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
+                Name::const_new("slot-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given slot value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
                         ("slot", type_slot(type_variable("Origin"))),
+                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
                     ])),
+                    result_type: Some(type_record([])),
                 },
             ),
             (
-                Name::const_new("arena-element"),
+                Name::const_new("span-rid"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Retrieve an element from the arena at a given slot (the inverse of arena-add).",
+                        "Mark the given span value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case",
                     )),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([
-                        (
-                            "arena",
-                            type_arena(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("slot", type_slot(type_variable("Origin"))),
-                    ])),
-                    result_type: Some(type_record([
-                        (
-                            "arena",
-                            type_arena(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("element", type_variable("Element")),
-                    ])),
-                },
-            ),
-            (
-                Name::const_new("arena-span-empty"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Start a `span-build` backed by the given arena. Modify with `arena-span-build-add`, `arena-span-build-add-str` etc. and finish with `arena-span-build`",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    )),
-                    result_type: Some(type_opt_span_build(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
-                },
-            ),
-            (
-                Name::const_new("arena-opt-span-add-str"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Attach a given `str` to the span of a given `span-build`.",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_record([
-                        (
-                            "build",
-                            type_opt_span_build(type_arena(
-                                type_variable("Origin"),
-                                type_variable("Element"),
-                            )),
-                        ),
-                        ("new", type_str),
-                    ])),
-                    result_type: Some(type_opt_span_build(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
-                },
-            ),
-            (
-                Name::const_new("arena-span-add-str"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Attach a given `str` to the span of a given `span-build`.",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_record([
-                        (
-                            "build",
-                            type_span_build(type_arena(
-                                type_variable("Origin"),
-                                type_variable("Element"),
-                            )),
-                        ),
-                        ("new", type_str),
-                    ])),
-                    result_type: Some(type_span_build(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
-                },
-            ),
-            (
-                Name::const_new("arena-opt-span-build"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Finish an `opt-span-build` and split it into the backing `arena` and the built `opt span`.",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_opt_span_build(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
-                    result_type: Some(type_record([
-                        (
-                            "arena",
-                            type_arena(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("span", type_opt(type_span(type_variable("Origin")))),
-                    ])),
-                },
-            ),
-            (
-                Name::const_new("arena-span-build"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Finish a `span-build` and split it into the backing `arena` and the `span`.",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_span_build(type_arena(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
-                    result_type: Some(type_record([
-                        (
-                            "arena",
-                            type_arena(type_variable("Origin"), type_variable("Element")),
-                        ),
                         ("span", type_span(type_variable("Origin"))),
+                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
                     ])),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
+                Name::const_new("opt-span-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given opt span value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
+                        ("span", type_opt(type_span(type_variable("Origin")))),
+                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
+                    ])),
+                    result_type: Some(type_record([])),
                 },
             ),
             (
@@ -7456,6 +7322,29 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
                         "Add a new element into the vec and keep a slot to it.",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("new", type_variable("Element")),
+                    ])),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_slot(type_variable("Origin"))),
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("vec-add-ignoring-vacant"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Add a new element into the vec and keep a slot to it without trying to reuse already vacant slots. Can be faster than vec-add for temporary vecs where all the storage gets scrapped anyway, see also vec-element-without-vacating.",
                     )),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([
@@ -7581,6 +7470,26 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
+                Name::const_new("vec-opt-span-build-ignoring-vacant"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Finish an `opt-span-build` and split it into the backing `vec` and the built `opt span`, without trying to reuse vacant spans. Can be faster than vec-add for temporary vecs where all the storage gets scrapped anyway.",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_opt_span_build(type_vec(
+                        type_variable("Origin"),
+                        type_variable("Element"),
+                    ))),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_opt(type_span(type_variable("Origin")))),
+                    ])),
+                },
+            ),
+            (
                 Name::const_new("vec-span-build"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
@@ -7597,6 +7506,100 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_span(type_variable("Origin"))),
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("vec-span-build-ignoring-vacant"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Finish a `span-build` and split it into the backing `vec` and the built `span`, without trying to reuse vacant spans. Can be faster than vec-add for temporary vecs where all the storage gets scrapped anyway.",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_span_build(type_vec(
+                        type_variable("Origin"),
+                        type_variable("Element"),
+                    ))),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("vec-fold"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Consume all elements, stepping a state through first to last.
+This is mainly intended as a cleanup mechanism to flush out any remaining elements.
+```sloe
+origin example-origin
+:(vec-empty<u32> example-origin) example-vec <
+vec-fold &
+vec example-vec
+state &
+step (fn (& state state & element element u32) u32-rid element)
+```
+For regular folds over spans, use helpers like `span-fold`.
+If you end up needing to scrap some remaining slots and spans after or during `vec-fold`,
+check out `vec-fold-with-origin-rid`
+",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("state", type_variable("State")),
+                        (
+                            "step",
+                            type_fn(
+                                type_record([
+                                    ("state", type_variable("State")),
+                                    ("element", type_variable("Element")),
+                                ]),
+                                type_variable("State"),
+                            ),
+                        ),
+                    ])),
+                    result_type: Some(type_variable("State")),
+                },
+            ),
+            (
+                Name::const_new("vec-fold-with-origin-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Get rid of all elements, stepping a state through first to last.
+If any element contains slots and spans to the exact same vec, you can use the provided `origin-rid`
+to get rid of them.
+The resulting `origin-rid` can be used to get rid of remaining slots and spans elsewhere",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("state", type_variable("State")),
+                        (
+                            "step",
+                            type_fn(
+                                type_record([
+                                    ("state", type_variable("State")),
+                                    ("element", type_variable("Element")),
+                                    ("origin-rid", type_origin_rid(type_variable("Origin"))),
+                                ]),
+                                type_variable("State"),
+                            ),
+                        ),
+                    ])),
+                    result_type: Some(type_record([
+                        ("state", type_variable("State")),
+                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
                     ])),
                 },
             ),
@@ -7707,7 +7710,7 @@ When building strings, use functions like `arena-add-str`.
                 )),
                 parameters: vec![],
                 type_: Some(type_str),
-                is_copy: false,
+                is_copy: true,
             },
         ),
         (
@@ -7723,28 +7726,6 @@ When building strings, use functions like `arena-add-str`.
             },
         ),
         (
-            Name::const_new("exit-or-go-on"),
-            CompiledTypeAliasInfo {
-                name_range: None,
-                documentation: Some(Box::from(
-                    r"Either done with a final result or continuing with a partial result.
-Typically used for operations that can shortcut, see for example `span-fold-while-from`.
-```sloe
-fn loop-from
-    (& state state State step step (fn State (| Go-on State Exit Exit)))
-    (| Go-on State Exit Exit)
-    :(step state)
-    (Exit exit) exit
-    (Go-on updated-state) (loop-from updated-state step)
-```
-",
-                )),
-                parameters: vec![Name::const_new("Exit"), Name::const_new("Go-on")],
-                type_: Some(type_exit_or_go_on(type_variable("Exit"), type_variable("Go-on"))),
-                is_copy: true,
-            },
-        ),
-        (
             Name::const_new("origin"),
             CompiledTypeAliasInfo {
                 name_range: None,
@@ -7756,9 +7737,25 @@ The type argument to an `origin` is the type that also gets created with `origin
 This type argument is also used in slot, span, arena, vec as the first type argument.
 "
                 )),
-                parameters: vec![Name::const_new("LocalType")],
-                type_: Some(type_origin(type_variable("LocalType"))),
+                parameters: vec![Name::const_new("LocalOrigin")],
+                type_: Some(type_origin(type_variable("LocalOrigin"))),
                 is_copy: false,
+            },
+        ),
+        (
+            Name::const_new("origin-rid"),
+            CompiledTypeAliasInfo {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "If you get this value (for example from `vec-fold-with-origin-rid`),
+it's proof that the value with this origin is not available anymore.
+Providing an `origin-rid` allows you to get rid of any remaining slots or spans you have lying around,
+see `slot-rid`, `span-rid`, `opt-span-rid`.
+"
+                )),
+                parameters: vec![Name::const_new("Origin")],
+                type_: Some(type_origin_rid(type_variable("Origin"))),
+                is_copy: true,
             },
         ),
         (
@@ -7775,33 +7772,10 @@ fn use-a-vec & u32
     :(vec-element & vec my-elements slot first-element-slot) (& vec _ element first-element) <
     first-element # = 609 u32
 ```
-For temporary, non-shrinkable arrays use `arena`
 "
                 )),
                 parameters: vec![Name::const_new("Origin"), Name::const_new("Element")],
                 type_: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
-                is_copy: false,
-            },
-        ),
-        (
-            Name::const_new("arena"),
-            CompiledTypeAliasInfo {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "A growable array of elements. Arrays have constant time access and update and constant time add.
-```sloe
-fn use-an-arena & u32
-    origin my-elements-origin
-    :(arena-empty<u32> my-elements-origin) my-elements <
-    :(arena-add & arena my-elements element 609 u32) (& arena my-elements-arena slot first-element-slot) <
-    :(arena-element & arena my-elements slot first-element-slot) (& arena _ element first-element) <
-    first-element # = 609 u32
-```
-For persistent, shrinkable arrays use `vec`
-"
-                )),
-                parameters: vec![Name::const_new("Origin"), Name::const_new("Element")],
-                type_: Some(type_arena(type_variable("Origin"), type_variable("Element"))),
                 is_copy: false,
             },
         ),
@@ -8558,7 +8532,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 if syntax_expression_is_open_ended(queried, expressions, types) {
                     syntax_expression_parenthesized_with_linebreak_after_open_paren_if_multiline(
                         formatted,
-                        next_indent(indent),
+                        indent,
                         expressions,
                         patterns,
                         types,
