@@ -25,7 +25,7 @@ This allows
 - values can be mutated internally without mutation being detectable
 - representing things that can only be consumed once, like thread join handles
 
-This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec vec ... -> .vec ... .occupied-count u32`.
+This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec _vec ... -> .vec ... .occupied-count u32`.
 Not ony is it clunky, it is also conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
 
 The _big_ advantage is that it is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
@@ -46,16 +46,16 @@ Every created collection has a correlated origin.
 A value whose type contains an origin can't escape the function scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```
-fn some-vec . -> vec vec ??origin cannot even be annotated??, u32)
+fn some-vec . -> vec _vec ??origin cannot even be annotated??, u32 >
     origin vec-origin
-    :vec-empty<u32> vec-origin = vec >
-    :vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
+    : _vec-empty<u32> vec-origin = vec >
+    : _vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
     ...
     vec
 
 # compiles
-fn add-some-values<Origin> vec vec Origin, u32 -> vec Origin, u32 >
-    :vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
+fn add-some-values<Origin> vec _vec Origin, u32 -> _vec Origin, u32 >
+    : _vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
     ...
     vec
 ```
@@ -67,7 +67,7 @@ The same idea but with runtime checking instead of compile-time checking can qui
 # examples
 ## pass in an origin from the outside (rare)
 ```
-fn vec-empty<Element> origin origin Origin -> vec Origin, Element
+fn vec-empty<Element> origin _origin Origin -> _vec Origin, Element
 ```
 shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
@@ -81,26 +81,27 @@ At the end of the underlying origin of the annotated origin type, the memory of 
 # use a temporary value within a scope
 fn use-vec . -> u32 >
     origin vec-origin
-  	:vec-empty<u32> vec-origin = vec >
-  	:vec-add .vec vec .new 123 u32 = .vec vec .slot first-slot >
-  	:vec-element .vec vec .slot first-slot = .vec vec .element first >
-  	:vec-span-build-empty vec = after-first >
-  	:vec-opt-span-build-add .build after-first .new 456 u32 = after-first >
-  	:vec-span-build-add .build after-first .new 789 u32 after-first >
-    :vec-span-build after-first = .vec vec .span span-after-first >
+  	: _vec-empty<u32> vec-origin = vec >
+  	: _vec-add .vec vec .new 123 u32 = .vec vec .slot first-slot >
+  	: _vec-element .vec vec .slot first-slot = .vec vec .element first >
+  	: _vec-span-build-empty vec = after-first >
+  	: _vec-opt-span-build-add .build after-first .new 456 u32 = after-first >
+  	: _vec-span-build-add .build after-first .new 789 u32 after-first >
+    : _vec-span-build after-first = .vec vec .span span-after-first >
     ...
   	first # = 123 u32
 
 # different branches, different scopes
-fn use-opt opt opt u32 -> ... >
+fn use-opt opt _opt u32 -> ... >
     # this won't compile as their origins come from different branches
-    :(:opt
+    :(
+        : opt
         = |absent . >
             origin vec-origin
-            vec-empty<u32> vec-origin
+            _vec-empty<u32> vec-origin
         = |present number > (
             origin vec-origin
-            :vec-one .origin vec-origin .element number = .vec vec .slot slot >
+            : _vec-one .origin vec-origin .element number = .vec vec .slot slot >
             ...
             vec
         )
@@ -108,11 +109,12 @@ fn use-opt opt opt u32 -> ... >
     = vec >
     # this will compile:
     origin vec-origin
-    :(:opt
+    :(
+        :opt
         = |absent . >
-            vec-empty<u32> vec-origin
+            _vec-empty<u32> vec-origin
         = |present number > (
-            :vec-one .origin vec-origin .element number = .vec vec .slot slot >
+            : _vec-one .origin vec-origin .element number = .vec vec .slot slot >
             ...
             vec
         )
@@ -124,34 +126,34 @@ fn use-opt opt opt u32 -> ... >
 # into an exclusive slot
 ty expression Expressions-origin Patterns-origin Str-origin
     |int i32
-    |string opt span Str-origin
-    |vec opt span Expressions-origin
+    |string _opt _span Str-origin
+    |vec _opt _span Expressions-origin
     |call
-        .function slot Expressions-origin
-        .arguments span Expressions-origin
+        .function _slot Expressions-origin
+        .arguments _span Expressions-origin
     |lambda
-        .parameters span Patterns-origin
-        .result slot Expressions-origin
+        .parameters _span Patterns-origin
+        .result _slot Expressions-origin
 
 ty state Expressions-origin
     # ...patterns, strings etc
-    .expressions vec Expressions-origin, expression Expressions-origin
-    .root-expression expression Expressions-origin
+    .expressions _vec Expressions-origin, _expression Expressions-origin
+    .root-expression _expression Expressions-origin
 
 fn initial-state
-    .expressions-origin expressions-origin origin Expressions-origin
-    -> state Expressions-origin >
-    .expressions vec-empty<expression Expressions-origin, ...> expressions-origin
+    .expressions-origin expressions-origin _origin Expressions-origin
+    -> _state Expressions-origin >
+    .expressions _vec-empty<_expression Expressions-origin, ...> expressions-origin
     .root-expression (..do parsing..)
 
 fn state-to-interfaces-into
-    .interfaces interfaces vec Interfaces-origin, interface state Expressions-origin
-    .state state state Expressions-origin
-    -> vec Interfaces-origin, interface state Expressions-origin >
+    .interfaces interfaces _vec Interfaces-origin, _interface _state Expressions-origin
+    .state state _state Expressions-origin
+    -> _vec Interfaces-origin, _interface _state Expressions-origin >
     :(
         vec-one
         .origin interfaces-origin
-        .element |console-log (interface state Expressions-origin) "hello"
+        .element |console-log (_interface _state Expressions-origin) "hello"
     )
     = .slot slot .vec interfaces >
     ...
@@ -179,15 +181,15 @@ Syntax is secondary but I tried to make it coherent and practical, avoiding pare
 'a'
 
 # most identifiers
-some-function-or-variable-or-field-or-type-name-2012
+some-function-or-variable-or-field-or-type-or-variant-name-2012
 
-# other identifiers
-Some-variant-or-type-variable-name
+# type variable name
+Some-type-variable-name
 
-# function call.
+# function call, always starting with _
 # Functions can require space-separated type arguments in <...>.
 # Any function is of type `fn` and always requires an argument (which does not need to be parenthesized)
-some-function<Type Arguments> inner-call-as-the-argument inner-inner-argument
+_some-function<Type Arguments> inner-call-as-the-argument inner-inner-argument
 
 # record. if values are open-ended they need to be parenthesized.
 # The last field value can end in a record without needing to be parenthesized
@@ -206,10 +208,9 @@ fn parameter-pattern > result
 # appending a type is only necessary and allowed in function parameters
 some-variable some-type
 
-# pattern match, checked for exhaustiveness. Case patterns and expressions must be parenthesized if open ended.
-# The last case result does not need to be parenthesized if you put < between pattern and result
-:value first-case-pattern first-result second-case-pattern second-result
-:value first-case-pattern first-result second-case-pattern < do anything
+# pattern match, checked for exhaustiveness. expressions must be parenthesized if they themselves end in a query.
+# The last case result does not need to be parenthesized
+: value = first-case-pattern > first-result = second-case-pattern > second-result
 
 # introduce a new origin. The given name can be used as a variable and type
 origin new-origin-name expression-that uses the-origin
@@ -217,41 +218,49 @@ origin new-origin-name expression-that uses the-origin
 # project function declaration
 fn function-name<Potential Type-Arguments Only-Used-In-The-Result>
     parameter-pattern-usually-wrapped-in-parens
-    result-type-usually-wrapped-in-parens
+    -> result-type-usually-wrapped-in-parens >
     # optional documentation
     # comment
     result-expression
 
+# type name without arguments
+u32
+
+# type with multiple arguments.
+# Arguments before the last must be parenthesized if they end in a type with arguments
+_span Origin
+_my-function Env, Input, Output
+
 # project type which is an alias for an existing type.
 # Here a "choice type" that can come in different shapes ("variants")
-# which each have a unique uppercase name and 0 or 1 associated value.
+# which each have a unique name and one associated value.
 ty type-name Potential Type-Parameters
     |first-option .
-    |second-option vec Potential, u32
-    |third-option type-name-alias Potential, Type-Arguments
+    |second-option _vec Potential, u32
+    |third-option _type-name-alias Potential, Type-Arguments
 
-# creating a variant. Note that the type could refer to a type alias or be a choice type directly (| ...)
-Some-variant its-choice-type its value
+# creating a variant. Note that the type could refer to a type alias or be a choice type directly (|... ...)
+|some-variant its-choice-type its value
 
-# variant patterns in query cases
-Some-variant its value
-
-# variant patterns in fn parameter patterns
-Some-variant its-choice-type its value
+# variant pattern
+|some-variant its value
 ```
 (This list might be incomplete, examples show more)
 
 # potential improvements in the (far) future
 - add field and variant rename and references
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
-- add `set Origin, Element` with an initialization function like `set-empty .origin ... .hash fn Element, Hash -> set Origin Element`
-- add something like `map Origin, Key, Value` which still gives out `slot Origin`s for each entry but can be queried using e.g. `map-contains-key .map ... .key Key .value-dup ... -> .map ... .contains-key bool`. `map-empty` will require providing a `fn .a Key .b Key, order`.
+- add `set Origin, Element` with an initialization function like `set-empty .origin ... .hash fn Element, Hash -> set Origin, Element`
+- add something like `map Origin, Key, Value` (or just `map Origin, Element` where key is derived from element) which still gives out `slot Origin`s for each entry but can be queried by key or similar. `map-empty` will require providing a `fn .a Key .b Key, .a Key .b Key .order order` or similar.
   Alternatively, check if implementing in userland via e.g. AVL or red-black tree backed by a regular `vec` is fast enough
 - consider adding record update syntax
 - consider adding `vec-generational`, `slot-strong` (and `slot-weak`?) which can reference a slot that is already in use, without any guarantee that it still points to an occupied slot: `slot-dup-weak slot-strong slot Origin -> .slot slot-strong, Origin .weak slot-weak Origin` + `slot-weak-dup`. This would enable graph structures, child-parent relations, doubly-linked lists etc.
   **important**: This requires generational slots.
   Can be implemented using e.g. [slotmap](https://docs.rs/crate/slotmap/latest), [thunderdome](https://docs.rs/crate/thunderdome/latest), [riddance](https://docs.rs/riddance/latest/riddance/) or on top of `vec` with an added generation counter in slot and collection.
   Shelved for now because the model is quite different and I don't yet have a use case
+- consider adding `vec-add-vacant vec vec Origin, Element -> vec Origin, ELement` (probably same for vacant length)
+  and `vec-fold-including-vacant .vec vec vec Origin, Element .state State .step fn .state State .element opt Element, State -> State` (and maybe ways to peek for vacant spaces by plain `u32`)
+  which usefully exposes a way to use vacant spaces
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```
@@ -260,9 +269,9 @@ Some-variant its-choice-type its value
       .result-origin result-origin Result-origin
       -> vec Result-origin, u32 >
       origin local-origin
-      :vec-empty<u32> consume-origin = temporary >
-      :recurse local-origin result-origin = result >
-      :vec-add .a temporary .b 1 u32 = .slot slot .vec temporary >
+      : _vec-empty<u32> consume-origin = temporary >
+      : _recurse local-origin result-origin = result >
+      : _vec-add .a temporary .b 1 u32 = .slot slot .vec temporary >
       ...
       result
   ```
@@ -288,7 +297,7 @@ which are owned by the code that parked values there i the first place.
 
 Honestly this idea seems to overwhelmingly useful that I'm surprised I can't find other languages that lean into it (I only know of rust which at least enables it in userland).
 
-One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `vec (span str-origin)` + `str str-origin`
+One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `_vec ... _span str-origin` + `_str str-origin`
 (in rust there are I think crates like oroborus for this)
 
 ## on shadowing
@@ -312,12 +321,12 @@ It also makes initial_state much easier to call from the rust side (though we ne
 - adding function call syntax sugar similar to piping.
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
 - making `vec` etc store multiple kinds of data (heterogenous) and letting them give out `slot origin data-type` and `span origin data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
-  This makes the porpose of `vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression expression Origin .data vec Origin -> .vec vec Origin .end text-position`.
+  This makes the porpose of `vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression _expression Origin .data vec Origin ... -> .vec _vec Origin ... .end text-position`.
   This would also in theory enable a crazy representation of tagged unions as:
   ```sloe
   expression-slot origin
       |int slot origin, i32
-      |plus slot origin, .left expression-slot origin .right expression-slot origin
+      |plus slot origin, .left _expression-slot origin .right _expression-slot origin
       ...
   ```
   This also means slices etc need to be stored separately in the origin vec.
@@ -326,9 +335,9 @@ It also makes initial_state much easier to call from the rust side (though we ne
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
   ```
   origin vec-origin
-  :vec-empty<.expression expression .pattern pattern vec-origin> vec-origin = vec >
-  :vec-add .vec vec .new some-expression = .vec vec slot some-expression-slot >
-  :vec-add .vec vec .new some-pattern  = .vec vec .slot some-pattern-slot >
+  : _vec-empty<.expression expression .pattern pattern vec-origin> vec-origin = vec >
+  : _vec-add .vec vec .new some-expression = .vec vec slot some-expression-slot >
+  : _vec-add .vec vec .new some-pattern  = .vec vec .slot some-pattern-slot >
   ...
   ```
   This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
@@ -385,8 +394,8 @@ a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly
 - it's tough (usually) to annotate a function whose arguments and argument types are unknown. E.g. what would `fn-dup`'s type be?
 - positional arguments (usually) means no passing in bulk
   ```sloe
-  fn u32-square (n u32) u32
-      u32-add u32-dup n
+  fn u32-square n u32 -> u32 >
+      _u32-add _u32-dup n
   ```
 
 "Positionality" in general is pretty much absent in sloe. E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
@@ -397,28 +406,22 @@ to re-compile
 ```bash
 cargo install --offline --debug --path . sloe
 ```
+
 # TODO
-- switch to a different style of syntax which favors separators in most places:
-  ```sloe
-  fn greet .name name str .result-origin result-origin origin Origin -> span-build vec Origin, char >
-    :vec-span-empty vec-empty<char> result-origin = build >
-    :vec-opt-span-add-str .build build .new "Hello, " = build >
-    :vec-opt-span-add-str .build build .new name = build >
-    vec-opt-span-add-str .build build .new "!\n"
-  ```
-    - fields are prefixed with `.`, cases are prefixed with `=`, type arguments are separated with `,`, variants are prefixed with `|`
-    - if the last case result "open-ends" with `:` it's the last case
-    - if the queried expression "open-ends" with `:` it fails to parse. needs to be parenthesized
-    - if the last field value "open-ends" with `.` it's the last field
-    - if the last field value "open-ends" with `|` it's the last variant
-    - if the last type argument "open-ends" with a type construct that uses `,` it's the last type argument
-    - represent unit/blank as `.`
-    - change local `fn pattern result` syntax to `fn pattern > result`
-  
-  This gets rid of the admittedly weird `<` syntax and is likely more intuitive, readable and convenient.
-  I do think this is more annoying to express correctly in tree-sitter though.
+
+- change query start from `:` to `?`
+
+- complete switch to new syntax, especially tree-sitter
 
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
 
 - officially convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of cleanup for temporary vec members (which most likely would get optimized away though).
   Doing this "change" mostly means changing error messages and documentation
+
+- add fold2s and or preferably a ways to fold over arbitrarily many spans etc.
+  This should make things like `.field-names span Field-names .field-values span Values`
+  much more attractive/viable. This pattern can avoid "type parameter spam" for any record
+
+- add `vec-span-add-repeat`
+
+- (not specific, yet) change function type arguments from `<First Second>` to `[First; Second]` and `|variant-name type value-expression` to `[type] |variant-name value-expression`

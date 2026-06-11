@@ -1,7 +1,7 @@
 
-fn greet (& name name str result-origin (result-origin origin Origin)) (span-build (vec Origin char))
-    :(vec-span-empty vec-empty<char> result-origin) build <
-    :(vec-opt-span-add-str & build build new "Hello, ") build <
-    :(vec-opt-span-add-str & build build new name) build <
-    vec-opt-span-add-str & build build new "!\n"
+fn greet .name name str .result-origin result-origin _origin Origin -> _span-build _vec Origin, char >
+    : _vec-span-empty _vec-empty<char> result-origin = build >
+    : _vec-opt-span-add-str .build build .new "Hello, " = build >
+    : _vec-opt-span-add-str .build build .new name = build >
+    _vec-opt-span-add-str .build build .new "!\n"
 

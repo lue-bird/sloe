@@ -1282,6 +1282,9 @@ pub fn vec_occupied_count<Origin, Element, State>(
         vec: vec,
     }
 }
+pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Blank {
+    Blank {}
+}
 pub fn vec_fold<Origin, Element, State>(
     State·step·vec { state, step, vec }: State·step·vec<
         State,

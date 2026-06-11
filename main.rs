@@ -903,7 +903,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
                             kind: lsp_types::MarkupKind::Markdown,
                             value: present_type_alias_markdown(type_alias_name, type_alias_info),
                         }),
-                        range: Some(sloe::syntax_name_range(symbol_name)),
+                        range: Some(sloe::name_range(symbol_name)),
                     })
                 } else {
                     None
@@ -923,7 +923,7 @@ origin {}
                     name
                 ),
             }),
-            range: Some(sloe::syntax_name_range(sloe::WithStartPosition {
+            range: Some(sloe::name_range(sloe::WithStartPosition {
                 start: use_start,
                 value: name,
             })),
@@ -937,7 +937,7 @@ origin {}
                 kind: lsp_types::MarkupKind::Markdown,
                 value: format!("type variable"),
             }),
-            range: Some(sloe::syntax_name_range(sloe::WithStartPosition {
+            range: Some(sloe::name_range(sloe::WithStartPosition {
                 start: use_start,
                 value: name,
             })),
@@ -956,7 +956,7 @@ origin {}
                         kind: lsp_types::MarkupKind::Markdown,
                         value: choice_type_formatted,
                     }),
-                    range: Some(sloe::syntax_name_range(symbol_name)),
+                    range: Some(sloe::name_range(symbol_name)),
                 })
             } else {
                 None
@@ -973,7 +973,7 @@ origin {}
                     kind: lsp_types::MarkupKind::Markdown,
                     value: format!("pattern variable"),
                 }),
-                range: Some(sloe::syntax_name_range(sloe::WithStartPosition {
+                range: Some(sloe::name_range(sloe::WithStartPosition {
                     start: use_start,
                     value: name,
                 })),
@@ -1019,9 +1019,9 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::Fn {
                     name: Some(fn_name),
                     ..
-                } if &fn_name.value == &symbol_name.value => Some(sloe::syntax_name_range(
-                    sloe::with_start_position_as_ref(fn_name),
-                )),
+                } if &fn_name.value == &symbol_name.value => {
+                    Some(sloe::name_range(sloe::with_start_position_as_ref(fn_name)))
+                }
                 _ => None,
             }),
         sloe::SyntaxSymbol::ProjectTypeOrUnknown {
@@ -1035,7 +1035,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::TypeAlias {
                     name: Some(type_alias_name),
                     ..
-                } if type_alias_name.value == &symbol_name.value => Some(sloe::syntax_name_range(
+                } if type_alias_name.value == &symbol_name.value => Some(sloe::name_range(
                     sloe::with_start_position_as_ref(type_alias_name),
                 )),
                 _ => None,
@@ -1044,7 +1044,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
             name,
             use_start: _,
             origin,
-        } => Some(sloe::syntax_name_range(sloe::WithStartPosition {
+        } => Some(sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: origin.start,
         })),
@@ -1053,7 +1053,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
             name,
             use_start: _,
             origin,
-        } => Some(sloe::syntax_name_range(sloe::WithStartPosition {
+        } => Some(sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: origin.start,
         })),
@@ -1090,13 +1090,13 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     };
     let symbol_range = match symbol {
         sloe_compile::SyntaxSymbol::ProjectTypeOrUnknown { name, origins: _ } => {
-            sloe::syntax_name_range(name)
+            sloe::name_range(name)
         }
         sloe_compile::SyntaxSymbol::Origin {
             name,
             use_start,
             origin: _,
-        } => sloe::syntax_name_range(sloe::WithStartPosition {
+        } => sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: use_start,
         }),
@@ -1104,21 +1104,21 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
             name,
             use_start,
             scope: _,
-        } => sloe::syntax_name_range(sloe::WithStartPosition {
+        } => sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: use_start,
         }),
-        sloe_compile::SyntaxSymbol::VariantOrUnknown(name) => sloe::syntax_name_range(name),
+        sloe_compile::SyntaxSymbol::VariantOrUnknown(name) => sloe::name_range(name),
         sloe_compile::SyntaxSymbol::ProjectFnOrUnknown {
             name,
             pattern_variables: _,
             origins: _,
-        } => sloe::syntax_name_range(name),
+        } => sloe::name_range(name),
         sloe_compile::SyntaxSymbol::PatternVariable {
             name,
             use_start,
             origin: _,
-        } => sloe::syntax_name_range(sloe::WithStartPosition {
+        } => sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: use_start,
         }),
@@ -1285,16 +1285,29 @@ fn highlight_state_add_token_with_start_and_length(
         }
     }
 }
+fn symbol_highlight(
+    state: &mut HighlightState,
+    symbol: &'static str,
+    new_token_start: lsp_types::Position,
+    new_token_kind: lsp_types::SemanticTokenType,
+) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        new_token_kind,
+        new_token_start,
+        symbol.len(),
+    );
+}
 fn keyword_highlight(
     state: &mut HighlightState,
     keyword: &'static str,
     new_token_start: lsp_types::Position,
 ) {
-    highlight_state_add_token_with_start_and_length(
+    symbol_highlight(
         state,
-        lsp_types::SemanticTokenType::KEYWORD,
+        keyword,
         new_token_start,
-        keyword.len(),
+        lsp_types::SemanticTokenType::KEYWORD,
     );
 }
 fn sloe_project_highlight<Expressions, Patterns, Types>(
@@ -1348,7 +1361,9 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                 name,
                 type_parameters,
                 parameter,
+                arrow_start,
                 result_type,
+                angle_right_start,
                 documentation,
                 result,
             } => {
@@ -1361,14 +1376,20 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                         name.value.len(),
                     );
                 }
-                if let Some(result_type) = result_type {
-                    sloe_syntax_type_highlight(state, types, result_type);
-                }
                 if let Some(type_parameters) = type_parameters {
                     sloe_angled_type_parameters_highlight(state, type_parameters);
                 }
                 if let Some(parameter) = parameter {
                     sloe_syntax_pattern_highlight(state, patterns, types, parameter)
+                }
+                if let Some(arrow_start) = arrow_start {
+                    keyword_highlight(state, "->", *arrow_start);
+                }
+                if let Some(result_type) = result_type {
+                    sloe_syntax_type_highlight(state, types, result_type);
+                }
+                if let Some(angle_right_start) = angle_right_start {
+                    keyword_highlight(state, ">", *angle_right_start);
                 }
                 if let Some(documentation) = documentation {
                     sloe_syntax_comments_highlight(state, documentation);
@@ -1422,18 +1443,59 @@ fn sloe_angled_type_arguments_highlight<Types>(
         sloe_syntax_type_highlight(state, types, argument);
     }
 }
-fn sloe_syntax_field_highlight<Value>(
+fn sloe_syntax_trailing_field_highlight<Value>(
     state: &mut HighlightState,
-    field: &sloe::SyntaxField<Value>,
+    field: &sloe::SyntaxTrailingField<Value>,
     value_highlight: impl FnOnce(&mut HighlightState, &Value),
 ) {
-    sloe_syntax_name_highlight(state, &field.name, lsp_types::SemanticTokenType::PROPERTY);
-    if let Some(left_angle_start) = field.left_angle_start {
-        keyword_highlight(state, "<", left_angle_start);
-    }
+    sloe_syntax_optional_field_name_highlight(state, &field.name);
     if let Some(value) = &field.value {
         value_highlight(state, value);
     }
+}
+fn sloe_syntax_field_name_highlight(
+    state: &mut HighlightState,
+    field_name: &sloe::WithStartPosition<sloe::Name>,
+) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        lsp_types::SemanticTokenType::PROPERTY,
+        field_name.start,
+        sloe::field_name_length(&field_name.value),
+    );
+}
+fn sloe_syntax_optional_field_name_highlight(
+    state: &mut HighlightState,
+    field_name: &sloe::WithStartPosition<Option<sloe::Name>>,
+) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        lsp_types::SemanticTokenType::PROPERTY,
+        field_name.start,
+        sloe::optional_field_name_length(field_name.value.as_ref()),
+    );
+}
+fn sloe_syntax_variant_name_highlight(
+    state: &mut HighlightState,
+    variant_name: &sloe::WithStartPosition<sloe::Name>,
+) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        lsp_types::SemanticTokenType::ENUM_MEMBER,
+        variant_name.start,
+        sloe::variant_name_length(&variant_name.value),
+    );
+}
+fn sloe_syntax_optional_variant_name_highlight(
+    state: &mut HighlightState,
+    variant_name: &sloe::WithStartPosition<Option<sloe::Name>>,
+) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        lsp_types::SemanticTokenType::ENUM_MEMBER,
+        variant_name.start,
+        sloe::optional_variant_name_length(variant_name.value.as_ref()),
+    );
 }
 fn sloe_syntax_pattern_highlight<Patterns, Types>(
     state: &mut HighlightState,
@@ -1449,18 +1511,30 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
             }
         }
         sloe::SyntaxPattern::Variant { name, value } => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
+            sloe_syntax_optional_variant_name_highlight(state, name);
             if let Some(value) = value {
                 sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(value))
             }
         }
+        sloe::SyntaxPattern::RecordEmpty { dot_start } => {
+            keyword_highlight(state, ".", *dot_start);
+        }
         sloe::SyntaxPattern::Record {
-            ampersand_start,
-            fields,
+            field0_name,
+            field0_value,
+            field1_up,
         } => {
-            keyword_highlight(state, "&", *ampersand_start);
-            for field in fields {
-                sloe_syntax_field_highlight(state, field, |state, value| {
+            sloe_syntax_field_name_highlight(state, field0_name);
+            if let Some(field0_value) = field0_value {
+                sloe_syntax_pattern_highlight(
+                    state,
+                    patterns,
+                    types,
+                    patterns.element(field0_value),
+                );
+            }
+            for field in field1_up {
+                sloe_syntax_trailing_field_highlight(state, field, |state, value| {
                     sloe_syntax_pattern_highlight(state, patterns, types, value)
                 });
             }
@@ -1485,10 +1559,31 @@ fn sloe_syntax_type_highlight<Types>(
         sloe::SyntaxType::Variable(name) => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE_PARAMETER);
         }
-        sloe::SyntaxType::Construct { name, arguments } => {
+        sloe::SyntaxType::ConstructWithoutArguments(name) => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE);
-            for argument in types.opt_span_slice(sloe::core::Opt::from_option(arguments.as_ref())) {
-                sloe_syntax_type_highlight(state, types, argument);
+        }
+        sloe::SyntaxType::ConstructWithArguments {
+            underscore_start,
+            name,
+            argument0,
+            argument1_up,
+        } => {
+            symbol_highlight(
+                state,
+                ".",
+                *underscore_start,
+                lsp_types::SemanticTokenType::TYPE,
+            );
+            if let Some(name) = name {
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE);
+            }
+            if let Some(argument0) = argument0 {
+                sloe_syntax_type_highlight(state, types, types.element(argument0));
+            }
+            for argument in argument1_up {
+                if let Some(argument_type) = &argument.type_ {
+                    sloe_syntax_type_highlight(state, types, argument_type);
+                }
             }
         }
         sloe::SyntaxType::Parenthesized {
@@ -1500,36 +1595,39 @@ fn sloe_syntax_type_highlight<Types>(
                 sloe_syntax_type_highlight(state, types, types.element(inner));
             }
         }
+        sloe::SyntaxType::RecordEmpty { dot_start: _ } => {}
         sloe::SyntaxType::Record {
-            ampersand_start,
-            fields,
+            field0_name,
+            field0_value,
+            field1_up,
         } => {
-            keyword_highlight(state, "&", *ampersand_start);
-            for field in fields {
-                sloe_syntax_field_highlight(state, field, |state, value| {
+            sloe_syntax_field_name_highlight(state, field0_name);
+            if let Some(field0_value) = field0_value {
+                sloe_syntax_type_highlight(state, types, types.element(field0_value));
+            }
+            for field in field1_up {
+                sloe_syntax_trailing_field_highlight(state, field, |state, value| {
                     sloe_syntax_type_highlight(state, types, value)
                 });
             }
         }
+        sloe::SyntaxType::ChoiceEmpty { bar_start: _ } => {}
         sloe::SyntaxType::Choice {
-            bar_start,
-            variants,
+            variant0_name,
+            variant0_value,
+            variant1_up,
         } => {
-            keyword_highlight(state, "|", *bar_start);
-            for variant in variants {
-                sloe_syntax_type_variant_highlight(state, variant, types);
+            sloe_syntax_variant_name_highlight(state, variant0_name);
+            if let Some(variant0_value) = variant0_value {
+                sloe_syntax_type_highlight(state, types, types.element(variant0_value));
+            }
+            for variant in variant1_up {
+                sloe_syntax_optional_variant_name_highlight(state, &variant.name);
+                if let Some(value) = &variant.value {
+                    sloe_syntax_type_highlight(state, types, value);
+                }
             }
         }
-    }
-}
-fn sloe_syntax_type_variant_highlight<Types>(
-    state: &mut HighlightState,
-    field: &sloe::SyntaxTypeVariant<Types>,
-    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
-) {
-    sloe_syntax_name_highlight(state, &field.name, lsp_types::SemanticTokenType::PROPERTY);
-    if let Some(value) = &field.value {
-        sloe_syntax_type_highlight(state, types, value);
     }
 }
 fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
@@ -1582,20 +1680,24 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     + (if *closed_quote_exists { 1 } else { 0 })) as usize,
             );
         }
-        sloe::SyntaxExpression::VariableOrCall {
+        sloe::SyntaxExpression::Variable(name) => {
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::VARIABLE);
+        }
+        sloe::SyntaxExpression::Call {
+            underscore_start,
             name,
             type_arguments,
             argument,
         } => {
-            sloe_syntax_name_highlight(
+            symbol_highlight(
                 state,
-                name,
-                if argument.is_some() || type_arguments.is_some() {
-                    lsp_types::SemanticTokenType::VARIABLE
-                } else {
-                    lsp_types::SemanticTokenType::FUNCTION
-                },
+                "_",
+                *underscore_start,
+                lsp_types::SemanticTokenType::FUNCTION,
             );
+            if let Some(name) = name {
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::FUNCTION);
+            }
             if let Some(type_arguments) = type_arguments {
                 sloe_angled_type_arguments_highlight(state, types, type_arguments);
             }
@@ -1610,7 +1712,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
         sloe::SyntaxExpression::Variant { name, type_, value } => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::ENUM_MEMBER);
+            sloe_syntax_optional_variant_name_highlight(state, name);
             if let Some(type_) = type_ {
                 sloe_syntax_type_highlight(state, types, type_);
             }
@@ -1627,11 +1729,15 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         sloe::SyntaxExpression::Fn {
             fn_keyword_start,
             parameter,
+            angle_right_start,
             result,
         } => {
             keyword_highlight(state, "fn", *fn_keyword_start);
             if let Some(parameter) = parameter {
                 sloe_syntax_pattern_highlight(state, patterns, types, parameter);
+            }
+            if let Some(angle_right_start) = angle_right_start {
+                keyword_highlight(state, ">", *angle_right_start);
             }
             if let Some(result) = result {
                 sloe_syntax_expression_highlight(
@@ -1643,13 +1749,26 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
         }
+        sloe::SyntaxExpression::RecordEmpty { dot_start } => {
+            keyword_highlight(state, ".", *dot_start);
+        }
         sloe::SyntaxExpression::Record {
-            ampersand_start,
-            fields,
+            field0_name,
+            field0_value,
+            field1_up,
         } => {
-            keyword_highlight(state, "&", *ampersand_start);
-            for field in fields {
-                sloe_syntax_field_highlight(state, field, |state, value| {
+            sloe_syntax_field_name_highlight(state, field0_name);
+            if let Some(field0_value) = field0_value {
+                sloe_syntax_expression_highlight(
+                    state,
+                    expressions,
+                    patterns,
+                    types,
+                    expressions.element(field0_value),
+                );
+            }
+            for field in field1_up {
+                sloe_syntax_trailing_field_highlight(state, field, |state, value| {
                     sloe_syntax_expression_highlight(state, expressions, patterns, types, value);
                 });
             }
@@ -1700,9 +1819,12 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 )
             }
             for case in cases {
-                sloe_syntax_pattern_highlight(state, patterns, types, &case.pattern);
-                if let Some(left_angle_start) = case.left_angle_start {
-                    keyword_highlight(state, "<", left_angle_start);
+                keyword_highlight(state, "=", case.equals_start);
+                if let Some(pattern) = &case.pattern {
+                    sloe_syntax_pattern_highlight(state, patterns, types, pattern);
+                }
+                if let Some(right_angle_start) = case.right_angle_start {
+                    keyword_highlight(state, ">", right_angle_start);
                 }
                 if let Some(result) = &case.result {
                     sloe_syntax_expression_highlight(state, expressions, patterns, types, result)
@@ -1888,7 +2010,9 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     name: _,
                     type_parameters,
                     parameter,
+                    arrow_start: _,
                     result_type,
+                    angle_right_start: _,
                     documentation: _,
                     result: _,
                 } => {
@@ -2100,9 +2224,7 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                                     sloe::name_end(sloe::with_start_position_as_ref(name))
                                 }),
                         },
-                        selection_range: sloe::syntax_name_range(sloe::with_start_position_as_ref(
-                            name,
-                        )),
+                        selection_range: sloe::name_range(sloe::with_start_position_as_ref(name)),
                         children: None,
                     })
                 }
@@ -2111,7 +2233,9 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                     name,
                     type_parameters: _,
                     parameter: _,
+                    arrow_start: _,
                     result_type: _,
+                    angle_right_start: _,
                     documentation: _,
                     result: maybe_result,
                 } => {
@@ -2141,9 +2265,7 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                                     sloe::name_end(sloe::with_start_position_as_ref(name))
                                 }),
                         },
-                        selection_range: sloe::syntax_name_range(sloe::with_start_position_as_ref(
-                            name,
-                        )),
+                        selection_range: sloe::name_range(sloe::with_start_position_as_ref(name)),
                         children: None,
                     })
                 }
