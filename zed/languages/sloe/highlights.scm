@@ -10,7 +10,7 @@
 
 (keyword_origin) @keyword
 
-(key_symbol_colon) @keyword
+(key_symbol_question_mark) @keyword
 
 (key_symbol_equals) @keyword
 

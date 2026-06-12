@@ -452,7 +452,7 @@
           "named": true
         },
         {
-          "type": "key_symbol_colon",
+          "type": "key_symbol_question_mark",
           "named": true
         }
       ]
@@ -1516,11 +1516,11 @@
     "named": true
   },
   {
-    "type": "key_symbol_colon",
+    "type": "key_symbol_equals",
     "named": true
   },
   {
-    "type": "key_symbol_equals",
+    "type": "key_symbol_question_mark",
     "named": true
   },
   {

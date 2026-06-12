@@ -113,7 +113,7 @@ export default grammar({
     angled_type_parameters: ($) => seq("<", repeat($.type_variable), ">"),
     expression_query: ($) =>
       seq(
-        $.key_symbol_colon,
+        $.key_symbol_question_mark,
         $.expression_not_open_ended,
         repeat($.expression_query_case_not_open_ended),
         $.expression_query_case,
@@ -254,9 +254,9 @@ export default grammar({
     keyword_origin: ($) => "origin",
     keyword_fn: ($) => "fn",
     keyword_ty: ($) => "ty",
-    key_symbol_colon: ($) => ":",
+    key_symbol_question_mark: ($) => "?",
     key_symbol_angle_right: ($) => ">",
-    key_symbol_arrow: ($) => "->",
+    key_symbol_arrow: ($) => ":>",
     key_symbol_equals: ($) => "=",
     symbol_call_underscore: ($) => "_",
     symbol_type_construct_underscore: ($) => "_",

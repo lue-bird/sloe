@@ -191,7 +191,7 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         expression: Option<core::Slot<Expressions>>,
     },
     Query {
-        colon_start: lsp_types::Position,
+        question_mark_start: lsp_types::Position,
         queried: Option<core::Slot<Expressions>>,
         cases: Vec<SyntaxExpressionQueryCase<Expressions, Patterns, Types>>,
     },
@@ -592,10 +592,10 @@ pub fn expression_start<Expressions, Patterns, Types>(
             result: _,
         } => *origin_keyword_start,
         SyntaxExpression::Query {
-            colon_start,
+            question_mark_start,
             queried: _,
             cases: _,
-        } => *colon_start,
+        } => *question_mark_start,
     }
 }
 pub fn expression_end<Expressions, Patterns, Types>(
@@ -738,7 +738,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             })
             .unwrap_or_else(|| symbol_end(*origin_keyword_start, "origin")),
         SyntaxExpression::Query {
-            colon_start,
+            question_mark_start,
             queried,
             cases,
         } => cases
@@ -749,7 +749,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
                     expression_end(expressions.element(queried), expressions, patterns, types)
                 })
             })
-            .unwrap_or_else(|| symbol_end(*colon_start, ":")),
+            .unwrap_or_else(|| symbol_end(*question_mark_start, "?")),
     }
 }
 fn comments_end(comments: &SyntaxComments) -> lsp_types::Position {
@@ -1149,7 +1149,7 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     parse_sloe_whitespace(state);
     let parameter = parse_pattern_typed(state, patterns, types);
     parse_sloe_whitespace(state);
-    let arrow_start = parse_symbol_as_start(state, "->");
+    let arrow_start = parse_symbol_as_start(state, ":>");
     parse_sloe_whitespace(state);
     let result_type = parse_type(state, types);
     parse_sloe_whitespace(state);
@@ -1926,7 +1926,7 @@ fn parse_expression_query<Expressions, Patterns, Types>(
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    let Some(colon_start) = parse_symbol_as_start(state, ":") else {
+    let Some(question_mark_start) = parse_symbol_as_start(state, "?") else {
         return None;
     };
     parse_sloe_whitespace(state);
@@ -1939,7 +1939,7 @@ fn parse_expression_query<Expressions, Patterns, Types>(
     }
     parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Query {
-        colon_start: colon_start,
+        question_mark_start: question_mark_start,
         queried: queried.map(|queried| expressions.add(queried)),
         cases: cases,
     })
@@ -2502,7 +2502,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             }
         }
         SyntaxExpression::Query {
-            colon_start: _,
+            question_mark_start: _,
             queried,
             cases,
         } => {
@@ -5822,13 +5822,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             ),
         },
         SyntaxExpression::Query {
-            colon_start,
+            question_mark_start,
             queried,
             cases,
         } => {
             let Some(queried) = queried else {
                 errors.push(ErrorNode {
-                    range: symbol_range(*colon_start, ":"),
+                    range: symbol_range(*question_mark_start, "?"),
                     message: Box::from("missing queried expression after this colon. A full query could look like :option ((Present n) n) (Absent 0 u32)")
                 });
                 return CompiledExpression {
@@ -5839,7 +5839,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let queried = expressions.element(queried);
             let Some((case0, case1_up)) = cases.split_first() else {
                 errors.push(ErrorNode {
-                    range: symbol_range(*colon_start, ":"),
+                    range: symbol_range(*question_mark_start, "?"),
                     message: Box::from("missing case(s) after the queried expression. Cases can be (pattern result-expression) or pattern result-expression for the last one. A full query could look like :option ((Present n) n) (Absent 0 u32)")
                 });
                 return CompiledExpression {
@@ -6025,7 +6025,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
                         range: case.right_angle_start.map(|right_angle_start| symbol_range(right_angle_start, "<")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
-                        message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. A full query could look like :option ((Present n) n) (Absent 0 u32)")
+                        message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. An example of a query is : option = |present n > n = |absent > 0 u32")
                     });
                     rust_arms.push(syn_arm(case_pattern_compiled.rust, syn_expr_todo()));
                     continue 'compiling_case1_up;
@@ -6155,7 +6155,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 _catch_not_exhaustive => {
                     if !cases_were_skipped {
                         errors.push(ErrorNode {
-                            range: symbol_range(*colon_start, ":"),
+                            range: symbol_range(*question_mark_start, "?"),
                             message: Box::from("inexhaustive pattern match.
     A pattern match must cover all possible cases, otherwise the program would need to crash if such a value was matched on.
     It might be that a case is not indented enough."),
@@ -8612,7 +8612,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                     );
                 }
                 space_or_linebreak_indented_into(&mut formatted, header_line_span, next_indent(0));
-                formatted.push_str("->");
+                formatted.push_str(":>");
                 space_or_linebreak_indented_into(&mut formatted, header_line_span, next_indent(0));
                 if let Some(result_type) = result_type {
                     syntax_type_unparenthesized_format(
@@ -8989,10 +8989,8 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                         OpenEndKind::Record,
                         field_count,
                         0,
-                        range_line_span(lsp_types::Range {
-                            start: field0_name.start,
-                            end: expression_end(value, expressions, patterns, types),
-                        }),
+                        field0_name.start,
+                        expression_range(value, expressions, patterns, types),
                     );
                 }
             }
@@ -9023,10 +9021,8 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                             OpenEndKind::Record,
                             field_count,
                             field_index,
-                            range_line_span(lsp_types::Range {
-                                start: field.name.start,
-                                end: expression_end(value, expressions, patterns, types),
-                            }),
+                            field.name.start,
+                            expression_range(value, expressions, patterns, types),
                         );
                     }
                 }
@@ -9068,11 +9064,11 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Query {
-            colon_start,
+            question_mark_start,
             queried,
             cases,
         } => {
-            formatted.push(':');
+            formatted.push('?');
             match queried {
                 None => {
                     formatted.push(' ');
@@ -9098,39 +9094,61 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     );
                 }
             }
-            let line_span_before_last_case_pattern = match cases.last() {
-                None => LineSpan::Single,
-                Some(last_case) => range_line_span(lsp_types::Range {
-                    start: *colon_start,
-                    end: last_case
-                        .right_angle_start
-                        .map(|left_angle_start| symbol_end(left_angle_start, ">"))
-                        .or_else(|| {
+            match cases.as_slice() {
+                [] => {
+                    formatted.push(' ');
+                }
+                [case0, case1_up @ ..] => {
+                    let line_span_before_last_case_pattern = range_line_span(lsp_types::Range {
+                        start: *question_mark_start,
+                        end: {
+                            let last_case = case1_up.last().unwrap_or(case0);
                             last_case
-                                .pattern
-                                .as_ref()
-                                .map(|pattern| pattern_end(pattern, patterns, types))
-                        })
-                        .unwrap_or_else(|| symbol_end(last_case.equals_start, "=")),
-                }),
-            };
-            let case_count = cases.len();
-            for (case_index, case) in cases.iter().enumerate() {
-                space_or_linebreak_indented_into(
-                    formatted,
-                    line_span_before_last_case_pattern,
-                    indent,
-                );
-                syntax_expression_query_case_format(
-                    formatted,
-                    indent,
-                    expressions,
-                    patterns,
-                    types,
-                    case_count,
-                    case_index,
-                    case,
-                )
+                                .right_angle_start
+                                .map(|left_angle_start| symbol_end(left_angle_start, ">"))
+                                .or_else(|| {
+                                    last_case
+                                        .pattern
+                                        .as_ref()
+                                        .map(|pattern| pattern_end(pattern, patterns, types))
+                                })
+                                .unwrap_or_else(|| symbol_end(last_case.equals_start, "="))
+                        },
+                    });
+                    let case_count = 1 + case1_up.len();
+                    space_or_linebreak_indented_into(
+                        formatted,
+                        line_span_before_last_case_pattern,
+                        indent,
+                    );
+                    syntax_expression_query_case_format(
+                        formatted,
+                        indent,
+                        expressions,
+                        patterns,
+                        types,
+                        case_count,
+                        0,
+                        case0,
+                    );
+                    for (case_index, case) in case1_up.iter().enumerate().map(|(i, e)| (i + 1, e)) {
+                        space_or_linebreak_indented_into(
+                            formatted,
+                            line_span_before_last_case_pattern,
+                            indent,
+                        );
+                        syntax_expression_query_case_format(
+                            formatted,
+                            indent,
+                            expressions,
+                            patterns,
+                            types,
+                            case_count,
+                            case_index,
+                            case,
+                        );
+                    }
+                }
             }
         }
         SyntaxExpression::Origin {
@@ -9208,13 +9226,11 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
                 OpenEndKind::ExpressionQuery,
                 case_count,
                 case_index,
-                range_line_span(match &case.pattern {
-                    None => expression_range(result, expressions, patterns, types),
-                    Some(case_pattern) => lsp_types::Range {
-                        start: pattern_start(case_pattern),
-                        end: expression_end(result, expressions, patterns, types),
-                    },
-                }),
+                match &case.pattern {
+                    None => case.equals_start,
+                    Some(case_pattern) => pattern_start(case_pattern),
+                },
+                expression_range(result, expressions, patterns, types),
             );
         }
     }
@@ -9227,8 +9243,42 @@ fn maybe_open_end_whitespace_then_element_format(
     open_end_kind_to_parenthesize_before_last_element: OpenEndKind,
     element_count: usize,
     element_index: usize,
-    line_span: LineSpan,
+    syntax_before_element_start: lsp_types::Position,
+    element_range: lsp_types::Range,
 ) {
+    let line_span = range_line_span(lsp_types::Range {
+        start: syntax_before_element_start,
+        end: element_range.end,
+    });
+    if (element_index == element_count - 1) && (element_range.start.character as usize <= indent) {
+        space_or_linebreak_indented_into(formatted, line_span, indent);
+        element_unparenthesized_format(formatted, indent);
+    } else {
+        parenthesize_if_open_ended_whitespace_then_element_format(
+            formatted,
+            indent,
+            element_unparenthesized_format,
+            open_end_kind_to_parenthesize_before_last_element,
+            element_open_end(),
+            line_span,
+        );
+    }
+}
+fn maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
+    formatted: &mut String,
+    indent: usize,
+    element_unparenthesized_format: impl FnOnce(&mut String, usize),
+    element_open_end: impl FnOnce() -> Option<OpenEndKind>,
+    open_end_kind_to_parenthesize_before_last_element: OpenEndKind,
+    element_count: usize,
+    element_index: usize,
+    syntax_before_element_start: lsp_types::Position,
+    element_range: lsp_types::Range,
+) {
+    let line_span = range_line_span(lsp_types::Range {
+        start: syntax_before_element_start,
+        end: element_range.end,
+    });
     if element_index == element_count - 1 {
         space_or_linebreak_indented_into(formatted, line_span, indent);
         element_unparenthesized_format(formatted, indent);
@@ -9351,10 +9401,8 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                         OpenEndKind::Record,
                         field_count,
                         0,
-                        range_line_span(lsp_types::Range {
-                            start: field0_name.start,
-                            end: pattern_end(value, patterns, types),
-                        }),
+                        field0_name.start,
+                        pattern_range(value, patterns, types),
                     );
                 }
             }
@@ -9379,10 +9427,8 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                             OpenEndKind::Record,
                             field_count,
                             field_index,
-                            range_line_span(lsp_types::Range {
-                                start: field.name.start,
-                                end: pattern_end(value, patterns, types),
-                            }),
+                            field.name.start,
+                            pattern_range(value, patterns, types),
                         );
                     }
                 }
@@ -9520,7 +9566,7 @@ fn syntax_type_unparenthesized_format<Types>(
                 }
                 Some(argument0) => {
                     let argument0 = types.element(argument0);
-                    maybe_open_end_whitespace_then_element_format(
+                    maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -9530,10 +9576,8 @@ fn syntax_type_unparenthesized_format<Types>(
                         OpenEndKind::TypeConstruct,
                         argument_count,
                         0,
-                        range_line_span(lsp_types::Range {
-                            start: *underscore_start,
-                            end: type_end(argument0, types),
-                        }),
+                        *underscore_start,
+                        type_range(argument0, types),
                     );
                 }
             }
@@ -9545,7 +9589,7 @@ fn syntax_type_unparenthesized_format<Types>(
                         linebreak_indented_into(formatted, indent);
                     }
                     formatted.push(',');
-                    maybe_open_end_whitespace_then_element_format(
+                    maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -9560,7 +9604,8 @@ fn syntax_type_unparenthesized_format<Types>(
                         OpenEndKind::TypeConstruct,
                         argument_count,
                         argument_index,
-                        range_line_span(type_range(argument_type, types)),
+                        argument.comma_start,
+                        type_range(argument_type, types),
                     );
                 }
             }
@@ -9603,10 +9648,8 @@ fn syntax_type_unparenthesized_format<Types>(
                         OpenEndKind::Record,
                         field_count,
                         0,
-                        range_line_span(lsp_types::Range {
-                            start: field0_name.start,
-                            end: type_end(value, types),
-                        }),
+                        field0_name.start,
+                        type_range(value, types),
                     );
                 }
             }
@@ -9629,10 +9672,8 @@ fn syntax_type_unparenthesized_format<Types>(
                             OpenEndKind::Record,
                             field_count,
                             field_index,
-                            range_line_span(lsp_types::Range {
-                                start: field.name.start,
-                                end: type_end(value, types),
-                            }),
+                            field.name.start,
+                            type_range(value, types),
                         );
                     }
                 }
@@ -9664,10 +9705,8 @@ fn syntax_type_unparenthesized_format<Types>(
                         OpenEndKind::TypeChoice,
                         variant_count,
                         0,
-                        range_line_span(lsp_types::Range {
-                            start: variant0_name.start,
-                            end: type_end(value, types),
-                        }),
+                        variant0_name.start,
+                        type_range(value, types),
                     );
                 }
             }
@@ -9691,10 +9730,8 @@ fn syntax_type_unparenthesized_format<Types>(
                             OpenEndKind::TypeChoice,
                             variant_count,
                             variant_index,
-                            range_line_span(lsp_types::Range {
-                                start: variant.name.start,
-                                end: type_end(value, types),
-                            }),
+                            variant.name.start,
+                            type_range(value, types),
                         );
                     }
                 }
@@ -10125,7 +10162,7 @@ fn syntax_expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             )
         }),
         SyntaxExpression::Query {
-            colon_start: _,
+            question_mark_start: _,
             queried,
             cases,
         } => queried
@@ -11313,7 +11350,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Query {
-            colon_start: _,
+            question_mark_start: _,
             queried,
             cases,
         } => {

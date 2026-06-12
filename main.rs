@@ -1384,7 +1384,7 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                     sloe_syntax_pattern_highlight(state, patterns, types, parameter)
                 }
                 if let Some(arrow_start) = arrow_start {
-                    keyword_highlight(state, "->", *arrow_start);
+                    keyword_highlight(state, ":>", *arrow_start);
                 }
                 if let Some(result_type) = result_type {
                     sloe_syntax_type_highlight(state, types, result_type);
@@ -1805,11 +1805,11 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
         sloe::SyntaxExpression::Query {
-            colon_start,
+            question_mark_start,
             queried,
             cases,
         } => {
-            keyword_highlight(state, ":", *colon_start);
+            keyword_highlight(state, "?", *question_mark_start);
             if let Some(queried) = queried {
                 sloe_syntax_expression_highlight(
                     state,

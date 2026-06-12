@@ -409,11 +409,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- change query start from `:` to `?`
-
-- consider still indenting and parenthesizing the last sequence element if it is not unindented.
-  An exception is made for type constructs, as their argument count will most likely never change (their format behavior will be kept as is currently)!
-  This helps readability for especially records where fields can be reordered immensely.
+- correct expression variant type formatting
 
 - change `ty` syntax to reflect usage, so
   ```sloe

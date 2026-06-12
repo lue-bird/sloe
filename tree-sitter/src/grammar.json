@@ -493,7 +493,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "key_symbol_colon"
+          "name": "key_symbol_question_mark"
         },
         {
           "type": "SYMBOL",
@@ -1284,9 +1284,9 @@
       "type": "STRING",
       "value": "ty"
     },
-    "key_symbol_colon": {
+    "key_symbol_question_mark": {
       "type": "STRING",
-      "value": ":"
+      "value": "?"
     },
     "key_symbol_angle_right": {
       "type": "STRING",
@@ -1294,7 +1294,7 @@
     },
     "key_symbol_arrow": {
       "type": "STRING",
-      "value": "->"
+      "value": ":>"
     },
     "key_symbol_equals": {
       "type": "STRING",
