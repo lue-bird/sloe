@@ -227,7 +227,7 @@ fn present_project_fn_with_complete_type_markdown(
         "```sloe
 fn {}{}
     {}
-    ->
+    :>
     {}
 ```
 {}
@@ -250,7 +250,7 @@ fn present_type_alias_markdown(
     let description = format!(
         "```sloe\nty {} {}\n    {}\n```\n",
         name,
-        type_alias_info.parameters.join(" "),
+        type_alias_info.parameters.join(", "),
         type_string
     );
     match &type_alias_info.documentation {
@@ -265,7 +265,7 @@ fn angled_type_parameters_format(formatted: &mut String, type_parameters: &[sloe
         formatted.push('<');
         formatted.push_str(type_parameter0);
         for type_parameter in type_parameter1_up {
-            formatted.push(' ');
+            formatted.push_str(", ");
             formatted.push_str(type_parameter);
         }
         formatted.push('>');
@@ -881,7 +881,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+    let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         hover_arguments.text_document_position_params.position,
         &state.syntax_expressions,
@@ -995,7 +995,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+    let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         goto_definition_arguments
             .text_document_position_params
@@ -1080,7 +1080,7 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     else {
         return None;
     };
-    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+    let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         prepare_rename_arguments.position,
         &state.syntax_expressions,
@@ -1137,7 +1137,7 @@ fn respond_to_rename<Expressions, Patterns, Types>(
     else {
         return None;
     };
-    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+    let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         rename_arguments.text_document_position.position,
         &state.syntax_expressions,
@@ -1187,7 +1187,7 @@ fn respond_to_references<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+    let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         references_arguments.text_document_position.position,
         &state.syntax_expressions,
@@ -1439,8 +1439,21 @@ fn sloe_angled_type_parameters_highlight(
     state: &mut HighlightState,
     angled_type_parameters: &sloe::SyntaxAngledTypeParameters,
 ) {
-    for name in &angled_type_parameters.names {
-        sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE_PARAMETER);
+    if let Some(parameter0) = &angled_type_parameters.parameter0 {
+        sloe_syntax_name_highlight(
+            state,
+            parameter0,
+            lsp_types::SemanticTokenType::TYPE_PARAMETER,
+        );
+    }
+    for parameter in &angled_type_parameters.parameter1_up {
+        if let Some(parameter_name) = &parameter.name {
+            sloe_syntax_name_highlight(
+                state,
+                parameter_name,
+                lsp_types::SemanticTokenType::TYPE_PARAMETER,
+            );
+        }
     }
 }
 fn sloe_angled_type_arguments_highlight<Types>(
@@ -1448,10 +1461,13 @@ fn sloe_angled_type_arguments_highlight<Types>(
     types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
     angled_type_arguments: &sloe::SyntaxAngledTypeArguments<Types>,
 ) {
-    for argument in types.opt_span_slice(sloe::core::Opt::from_option(
-        angled_type_arguments.types.as_ref(),
-    )) {
-        sloe_syntax_type_highlight(state, types, argument);
+    if let Some(argument0) = &angled_type_arguments.argument0 {
+        sloe_syntax_type_highlight(state, types, argument0);
+    }
+    for argument in &angled_type_arguments.argument1_up {
+        if let Some(argument_type) = &argument.type_ {
+            sloe_syntax_type_highlight(state, types, argument_type);
+        }
     }
 }
 fn sloe_syntax_trailing_field_highlight<Value>(
@@ -1724,7 +1740,9 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         }
         sloe::SyntaxExpression::Variant { name, type_, value } => {
             sloe_syntax_optional_variant_name_highlight(state, name);
-            if let Some(type_) = type_ {
+            if let Some(type_argument) = type_
+                && let Some(type_) = &type_argument.type_
+            {
                 sloe_syntax_type_highlight(state, types, type_);
             }
             if let Some(value) = value {
@@ -1942,7 +1960,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    let Some(symbol) = sloe::syntax_project_symbol_at_position(
+    let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         completion_arguments.text_document_position.position,
         &state.syntax_expressions,
@@ -2034,16 +2052,18 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     documentation: _,
                     result: _,
                 } => {
-                    for parameter in type_parameters
-                        .as_ref()
-                        .map(|type_parameters| &type_parameters.names)
-                        .into_iter()
-                        .flatten()
-                    {
-                        if parameter.start == use_start {
-                            return None;
+                    if let Some(type_parameters) = type_parameters {
+                        for parameter in type_parameters.parameter0.iter().chain(
+                            type_parameters
+                                .parameter1_up
+                                .iter()
+                                .filter_map(|parameter| parameter.name.as_ref()),
+                        ) {
+                            if parameter.start == use_start {
+                                return None;
+                            }
+                            available_existing_variables.insert(&parameter.value);
                         }
-                        available_existing_variables.insert(&parameter.value);
                     }
                     if let Some(parameter) = parameter {
                         sloe::syntax_pattern_type_variables_into(

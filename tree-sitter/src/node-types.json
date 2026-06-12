@@ -5,10 +5,14 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
-          "type": "type_not_open_ended",
+          "type": "type",
+          "named": true
+        },
+        {
+          "type": "type_not_open_ending_in_construct",
           "named": true
         }
       ]
@@ -20,7 +24,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "type_variable",
@@ -761,7 +765,7 @@
           "named": true
         },
         {
-          "type": "type_not_open_ended",
+          "type": "type",
           "named": true
         },
         {
@@ -784,7 +788,7 @@
           "named": true
         },
         {
-          "type": "type_not_open_ended",
+          "type": "type",
           "named": true
         },
         {
@@ -807,7 +811,7 @@
           "named": true
         },
         {
-          "type": "type_not_open_ended",
+          "type": "type",
           "named": true
         },
         {
@@ -1490,29 +1494,6 @@
     }
   },
   {
-    "type": "type_construct_with_argument_not_open_ended",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "symbol_type_construct_underscore",
-          "named": true
-        },
-        {
-          "type": "type_name",
-          "named": true
-        },
-        {
-          "type": "type_not_open_ended",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "type_construct_with_arguments",
     "named": true,
     "fields": {},
@@ -1679,41 +1660,6 @@
       "types": [
         {
           "type": "lower_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "type_not_open_ended",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "type_choice_empty",
-          "named": true
-        },
-        {
-          "type": "type_construct_with_argument_not_open_ended",
-          "named": true
-        },
-        {
-          "type": "type_name",
-          "named": true
-        },
-        {
-          "type": "type_parenthesized",
-          "named": true
-        },
-        {
-          "type": "type_record_empty",
-          "named": true
-        },
-        {
-          "type": "type_variable",
           "named": true
         }
       ]

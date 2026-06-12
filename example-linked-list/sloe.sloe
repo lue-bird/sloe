@@ -14,7 +14,7 @@ fn stack-cons
     .stack _stack Origin, Element
     >
     ? _vec-add .vec backing .new tail = .vec backing .slot tail-slot >
-    .backing backing .stack (|stacked (_stack Origin, Element) .head new-head .tail tail-slot)
+    .backing backing .stack (|stacked<_stack Origin, Element> .head new-head .tail tail-slot)
 
 fn stack-pop
     .backing backing _vec Origin, _stack Origin, Element
@@ -30,22 +30,20 @@ fn stack-pop
     = |empty . >
         .backing backing
         .element
-            |absent (
+            |absent<
                 _opt
                 .head Element
                 .tail _stack Origin, Element
-            )
-            .
+            > .
     = |stacked .head head .tail tail-slot > (
         ? _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
         .backing backing
         .element (
-            |present (
+            |present<
                 _opt
                 .head Element
                 .tail _stack Origin, Element
-            )
-            .head head .tail tail
+            > .head head .tail tail
             )
         )
 
@@ -76,11 +74,11 @@ fn stack-rid-fold
 
 fn example . :> u32 >
     origin example-stack-origin
-    ? _vec-empty<(_stack example-stack-origin, u32)> example-stack-origin = example-stack-backing >
+    ? _vec-empty<_stack example-stack-origin, u32> example-stack-origin = example-stack-backing >
     ?
         _stack-cons
         .backing example-stack-backing
-        .tail |empty (_stack example-stack-origin, u32) .
+        .tail |empty<_stack example-stack-origin, u32> .
         .new-head 39 u32
     = .backing example-stack-backing .stack example-stack >
     ?

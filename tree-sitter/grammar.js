@@ -112,11 +112,11 @@ export default grammar({
       seq($.keyword_origin, $.lower_name, $.expression_not_open_ending_in_query),
     expression_origin_not_open_ending_in_record: ($) =>
       seq($.keyword_origin, $.lower_name, $.expression_not_open_ending_in_record),
-    expression_variant: ($) => seq($.variant_name, $.type_not_open_ended, $.expression),
+    expression_variant: ($) => seq($.variant_name, "<", $.type, ">", $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
-      seq($.variant_name, $.type_not_open_ended, $.expression_not_open_ending_in_query),
+      seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_query),
     expression_variant_not_open_ending_in_record: ($) =>
-      seq($.variant_name, $.type_not_open_ended, $.expression_not_open_ending_in_record),
+      seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_record),
     expression_variable: ($) => $.lower_name,
     expression_call: ($) =>
       seq(
@@ -139,8 +139,10 @@ export default grammar({
         optional($.angled_type_arguments),
         $.expression_not_open_ending_in_record,
       ),
-    angled_type_arguments: ($) => seq("<", repeat($.type_not_open_ended), ">"),
-    angled_type_parameters: ($) => seq("<", repeat($.type_variable), ">"),
+    angled_type_arguments: ($) =>
+      seq("<", repeat(seq($.type_not_open_ending_in_construct, ",")), $.type, ">"),
+    angled_type_parameters: ($) =>
+      seq("<", repeat(seq($.type_variable, ",")), $.type_variable, ">"),
     expression_query: ($) =>
       seq(
         $.key_symbol_question_mark,
