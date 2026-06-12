@@ -4939,7 +4939,16 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: Some(variable_type),
                 }
             } else {
-                errors.push(ErrorNode { range: name_range(with_start_position_as_ref(name)), message: Box::from("unknown variable name. No local variable has this name. Note that a local fn result can not refer to any variable from the outside. Also note that functions always need to be called with an argument and start with an underscore, like _u32-add .a 0 u32 .b 1 u32. Otherwise check for typos.") });
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: Box::from(
+                        if let Some(_) = project_fns.get(name.value.as_str()) {
+                            "functions always need to be called with an argument and start with an underscore, like _u32-add .a 0 u32 .b 1 u32. Otherwise check for typos."
+                        } else {
+                            "unknown variable name. No local variable has this name. Note that a local fn result can not refer to any variable from the outside. Otherwise check for typos."
+                        }
+                    )
+                });
                 CompiledExpression {
                     rust: syn_expr_todo(),
                     type_: None,
@@ -4962,52 +4971,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
-            if let Some(_origin_info) = origins.get(&name.value) {
-                let maybe_existing_origin_variable_use_start =
-                    used_origin_variables.insert(&name.value, name.start);
-                if let Some(existing_origin_variable_use_start) =
-                    maybe_existing_origin_variable_use_start
-                {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!("this origin variable is already used earlier starting at {}. Each value can only be used once, that includes origins. Each collection needs its own origin", position_to_string(existing_origin_variable_use_start)).into_boxed_str(),
-                    });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
-                }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
-                if let Some(type_arguments) = type_arguments {
-                    errors.push(ErrorNode {
-                        range: lsp_types::Range {
-                            start: type_arguments.open_angle_start,
-                            end: angled_type_arguments_end(type_arguments, types),
-                        },
-                        message: Box::from(
-                            "type arguments on an origin make no sense. Remove them",
-                        ),
-                    })
-                }
-                if let Some(argument) = syntax_argument {
-                    errors.push(ErrorNode {
-                        range: expression_range(
-                            expressions.element(argument),
-                            expressions,
-                            patterns,
-                            types,
-                        ),
-                        message: Box::from(
-                            "calling an origin with an argument makes no sense. Remove this argument",
-                        ),
-                    })
-                }
-                CompiledExpression {
-                    rust: rust_reference,
-                    type_: Some(type_origin(Type::Origin(name.value.clone()))),
-                }
-            } else if let Some(variable_info) = pattern_variables.get(&name.value) {
+            if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
                     used_pattern_variables.insert(&name.value, name.start);
                 if let Some(existing_pattern_variable_use_start) =
@@ -5131,6 +5095,51 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             type_: Some(variable_type_output.clone()),
                         }
                     }
+                }
+            } else if let Some(_origin_info) = origins.get(&name.value) {
+                let maybe_existing_origin_variable_use_start =
+                    used_origin_variables.insert(&name.value, name.start);
+                if let Some(existing_origin_variable_use_start) =
+                    maybe_existing_origin_variable_use_start
+                {
+                    errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name)),
+                        message: format!("this origin variable is already used earlier starting at {}. Each value can only be used once, that includes origins. Each collection needs its own origin", position_to_string(existing_origin_variable_use_start)).into_boxed_str(),
+                    });
+                    return CompiledExpression {
+                        rust: syn_expr_todo(),
+                        type_: None,
+                    };
+                }
+                let rust_reference: syn::Expr =
+                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
+                if let Some(type_arguments) = type_arguments {
+                    errors.push(ErrorNode {
+                        range: lsp_types::Range {
+                            start: type_arguments.open_angle_start,
+                            end: angled_type_arguments_end(type_arguments, types),
+                        },
+                        message: Box::from(
+                            "type arguments on an origin make no sense. Remove them",
+                        ),
+                    })
+                }
+                if let Some(argument) = syntax_argument {
+                    errors.push(ErrorNode {
+                        range: expression_range(
+                            expressions.element(argument),
+                            expressions,
+                            patterns,
+                            types,
+                        ),
+                        message: Box::from(
+                            "calling an origin with an argument makes no sense. Remove this argument",
+                        ),
+                    })
+                }
+                CompiledExpression {
+                    rust: rust_reference,
+                    type_: Some(type_origin(Type::Origin(name.value.clone()))),
                 }
             } else {
                 let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
@@ -7044,9 +7053,13 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
         Type::Origin(name) => {
             formatted.push_str(name);
         }
-        Type::CoreConstruct { name, arguments } => {
-            formatted.push_str(name);
-            if let Some((argument0, argument1_up)) = arguments.split_first() {
+        Type::CoreConstruct { name, arguments } => match arguments.as_slice() {
+            [] => {
+                formatted.push_str(name);
+            }
+            [argument0, argument1_up @ ..] => {
+                formatted.push('_');
+                formatted.push_str(name);
                 let line_span: LineSpan = type_line_span(type_);
                 space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
                 type_parenthesized_if_open_ended_format(formatted, next_indent(indent), argument0);
@@ -7060,7 +7073,7 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
                     );
                 }
             }
-        }
+        },
         Type::Record(fields) => match fields.as_slice() {
             [] => {
                 formatted.push('.');
@@ -9072,7 +9085,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                         |formatted, indent| {
                             syntax_expression_unparenthesized_format(
                                 formatted,
-                                next_indent(indent),
+                                indent,
                                 expressions,
                                 patterns,
                                 types,
@@ -9247,6 +9260,10 @@ fn parenthesize_if_open_ended_whitespace_then_element_format(
         }
         element_unparenthesized_format(formatted, next_indent(indent));
         if line_span == LineSpan::Multiple {
+            // this one is an explicit decision. Most languages e.g. align the field name with the value close paren.
+            // However, I find
+            // - having the close on the same line as the value is more legible
+            // - having the closing paren on the same level as is confusing and not consistent
             linebreak_indented_into(formatted, next_indent(indent));
         }
         formatted.push(')');

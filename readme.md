@@ -411,6 +411,18 @@ cargo install --offline --debug --path . sloe
 
 - change query start from `:` to `?`
 
+- consider still indenting and parenthesizing the last sequence element if it is not unindented.
+  An exception is made for type constructs, as their argument count will most likely never change (their format behavior will be kept as is currently)!
+  This helps readability for especially records where fields can be reordered immensely.
+
+- change `ty` syntax to reflect usage, so
+  ```sloe
+  ty no-arguments aliased-type
+  ty _single-argument Argument aliased-type
+  ty _multiple A, B, C aliased-type
+  ```
+  one tiny win is that identity type aliases get parsed correctly
+
 - complete switch to new syntax, especially tree-sitter
 
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)

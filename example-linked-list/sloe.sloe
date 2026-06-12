@@ -14,92 +14,83 @@ fn stack-cons
     .stack _stack Origin, Element
     >
     : _vec-add .vec backing .new tail = .vec backing .slot tail-slot >
-    .backing backing .stack (|stacked (_stack Origin, Element) .head new-head .tail tail-slot)
+    .backing backing .stack |stacked (_stack Origin, Element) .head new-head .tail tail-slot
 
 fn stack-pop
     .backing backing _vec Origin, _stack Origin, Element
     .stack stack _stack Origin, Element
     ->
     .backing _vec Origin, _stack Origin, Element
-    .element (
-        _opt
-            .head Element
-            .tail _stack Origin, Element
-    )
+    .element
+    _opt
+    .head Element
+    .tail _stack Origin, Element
     >
     : stack
-    = |empty . > (
+    = |empty . >
         .backing backing
         .element
-        |absent
-        (_opt
+        |absent (_opt
             .head Element
             .tail _stack Origin, Element
         )
         .
+    = |stacked .head head .tail tail-slot >
+    : _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
+    .backing backing
+    .element
+    |present (_opt
+        .head Element
+        .tail _stack Origin, Element
     )
-    = |stacked .head head .tail tail-slot > (
-        : _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
-        .backing backing
-        .element (
-            |present
-            (_opt
-                .head Element
-                .tail _stack Origin, Element
-            )
-            .head head .tail tail
-        )
-    )
+    .head head .tail tail
 
 fn stack-rid-fold
     .backing backing _vec Origin, _stack Origin, Element
     .stack stack _stack Origin, Element
     .state state State
-    .vacate-element element-rid _fn (.state State .element Element), State
+    .vacate-element element-rid _fn .state State .element Element, State
     ->
     .backing _vec Origin, _stack Origin, Element
     .state State
     >
-    :stack
+    : stack
     = |empty . > (
         : _fn-rid element-rid = . >
         .backing backing .state state
-    )
-    = |stacked .head head .tail tail-slot > (
-        : _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
-        : _fn-dup element-rid = .a vacate-element-a .b vacate-element-b >
-        : _vacate-element-a .state state .element head = elements-backing >
-        _stack-rid-fold
-        .backing backing
-        .stack tail
-        .vacate-element vacate-element-b
-        .state elements-backing
-    )
+        )
+    = |stacked .head head .tail tail-slot >
+    : _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
+    : _fn-dup element-rid = .a vacate-element-a .b vacate-element-b >
+    : _vacate-element-a .state state .element head = elements-backing >
+    _stack-rid-fold
+    .backing backing
+    .stack tail
+    .vacate-element vacate-element-b 
+    .state elements-backing
 
 fn example . -> u32 >
     origin example-stack-origin
     : _vec-empty<(_stack example-stack-origin, u32)> example-stack-origin = example-stack-backing >
-    :(
+    :
         _stack-cons
         .backing example-stack-backing
         .tail |empty (_stack example-stack-origin, u32) .
         .new-head 39 u32
-    )
     = .backing example-stack-backing .stack example-stack >
-    :(
+    :
         _stack-cons
         .backing example-stack-backing
         .tail example-stack
         .new-head 3 u32
-    )
     = .backing example-stack-backing .stack example-stack >
-    :(
+    :
         _stack-rid-fold
         .backing example-stack-backing
         .stack example-stack
         .state 0 u32
-        .vacate-element (fn .state state u32 .element element u32 > _u32-add .a state .b element)
-    )
+        .vacate-element fn .state state u32 .element element u32 > _u32-add .a state .b element
     = .backing example-stack-backing .state result >
     : _vec-rid example-stack-backing = . >
     result
+

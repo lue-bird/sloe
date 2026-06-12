@@ -226,8 +226,9 @@ fn present_project_fn_with_complete_type_markdown(
     format!(
         "```sloe
 fn {}{}
-    ({})
-    ({})
+    {}
+    ->
+    {}
 ```
 {}
 ",
