@@ -30,7 +30,8 @@ fn stack-pop
     = |empty . >
         .backing backing
         .element
-            |absent (_opt
+            |absent (
+                _opt
                 .head Element
                 .tail _stack Origin, Element
             )
@@ -39,7 +40,8 @@ fn stack-pop
         ? _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
         .backing backing
         .element (
-            |present (_opt
+            |present (
+                _opt
                 .head Element
                 .tail _stack Origin, Element
             )

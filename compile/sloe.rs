@@ -8946,17 +8946,36 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Variant { name, type_, value } => {
             optional_variant_name_format(formatted, name.value.as_ref());
-            formatted.push(' ');
-            if let Some(type_) = type_ {
-                let type_line_span = range_line_span(type_range(type_, types));
-                syntax_type_parenthesized_if_open_ended_format(
-                    formatted,
-                    indent,
-                    types,
-                    type_,
-                    |_open_end| true,
-                );
-                space_or_linebreak_indented_into(formatted, type_line_span, indent);
+            match type_ {
+                None => {
+                    formatted.push(' ');
+                }
+                Some(type_) => {
+                    let line_span = range_line_span(lsp_types::Range {
+                        start: name.start,
+                        end: type_end(type_, types),
+                    });
+                    if let Some(_open_end) = syntax_type_open_end(type_, types) {
+                        formatted.push_str(" (");
+                        if line_span == LineSpan::Multiple {
+                            linebreak_indented_into(formatted, next_indent(indent));
+                        }
+                        syntax_type_unparenthesized_format(
+                            formatted,
+                            next_indent(indent),
+                            types,
+                            type_,
+                        );
+                        if line_span == LineSpan::Multiple {
+                            linebreak_indented_into(formatted, indent);
+                        }
+                        formatted.push(')');
+                    } else {
+                        space_or_linebreak_indented_into(formatted, line_span, indent);
+                        syntax_type_unparenthesized_format(formatted, indent, types, type_);
+                    }
+                    space_or_linebreak_indented_into(formatted, line_span, indent);
+                }
             }
             if let Some(value) = value {
                 syntax_expression_unparenthesized_format(

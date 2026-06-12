@@ -409,7 +409,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- correct expression variant type formatting
+- change function type arguments from `<First Second>` to `<First, Second>` and `|variant-name type value-expression` to `|variant-name<type> value-expression`
 
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
 
@@ -421,5 +421,3 @@ cargo install --offline --debug --path . sloe
   much more attractive/viable. This pattern can avoid "type parameter spam" for any record
 
 - add `vec-span-add-repeat`
-
-- (not specific, yet) change function type arguments from `<First Second>` to `[First; Second]` and `|variant-name type value-expression` to `[type] |variant-name value-expression`
