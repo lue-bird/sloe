@@ -8059,11 +8059,11 @@ there are also helpers like `vec-fold` or `vec-fold-with-origin-rid`.
 This is mainly intended as a cleanup mechanism to flush out any remaining elements.
 ```sloe
 origin example-origin
-:(vec-empty<u32> example-origin) example-vec <
-vec-fold &
-vec example-vec
-state &
-step (fn (& state state & element element u32) u32-rid element)
+? _vec-empty<u32> example-origin = example-vec >
+_vec-fold
+.vec example-vec
+.state .
+.step fn .state state .element element u32 > _u32-rid element
 ```
 If you know there are no more slots and spans left, use `vec-rid`.
 For regular folds over spans, use helpers like `span-fold`.
@@ -8141,8 +8141,8 @@ pub static core_type_aliases: std::sync::LazyLock<
                 documentation: Some(Box::from(
                     r"A natural number >= 1 (positive integer) with 32 bits.
 ```sloe
-fn answer & p32
-    p32-add a 2 p32 b 40 u32
+fn answer . :> p32 >
+    _p32-add .p 2 p32 .u 40 u32
 ```
 ",
                 )),
@@ -8158,8 +8158,8 @@ fn answer & p32
                 documentation: Some(Box::from(
                     r"A natural number >= 0 (unsigned integer) with 32 bits.
 ```sloe
-fn answer & u32
-    u32-add a 2 u32 b 40 u32
+fn answer . :> u32 >
+    _u32-add .a 2 u32 .b 40 u32
 ```
 ",
                 )),
@@ -8175,8 +8175,8 @@ fn answer & u32
                 documentation: Some(Box::from(
                     r"A signed whole number (integer) with 32 bits.
 ```sloe
-fn answer & i32
-    i32-add a -8 i32 b 50 i32
+fn answer . :> i32 >
+    _i32-add .a -8 i32 .b 50 i32
 ```
 ",
                 )),
@@ -8193,8 +8193,8 @@ fn answer & i32
                     r"A signed decimal number (floating-point) with 32 bit precision.
 Does not allow infinities or NaN. If you need these error states, explicitly model them with a choice type.
 ```sloe
-fn answer & i32
-    i32-add a -8.5 f32 b 50.5 f32
+fn answer . :> f32 >
+    _f32-add .a -8.5 f32 .b 50.5 f32
 ```
 ",
                 )),
@@ -8211,9 +8211,9 @@ fn answer & i32
                     r#"A unicode scalar like `'a'` or `'👀'` or `'\u{2665}'` (hex code for ♥).
 Keep in mind that a human-readable visual symbol can be composed of multiple such unicode scalars (forming a grapheme cluster), For example:
 ```sloe
-str-start "🇺🇸"
-# = Present & (start '\u{1F1FA}') (after "\u{1F1F8}")
-#                    Indicator U         Indicator S
+_str-start "🇺🇸"
+# = |present .start '\u{1F1FA}' .after "\u{1F1F8}"
+#                   Indicator U        Indicator S
 ```
 Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters)
 "#,
@@ -8292,9 +8292,9 @@ see `slot-rid`, `span-rid`, `opt-span-rid`.
 ```sloe
 fn use-a-vec & u32
     origin my-elements-origin
-    :(vec-empty<u32> my-elements-origin) my-elements <
-    :(vec-add & vec my-elements element 609 u32) (& vec my-elements slot first-element-slot) <
-    :(vec-element & vec my-elements slot first-element-slot) (& vec _ element first-element) <
+    ? _vec-empty<u32> my-elements-origin = my-elements >
+    ? _vec-add .vec my-elements .element 609 u32 = .vec my-elements .slot first-element-slot >
+    ? _vec-element .vec my-elements .slot first-element-slot = .vec _ .element first-element >
     first-element # = 609 u32
 ```
 "

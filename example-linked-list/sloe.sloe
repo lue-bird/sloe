@@ -75,19 +75,19 @@ fn stack-rid-fold
 fn example . :> u32 >
     origin example-stack-origin
     ? _vec-empty<(_stack example-stack-origin, u32)> example-stack-origin = example-stack-backing >
-    :
+    ?
         _stack-cons
         .backing example-stack-backing
         .tail |empty (_stack example-stack-origin, u32) .
         .new-head 39 u32
     = .backing example-stack-backing .stack example-stack >
-    :
+    ?
         _stack-cons
         .backing example-stack-backing
         .tail example-stack
         .new-head 3 u32
     = .backing example-stack-backing .stack example-stack >
-    :
+    ?
         _stack-rid-fold
         .backing example-stack-backing
         .stack example-stack
