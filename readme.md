@@ -419,8 +419,6 @@ cargo install --offline --debug --path . sloe
   ```
   one tiny win is that identity type aliases get parsed correctly
 
-- complete switch to new syntax, especially tree-sitter
-
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
 
 - officially convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of cleanup for temporary vec members (which most likely would get optimized away though).
