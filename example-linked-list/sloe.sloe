@@ -1,5 +1,5 @@
 
-ty stack Origin Element
+ty stack Origin, Element
     # a singly-linked list, but since it can be backed by an array,
     # elements are likely close together in memory
     |empty .

@@ -28,7 +28,7 @@ export default grammar({
       seq(
         $.keyword_ty,
         $.type_name,
-        repeat($.type_variable),
+        optional(seq($.type_variable, repeat(seq(",", $.type_variable)))),
         repeat($.comment),
         $.type_not_variable,
       ),

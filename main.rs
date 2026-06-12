@@ -1342,13 +1342,23 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                         name.value.len(),
                     );
                 }
-                for parameter in parameters {
+                if let Some(parameters) = parameters {
                     highlight_state_add_token_with_start_and_length(
                         state,
                         lsp_types::SemanticTokenType::TYPE_PARAMETER,
-                        parameter.start,
-                        parameter.value.len(),
+                        parameters.parameter0.start,
+                        parameters.parameter0.value.len(),
                     );
+                    for parameter in &parameters.parameter1_up {
+                        if let Some(parameter_name) = &parameter.name {
+                            highlight_state_add_token_with_start_and_length(
+                                state,
+                                lsp_types::SemanticTokenType::TYPE_PARAMETER,
+                                parameter_name.start,
+                                parameter_name.value.len(),
+                            );
+                        }
+                    }
                 }
                 if let Some(documentation) = documentation {
                     sloe_syntax_comments_highlight(state, documentation);
@@ -1999,11 +2009,18 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     documentation: _,
                     type_: _,
                 } => {
-                    for parameter in parameters {
-                        if parameter.start == use_start {
-                            return None;
+                    if let Some(parameters) = parameters {
+                        for parameter in std::iter::once(&parameters.parameter0).chain(
+                            parameters
+                                .parameter1_up
+                                .iter()
+                                .filter_map(|parameter| parameter.name.as_ref()),
+                        ) {
+                            if parameter.start == use_start {
+                                return None;
+                            }
+                            available_existing_variables.insert(&parameter.value);
                         }
-                        available_existing_variables.insert(&parameter.value);
                     }
                 }
                 sloe::SyntaxProjectElement::Fn {

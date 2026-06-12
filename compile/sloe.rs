@@ -20,7 +20,7 @@ pub enum SyntaxProjectElement<Expressions, Patterns, Types> {
     TypeAlias {
         ty_keyword_start: lsp_types::Position,
         name: Option<WithStartPosition<Name>>,
-        parameters: Vec<WithStartPosition<Name>>,
+        parameters: Option<TyParameters>,
         documentation: Option<SyntaxComments>,
         type_: Option<SyntaxType<Types>>,
     },
@@ -46,13 +46,15 @@ pub struct SyntaxComments {
     pub line0: WithStartPosition<Box<str>>,
     pub line1_up: Vec<WithStartPosition<Box<str>>>,
 }
-#[derive(Debug)]
-pub struct SyntaxVariant<Types> {
-    pub open_paren_start: lsp_types::Position,
+#[derive(Clone, Debug)]
+pub struct TyParameters {
+    pub parameter0: WithStartPosition<Name>,
+    pub parameter1_up: Vec<TyTrailingParameter>,
+}
+#[derive(Clone, Debug)]
+pub struct TyTrailingParameter {
+    pub comma_start: lsp_types::Position,
     pub name: Option<WithStartPosition<Name>>,
-    pub type_parameters: Option<SyntaxAngledTypeParameters>,
-    pub value: Option<SyntaxType<Types>>,
-    pub closed_paren_start: Option<lsp_types::Position>,
 }
 #[derive(Clone, Debug)]
 pub struct SyntaxAngledTypeParameters {
@@ -1087,10 +1089,10 @@ fn parse_project_element<Expressions, Patterns, Types>(
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
     parse_project_fn(state, expressions, patterns, types)
-        .or_else(|| parse_project_type(state, types))
+        .or_else(|| parse_project_ty(state, types))
         .or_else(|| parse_sloe_comments(state).map(SyntaxProjectElement::Comments))
 }
-fn parse_project_type<Expressions, Patterns, Types>(
+fn parse_project_ty<Expressions, Patterns, Types>(
     state: &mut ParseState,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
@@ -1100,11 +1102,8 @@ fn parse_project_type<Expressions, Patterns, Types>(
     parse_sloe_whitespace(state);
     let name = parse_sloe_lowercase_name_with_start(state);
     parse_sloe_whitespace(state);
-    let mut parameters = Vec::new();
-    while let Some(parameter) = parse_sloe_uppercase_name_with_start(state) {
-        parameters.push(parameter);
-        parse_sloe_whitespace(state);
-    }
+    let parameters = parse_ty_parameters(state);
+    parse_sloe_whitespace(state);
     let documentation = parse_sloe_comments(state);
     parse_sloe_whitespace(state);
     let type_ = parse_type(state, types);
@@ -1114,6 +1113,25 @@ fn parse_project_type<Expressions, Patterns, Types>(
         parameters: parameters,
         documentation: documentation,
         type_: type_,
+    })
+}
+fn parse_ty_parameters(state: &mut ParseState) -> Option<TyParameters> {
+    let Some(parameter0) = parse_sloe_uppercase_name_with_start(state) else {
+        return None;
+    };
+    let mut parameter1_up = Vec::new();
+    while let Some(comma_start) = parse_symbol_as_start(state, ",") {
+        parse_sloe_whitespace(state);
+        let name = parse_sloe_uppercase_name_with_start(state);
+        parameter1_up.push(TyTrailingParameter {
+            comma_start: comma_start,
+            name: name,
+        });
+        parse_sloe_whitespace(state);
+    }
+    Some(TyParameters {
+        parameter0: parameter0,
+        parameter1_up: parameter1_up,
     })
 }
 fn parse_angled_type_parameters(state: &mut ParseState) -> Option<SyntaxAngledTypeParameters> {
@@ -2559,7 +2577,7 @@ struct SyntaxProjectTypeInfo<'a, Types> {
     // consider introducing separate structs instead of separately referencing each field
     name: &'a WithStartPosition<Name>,
     documentation: &'a Option<SyntaxComments>,
-    parameters: &'a Vec<WithStartPosition<Name>>,
+    parameters: &'a Option<TyParameters>,
     type_: &'a Option<SyntaxType<Types>>,
 }
 // Copy & Clone need to be manually implemented because derive(Clone) introduces unnecessary Expressions/Patterns/Types:Clone bounds
@@ -2637,7 +2655,7 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                     types,
                     project_type.documentation.as_ref(),
                     &project_type.name,
-                    &project_type.parameters,
+                    project_type.parameters.as_ref(),
                     project_type.type_.as_ref(),
                 );
             let documentation = project_type.documentation.as_ref().map(|documentation| {
@@ -2652,7 +2670,15 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             let parameters = project_type
                 .parameters
                 .iter()
-                .map(|parameter| parameter.value.clone())
+                .flat_map(|parameters| {
+                    std::iter::once(parameters.parameter0.value.clone()).chain(
+                        parameters
+                            .parameter1_up
+                            .iter()
+                            .filter_map(|parameter| parameter.name.as_ref())
+                            .map(|parameter_name| parameter_name.value.clone()),
+                    )
+                })
                 .collect();
             match maybe_compiled_type_alias {
                 Some(compiled_type_alias) => {
@@ -2940,7 +2966,7 @@ fn type_alias_declaration_to_rust<Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
     maybe_documentation: Option<&SyntaxComments>,
     name: &WithStartPosition<Name>,
-    parameters: &[WithStartPosition<Name>],
+    parameters: Option<&TyParameters>,
     maybe_type: Option<&SyntaxType<Types>>,
 ) -> Option<CompiledTypeAlias> {
     let rust_name: String = name_to_uppercase_rust(&name.value);
@@ -2964,7 +2990,11 @@ fn type_alias_declaration_to_rust<Types>(
     };
     let type_rust: syn::Type = type_to_rust(&aliased_type);
     let mut actually_used_type_variables: std::collections::HashSet<Name> =
-        std::collections::HashSet::with_capacity(parameters.len());
+        std::collections::HashSet::with_capacity(
+            parameters
+                .map(|parameters| 1 + parameters.parameter1_up.len())
+                .unwrap_or(0),
+        );
     type_variables_into(&mut actually_used_type_variables, &aliased_type);
     let mut rust_parameters: syn::punctuated::Punctuated<syn::GenericParam, syn::token::Comma> =
         syn::punctuated::Punctuated::new();
@@ -2972,7 +3002,14 @@ fn type_alias_declaration_to_rust<Types>(
         errors,
         &mut rust_parameters,
         name_range(with_start_position_as_ref(name)),
-        parameters,
+        parameters.iter().flat_map(|parameters| {
+            std::iter::once(&parameters.parameter0).chain(
+                parameters
+                    .parameter1_up
+                    .iter()
+                    .filter_map(|parameter| parameter.name.as_ref()),
+            )
+        }),
         actually_used_type_variables,
     ) {
         return None;
@@ -3674,11 +3711,11 @@ fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, typ
         }
     }
 }
-fn parameters_to_rust_into_error_if_different_to_actual_type_parameters(
+fn parameters_to_rust_into_error_if_different_to_actual_type_parameters<'a>(
     errors: &mut Vec<ErrorNode>,
     rust_parameters: &mut syn::punctuated::Punctuated<syn::GenericParam, syn::token::Comma>,
     parameter_name_range: lsp_types::Range,
-    parameters: &[WithStartPosition<Name>],
+    parameters: impl Iterator<Item = &'a WithStartPosition<Name>>,
     mut actually_used_type_variables: std::collections::HashSet<Name>,
 ) -> Result<(), ()> {
     let mut bad_parameters: bool = false;
@@ -8539,9 +8576,17 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 if let Some(name) = name {
                     formatted.push_str(&name.value);
                 }
-                for parameter in parameters {
+                if let Some(parameters) = parameters {
                     formatted.push(' ');
-                    formatted.push_str(&parameter.value);
+                    formatted.push_str(&parameters.parameter0.value);
+                    for parameter in parameters
+                        .parameter1_up
+                        .iter()
+                        .filter_map(|parameter| parameter.name.as_ref())
+                    {
+                        formatted.push_str(", ");
+                        formatted.push_str(&parameter.value);
+                    }
                 }
                 match documentation {
                     Some(documentation) => {
@@ -9820,20 +9865,29 @@ pub fn syntax_project_symbol_at_position<'a, Expressions, Patterns, Types>(
                 });
             }
             parameters
-                .iter()
-                .find_map(|name| {
-                    if range_includes_position(
-                        name_range(with_start_position_as_ref(name)),
-                        position,
-                    ) {
-                        Some(SyntaxSymbol::TypeVariable {
-                            name: &name.value,
-                            use_start: name.start,
-                            scope: element,
+                .as_ref()
+                .and_then(|parameters| {
+                    std::iter::once(&parameters.parameter0)
+                        .chain(
+                            parameters
+                                .parameter1_up
+                                .iter()
+                                .filter_map(|parameter| parameter.name.as_ref()),
+                        )
+                        .find_map(|name| {
+                            if range_includes_position(
+                                name_range(with_start_position_as_ref(name)),
+                                position,
+                            ) {
+                                Some(SyntaxSymbol::TypeVariable {
+                                    name: &name.value,
+                                    use_start: name.start,
+                                    scope: element,
+                                })
+                            } else {
+                                None
+                            }
                         })
-                    } else {
-                        None
-                    }
                 })
                 .or_else(|| {
                     type_.as_ref().and_then(|value| {
@@ -10632,12 +10686,21 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 parameters,
                 documentation: _,
                 type_: _,
-            } => parameters.iter().find_map(|parameter| {
-                if &parameter.value == symbol_name {
-                    Some(name_range(with_start_position_as_ref(parameter)))
-                } else {
-                    None
-                }
+            } => parameters.as_ref().and_then(|parameters| {
+                std::iter::once(&parameters.parameter0)
+                    .chain(
+                        parameters
+                            .parameter1_up
+                            .iter()
+                            .filter_map(|parameter| parameter.name.as_ref()),
+                    )
+                    .find_map(|parameter| {
+                        if &parameter.value == symbol_name {
+                            Some(name_range(with_start_position_as_ref(parameter)))
+                        } else {
+                            None
+                        }
+                    })
             }),
             SyntaxProjectElement::Fn {
                 fn_keyword_start: _,

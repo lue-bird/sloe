@@ -411,14 +411,6 @@ cargo install --offline --debug --path . sloe
 
 - correct expression variant type formatting
 
-- change `ty` syntax to reflect usage, so
-  ```sloe
-  ty no-arguments aliased-type
-  ty _single-argument Argument aliased-type
-  ty _multiple A, B, C aliased-type
-  ```
-  one tiny win is that identity type aliases get parsed correctly
-
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
 
 - officially convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of cleanup for temporary vec members (which most likely would get optimized away though).
