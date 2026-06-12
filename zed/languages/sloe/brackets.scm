@@ -1,3 +1,6 @@
 ("(" @open ")" @close)
 ("\"" @open "\"" @close)
 ("'" @open "'" @close)
+("<" @open ">" @close)
+("=" @open ">" @close)
+(keyword_fn @open ">" @close)
