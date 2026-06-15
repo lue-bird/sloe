@@ -8601,6 +8601,7 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
     });
 
 pub struct ErrorNode {
+    // TODO change to either cow or dedicated error enum
     pub message: Box<str>,
     pub range: lsp_types::Range,
 }
@@ -8772,16 +8773,35 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 }
                 space_or_linebreak_indented_into(&mut formatted, header_line_span, next_indent(0));
                 formatted.push_str(":>");
-                space_or_linebreak_indented_into(&mut formatted, header_line_span, next_indent(0));
-                if let Some(result_type) = result_type {
-                    syntax_type_unparenthesized_format(
-                        &mut formatted,
-                        next_indent(0),
-                        types,
-                        result_type,
-                    );
+                match result_type {
+                    Some(result_type) => {
+                        let result_type_lne_span = range_line_span(type_range(result_type, types));
+                        space_or_linebreak_indented_into(
+                            &mut formatted,
+                            result_type_lne_span,
+                            next_indent(0),
+                        );
+                        syntax_type_unparenthesized_format(
+                            &mut formatted,
+                            next_indent(0),
+                            types,
+                            result_type,
+                        );
+                        space_or_linebreak_indented_into(
+                            &mut formatted,
+                            result_type_lne_span,
+                            next_indent(0),
+                        );
+                    }
+                    None => {
+                        space_or_linebreak_indented_into(
+                            &mut formatted,
+                            header_line_span,
+                            next_indent(0),
+                        );
+                    }
                 }
-                space_or_linebreak_indented_into(&mut formatted, header_line_span, next_indent(0));
+
                 formatted.push('>');
                 if let Some(documentation) = documentation {
                     linebreak_indented_into(&mut formatted, next_indent(0));
@@ -9098,7 +9118,10 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 let value = expressions.element(value);
                 space_or_linebreak_indented_into(
                     formatted,
-                    range_line_span(expression_range(value, expressions, patterns, types)),
+                    range_line_span(lsp_types::Range {
+                        start: name.start,
+                        end: expression_end(value, expressions, patterns, types),
+                    }),
                     indent,
                 );
                 syntax_expression_unparenthesized_format(

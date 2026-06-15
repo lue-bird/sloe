@@ -34,7 +34,8 @@ fn stack-pop
                 _opt
                 .head Element
                 .tail _stack Origin, Element
-            > .
+                >
+            .
     = |stacked .head head .tail tail-slot > (
         ? _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
         .backing backing
@@ -43,7 +44,8 @@ fn stack-pop
                 _opt
                 .head Element
                 .tail _stack Origin, Element
-            > .head head .tail tail
+                >
+            .head head .tail tail
             )
         )
 
