@@ -6064,6 +6064,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 case0_result,
             )
             else {
+                pattern_variables.retain(|variable, _| {
+                    !case0_pattern_introduced_variables.contains_key(variable)
+                });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
                     type_: None,
