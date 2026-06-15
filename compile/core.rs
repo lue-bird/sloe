@@ -13,8 +13,7 @@
     clippy::needless_update
 )]
 extern crate std;
-// core starts below, specifics start at // compiled code // //
-//
+
 // Most module members are directly usable by sloe code to avoid name clashes with generated functions and types.
 // The remaining few member names must be explicitly added to `sloe::name_to_uppercase_rust` and `name_to_lowercase_rust`
 

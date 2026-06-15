@@ -8605,9 +8605,10 @@ pub struct ErrorNode {
     pub range: lsp_types::Range,
 }
 
-pub fn compiled_rust_to_file_content(rust_file: &syn::File) -> String {
+pub fn compiled_rust_to_file_content(rust_file: &syn::File, compiled_mod_name: &str) -> String {
     format!(
         "// jump to compiled code by searching for // compiled
+
 {}
 
 
@@ -8615,8 +8616,13 @@ pub fn compiled_rust_to_file_content(rust_file: &syn::File) -> String {
 
 
 {}",
-        // TODO this is horrible. (It also does not respect potential output file names given by sloe build)
-        include_str!("core.rs").replacen("$crate::core", "$crate::sloe", 1),
+        // I don't like this but I also haven't found any other way
+        // to make a macro automatically adapt to the mod name it's placed in :(
+        include_str!("core.rs").replacen(
+            "$crate::core",
+            &format!("$crate::{compiled_mod_name}"),
+            1
+        ),
         prettyplease::unparse(rust_file)
     )
 }

@@ -357,7 +357,22 @@ fn try_generate_file(path: &str, purpose: &str, content: &str) {
 fn default_sloe_output_file_path_for_input_file_path(
     input_file_path: &std::path::Path,
 ) -> std::path::PathBuf {
-    std::path::Path::join(&input_file_path.with_extension(""), "mod.rs")
+    input_file_path.with_extension("rs")
+}
+fn rust_file_name_derive_mod_name<'a>(rust_file_name: &'a std::path::Path) -> Result<&'a str, ()> {
+    match rust_file_name
+        .file_prefix()
+        .and_then(|os_str| os_str.to_str())
+    {
+        Some(mod_name) => Ok(mod_name),
+        None => {
+            eprintln!(
+            "Can't compile to {rust_file_name:?} because there's no clear module name to extract.
+For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
+        );
+            Err(())
+        }
+    }
 }
 
 fn build_main(
@@ -371,6 +386,16 @@ fn build_main(
     let output_file_path: &std::path::Path = match maybe_output_file_path {
         Some(output_file_path) => &output_file_path.with_extension(".rs"),
         None => &default_sloe_output_file_path_for_input_file_path(input_file_path),
+    };
+    let Some(output_mod_name) = output_file_path
+        .file_prefix()
+        .and_then(|os_str| os_str.to_str())
+    else {
+        eprintln!(
+            "Can't compile to {output_file_path:?} because there's no clear module name to extract.
+For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
+        );
+        return;
     };
     println!("...compiling {input_file_path:?} into {output_file_path:?}.");
     match std::fs::read_to_string(input_file_path) {
@@ -411,7 +436,7 @@ fn build_main(
                 );
             }
             let output_rust_file_string: String =
-                sloe::compiled_rust_to_file_content(&compiled_project.rust);
+                sloe::compiled_rust_to_file_content(&compiled_project.rust, output_mod_name);
             if let Some(output_file_directory_path) = output_file_path.parent()
                 && let Err(error) = std::fs::create_dir_all(output_file_directory_path)
             {
@@ -830,11 +855,14 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
     let compiled_project: sloe::CompiledProject =
         sloe::syntax_project_to_rust(&mut errors, &parsed_project, expressions, patterns, types);
     if let Some(input_file_path) = lsp_uri_to_file_path(&uri)
-        && std::fs::exists(input_file_path.with_extension("")).is_ok_and(|exists| exists)
+        && let output_file_path =
+            default_sloe_output_file_path_for_input_file_path(&input_file_path)
+        && std::fs::exists(&output_file_path).is_ok_and(|exists| exists)
+        && let Ok(output_mod_name) = rust_file_name_derive_mod_name(&output_file_path)
     {
         let _: std::io::Result<()> = std::fs::write(
-            default_sloe_output_file_path_for_input_file_path(&input_file_path),
-            sloe::compiled_rust_to_file_content(&compiled_project.rust),
+            &output_file_path,
+            sloe::compiled_rust_to_file_content(&compiled_project.rust, output_mod_name),
         );
     }
     publish_diagnostics(
