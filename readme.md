@@ -16,21 +16,23 @@ cargo install --git https://github.com/lue-bird/sloe sloe
 
 > ⚠️ do not use, yet
 
-# concept: each value can only be used used/consumed at most once
+# concept: each value must be used used/consumed exctly once
 Matching a value? Consumes it. Passing a value as an argument? Consumes it.
 Even e.g. variables holding plain numbers have to be explicitly duplicated to use them in multiple places.
 
 This allows
 - values know when they aren't used anymore at compile time. Their memory can be reclaimed without garbage collection or similar
 - values can be mutated internally without mutation being detectable
-- representing things that can only be consumed once, like thread join handles
+- representing things that should only be consumed once, like thread join handles
+- representing things that should be cleaned up in a specific way, like memory that should be freed
 
-This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec _vec ... :> .vec ... .occupied-count u32`.
-Not ony is it clunky, it is also conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
+This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec _vec ... :> .vec _vec ... .count u32`.
+Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
 
-The _big_ advantage is that it is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
+The _big_ advantage is that this rule is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
 
-Further reading if interested: "affine types", rust owned values.
+Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types).
+Initially, sloe allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
 
 # concept: flat memory collection `vec`
 A collection which can mark some spans within itself as vacant.
@@ -40,6 +42,7 @@ Note that this functionality is entirely optional and you can at no cost just us
 This concept is often called slot map, reusing memory.
 In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
 Various kinds of similar rust collections are compared here: https://donsz.nl/blog/arenas/
+There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
 
 # concept: distinct origin of a collection in your code
 Every created collection has a correlated origin.
@@ -94,7 +97,7 @@ fn use-vec . :> u32 >
 # different branches, different scopes
 fn use-opt opt _opt u32 :> ... >
     # this won't compile as their origins come from different branches
-    :(
+    ? (
         ? opt
         = |absent . >
             origin vec-origin
@@ -104,12 +107,12 @@ fn use-opt opt _opt u32 :> ... >
             ? _vec-one .origin vec-origin .element number = .vec vec .slot slot >
             ...
             vec
+            )
         )
-    )
     = vec >
     # this will compile:
     origin vec-origin
-    :(
+    ? (
         :opt
         = |absent . >
             _vec-empty<u32> vec-origin
@@ -150,11 +153,11 @@ fn state-to-interfaces-into
     .interfaces interfaces _vec Interfaces-origin, _interface _state Expressions-origin
     .state state _state Expressions-origin
     :> _vec Interfaces-origin, _interface _state Expressions-origin >
-    :(
+    ? (
         vec-one
         .origin interfaces-origin
-        .element |console-log (_interface _state Expressions-origin) "hello"
-    )
+        .element |console-log<_interface _state Expressions-origin> "hello"
+        )
     = .slot slot .vec interfaces >
     ...
     interfaces
@@ -168,6 +171,7 @@ fn state-to-interfaces-into
 
 # syntax
 Syntax is secondary but I tried to make it coherent and practical, avoiding parens and indentation when possible, especially for trailing syntax.
+Sloe is a very explicit language, so any extra verbosity is not tolerable.
 ```
 # line comment
 
@@ -187,9 +191,9 @@ some-function-or-variable-or-field-or-type-or-variant-name-2012
 Some-type-variable-name
 
 # function call, always starting with _
-# Functions can require space-separated type arguments in <...>.
+# Rarely functions may require appended space-separated type arguments: <...>.
 # Any function is of type `fn` and always requires an argument (which does not need to be parenthesized)
-_some-function<Type Arguments> inner-call-as-the-argument inner-inner-argument
+_some-function<Type, Arguments> _inner-call-as-the-argument inner-inner-argument
 
 # record. if values are open-ended they need to be parenthesized.
 # The last field value can end in a record without needing to be parenthesized
@@ -215,8 +219,10 @@ some-variable some-type
 # introduce a new origin. The given name can be used as a variable and type
 origin new-origin-name expression-that uses the-origin
 
-# project function declaration
-fn function-name<Potential Type-Arguments Only-Used-In-The-Result>
+# project function declaration.
+# For type variables in the result that aren't used in the input,
+# functions require appended space-separated type parameters: <...>
+fn function-name<Potential, Type-Arguments, Only-Used-In-The-Result>
     parameter-pattern-usually-wrapped-in-parens
     :> result-type-usually-wrapped-in-parens >
     # optional documentation
@@ -239,8 +245,8 @@ ty type-name Potential Type-Parameters
     |second-option _vec Potential, u32
     |third-option _type-name-alias Potential, Type-Arguments
 
-# creating a variant. Note that the type could refer to a type alias or be a choice type directly (|... ...)
-|some-variant its-choice-type its value
+# creating a variant. Note that the type could refer to a type alias or be a choice type directly <|... ...>
+|some-variant<its-choice-type> its value
 
 # variant pattern
 |some-variant its value
@@ -311,7 +317,7 @@ As a hobby language that deliberately cannot by itself interface with the operat
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
   More info in "not coherently formulated thoughts"
 - add tuples: (* a * b * c). I dislike them conceptually but operations like `u32-add` or `u32-dup` are nicer with them. The field names `.a .b ` are just noise. Adding tuples might make for a nicer user interface when calling from rust
-- consider allowing `origin name` at the project scope. This allows reducing the number of type parameters flying around in things like `expression Expressions Patterns Types Source Cases ...` if desired.
+- consider allowing `origin name` at the project scope. This allows reducing the number of type parameters flying around in things like `_expression Expressions, Patterns, Types, Source, Cases, ...` if desired.
 It also makes initial_state much easier to call from the rust side (though we need to be careful how...).
   Rejected because this makes it more or less impossible to run multiple sloe instances from a single rust program
   Issue is that in general single-return-continuation is rare in sloe
@@ -320,13 +326,13 @@ It also makes initial_state much easier to call from the rust side (though we ne
   And especially because having _many_ origin type variables is common, this sadly won't fly
 - adding function call syntax sugar similar to piping.
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
-- making `vec` etc store multiple kinds of data (heterogenous) and letting them give out `slot origin data-type` and `span origin data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
+- making `vec` etc store multiple kinds of data (heterogenous) and letting them give out `_slot origin, data-type` and `_span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
   This makes the porpose of `vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression _expression Origin .data _vec Origin, ... :> .vec _vec Origin ... .end text-position`.
   This would also in theory enable a crazy representation of tagged unions as:
   ```sloe
-  expression-slot origin
-      |int slot origin, i32
-      |plus slot origin, .left _expression-slot origin .right _expression-slot origin
+  ty expression-slot Origin
+      |int _slot Origin, i32
+      |plus _slot Origin, .left _expression-slot Origin .right _expression-slot Origin
       ...
   ```
   This also means slices etc need to be stored separately in the origin vec.
@@ -409,13 +415,10 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
-
-- officially convert values from "affine" (<= 1 use) to "linear" (exactly 1 use) to avoid potential leaks (https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/). I think this would work great but leads to a bunch of cleanup for temporary vec members (which most likely would get optimized away though).
-  Doing this "change" mostly means changing error messages and documentation
-
 - add fold2s and or preferably a ways to fold over arbitrarily many spans etc.
   This should make things like `.field-names span Field-names .field-values span Values`
   much more attractive/viable. This pattern can avoid "type parameter spam" for any record
 
-- add `vec-span-add-repeat`
+- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-p`, `vec-opt-span-add-own-element`, `vec-opt-span-add-own-span`, `vec-span-add-own-opt-span` (for these -own functions, try to move the (opt-)span-buid's start backwards if possible)
+
+- fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)

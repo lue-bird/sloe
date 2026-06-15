@@ -2152,9 +2152,9 @@ pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
                 errors.push(ErrorNode {
                     range: *unknown_range,
                     message: format!("unrecognized syntax. {}
-If you wanted to start a declaration, try one of:
-  - fn some-fn-name (some-parameter some-parameter-type) (some result-type) (some value)
-  - ty some-type-name (some type)",
+If you wanted to start a project declaration, try one of:
+  - fn some-fn-name some-parameter some-parameter-type :> some result type > some result value
+  - ty some-type-name some type",
                     if unknown_source
                         .starts_with(|c: char| c.is_ascii_lowercase())
                     {
@@ -2166,7 +2166,7 @@ If you wanted to start a declaration, try one of:
                     } else if unknown_source
                         .starts_with('#')
                     {
-                        "Comments can only be put in front of expressions, patterns, types, or after the header of a declaration. Is it indented correctly?"
+                        "Comments can only be put in front of expressions, after the header of a project fn or ty or between these project elements. Is it indented correctly?"
                     } else if unknown_source.starts_with("//")
                         || unknown_source.starts_with("--")
                     {
@@ -2174,11 +2174,11 @@ If you wanted to start a declaration, try one of:
                     } else   if unknown_source
                         .starts_with('.')
                     {
-                        "Record access is not a feature in sloe. Instead, use pattern matching, like value :(your-value) ((& (field variable)) result). Otherwise, is everything indented correctly?"
+                        "Record access is not a feature in sloe. Instead, use pattern matching, like value ? your-value = .field variable ..other fields.. > result. Otherwise, is everything indented correctly?"
                     } else if unknown_source
-                        .starts_with(['+', '-', '*', '/'])
+                        .starts_with(['+', '-', '*', '^', '/', '!', '&'])
                     {
-                        "Operator application are not a feature in sloe. Instead, use regular function calls like dec-add, int-negate or unt-mul. Otherwise, is everything indented correctly?"
+                        "Operator application are not a feature in sloe. Instead, use regular function calls like f32-add, int-negate or unt-mul. Otherwise, is everything indented correctly?"
                     } else {
                         "Is it indented correctly? Are brackets/braces/parens/quotes or similar closed prematurely or too often?"
                     }).into_boxed_str(),
@@ -3365,7 +3365,7 @@ pub fn syntax_type_to_type<Types>(
             let Some(name) = name else {
                 errors.push(ErrorNode {
                     range: symbol_range(*underscore_start, "_"),
-                    message : Box::from("missing type name after this underscore _ . An example of a valid type construct is _vec Origin u32")
+                    message : Box::from("missing type name after this underscore _ . An example of a valid type construct is _vec Origin, u32")
                 });
                 return None;
             };
@@ -4068,7 +4068,7 @@ fn case_patterns_catch_record_is_exhaustive(
 ///    for example:
 ///      ( None, a1 ) or ( Some v0, b1 ) or ( None, c1 )
 ///      → is_exhaustive [ ( _, a1 ) or ( _, c1 ) ] && is_exhaustive [ ( v0, b1 ) ]
-///    if we encounter a variable or ignore pattern, we copy it's possibilities
+///    if we encounter a variable pattern, we copy it's possibilities
 ///    to all "by variant" possibilities
 ///
 ///   when this pattern type is a record, spread (flatten) its field values into the original possibilities
@@ -4076,7 +4076,7 @@ fn case_patterns_catch_record_is_exhaustive(
 ///      ( { x ax0, y ay0 }, a1 ) or ( { x ax0, y ay0 }, b1 )
 ///      → is_exhaustive [ ( ax0, ay0, a1 ) or ( ax0, ay0, b1 ) ]
 ///
-/// when all patterns on index 0 are variable or ignore patterns
+/// when all patterns on index 0 are variable patterns
 /// repeat until the patterns on index 0 together aren't exhaustive (return false) or
 /// all remaining cases are exhaustive (return true)
 fn possibilities_of_pattern_catches_are_exhaustive<'a>(
@@ -4799,7 +4799,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         start: value.start,
                         end: position_add_characters(value.start, value.value.len() as u32),
                     },
-                    message: Box::from("missing type after this number. Each number requires an explicit type to know its precision and range, like 0 u32 or 0 f32 (if necessary parenthesized)"),
+                    message: Box::from("missing type after this number. Each number requires an explicit type to know its precision and range, like 0 u32 or 0 f32"),
                 });
                 CompiledExpression {
                     rust: syn_expr_todo(),
@@ -5080,7 +5080,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(name) = name else {
                 errors.push(ErrorNode {
                     range: symbol_range(*underscore_start, "_"),
-                    message: Box::from("missing function name after this _"),
+                    message: Box::from("missing function name after this underscore _ . An example of a valid function call is _u32-dup 2 u32"),
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -5292,7 +5292,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 if syntax_type_argument_count != project_fn_info.type_parameters.len() {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type parameters, but you only provided {argument_count} as arguments. Type arguments are provided in a space-separated list enclosed in angle brackets after the fn name, like in arena-empty<u32> origin, each type paranthesized if necessary.",
+                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type parameters, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in _arena-empty<u32> origin, each type parenthesized if necessary.",
                             parameter_count = project_fn_info.type_parameters.len(),
                             argument_count = syntax_type_argument_count
                         ).into_boxed_str()
@@ -5423,7 +5423,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(name_value) = &name.value else {
                 errors.push(ErrorNode {
                     range: optional_variant_name_range(name),
-                    message: Box::from("missing variant name after this bar |. An example of a valid variant is |present (opt str) \"hi c:\""),
+                    message: Box::from("missing variant name after this bar | . An example of a valid variant is |present<_opt str> \"hi c:\""),
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -5433,7 +5433,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(syntax_type_argument) = type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(name.start, "|"),
-                    message: Box::from("missing type argument in angle brackets after this variant name. An example of a valid variant is |present<opt str> \"hi c:\""),
+                    message: Box::from("missing type argument in angle brackets after this variant name. An example of a valid variant is |present<_opt str> \"hi c:\""),
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -5443,7 +5443,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_angle_start, "<"),
-                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |present<opt str> \"hi c:\""),
+                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |present<_opt str> \"hi c:\""),
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -5963,7 +5963,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(queried) = queried else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing queried expression after this colon. A full query could look like :option ((Present n) n) (Absent 0 u32)")
+                    message: Box::from("missing queried expression after this colon. An example of a query is ? option = |present n > n = |absent . > 0 u32")
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -5974,7 +5974,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some((case0, case1_up)) = cases.split_first() else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing case(s) after the queried expression. Cases can be (pattern result-expression) or pattern result-expression for the last one. A full query could look like :option ((Present n) n) (Absent 0 u32)")
+                    message: Box::from("missing case(s) after the queried expression. Cases look like = pattern > result-expression. An example of a query is ? option = |present n > n = |absent . > 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -6008,7 +6008,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(case0_pattern) = &case0.pattern else {
                 errors.push(ErrorNode {
                     range:  symbol_range(case0.equals_start, "="),
-                    message: Box::from("missing query case pattern after this equals = . Cases consist of = pattern > result-expression. A full query could look like :option = |present n > n = |absent > 0 u32")
+                    message: Box::from("missing query case pattern after this equals = . Cases consist of = pattern > result-expression. An example of a query is :option = |present n > n = |absent > 0 u32")
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -6018,7 +6018,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(case0_result) = &case0.result else {
                 errors.push(ErrorNode {
                     range: case0.right_angle_start.map(|right_angle_start| symbol_range(right_angle_start, ">")).unwrap_or_else(|| pattern_range(case0_pattern, patterns, types)),
-                    message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. A full query could look like :option ((Present n) n) (Absent 0 u32)")
+                    message: Box::from("missing result expression after this query case pattern. Cases look like = pattern > result-expression. An example of a query is :option = |present n > n = |absent > 0 u32")
                 });
                 return CompiledExpression {
                     rust: syn_expr_todo(),
@@ -6208,7 +6208,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case_result_used_pattern_variable, start: case_result_used_pattern_variable_start }),
-                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.")
+                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..")
                         });
                     }
                 }
@@ -6223,7 +6223,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case0_result_used_pattern_variable, start: case0_result_used_pattern_variable_start }),
-                            message: format!("this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.", index_to_th(case_index)).into_boxed_str()
+                            message: format!(
+                                "this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..",
+                                index_to_th(case_index)
+                            ).into_boxed_str()
                         });
                     }
                 }
@@ -6236,7 +6239,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case_result_used_origin_variable, start: case_result_used_origin_variable_start }),
-                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.")
+                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..")
                         });
                     }
                 }
@@ -6249,7 +6252,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case0_result_used_origin_variable, start: case0_result_used_origin_variable_start }),
-                            message: format!("this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you know that this variable does not need to be handled more explicitly, you can also add a line :variable-name _ to ignore it.", index_to_th(case_index)).into_boxed_str()
+                            message: format!(
+                                "this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..",
+                                index_to_th(case_index)
+                            ).into_boxed_str()
                         });
                     }
                 }
@@ -6476,7 +6482,7 @@ fn push_error_if_introduced_pattern_variable_is_unused(
                 start: origin_start,
             }),
             message: Box::from(
-                "this pattern variable is not used in the resulting expression. Use it or replace this variable by _ to explicitly never handle the incoming value"
+                "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result.."
             )
         });
     }
@@ -8428,7 +8434,8 @@ fn use-a-vec & u32
     origin my-elements-origin
     ? _vec-empty<u32> my-elements-origin = my-elements >
     ? _vec-add .vec my-elements .element 609 u32 = .vec my-elements .slot first-element-slot >
-    ? _vec-element .vec my-elements .slot first-element-slot = .vec _ .element first-element >
+    ? _vec-element .vec my-elements .slot first-element-slot = .vec my-elements .element first-element >
+    ? vec-rid my-elements = . >
     first-element # = 609 u32
 ```
 "
@@ -9072,7 +9079,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                         type_,
                     );
                     if line_span == LineSpan::Multiple {
-                        linebreak_indented_into(formatted, indent);
+                        linebreak_indented_into(formatted, next_indent(indent));
                     }
                     formatted.push('>');
                 }
@@ -9671,7 +9678,12 @@ fn syntax_angled_type_arguments_format<Types>(
             }
         }
     }
-    for argument in &angled_type_arguments.argument1_up {
+    for (argument_index, argument) in angled_type_arguments
+        .argument1_up
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (i + 1, e))
+    {
         match &argument.type_ {
             None => {}
             Some(argument_type) => {
@@ -9688,7 +9700,7 @@ fn syntax_angled_type_arguments_format<Types>(
                     || syntax_type_open_end(argument_type, types),
                     OpenEndKind::TypeConstruct,
                     type_argument_count,
-                    0,
+                    argument_index,
                     argument.comma_start,
                     type_range(argument_type, types),
                 );
@@ -9696,7 +9708,7 @@ fn syntax_angled_type_arguments_format<Types>(
         }
     }
     if line_span == LineSpan::Multiple {
-        linebreak_indented_into(formatted, indent);
+        linebreak_indented_into(formatted, next_indent(indent));
     }
     formatted.push('>');
 }
