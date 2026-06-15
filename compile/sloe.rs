@@ -3244,7 +3244,7 @@ fn syntax_project_fn_to_rust<'a, Expressions, Patterns, Types>(
                     attrs: vec![],
                     ident: syn_ident(&type_variable_to_rust(name)),
                     colon_token: Some(syn::token::Colon(syn_span())),
-                    bounds: default_parameter_bounds().collect(),
+                    bounds: syn::punctuated::Punctuated::new(),
                     eq_token: None,
                     default: None,
                 })
@@ -3852,8 +3852,7 @@ enum PatternCatch {
 #[derive(PartialEq, Eq, Debug)]
 enum VariantCatch<Catch> {
     Caught(Catch),
-    // TODO this is always true and thus should be removed
-    Uncaught { has_value: bool },
+    Uncaught,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -3876,9 +3875,7 @@ fn pattern_catch_to_case_patterns_catch(pattern_catch: PatternCatch) -> CasePatt
                     (
                         name,
                         match variant_catch {
-                            VariantCatch::Uncaught { has_value } => VariantCatch::Uncaught {
-                                has_value: has_value,
-                            },
+                            VariantCatch::Uncaught => VariantCatch::Uncaught,
                             VariantCatch::Caught(value_catch) => VariantCatch::Caught(
                                 pattern_catch_to_case_patterns_catch(value_catch),
                             ),
@@ -4562,12 +4559,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                                 VariantCatch<PatternCatch>,
                             > = origin_choice_type_variants
                                 .iter()
-                                .map(|variant| {
-                                    (
-                                        variant.name.clone(),
-                                        VariantCatch::Uncaught { has_value: true },
-                                    )
-                                })
+                                .map(|variant| (variant.name.clone(), VariantCatch::Uncaught))
                                 .collect();
                             if let Some(variant_catch) = variants.get_mut(name_value) {
                                 *variant_catch = VariantCatch::Caught(compiled_value.catch);
@@ -6319,13 +6311,38 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             used_pattern_variables.extend(case0_result_used_pattern_variables);
             used_origin_variables.extend(case0_result_used_origin_variables);
             CompiledExpression {
-                rust: syn::Expr::Match(syn::ExprMatch {
-                    attrs: vec![],
-                    match_token: syn::token::Match(syn_span()),
-                    expr: Box::new(compiled_queried_rust),
-                    brace_token: syn::token::Brace(syn_span()),
-                    arms: rust_arms,
-                }),
+                rust: if rust_arms.len() == 1
+                    && let Some(only_match_arm) = rust_arms.pop()
+                {
+                    syn::Expr::Block(syn::ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: syn::Block {
+                            brace_token: syn::token::Brace(syn_span()),
+                            stmts: std::iter::once(syn::Stmt::Local(syn::Local {
+                                attrs: vec![],
+                                let_token: syn::token::Let(syn_span()),
+                                pat: only_match_arm.pat,
+                                init: Some(syn::LocalInit {
+                                    eq_token: syn::token::Eq(syn_span()),
+                                    expr: Box::new(compiled_queried_rust),
+                                    diverge: None,
+                                }),
+                                semi_token: syn::token::Semi(syn_span()),
+                            }))
+                            .chain(syn_spread_expr_block_into_stmts(*only_match_arm.body))
+                            .collect(),
+                        },
+                    })
+                } else {
+                    syn::Expr::Match(syn::ExprMatch {
+                        attrs: vec![],
+                        match_token: syn::token::Match(syn_span()),
+                        expr: Box::new(compiled_queried_rust),
+                        brace_token: syn::token::Brace(syn_span()),
+                        arms: rust_arms,
+                    })
+                },
                 type_: Some(query_result_type),
             }
         }
@@ -7309,6 +7326,12 @@ fn syn_spread_expr_block(syn_expr: syn::Expr) -> syn::Block {
         },
     }
 }
+fn syn_spread_expr_block_into_stmts(syn_expr: syn::Expr) -> Vec<syn::Stmt> {
+    match syn_expr {
+        syn::Expr::Block(block) => block.block.stmts,
+        _ => vec![syn::Stmt::Expr(syn_expr, None)],
+    }
+}
 
 fn name_to_uppercase_rust(name: &str) -> String {
     let mut sanitized: String = name.replace("-", "_");
@@ -7508,25 +7531,6 @@ fn syn_type_variable(name: &str) -> syn::Type {
         qself: None,
         path: syn::Path::from(syn_ident(name)),
     })
-}
-fn default_parameter_bounds() -> impl Iterator<Item = syn::TypeParamBound> {
-    [
-        // syn::TypeParamBound::Trait(syn::TraitBound {
-        //     paren_token: None,
-        //     modifier: syn::TraitBoundModifier::None,
-        //     lifetimes: None,
-        //     path: syn::Path::from(syn_ident("Clone")),
-        // }),
-        // TODO is 'static necessary for anything? It should not need to be
-        syn::TypeParamBound::Lifetime(syn_lifetime_static()),
-    ]
-    .into_iter()
-}
-fn syn_lifetime_static() -> syn::Lifetime {
-    syn::Lifetime {
-        apostrophe: syn_span(),
-        ident: syn_ident("static"),
-    }
 }
 fn syn_attribute_derive<'a>(trait_macro_names: impl Iterator<Item = &'a str>) -> syn::Attribute {
     syn::Attribute {
