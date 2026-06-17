@@ -2088,6 +2088,7 @@ pub struct TypeVariant {
 pub struct CompiledProjectFnInfo {
     pub documentation: Option<Box<str>>,
     pub type_parameters: Vec<Name>,
+    // TODO no Option
     pub parameter_type: Option<Type>,
     pub result_type: Option<Type>,
 }
@@ -7352,6 +7353,7 @@ fn name_to_uppercase_rust(name: &str) -> String {
         | "OwnedSliceIterator"
         | "SpanRaw"
         | "VecIter"
+        | "VecIterRev"
         | "Element"
         | "State" => sanitized + "ø_",
         _ => sanitized,
@@ -7677,6 +7679,19 @@ fn type_span_build(backing: Type) -> Type {
 fn type_opt(present: Type) -> Type {
     type_choice([("absent", type_record([])), ("present", present)])
 }
+fn type_round_mode() -> Type {
+    type_choice(
+        [
+            "away-from-0",
+            "down",
+            "nearest-else-away-from-0",
+            "nearest-else-even",
+            "toward-0",
+            "up",
+        ]
+        .map(|name| (name, type_record([]))),
+    )
+}
 pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, CompiledProjectFnInfo>> =
     std::sync::LazyLock::new(|| {
         std::collections::HashMap::from([
@@ -7703,7 +7718,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
-                Name::const_new("p32-add"),
+                Name::const_new("p32-add-clamp"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from("Saturating a + b")),
                     type_parameters: vec![],
@@ -7734,7 +7749,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
-                Name::const_new("u32-add"),
+                Name::const_new("u32-add-clamp"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from("Saturating a + b")),
                     type_parameters: vec![],
@@ -7765,7 +7780,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
-                Name::const_new("i32-add"),
+                Name::const_new("i32-add-clamp"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from("Saturating a + b")),
                     type_parameters: vec![],
@@ -7796,11 +7811,45 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                 },
             ),
             (
-                Name::const_new("f32-add"),
+                Name::const_new("f32-add-clamp"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from("Saturating a + b")),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([("a", type_f32), ("b", type_f32)])),
+                    result_type: Some(type_f32),
+                },
+            ),
+            (
+                Name::const_new("f32-mul-clamp"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from("Saturating a * b")),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([("a", type_f32), ("b", type_f32)])),
+                    result_type: Some(type_f32),
+                },
+            ),
+            (
+                Name::const_new("f32-div-clamp"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from("Saturating n / by")),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([("n", type_f32), ("by", type_f32)])),
+                    result_type: Some(type_f32),
+                },
+            ),
+            (
+                Name::const_new("f32-round"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from("If not already equal to an integer value,
+find a neighboring integer with a given `round-mode`.
+For math-type round for example, use
+```sloe
+fn age . :> f32 >
+    f32-round .n 68.8 .method |nearest-else-away-from-0<round-mode> .
+```
+This by returns a f32 to not overflow")),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([("n", type_f32), ("by", type_f32)])),
                     result_type: Some(type_f32),
                 },
             ),
@@ -7847,6 +7896,15 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Compile
                     parameter_type: Some(type_str),
                     result_type: Some(type_record([])),
                 },
+            ),
+            (
+                Name::const_new("opt-present"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from("Shorthand for |present<opt ..value type..> value")),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_variable("Present")),
+                    result_type: Some(type_opt(type_variable("Present")))
+                }
             ),
             (
                 Name::const_new("fn-dup"),
@@ -8209,6 +8267,7 @@ origin example-origin
 ? _vec-empty<u32> example-origin = example-vec >
 _vec-fold
 .vec example-vec
+.direction |up<|up . |down .> .
 .state .
 .step fn .state state .element element u32 > _u32-rid element
 ```
@@ -8224,6 +8283,7 @@ check out `vec-fold-with-origin-rid`.
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
+                        ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
                         ("state", type_variable("State")),
                         (
                             "step",
@@ -8256,6 +8316,7 @@ use `vec-rid` instead of `vec-fold-with-origin-rid`.",
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
+                        ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
                         ("state", type_variable("State")),
                         (
                             "step",
@@ -8394,6 +8455,41 @@ When building strings, use functions like `arena-add-str`.
                 )),
                 parameters: vec![Name::const_new("A")],
                 type_: Some(type_opt(type_variable("A"))),
+                is_copy: true,
+            },
+        ),
+        (
+            Name::const_new("round-mode"),
+            CompiledTypeAliasInfo {
+                name_range: None,
+                documentation: Some(Box::from(
+                    r#"The are many strategies for deciding which neighboring integer to round to.
+Especially controversial is the handling of where to round -xyz.5 to:
+  - `nearest-else-away-from-0`: round midpoint of a negative number to the lower neighbor
+    and round midpoint of a positive number to the higher neighbor.
+    This is (I think) often the semantically correct mode for geometry, ui and similar use cases
+    where behavior should be the same everywhere and e.g adding 1 should not change it.
+    However, it's slower than `nearest-else-even` on most architectures.
+    It's the default round operation implementation in e.g. [C](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=271), [rust](https://doc.rust-lang.org/std/primitive.f32.html#method.round), [zig](https://ziglang.org/documentation/master/#round), ([llvm](https://llvm.org/docs/LangRef.html#llvm-round-intrinsic)), python 2
+  - `nearest-else-even`: round negative midpoint to the higher neighbor.
+    This is sometimes called banker's rounding and is well-supported by architectures.
+    An argument could be made that this is more "fair" when operating in a linear scale where
+    numbers are distributed evenly (even numbers as likely as uneven in all cases)
+    but as a result it can feel less deterministic.
+    If fairness is a real concern, the midpoint should be explicitly handled, e.g.
+    by ignoring midpoint values, counting midpoint values or actually [randomizing their outcome](https://en.wikipedia.org/wiki/Rounding#Randomized_rounding_to_an_integer).
+    It's the default round operation implementation in e.g. python 3, dotnet, haskell, [erlang](https://erlangcentral.org/wiki/index.php?title=Floating_Point_Rounding), lisp
+
+There are even languages that use `nearest-else-up` (e.g. [js](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/round#description), [java](https://docs.oracle.com/javase/7/docs/api/java/lang/Math.html#round(float)), closure, prolog)
+but this isn't supported in sloe as it feels like the worst of both worlds.
+`nearest-else-down`, `nearest-else-toward-0` and `nearest-else-odd` are also not supported
+due to their extremely limited use and limited explicit support.
+[A fairly complete overview of midpoint rounding in programming languages](https://github.com/JuliaLang/julia/issues/8750)
+
+Heavily inspired by [swift's FloatingPointRoundingRule](https://developer.apple.com/documentation/swift/floatingpointroundingrule)."#,
+                )),
+                parameters: vec![],
+                type_: Some(type_round_mode()),
                 is_copy: true,
             },
         ),

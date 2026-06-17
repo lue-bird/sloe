@@ -25,6 +25,7 @@ This allows
 - values can be mutated internally without mutation being detectable
 - representing things that should only be consumed once, like thread join handles
 - representing things that should be cleaned up in a specific way, like memory that should be freed
+- guaranteeing non-overlapping pointed memory regions can enable some more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently none of the languages sloe compile to make much explicit use of this fact)
 
 This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec _vec ... :> .vec _vec ... .count u32`.
 Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
@@ -32,7 +33,7 @@ Not ony is it clunky, it is also often conceptually less constrained than taking
 The _big_ advantage is that this rule is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
 
 Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types).
-Initially, sloe allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
+Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
 
 # concept: flat memory collection `vec`
 A collection which can mark some spans within itself as vacant.
@@ -422,3 +423,44 @@ cargo install --offline --debug --path . sloe
 - add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-p`, `vec-opt-span-add-own-element`, `vec-opt-span-add-own-span`, `vec-span-add-own-opt-span` (for these -own functions, try to move the (opt-)span-buid's start backwards if possible)
 
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
+
+- rethink the "FFI" story.
+  The current idea of `state -> batch vec interface containing fns returning the updated state` simply does not work as dyn closures are not a thing in sloe.
+  
+  A typical solution is to split up interface into interface-with-event and change-state-based-on-event
+  (where event could also just be `_fn state, state`)
+  ```sloe
+  ty event
+      |audio-has-been-started .
+      |window-has-been-opened .
+      |...
+
+  ty state ...
+  
+  ty interface
+      |start-audio ...
+      |...
+
+  fn interface
+      .origin result-origin Origin .state state state
+      :> _opt-span-build _vec Origin, _interface event >
+      ? span-build-empty vec-empty<_interface event> result-origin = build >
+      ? vec-opt-span-add .build build .new (|start-audio<_interface event> .) = build >
+      ..add.. |...
+      build
+
+  fn react
+      .state state state .event event event
+      :> state >
+      ? event
+      = |window-has-been-opened . >
+          ...
+      = |audio-has-been-started . >
+          ...
+  ```
+  while this would cleanly solve all issues it leaves a bitter taste in my mouth.
+  I've previously come to the conslusion that this is bad design as it leads to query cases that should be impossible (e.g. getting user settings from http even though the client isn't logged in. These cases should really be unreachable).
+  It's also not optimal (doubly indirect function call with 2 queries through `interface` and `event` and constructing a vec at every step).
+  Of course going through an explicit event choice type also has it's nicities (probably nice to debug, test, isolate io from business logic (?)) but the other two issues are more important.
+
+  Another solution which is taken by almost all other languages is to scrap purity and allow calling into user functions and potentially opaque user types. However, I'd like to avoid this, at least for the default path. (Note that this is kinda already possible by passing in impure functions as arguments when calling sloe functions from user code)

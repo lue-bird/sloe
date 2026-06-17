@@ -94,7 +94,7 @@ fn example . :> u32 >
         .backing example-stack-backing
         .stack example-stack
         .state 0 u32
-        .vacate-element (fn .state state u32 .element element u32 > _u32-add .a state .b element)
+        .vacate-element (fn .state state u32 .element element u32 > _u32-add-clamp .a state .b element)
     = .backing example-stack-backing .state result >
     ? _vec-rid example-stack-backing = . >
     result
