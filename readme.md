@@ -448,11 +448,12 @@ cargo install --offline --debug --path . sloe
 
   fn interface
       .origin result-origin Origin .state state state
-      :> _opt-span-build _vec Origin, _interface event >
-      ? span-build-empty vec-empty<_interface event> result-origin = build >
-      ? vec-opt-span-add .build build .new (|start-audio<_interface event> .) = build >
+      :> .vec _vec Origin, _interface event .span _span Origin >
+      ? _vec-empty<_interface event> result-origin = vec >
+      ? |absent<_opt _span Origin> . = span >
+      ? vec-opt-span-add .vec vec .span span .new (|start-audio<_interface event> .) = .vec vec .span span >
       ..add.. |...
-      build
+      .vec vec .span span
 
   fn react
       .state state state .event event event
