@@ -3038,7 +3038,9 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
     let mut rust_items: Vec<syn::Item> =
         Vec::with_capacity(type_graph.len() * 3 + project_fn_graph.len());
     for (checked_type_alias_name, checked_type_alias) in &checked_type_aliases {
-        if let Some(checked_aliased_type) = &checked_type_alias.type_ {
+        if let Some(checked_aliased_type) = &checked_type_alias.type_
+            && !core_type_aliases.contains_key(checked_type_alias_name)
+        {
             rust_items.push(project_type_alias_to_rust(
                 checked_type_alias.documentation.as_deref(),
                 checked_type_alias_name,
