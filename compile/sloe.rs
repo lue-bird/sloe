@@ -2121,6 +2121,17 @@ pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
 ) -> CompiledProject {
+    let project_info = syntax_project_check(errors, syntax_project, expressions, patterns, types);
+    project_info_to_rust(errors, project_info, expressions, patterns, types)
+}
+// TODO actually do checking
+pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
+    errors: &mut Vec<ErrorNode>,
+    syntax_project: &'a SyntaxProject<Expressions, Patterns, Types>,
+    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &'a core::Vec<Types, SyntaxType<Types>>,
+) -> SyntaxProjectInfo<'a, Expressions, Patterns, Types> {
     let mut type_graph: strongly_connected_components::Graph =
         strongly_connected_components::Graph::new();
     let mut type_graph_node_by_name: std::collections::HashMap<
@@ -2132,7 +2143,7 @@ pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
         SyntaxProjectTypeInfo<Types>,
     > = std::collections::HashMap::new();
 
-    let mut variable_graph: strongly_connected_components::Graph =
+    let mut project_fn_graph: strongly_connected_components::Graph =
         strongly_connected_components::Graph::new();
     let mut variable_graph_node_by_name: std::collections::HashMap<
         &str,
@@ -2142,6 +2153,11 @@ pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
         strongly_connected_components::Node,
         SyntaxProjectFnInfo<Expressions, Patterns, Types>,
     > = std::collections::HashMap::with_capacity(syntax_project.elements.len());
+
+    let mut records_used: std::collections::HashSet<Vec<Name>> =
+        std::collections::HashSet::with_capacity(16);
+    let mut choices_used: std::collections::HashSet<Vec<Name>> =
+        std::collections::HashSet::with_capacity(4);
 
     for project_element in &syntax_project.elements {
         match project_element {
@@ -2236,7 +2252,7 @@ If you wanted to start a project declaration, try one of:
                 }
                 Some(name) => {
                     let project_fn_graph_node: strongly_connected_components::Node =
-                        variable_graph.new_node();
+                        project_fn_graph.new_node();
                     let existing_variable_with_same_name: Option<
                         strongly_connected_components::Node,
                     > = variable_graph_node_by_name.insert(&name.value, project_fn_graph_node);
@@ -2291,59 +2307,83 @@ If you wanted to start a project declaration, try one of:
     for (&type_declaration_graph_node, &type_declaration_info) in
         type_declaration_by_graph_node.iter()
     {
-        syntax_proect_type_connect_type_names_in_graph_from(
-            &mut type_graph,
+        syntax_project_type_connect_type_names_in_graph_from(
             type_declaration_graph_node,
             &type_graph_node_by_name,
             types,
             type_declaration_info,
+            &mut type_graph,
+            &mut records_used,
+            &mut choices_used,
         );
     }
     for (&project_fn_graph_node, project_fn_info) in project_fn_by_graph_node.iter() {
         if let Some(result_node) = project_fn_info.result {
             syntax_expression_connect_variables_in_graph_from(
-                &mut variable_graph,
                 project_fn_graph_node,
                 &variable_graph_node_by_name,
                 expressions,
+                patterns,
+                types,
                 result_node,
+                &mut project_fn_graph,
+                &mut records_used,
+                &mut choices_used,
             );
         }
     }
-    project_info_to_rust(
-        errors,
-        &type_graph,
-        &type_declaration_by_graph_node,
-        variable_graph,
-        project_fn_by_graph_node,
-        expressions,
-        patterns,
-        types,
-    )
+    SyntaxProjectInfo {
+        type_graph: type_graph,
+        project_type_by_graph_node: type_declaration_by_graph_node,
+        project_fn_graph: project_fn_graph,
+        project_fn_by_graph_node: project_fn_by_graph_node,
+        records_used: records_used,
+        choices_used: choices_used,
+    }
 }
-fn syntax_proect_type_connect_type_names_in_graph_from<Types>(
-    type_graph: &mut strongly_connected_components::Graph,
+pub struct SyntaxProjectInfo<'a, Expressions, Patterns, Types> {
+    pub type_graph: strongly_connected_components::Graph,
+    pub project_type_by_graph_node: std::collections::HashMap<
+        strongly_connected_components::Node,
+        SyntaxProjectTypeInfo<'a, Types>,
+    >,
+    pub project_fn_graph: strongly_connected_components::Graph,
+    pub project_fn_by_graph_node: std::collections::HashMap<
+        strongly_connected_components::Node,
+        SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
+    >,
+    pub records_used: std::collections::HashSet<Vec<Name>>,
+    pub choices_used: std::collections::HashSet<Vec<Name>>,
+}
+fn syntax_project_type_connect_type_names_in_graph_from<Types>(
     origin_project_type_graph_node: strongly_connected_components::Node,
     type_graph_node_by_name: &std::collections::HashMap<&str, strongly_connected_components::Node>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     project_type_info: SyntaxProjectTypeInfo<Types>,
+    type_graph: &mut strongly_connected_components::Graph,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
     if let Some(aliased_type) = &project_type_info.type_ {
         syntax_type_connect_type_names_in_graph_from(
-            type_graph,
             origin_project_type_graph_node,
             type_graph_node_by_name,
             types,
             aliased_type,
+            type_graph,
+            records_used,
+            choices_used,
         );
     }
 }
 fn syntax_type_connect_type_names_in_graph_from<Types>(
-    type_graph: &mut strongly_connected_components::Graph,
     origin_type_declaration_graph_node: strongly_connected_components::Node,
     type_graph_node_by_name: &std::collections::HashMap<&str, strongly_connected_components::Node>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     type_: &SyntaxType<Types>,
+    type_graph: &mut strongly_connected_components::Graph,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
     match type_ {
         SyntaxType::Variable(_) => {}
@@ -2382,11 +2422,13 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                 )
             {
                 syntax_type_connect_type_names_in_graph_from(
-                    type_graph,
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     argument,
+                    type_graph,
+                    records_used,
+                    choices_used,
                 );
             }
         }
@@ -2397,65 +2439,203 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
         } => {
             if let Some(inner) = inner {
                 syntax_type_connect_type_names_in_graph_from(
-                    type_graph,
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     types.element(inner),
+                    type_graph,
+                    records_used,
+                    choices_used,
                 )
             }
         }
         SyntaxType::RecordEmpty { dot_start: _ } => {}
         SyntaxType::Record {
-            field0_name: _,
+            field0_name,
             field0_value,
             field1_up,
         } => {
+            records_used.insert(sorted_field_names(
+                std::iter::once(&field0_name.value).chain(
+                    field1_up
+                        .iter()
+                        .filter_map(|field| field.name.value.as_ref()),
+                ),
+            ));
             if let Some(field0_value) = field0_value {
                 syntax_type_connect_type_names_in_graph_from(
-                    type_graph,
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     types.element(field0_value),
+                    type_graph,
+                    records_used,
+                    choices_used,
                 );
             }
             for field in field1_up {
                 if let Some(value) = &field.value {
                     syntax_type_connect_type_names_in_graph_from(
-                        type_graph,
                         origin_type_declaration_graph_node,
                         type_graph_node_by_name,
                         types,
                         value,
+                        type_graph,
+                        records_used,
+                        choices_used,
                     );
                 }
             }
         }
         SyntaxType::ChoiceEmpty { bar_start: _ } => {}
         SyntaxType::Choice {
-            variant0_name: _,
+            variant0_name,
             variant0_value,
             variant1_up,
         } => {
+            choices_used.insert(sorted_variant_names(
+                std::iter::once(&variant0_name.value).chain(
+                    variant1_up
+                        .iter()
+                        .filter_map(|variant| variant.name.value.as_ref()),
+                ),
+            ));
             if let Some(variant0_value) = variant0_value {
                 syntax_type_connect_type_names_in_graph_from(
-                    type_graph,
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     types.element(variant0_value),
+                    type_graph,
+                    records_used,
+                    choices_used,
                 )
             }
             for variant in variant1_up {
                 if let Some(value) = &variant.value {
                     syntax_type_connect_type_names_in_graph_from(
-                        type_graph,
                         origin_type_declaration_graph_node,
                         type_graph_node_by_name,
                         types,
                         value,
+                        type_graph,
+                        records_used,
+                        choices_used,
                     )
+                }
+            }
+        }
+    }
+}
+fn syntax_type_used_records_and_choices<Types>(
+    type_: &SyntaxType<Types>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
+) {
+    match type_ {
+        SyntaxType::Variable(_) => {}
+        SyntaxType::ConstructWithoutArguments(_) => {}
+        SyntaxType::ConstructWithArguments {
+            underscore_start: _,
+            name: _,
+            argument0,
+            argument1_up,
+        } => {
+            if let Some(argument0) = argument0 {
+                syntax_type_used_records_and_choices(
+                    types.element(argument0),
+                    types,
+                    records_used,
+                    choices_used,
+                );
+            }
+            for argument in argument1_up {
+                if let Some(argument_type) = &argument.type_ {
+                    syntax_type_used_records_and_choices(
+                        argument_type,
+                        types,
+                        records_used,
+                        choices_used,
+                    );
+                }
+            }
+        }
+        SyntaxType::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_type_used_records_and_choices(
+                    types.element(inner),
+                    types,
+                    records_used,
+                    choices_used,
+                );
+            }
+        }
+        SyntaxType::RecordEmpty { dot_start: _ } => {}
+        SyntaxType::Record {
+            field0_name,
+            field0_value,
+            field1_up,
+        } => {
+            records_used.insert(sorted_field_names(
+                std::iter::once(&field0_name.value).chain(
+                    field1_up
+                        .iter()
+                        .filter_map(|field| field.name.value.as_ref()),
+                ),
+            ));
+            if let Some(field0_value) = field0_value {
+                syntax_type_used_records_and_choices(
+                    types.element(field0_value),
+                    types,
+                    records_used,
+                    choices_used,
+                );
+            }
+            for field in field1_up {
+                if let Some(field_value) = &field.value {
+                    syntax_type_used_records_and_choices(
+                        field_value,
+                        types,
+                        records_used,
+                        choices_used,
+                    );
+                }
+            }
+        }
+        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::Choice {
+            variant0_name,
+            variant0_value,
+            variant1_up,
+        } => {
+            choices_used.insert(sorted_variant_names(
+                std::iter::once(&variant0_name.value).chain(
+                    variant1_up
+                        .iter()
+                        .filter_map(|variant| variant.name.value.as_ref()),
+                ),
+            ));
+            if let Some(variant0_value) = variant0_value {
+                syntax_type_used_records_and_choices(
+                    types.element(variant0_value),
+                    types,
+                    records_used,
+                    choices_used,
+                );
+            }
+            for variant in variant1_up {
+                if let Some(variant_value) = &variant.value {
+                    syntax_type_used_records_and_choices(
+                        variant_value,
+                        types,
+                        records_used,
+                        choices_used,
+                    );
                 }
             }
         }
@@ -2463,14 +2643,18 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
 }
 // TODO(important) track pattern variables and origins to avoid accidental misconnection
 fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Types>(
-    project_fn_graph: &mut strongly_connected_components::Graph,
     origin_project_fn_graph_node: strongly_connected_components::Node,
     project_fn_graph_node_by_name: &std::collections::HashMap<
         &str,
         strongly_connected_components::Node,
     >,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
+    project_fn_graph: &mut strongly_connected_components::Graph,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
     match expression {
         SyntaxExpression::Number { .. } => {}
@@ -2480,7 +2664,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         SyntaxExpression::Call {
             underscore_start: _,
             name,
-            type_arguments: _,
+            type_arguments,
             argument,
         } => {
             if let Some(name) = name
@@ -2490,70 +2674,127 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             {
                 project_fn_graph.new_edge(origin_project_fn_graph_node, referenced_fn_graph_node);
             }
+            if let Some(type_arguments) = type_arguments {
+                for type_argument in type_arguments.argument0.iter().chain(
+                    type_arguments
+                        .argument1_up
+                        .iter()
+                        .filter_map(|argument| argument.type_.as_ref()),
+                ) {
+                    syntax_type_used_records_and_choices(
+                        type_argument,
+                        types,
+                        records_used,
+                        choices_used,
+                    );
+                }
+            }
             if let Some(argument) = argument {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(argument),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
                 );
             }
         }
         SyntaxExpression::Variant {
             name: _,
-            type_: _,
+            type_,
             value,
         } => {
+            if let Some(type_) = type_
+                .as_ref()
+                .and_then(|type_argument| type_argument.type_.as_ref())
+            {
+                syntax_type_used_records_and_choices(type_, types, records_used, choices_used);
+            }
             if let Some(value) = value {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(value),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
                 );
             }
         }
         SyntaxExpression::Fn {
             fn_keyword_start: _,
-            parameter: _,
+            parameter,
             angle_right_start: _,
             result,
         } => {
+            if let Some(parameter) = parameter {
+                syntax_pattern_typed_used_records_and_choices(
+                    parameter,
+                    patterns,
+                    types,
+                    records_used,
+                    choices_used,
+                );
+            }
             if let Some(result) = result {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(result),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
                 );
             }
         }
         SyntaxExpression::RecordEmpty { dot_start: _ } => {}
         SyntaxExpression::Record {
-            field0_name: _,
+            field0_name,
             field0_value,
             field1_up,
         } => {
+            records_used.insert(sorted_field_names(
+                std::iter::once(&field0_name.value).chain(
+                    field1_up
+                        .iter()
+                        .filter_map(|field| field.name.value.as_ref()),
+                ),
+            ));
             if let Some(field0_value) = field0_value {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(field0_value),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
                 );
             }
             for field in field1_up {
                 if let Some(value) = &field.value {
                     syntax_expression_connect_variables_in_graph_from(
-                        project_fn_graph,
                         origin_project_fn_graph_node,
                         project_fn_graph_node_by_name,
                         expressions,
+                        patterns,
+                        types,
                         value,
+                        project_fn_graph,
+                        records_used,
+                        choices_used,
                     );
                 }
             }
@@ -2565,11 +2806,15 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         } => {
             if let Some(inner) = inner {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(inner),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
                 );
             }
         }
@@ -2579,11 +2824,15 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         } => {
             if let Some(expression) = expression {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(expression),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
                 );
             }
         }
@@ -2594,21 +2843,29 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         } => {
             if let Some(queried) = queried {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(queried),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
                 );
             }
             for case in cases {
                 if let Some(result) = &case.result {
                     syntax_expression_connect_variables_in_graph_from(
-                        project_fn_graph,
                         origin_project_fn_graph_node,
                         project_fn_graph_node_by_name,
                         expressions,
+                        patterns,
+                        types,
                         result,
+                        project_fn_graph,
+                        records_used,
+                        choices_used,
                     );
                 }
             }
@@ -2620,33 +2877,117 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         } => {
             if let Some(result) = result {
                 syntax_expression_connect_variables_in_graph_from(
-                    project_fn_graph,
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
+                    patterns,
+                    types,
                     expressions.element(result),
+                    project_fn_graph,
+                    records_used,
+                    choices_used,
+                );
+            }
+        }
+    }
+}
+// Note that a similar function does not exist for untyped patterns
+// as these match on expressions whose type is known (and therefore all possible records and choices)
+fn syntax_pattern_typed_used_records_and_choices<Patterns, Types>(
+    pattern: &SyntaxPattern<Patterns, Types>,
+    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
+) {
+    match pattern {
+        SyntaxPattern::Variable { name: _, type_ } => {
+            if let Some(type_) = type_ {
+                syntax_type_used_records_and_choices(type_, types, records_used, choices_used);
+            }
+        }
+        SyntaxPattern::Variant { name, value } => {
+            if let Some(name) = &name.value {
+                choices_used.insert(vec![name.clone()]);
+            }
+            if let Some(value) = value {
+                syntax_pattern_typed_used_records_and_choices(
+                    patterns.element(value),
+                    patterns,
+                    types,
+                    records_used,
+                    choices_used,
+                );
+            }
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {}
+        SyntaxPattern::Record {
+            field0_name,
+            field0_value,
+            field1_up,
+        } => {
+            records_used.insert(sorted_field_names(
+                std::iter::once(&field0_name.value).chain(
+                    field1_up
+                        .iter()
+                        .filter_map(|field| field.name.value.as_ref()),
+                ),
+            ));
+            if let Some(field0_value) = field0_value {
+                syntax_pattern_typed_used_records_and_choices(
+                    patterns.element(field0_value),
+                    patterns,
+                    types,
+                    records_used,
+                    choices_used,
+                );
+            }
+            for field in field1_up {
+                if let Some(field_value) = &field.value {
+                    syntax_pattern_typed_used_records_and_choices(
+                        field_value,
+                        patterns,
+                        types,
+                        records_used,
+                        choices_used,
+                    );
+                }
+            }
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_pattern_typed_used_records_and_choices(
+                    patterns.element(inner),
+                    patterns,
+                    types,
+                    records_used,
+                    choices_used,
                 );
             }
         }
     }
 }
 #[derive(Debug)]
-struct SyntaxProjectFnInfo<'a, Expressions, Patterns, Types> {
-    range: lsp_types::Range,
-    name: &'a WithStartPosition<Name>,
-    type_parameters: &'a Option<SyntaxAngledTypeParameters>,
-    parameter: &'a Option<SyntaxPattern<Patterns, Types>>,
-    result_type: &'a Option<SyntaxType<Types>>,
-    documentation: &'a Option<SyntaxComments>,
-    result: &'a Option<SyntaxExpression<Expressions, Patterns, Types>>,
+pub struct SyntaxProjectFnInfo<'a, Expressions, Patterns, Types> {
+    pub range: lsp_types::Range,
+    pub name: &'a WithStartPosition<Name>,
+    pub type_parameters: &'a Option<SyntaxAngledTypeParameters>,
+    pub parameter: &'a Option<SyntaxPattern<Patterns, Types>>,
+    pub result_type: &'a Option<SyntaxType<Types>>,
+    pub documentation: &'a Option<SyntaxComments>,
+    pub result: &'a Option<SyntaxExpression<Expressions, Patterns, Types>>,
 }
 #[derive(Debug)]
-struct SyntaxProjectTypeInfo<'a, Types> {
+pub struct SyntaxProjectTypeInfo<'a, Types> {
     // consider introducing separate structs instead of separately referencing each field
-    name: &'a WithStartPosition<Name>,
-    documentation: &'a Option<SyntaxComments>,
-    parameters: &'a Option<TyParameters>,
-    type_: &'a Option<SyntaxType<Types>>,
+    pub name: &'a WithStartPosition<Name>,
+    pub documentation: &'a Option<SyntaxComments>,
+    pub parameters: &'a Option<TyParameters>,
+    pub type_: &'a Option<SyntaxType<Types>>,
 }
 // Copy & Clone need to be manually implemented because derive(Clone) introduces unnecessary Expressions/Patterns/Types:Clone bounds
 impl<'a, Expressions, Patterns, Types> Copy
@@ -2682,16 +3023,14 @@ impl<'a, Types> Clone for SyntaxProjectTypeInfo<'a, Types> {
 
 fn project_info_to_rust<Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
-    type_graph: &strongly_connected_components::Graph,
-    project_type_by_graph_node: &std::collections::HashMap<
-        strongly_connected_components::Node,
-        SyntaxProjectTypeInfo<Types>,
-    >,
-    project_fn_graph: strongly_connected_components::Graph,
-    project_fn_by_graph_node: std::collections::HashMap<
-        strongly_connected_components::Node,
-        SyntaxProjectFnInfo<Expressions, Patterns, Types>,
-    >,
+    SyntaxProjectInfo {
+        type_graph,
+        project_fn_graph,
+        project_type_by_graph_node,
+        project_fn_by_graph_node,
+        records_used,
+        choices_used,
+    }: SyntaxProjectInfo<Expressions, Patterns, Types>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
@@ -2701,10 +3040,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
     let mut compiled_type_aliases: std::collections::HashMap<Name, CompiledTypeAliasInfo> =
         core_type_aliases.clone();
     compiled_type_aliases.reserve(project_type_by_graph_node.len());
-    let mut records_used: std::collections::HashSet<Vec<Name>> =
-        std::collections::HashSet::with_capacity(16);
-    let mut choices_used: std::collections::HashSet<Vec<Name>> =
-        std::collections::HashSet::with_capacity(4);
     for project_type_strongly_connected_component in type_graph.find_sccs().iter_sccs() {
         // TODO report and skip (mutually) recursive project types. Currently these are reported as "not found" at best
         for project_type in project_type_strongly_connected_component
@@ -2717,8 +3052,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             let maybe_compiled_type_alias: Option<CompiledTypeAlias> =
                 type_alias_declaration_to_rust(
                     errors,
-                    &mut records_used,
-                    &mut choices_used,
                     &compiled_type_aliases,
                     types,
                     project_type.documentation.as_ref(),
@@ -2817,8 +3150,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                     parameter,
                     None,
                     &mut Vec::new(),
-                    &mut std::collections::HashSet::new(),
-                    &mut std::collections::HashSet::new(),
                     &mut std::collections::HashMap::new(),
                     &compiled_type_aliases,
                     patterns,
@@ -2846,8 +3177,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                         &compiled_type_aliases,
                         types,
                         &std::collections::HashMap::new(),
-                        &mut std::collections::HashSet::new(),
-                        &mut std::collections::HashSet::new(),
                     );
                     compiled_project_fns.insert(
                         project_fn.name.value.clone(),
@@ -2864,8 +3193,6 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
         for project_fn in project_fns_in_strongly_connected_component {
             let maybe_compiled_project_fn: Option<CompiledProjectFn> = syntax_project_fn_to_rust(
                 errors,
-                &mut records_used,
-                &mut choices_used,
                 &compiled_type_aliases,
                 &compiled_project_fns,
                 expressions,
@@ -3040,8 +3367,6 @@ struct CompiledTypeAlias {
 }
 fn type_alias_declaration_to_rust<Types>(
     errors: &mut Vec<ErrorNode>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     maybe_documentation: Option<&SyntaxComments>,
@@ -3063,8 +3388,6 @@ fn type_alias_declaration_to_rust<Types>(
         type_aliases,
         types,
         &std::collections::HashMap::new(),
-        records_used,
-        choices_used,
     ) else {
         return None;
     };
@@ -3125,8 +3448,6 @@ struct CompiledProjectFn {
 }
 fn syntax_project_fn_to_rust<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
     project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
@@ -3157,8 +3478,6 @@ fn syntax_project_fn_to_rust<'a, Expressions, Patterns, Types>(
         syntax_parameter,
         None,
         errors,
-        records_used,
-        choices_used,
         &mut parameter_introduced_bindings,
         type_aliases,
         patterns,
@@ -3171,8 +3490,6 @@ fn syntax_project_fn_to_rust<'a, Expressions, Patterns, Types>(
     let mut used_pattern_variables = std::collections::HashMap::new();
     let compiled_result: CompiledExpression = syntax_expression_to_rust(
         errors,
-        records_used,
-        choices_used,
         type_aliases,
         project_fns,
         expressions,
@@ -3301,8 +3618,6 @@ pub fn syntax_type_to_type<Types>(
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> Option<Type> {
     match type_ {
         SyntaxType::Variable(name) => Some(Type::Variable(name.value.clone())),
@@ -3323,15 +3638,9 @@ pub fn syntax_type_to_type<Types>(
                 });
                 None
             }
-            Some(inner) => syntax_type_to_type(
-                types.element(inner),
-                errors,
-                type_aliases,
-                types,
-                origins,
-                records_used,
-                choices_used,
-            ),
+            Some(inner) => {
+                syntax_type_to_type(types.element(inner), errors, type_aliases, types, origins)
+            }
         },
         SyntaxType::ConstructWithoutArguments(name) => {
             if origins.contains_key(&name.value) {
@@ -3386,15 +3695,7 @@ pub fn syntax_type_to_type<Types>(
                             .filter_map(|argument| argument.type_.as_ref()),
                     )
                     .map(|argument_type| {
-                        syntax_type_to_type(
-                            argument_type,
-                            errors,
-                            type_aliases,
-                            types,
-                            origins,
-                            records_used,
-                            choices_used,
-                        )
+                        syntax_type_to_type(argument_type, errors, type_aliases, types, origins)
                     })
                     .collect::<Option<Vec<Type>>>()?;
                 let argument_count = 1 + argument1_up.len();
@@ -3437,13 +3738,6 @@ pub fn syntax_type_to_type<Types>(
             field0_value,
             field1_up,
         } => {
-            records_used.insert(sorted_field_names(
-                std::iter::once(&field0_name.value).chain(
-                    field1_up
-                        .iter()
-                        .filter_map(|field| field.name.value.as_ref()),
-                ),
-            ));
             let Some(field0_value) = field0_value else {
                 errors.push(ErrorNode {
                     range: field_name_range(with_start_position_as_ref(field0_name)),
@@ -3461,8 +3755,6 @@ pub fn syntax_type_to_type<Types>(
                 type_aliases,
                 types,
                 origins,
-                records_used,
-                choices_used,
             ) {
                 None => {
                     any_field_value_has_error = true;
@@ -3503,15 +3795,7 @@ pub fn syntax_type_to_type<Types>(
                     });
                     return None;
                 };
-                match syntax_type_to_type(
-                    field_value,
-                    errors,
-                    type_aliases,
-                    types,
-                    origins,
-                    records_used,
-                    choices_used,
-                ) {
+                match syntax_type_to_type(field_value, errors, type_aliases, types, origins) {
                     None => {
                         any_field_value_has_error = true;
                     }
@@ -3534,13 +3818,6 @@ pub fn syntax_type_to_type<Types>(
             variant0_value,
             variant1_up,
         } => {
-            choices_used.insert(sorted_variant_names(
-                std::iter::once(&variant0_name.value).chain(
-                    variant1_up
-                        .iter()
-                        .filter_map(|variant| variant.name.value.as_ref()),
-                ),
-            ));
             let Some(variant0_value) = variant0_value else {
                 errors.push(ErrorNode {
                     range: variant_name_range(with_start_position_as_ref(variant0_name)),
@@ -3558,8 +3835,6 @@ pub fn syntax_type_to_type<Types>(
                 type_aliases,
                 types,
                 origins,
-                records_used,
-                choices_used,
             ) {
                 None => {
                     any_variant_value_has_error = true;
@@ -3606,8 +3881,6 @@ pub fn syntax_type_to_type<Types>(
                     type_aliases,
                     types,
                     origins,
-                    records_used,
-                    choices_used,
                 ) {
                     None => {
                         any_variant_value_has_error = true;
@@ -4314,8 +4587,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     expected_type: Option<&Type>,
     errors: &mut Vec<ErrorNode>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
     introduced_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -4346,15 +4617,9 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     }),
                 },
                 Some(actual_type) => {
-                    let Some(actual_type) = syntax_type_to_type(
-                        actual_type,
-                        errors,
-                        type_aliases,
-                        types,
-                        origins,
-                        records_used,
-                        choices_used,
-                    ) else {
+                    let Some(actual_type) =
+                        syntax_type_to_type(actual_type, errors, type_aliases, types, origins)
+                    else {
                         return None;
                     };
                     match expected_type {
@@ -4427,7 +4692,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
             };
             match expected_type {
                 None => {
-                    choices_used.insert(vec![name_value.clone()]);
                     let Some(value) = value else {
                         errors.push(ErrorNode {
                             range: optional_variant_name_range(name),
@@ -4439,8 +4703,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         patterns.element(value),
                         None,
                         errors,
-                        records_used,
-                        choices_used,
                         introduced_variables,
                         type_aliases,
                         patterns,
@@ -4516,8 +4778,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         value,
                         Some(expected_value_type),
                         errors,
-                        records_used,
-                        choices_used,
                         introduced_variables,
                         type_aliases,
                         patterns,
@@ -4661,8 +4921,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                             .map(|expected_field| &expected_field.value)
                     }),
                     errors,
-                    records_used,
-                    choices_used,
                     introduced_variables,
                     type_aliases,
                     patterns,
@@ -4692,9 +4950,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 return None;
             };
             // TODO report if diff maybe_expected_type_record has additional fields
-            records_used.insert(sorted_field_names(
-                type_fields.iter().map(|field| &field.name),
-            ));
             Some(CompiledPattern {
                 rust: syn::Pat::Struct(syn::PatStruct {
                     attrs: vec![],
@@ -4738,8 +4993,6 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 patterns.element(inner),
                 expected_type,
                 errors,
-                records_used,
-                choices_used,
                 introduced_variables,
                 type_aliases,
                 patterns,
@@ -4765,8 +5018,6 @@ pub struct OriginCompileInfo {
 }
 fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
     type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
     project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
@@ -4800,15 +5051,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
             }
             Some(syntax_type) => {
-                let Some(type_) = syntax_type_to_type(
-                    syntax_type,
-                    errors,
-                    type_aliases,
-                    types,
-                    origins,
-                    records_used,
-                    choices_used,
-                ) else {
+                let Some(type_) =
+                    syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
+                else {
                     return CompiledExpression {
                         rust: syn_expr_todo(),
                         type_: None,
@@ -5123,8 +5368,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         let syntax_argument = expressions.element(argument);
                         let compiled_argument: CompiledExpression = syntax_expression_to_rust(
                             errors,
-                            records_used,
-                            choices_used,
                             type_aliases,
                             project_fns,
                             expressions,
@@ -5303,8 +5546,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         type_aliases,
                         types,
                         origins,
-                        records_used,
-                        choices_used,
                     ) else {
                         return CompiledExpression {
                             rust: syn_expr_todo(),
@@ -5339,8 +5580,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         let syntax_argument = expressions.element(syntax_argument);
                         let compiled_argument: CompiledExpression = syntax_expression_to_rust(
                             errors,
-                            records_used,
-                            choices_used,
                             type_aliases,
                             project_fns,
                             expressions,
@@ -5443,15 +5682,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 };
             };
-            let Some(compiled_type) = syntax_type_to_type(
-                syntax_type,
-                errors,
-                type_aliases,
-                types,
-                origins,
-                records_used,
-                choices_used,
-            ) else {
+            let Some(compiled_type) =
+                syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
+            else {
                 return CompiledExpression {
                     rust: syn_expr_todo(),
                     type_: None,
@@ -5511,8 +5744,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 rust: compiled_value_rust,
             } = syntax_expression_to_rust(
                 errors,
-                records_used,
-                choices_used,
                 type_aliases,
                 project_fns,
                 expressions,
@@ -5595,8 +5826,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 parameter,
                 None,
                 errors,
-                records_used,
-                choices_used,
                 &mut parameter_introduced_variables,
                 type_aliases,
                 patterns,
@@ -5612,8 +5841,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let mut result_used_origin_variables = std::collections::HashMap::new();
             let compiled_result = syntax_expression_to_rust(
                 errors,
-                records_used,
-                choices_used,
                 type_aliases,
                 project_fns,
                 expressions,
@@ -5760,8 +5987,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
                 Some(field_value) => syntax_expression_to_rust(
                     errors,
-                    records_used,
-                    choices_used,
                     type_aliases,
                     project_fns,
                     expressions,
@@ -5815,8 +6040,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     }
                     Some(field_value) => syntax_expression_to_rust(
                         errors,
-                        records_used,
-                        choices_used,
                         type_aliases,
                         project_fns,
                         expressions,
@@ -5857,11 +6080,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: None,
                 },
                 Some(field_types) => {
-                    let field_names: Vec<Name> =
-                        sorted_field_names(field_types.iter().map(|field| &field.name));
-                    let rust_struct_name: String =
-                        field_names_to_rust_record_struct_name(field_names.iter());
-                    records_used.insert(field_names);
+                    let rust_struct_name: String = field_names_to_rust_record_struct_name(
+                        sorted_field_names(field_types.iter().map(|field| &field.name)).iter(),
+                    );
                     CompiledExpression {
                         rust: syn::Expr::Struct(syn::ExprStruct {
                             attrs: vec![],
@@ -5899,8 +6120,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             }
             Some(inner) => syntax_expression_to_rust(
                 errors,
-                records_used,
-                choices_used,
                 type_aliases,
                 project_fns,
                 expressions,
@@ -5934,8 +6153,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             }
             Some(expression) => syntax_expression_to_rust(
                 errors,
-                records_used,
-                choices_used,
                 type_aliases,
                 project_fns,
                 expressions,
@@ -5979,8 +6196,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 type_: Some(compiled_queried_type),
             } = syntax_expression_to_rust(
                 errors,
-                records_used,
-                choices_used,
                 type_aliases,
                 project_fns,
                 expressions,
@@ -6026,8 +6241,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 case0_pattern,
                 Some(&compiled_queried_type),
                 errors,
-                records_used,
-                choices_used,
                 &mut case0_pattern_introduced_variables,
                 type_aliases,
                 patterns,
@@ -6051,8 +6264,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 type_: Some(query_result_type),
             } = syntax_expression_to_rust(
                 errors,
-                records_used,
-                choices_used,
                 type_aliases,
                 project_fns,
                 expressions,
@@ -6118,8 +6329,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     case_pattern,
                     Some(&compiled_queried_type),
                     errors,
-                    records_used,
-                    choices_used,
                     &mut case_pattern_introduced_variables,
                     type_aliases,
                     patterns,
@@ -6167,8 +6376,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     type_: Some(case_result_type),
                 } = syntax_expression_to_rust(
                     errors,
-                    records_used,
-                    choices_used,
                     type_aliases,
                     project_fns,
                     expressions,
@@ -6405,8 +6612,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             }
             let result_compiled = syntax_expression_to_rust(
                 errors,
-                records_used,
-                choices_used,
                 type_aliases,
                 project_fns,
                 expressions,
@@ -7664,18 +7869,6 @@ fn type_span(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
-fn type_opt_span_build(backing: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::const_new("opt-span-build"),
-        arguments: vec![backing],
-    }
-}
-fn type_span_build(backing: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::const_new("span-build"),
-        arguments: vec![backing],
-    }
-}
 fn type_opt(present: Type) -> Type {
     type_choice([("absent", type_record([])), ("present", present)])
 }
@@ -7845,12 +8038,26 @@ find a neighboring integer with a given `round-mode`.
 For math-type round for example, use
 ```sloe
 fn age . :> f32 >
-    f32-round .n 68.8 .method |nearest-else-away-from-0<round-mode> .
-```
-This by returns a f32 to not overflow")),
+    f32-round .n 68.8 .mode |nearest-else-away-from-0<round-mode> .
+```")),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([("n", type_f32), ("by", type_f32)])),
+                    parameter_type: Some(type_record([("n", type_f32), ("mode", type_round_mode())])),
                     result_type: Some(type_f32),
+                },
+            ),
+            (
+                Name::const_new("f32-to-i32-clamp"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from("If not already equal to an integer value,
+find a neighboring integer with a given `round-mode`. Finally, clamp it to within 32 bits.
+For truncating off at the decimal point for example, use
+```sloe
+fn age . :> f32 >
+    f32-to-i32-clamp .n 68.8 .mode |toward-0<round-mode> .
+```")),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([("n", type_f32), ("mode", type_round_mode(  ))])),
+                    result_type: Some(type_i32),
                 },
             ),
             (
@@ -7933,6 +8140,17 @@ This by returns a f32 to not overflow")),
             ),
             (
                 Name::const_new("origin-rid"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case",
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_origin(type_variable("Origin"))),
+                    result_type: Some(type_record([])),
+                },
+            ),
+            (
+                Name::const_new("origin-rid-dup"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
                         "Split the origin-rid in two values with the same content",
@@ -8096,79 +8314,140 @@ This by returns a f32 to not overflow")),
                 },
             ),
             (
-                Name::const_new("vec-span-empty"),
+                Name::const_new("vec-opt-span-add"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Start a `span-build` backed by the given vec. Modify with `vec-opt-span-add`, `vec-opt-span-add-str` etc. and finish with `vec-opt-span-build`",
+                        "Attach a given element at the end of the span.",
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
+                    parameter_type: Some(type_record([
+                        (
+                            "vec",
+                             type_vec(
+                                type_variable("Origin"),
+                                type_variable("Element"),
+                            ),
+                        ),
+                        ("span", type_opt(type_span(type_variable("Origin")))),
+                        ("new", type_variable("Element")),
+                    ])),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                             type_vec(
+                                type_variable("Origin"),
+                                type_variable("Element"),
+                            ),
+                        ),
+                        ("span", type_span(type_variable("Origin")))
+                    ])),
+                },
+            ),
+            (
+                Name::const_new("vec-span-add"),
+                CompiledProjectFnInfo {
+                    documentation: Some(Box::from(
+                        "Attach a given element at the end of the span.",
                     )),
-                    result_type: Some(type_opt_span_build(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
+                    type_parameters: vec![],
+                    parameter_type: Some(type_record([
+                        (
+                            "vec",
+                             type_vec(
+                                type_variable("Origin"),
+                                type_variable("Element"),
+                            ),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                        ("new", type_variable("Element")),
+                    ])),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                             type_vec(
+                                type_variable("Origin"),
+                                type_variable("Element"),
+                            ),
+                        ),
+                        ("span", type_span(type_variable("Origin")))
+                    ])),
                 },
             ),
             (
                 Name::const_new("vec-opt-span-add-str"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Attach a given `str` to the span of a given `span-build`.",
+                        "Attach a given `str` at the end of the span.",
                     )),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([
                         (
-                            "build",
-                            type_opt_span_build(type_vec(
+                            "vec",
+                             type_vec(
                                 type_variable("Origin"),
                                 type_variable("Element"),
-                            )),
+                            ),
                         ),
+                        ("span", type_opt(type_span(type_variable("Origin")))),
                         ("new", type_str),
                     ])),
-                    result_type: Some(type_opt_span_build(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                             type_vec(
+                                type_variable("Origin"),
+                                type_variable("Element"),
+                            ),
+                        ),
+                        ("span", type_opt(type_span(type_variable("Origin"))))
+                    ])),
                 },
             ),
             (
                 Name::const_new("vec-span-add-str"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Attach a given `str` to the span of a given `span-build`.",
+                        "Attach a given `str` at the end of the span.",
                     )),
                     type_parameters: vec![],
                     parameter_type: Some(type_record([
                         (
-                            "build",
-                            type_span_build(type_vec(
+                            "vec",
+                             type_vec(
                                 type_variable("Origin"),
                                 type_variable("Element"),
-                            )),
+                            ),
                         ),
+                        ("span", type_span(type_variable("Origin"))),
                         ("new", type_str),
                     ])),
-                    result_type: Some(type_span_build(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
+                    result_type: Some(type_record([
+                        (
+                            "vec",
+                             type_vec(
+                                type_variable("Origin"),
+                                type_variable("Element"),
+                            ),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                    ])),
                 },
             ),
+            // TODO add the snatching
             (
-                Name::const_new("vec-opt-span-build"),
+                Name::const_new("vec-move-opt-span-to-vacant"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Finish an `opt-span-build` and split it into the backing `vec` and the built `opt span`.",
+                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_opt_span_build(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
+                    parameter_type: Some(type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_opt(type_span(type_variable("Origin")))),
+                    ])),
                     result_type: Some(type_record([
                         (
                             "vec",
@@ -8179,56 +8458,19 @@ This by returns a f32 to not overflow")),
                 },
             ),
             (
-                Name::const_new("vec-opt-span-build-ignoring-vacant"),
+                Name::const_new("vec-move-opt-span-to-vacant"),
                 CompiledProjectFnInfo {
                     documentation: Some(Box::from(
-                        "Finish an `opt-span-build` and split it into the backing `vec` and the built `opt span`, without trying to reuse vacant spans. Can be faster than vec-add for temporary vecs where all the storage gets scrapped anyway.",
+                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_opt_span_build(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
-                    result_type: Some(type_record([
-                        (
-                            "vec",
-                            type_vec(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("span", type_opt(type_span(type_variable("Origin")))),
-                    ])),
-                },
-            ),
-            (
-                Name::const_new("vec-span-build"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Finish a `span-build` and split it into the backing `vec` and the built `span`.",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_span_build(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
-                    result_type: Some(type_record([
+                    parameter_type: Some(type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_span(type_variable("Origin"))),
                     ])),
-                },
-            ),
-            (
-                Name::const_new("vec-span-build-ignoring-vacant"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Finish a `span-build` and split it into the backing `vec` and the built `span`, without trying to reuse vacant spans. Can be faster than vec-add for temporary vecs where all the storage gets scrapped anyway.",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_span_build(type_vec(
-                        type_variable("Origin"),
-                        type_variable("Element"),
-                    ))),
                     result_type: Some(type_record([
                         (
                             "vec",
@@ -8577,41 +8819,20 @@ This works because each collection has a unique origin and only gives out one sp
             },
         ),
         (
-            Name::const_new("opt-span-build"),
-            CompiledTypeAliasInfo {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "An `opt span` at the end of a backing collecion, plus that collection.
-This makes it easy to add elements to the end, as we know there's enough space to occupy.
-"
-                )),
-                parameters: vec![Name::const_new("Backing")],
-                type_: Some(type_opt_span_build(type_variable("Backing"))),
-                is_copy: false,
-            },
-        ),
-        (
-            Name::const_new("span-build"),
-            CompiledTypeAliasInfo {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "A `span` at the end of a backing collecion, plus that collection.
-This makes it easy to add elements to the end, as we know there's enough space to occupy.
-"
-                )),
-                parameters: vec![Name::const_new("Backing")],
-                type_: Some(type_span_build(type_variable("Backing"))),
-                is_copy: false,
-            },
-        ),
-        (
             Name::const_new("fn"),
             CompiledTypeAliasInfo {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A `span` at the end of a backing collecion, plus that collection.
-This makes it easy to add elements to the end, as we know there's enough space to occupy.
-"
+                    "A pure transformation from In to Out.
+As such, it cannot access variables from the outside; everything must be passed in and out explicitly.
+The parameter pattern must always have a known type.
+Functions, even local ones are called as `_function argument`.
+Functions values can be copied with `fn-dup` and scrapped with `fn-rid`. This is only possible because functions do not have access to variables from the outside.
+```sloe
+fn three . :> . >
+    ? fn n u32 > u32-add-clamp .a n .b 1 u32 = increment >
+    _increment 2
+```"
                 )),
                 parameters: vec![Name::const_new("In"), Name::const_new("Out")],
                 type_: Some(type_fn(type_variable("In"), type_variable("Out"))),

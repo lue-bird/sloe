@@ -17,6 +17,7 @@ run.rs
 build/
 prebuilds/
 node_modules/
+.zig-cache/
 
 zombie
 

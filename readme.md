@@ -36,11 +36,11 @@ Further reading if interested: "linear types", [article "must move types"](https
 Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
 
 # concept: flat memory collection `vec`
-A collection which can mark some spans within itself as vacant.
-This can be used to "return" memory which has become outdated or useless with for example `vec-element` and `vec-span-add-vec-span`.
-Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc.
+A collection which can mark some ranges within itself as vacant.
+This can be used to "return" memory which has become outdated or useless, for example with `vec-element` and `vec-span-snatch-vec-span`.
+Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
-This concept is often called slot map, reusing memory.
+Further reading if interested: This concept is often called slot map, reusing memory.
 In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
 Various kinds of similar rust collections are compared here: https://donsz.nl/blog/arenas/
 There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
@@ -67,6 +67,10 @@ fn add-some-values<Origin> vec _vec Origin, u32 :> _vec Origin, u32 >
 Further reading if interested: The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
 The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
 (apart from security I'm not sure this is ever worth it for regular users, considering it is also slower).
+I find it interesting that "storage" and "ownership over said storage" are decoupled.
+I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
+I really like this idea but understand that it cannot be implemented in e.g. rust which needs to store its allocator in it's value body to guarantee its content isn't splattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
+In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
 
 # examples
 ## pass in an origin from the outside (rare)
@@ -88,10 +92,9 @@ fn use-vec . :> u32 >
   	? _vec-empty<u32> vec-origin = vec >
   	? _vec-add .vec vec .new 123 u32 = .vec vec .slot first-slot >
   	? _vec-element .vec vec .slot first-slot = .vec vec .element first >
-  	? _vec-span-build-empty vec = after-first >
-  	? _vec-opt-span-build-add .build after-first .new 456 u32 = after-first >
-  	? _vec-span-build-add .build after-first .new 789 u32 after-first >
-    ? _vec-span-build after-first = .vec vec .span span-after-first >
+  	? |absent<_opt vec-origin> . = after-first >
+  	? _vec-opt-span-add .vec vec .span after-first .new 456 u32 = .vec vec .span after-first >
+  	? _vec-span-add .vec vec .span after-first .new 789 u32 = .vec vec .span after-first >
     ...
   	first # = 123 u32
 
@@ -126,8 +129,7 @@ fn use-opt opt _opt u32 :> ... >
     = vec >
     ...
 
-# recursive structure. One cool thing is that expression will turn every slot
-# into an exclusive slot
+# recursive structure. every slot and span exclusively belongs to that expression
 ty expression Expressions-origin Patterns-origin Str-origin
     |int i32
     |string _opt _span Str-origin
@@ -140,7 +142,7 @@ ty expression Expressions-origin Patterns-origin Str-origin
         .result _slot Expressions-origin
 
 ty state Expressions-origin
-    # ...patterns, strings etc
+    # ...patterns, strings, positions etc
     .expressions _vec Expressions-origin, _expression Expressions-origin
     .root-expression _expression Expressions-origin
 
@@ -416,7 +418,10 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add fold2s and or preferably a ways to fold over arbitrarily many spans etc.
+- Go through types and fns, converting syntax types to checked types.
+  Then check and compile steps can rely on all the juicy information
+
+- add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.
   This should make things like `.field-names span Field-names .field-values span Values`
   much more attractive/viable. This pattern can avoid "type parameter spam" for any record
 

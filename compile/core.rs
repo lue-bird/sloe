@@ -140,6 +140,19 @@ pub struct Span·vec<Span, Vec> {
     pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct New·span·vec<New, Span, Vec> {
+    pub new: New,
+    pub span: Span,
+    pub vec: Vec,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct New·shrink·span·vec<New, Shrink, Span, Vec> {
+    pub new: New,
+    pub shrink: Shrink,
+    pub span: Span,
+    pub vec: Vec,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Out·slot·vec<Out, Slot, Vec> {
     pub out: Out,
     pub slot: Slot,
@@ -239,7 +252,6 @@ pub enum Failure·Success<Failure, Success> {
     Failure(Failure),
     Success(Success),
 }
-// TODO sort names
 #[derive(Clone, Copy, Debug)]
 pub enum Away_from_0·Down·Nearest_else_away_from_0·Nearest_else_even·Toward_0·Up<
     Away_from_0,
@@ -322,18 +334,6 @@ pub struct Span<LocalOrigin> {
     // This makes combining 2 opt_spans and converting to ops::Range a bit faster,
     // at the cost of other operations like checking a vec's occupied count
     pub length: std::num::NonZeroU32,
-}
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct Opt_span_build<Backing> {
-    pub backing: Backing,
-    pub start: u32,
-}
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct Span_build<Backing> {
-    pub backing: Backing,
-    pub start: u32,
 }
 
 impl<Origin> std::marker::Copy for Origin_rid<Origin> {}
@@ -630,12 +630,7 @@ impl<Origin, Element> Vec<Origin, Element> {
     ) -> Span<Origin> {
         match self.mark_length_positive_as_occupied(new_element_count) {
             std::option::Option::None => {
-                let length_without_new_elements = self.elements.len() as u32;
-                std::iter::Extend::extend(&mut self.elements, new_elements);
-                Span {
-                    start: Slot::from_index(length_without_new_elements),
-                    length: new_element_count,
-                }
+                self.add_iterator_filled_ignoring_vacant(new_elements, new_element_count)
             }
             std::option::Option::Some(index_to_populate_from) => {
                 let grow_span = Span {
@@ -645,6 +640,34 @@ impl<Origin, Element> Vec<Origin, Element> {
                 self.elements.splice(grow_span.to_range(), new_elements);
                 grow_span
             }
+        }
+    }
+    pub fn add_iterator_ignoring_vacant(
+        &mut self,
+        new_elements: impl std::iter::Iterator<Item = Element>,
+    ) -> Opt<Span<Origin>> {
+        let length_without_new_elements = self.elements.len();
+        std::iter::Extend::extend(&mut self.elements, new_elements);
+        match std::num::NonZeroU32::new((self.elements.len() - length_without_new_elements) as u32)
+        {
+            std::option::Option::None => Opt::Absent(Blank {}),
+            std::option::Option::Some(new_length) => Opt::Present(Span {
+                start: Slot::from_index(length_without_new_elements as u32),
+                length: new_length,
+            }),
+        }
+    }
+    // invariant! new_element_count must equal new_elements.count()
+    fn add_iterator_filled_ignoring_vacant(
+        &mut self,
+        new_elements: impl std::iter::Iterator<Item = Element>,
+        new_element_count: std::num::NonZeroU32,
+    ) -> Span<Origin> {
+        let length_without_new_elements = self.elements.len() as u32;
+        std::iter::Extend::extend(&mut self.elements, new_elements);
+        Span {
+            start: Slot::from_index(length_without_new_elements),
+            length: new_element_count,
         }
     }
     pub fn add_iterator(
@@ -663,6 +686,8 @@ impl<Origin, Element> Vec<Origin, Element> {
         &mut self,
         new_elements: impl std::iter::Iterator<Item = Element> + std::clone::Clone,
     ) -> Opt<Span<Origin>> {
+        // can be optimized to only clone if there is actually existing vacant space to occupy.
+        // Might make sense to also benchmark with simply writing to the end, then relocating
         let std::option::Option::Some(grow_length) =
             std::num::NonZeroU32::new(std::iter::Iterator::count(new_elements.clone()) as u32)
         else {
@@ -681,6 +706,113 @@ impl<Origin, Element> Vec<Origin, Element> {
             self.add_iterator_filled(shrink_elements, shrink_span_length)
         });
         grow_span
+    }
+    pub fn snatch_vec_span_ignoring_vacant<ShrinkOrigin>(
+        &mut self,
+        shrink: &mut Vec<ShrinkOrigin, Element>,
+        shrink_span: Span<ShrinkOrigin>,
+    ) -> Span<Origin> {
+        let shrink_span_length = shrink_span.length;
+        let grow_span = shrink.vacate_and_consume_span_iterator(shrink_span, |shrink_elements| {
+            self.add_iterator_filled_ignoring_vacant(shrink_elements, shrink_span_length)
+        });
+        grow_span
+    }
+    pub fn opt_span_snatch_vec_span<ShrinkOrigin>(
+        &mut self,
+        span: Opt<Span<Origin>>,
+        shrink_vec: &mut Vec<ShrinkOrigin, Element>,
+        shrink_span: Span<ShrinkOrigin>,
+    ) -> Span<Origin> {
+        match span {
+            Opt::Absent(Blank {}) => self.snatch_vec_span_ignoring_vacant(shrink_vec, shrink_span),
+            Opt::Present(span) => self.span_snatch_vec_span(span, shrink_vec, shrink_span),
+        }
+    }
+    pub fn span_snatch_vec_span<ShrinkOrigin>(
+        &mut self,
+        span: Span<Origin>,
+        shrink_vec: &mut Vec<ShrinkOrigin, Element>,
+        shrink_span: Span<ShrinkOrigin>,
+    ) -> Span<Origin> {
+        shrink_vec.vacate_and_consume_span_iterator(shrink_span, |elements| {
+            self.span_add_iterator(span, elements)
+        })
+    }
+    pub fn span_add_iterator(
+        &mut self,
+        span: Span<Origin>,
+        new_elements: impl std::iter::Iterator<Item = Element>,
+    ) -> Span<Origin> {
+        // does not check for vacant space after because that will be rare
+        let moved_span = self.move_span_to_end(span);
+        let length_before_extend = self.elements.len();
+        std::iter::Extend::extend(&mut self.elements, new_elements);
+        Span {
+            start: moved_span.start,
+            length: moved_span
+                .length
+                .saturating_add((self.elements.len() - length_before_extend) as u32),
+        }
+    }
+    pub fn span_add(&mut self, span: Span<Origin>, new_element: Element) -> Span<Origin> {
+        // does not check for vacant space after because that will be rare
+        let moved_span = self.move_span_to_end(span);
+        self.elements.push(new_element);
+        Span {
+            start: moved_span.start,
+            length: moved_span.length.saturating_add(1),
+        }
+    }
+    pub fn move_span_to_end(&mut self, mut span: Span<Origin>) -> Span<Origin> {
+        if span.end_index_usize() + 1 == self.elements.len() {
+            return span;
+        }
+        // span is not at the end already
+
+        // elements in the span are moved and never accessed in the original slice after as they are vacated.
+        let elements_to_move = unsafe {
+            mut_slice_into_owned_iterator(
+                // we give this &mut slice a new lifetime to allow extending
+                // the original Vec at the same time.
+                // This is okay because earlier elements in that slice
+                // do not get mutated or removed during an extend.
+                std::ptr::NonNull::from_mut(self.span_slice_mut(&mut span)).as_mut(),
+            )
+        };
+        let moved_span = self.add_iterator_filled_ignoring_vacant(elements_to_move, span.length);
+        self.span_vacate(span);
+        moved_span
+    }
+    pub fn move_span_to_vacant(&mut self, span: Span<Origin>) -> Span<Origin> {
+        if span.end_index() as usize + 1 < self.elements.len() {
+            // moving this span would not reduce the amount of vacant space
+            return span;
+        }
+        // span is at the end of elements
+
+        let earlier_start_to_occupy_from = self.mark_length_positive_as_occupied(span.length);
+        match earlier_start_to_occupy_from {
+            std::option::Option::None => span,
+            std::option::Option::Some(earlier_start_to_occupy_from) => {
+                let (before_opt_span_slice, opt_span_slice) =
+                    self.elements.split_at_mut(span.start.index as usize);
+                // mark_length_positive_as_occupied found an existing (vacated) slice with length >= span.length
+                unsafe {
+                    before_opt_span_slice.get_unchecked_mut(
+                        (earlier_start_to_occupy_from as usize)
+                            ..(earlier_start_to_occupy_from as usize + span.length.get() as usize),
+                    )
+                }
+                .swap_with_slice(opt_span_slice);
+                self.elements
+                    .truncate(self.elements.len() - span.length.get() as usize);
+                Span {
+                    start: Slot::<Origin>::from_index(earlier_start_to_occupy_from),
+                    length: span.length,
+                }
+            }
+        }
     }
     pub fn vacant_count_usize(&self) -> usize {
         std::iter::Iterator::sum(std::iter::Iterator::map(self.vacant.iter(), |r| {
@@ -724,6 +856,23 @@ impl<Origin, Element> Vec<Origin, Element> {
             vacant_before_descending: vacant_descending,
             maybe_occupied_elements_rev: maybe_occupied_elements_rev,
         }
+    }
+}
+impl<Origin> Vec<Origin, Char> {
+    pub fn add_str(&mut self, new_str: Str) -> Opt<Span<Origin>> {
+        self.add_iterator_without_known_size(new_str.chars())
+    }
+    pub fn add_str_ignoring_vacant(&mut self, new_str: Str) -> Opt<Span<Origin>> {
+        self.add_iterator_ignoring_vacant(new_str.chars())
+    }
+    pub fn opt_span_add_str(&mut self, span: Opt<Span<Origin>>, new_str: Str) -> Opt<Span<Origin>> {
+        match span {
+            Absent·Present::Absent(Blank {}) => self.add_str_ignoring_vacant(new_str),
+            Absent·Present::Present(span) => Opt::Present(self.span_add_str(span, new_str)),
+        }
+    }
+    pub fn span_add_str(&mut self, span: Span<Origin>, new_str: Str) -> Span<Origin> {
+        self.span_add_iterator(span, new_str.chars())
     }
 }
 pub struct VecIter<Element> {
@@ -790,50 +939,6 @@ impl<Element> std::iter::Iterator for VecIterRev<Element> {
         }
     }
 }
-impl<Origin> Vec<Origin, Char> {
-    pub fn add_str(&mut self, new_str: Str) -> Opt<Span<Origin>> {
-        self.add_iterator_without_known_size(new_str.chars())
-    }
-}
-
-impl<Origin, Element> Span_build<Vec<Origin, Element>> {
-    pub fn length(&self) -> std::num::NonZeroU32 {
-        // Span_build is only returned from functions adding >= 1 element
-        // and span_build.start is `.elements.len() as u32` from before adding
-        unsafe {
-            std::num::NonZeroU32::new_unchecked(self.backing.elements.len() as u32 - self.start)
-        }
-    }
-    pub fn build(mut self) -> Span·vec<Span<Origin>, Vec<Origin, Element>> {
-        let span_length = self.length();
-        let earlier_start_to_occupy_from =
-            self.backing.mark_length_positive_as_occupied(span_length);
-        if let std::option::Option::Some(earlier_start_to_occupy_from) =
-            earlier_start_to_occupy_from
-        {
-            let (before_opt_span_slice, opt_span_slice) =
-                self.backing.elements.split_at_mut(self.start as usize);
-            // mark_length_positive_as_occupied found an existing (vacated) opt_span with length >= span_length
-            unsafe {
-                before_opt_span_slice.get_unchecked_mut(
-                    (earlier_start_to_occupy_from as usize)
-                        ..(earlier_start_to_occupy_from as usize + span_length.get() as usize),
-                )
-            }
-            .swap_with_slice(opt_span_slice);
-            self.backing
-                .elements
-                .truncate(self.backing.elements.len() - span_length.get() as usize);
-        }
-        Span·vec {
-            span: Span {
-                start: Slot::<Origin>::from_index(self.start),
-                length: span_length,
-            },
-            vec: self.backing,
-        }
-    }
-}
 
 impl<Origin> Slot<Origin> {
     /// use with caution. duplicate use or out-of-bounds of the given index can lead to UB.
@@ -856,6 +961,9 @@ impl<Origin> Span<Origin> {
     }
     pub fn end_index(&self) -> u32 {
         self.start.index + p32_predecessor(self.length)
+    }
+    pub fn end_index_usize(&self) -> usize {
+        self.start.index as usize + p32_predecessor(self.length) as usize
     }
 }
 
@@ -1353,14 +1461,6 @@ pub fn span_connect<Origin>(
         }
     }
 }
-pub fn span_build_to_opt_span_build<Backing>(
-    span_build: Span_build<Backing>,
-) -> Opt_span_build<Backing> {
-    Opt_span_build {
-        backing: span_build.backing,
-        start: span_build.start,
-    }
-}
 
 pub fn origin_rid<LocalOrigin>(_: Origin<LocalOrigin>) -> Blank {
     Blank {}
@@ -1621,135 +1721,182 @@ pub fn vec_span_reverse<Origin, Element>(
     Span·vec { vec: vec, span }
 }
 
-pub fn vec_span_length<Origin, Element>(
-    span_build: Span_build<Vec<Origin, Element>>,
-) -> Build·length<Span_build<Vec<Origin, Element>>, P32> {
-    Build·length {
-        length: span_build.length(),
-        build: span_build,
-    }
-}
-pub fn vec_span_empty<Origin, Element>(
-    vec: Vec<Origin, Element>,
-) -> Opt_span_build<Vec<Origin, Element>> {
-    Opt_span_build {
-        start: vec.elements.len() as u32,
-        backing: vec,
-    }
-}
 pub fn vec_opt_span_add<Origin, Element>(
-    Build·new {
-        build: mut span_build,
+    New·span·vec {
+        mut vec,
+        span,
         new: new_element,
-    }: Build·new<Opt_span_build<Vec<Origin, Element>>, Element>,
-) -> Span_build<Vec<Origin, Element>> {
-    span_build.backing.elements.push(new_element);
-    Span_build {
-        backing: span_build.backing,
-        start: span_build.start,
-    }
-}
-pub fn vec_span_add<Origin, Element>(
-    Build·new {
-        build: mut span_build,
-        new: new_element,
-    }: Build·new<Span_build<Vec<Origin, Element>>, Element>,
-) -> Span_build<Vec<Origin, Element>> {
-    span_build.backing.elements.push(new_element);
-    span_build
-}
-pub fn vec_opt_span_add_str<Origin>(
-    Build·new {
-        build: mut span_build,
-        new: new_str,
-    }: Build·new<Opt_span_build<Vec<Origin, Char>>, Str>,
-) -> Opt_span_build<Vec<Origin, Char>> {
-    std::iter::Extend::extend(&mut span_build.backing.elements, new_str.chars());
-    Opt_span_build {
-        backing: span_build.backing,
-        start: span_build.start,
-    }
-}
-pub fn vec_span_add_str<Origin>(
-    Build·new {
-        build: mut span_build,
-        new: new_str,
-    }: Build·new<Span_build<Vec<Origin, Char>>, Str>,
-) -> Span_build<Vec<Origin, Char>> {
-    std::iter::Extend::extend(&mut span_build.backing.elements, new_str.chars());
-    Span_build {
-        backing: span_build.backing,
-        start: span_build.start,
-    }
-}
-pub fn vec_opt_span_ignoring_vacant<Origin, Element>(
-    span_build: Opt_span_build<Vec<Origin, Element>>,
-) -> Span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
-    Span·vec {
-        span: match std::num::NonZeroU32::new(
-            span_build.backing.elements.len() as u32 - span_build.start,
-        ) {
-            std::option::Option::None => Opt::Absent(Blank {}),
-            std::option::Option::Some(span_length) => Opt::Present(Span {
-                start: Slot::<Origin>::from_index(span_build.start),
-                length: span_length,
-            }),
-        },
-        vec: span_build.backing,
-    }
-}
-pub fn vec_span_ignoring_vacant<Origin, Element>(
-    span_build: Span_build<Vec<Origin, Element>>,
+    }: New·span·vec<Element, Opt<Span<Origin>>, Vec<Origin, Element>>,
 ) -> Span·vec<Span<Origin>, Vec<Origin, Element>> {
-    Span·vec {
-        span: Span {
-            start: Slot::<Origin>::from_index(span_build.start),
-            length: span_build.length(),
-        },
-        vec: span_build.backing,
-    }
-}
-pub fn vec_opt_span_to_span<Origin, Element>(
-    span_build: Opt_span_build<Vec<Origin, Element>>,
-) -> Failure·Success<Vec<Origin, Element>, Span_build<Vec<Origin, Element>>> {
-    match std::num::NonZeroU32::new(span_build.backing.elements.len() as u32 - span_build.start) {
-        std::option::Option::None => Failure·Success::Failure(span_build.backing),
-        std::option::Option::Some(_) => Failure·Success::Success(Span_build {
-            start: span_build.start,
-            backing: span_build.backing,
+    match span {
+        Absent·Present::Absent(Blank {}) => {
+            let new_slot = vec.add(new_element);
+            Span·vec {
+                vec: vec,
+                span: slot_to_span(new_slot),
+            }
+        }
+        Absent·Present::Present(span) => vec_span_add(New·span·vec {
+            vec: vec,
+            span: span,
+            new: new_element,
         }),
     }
 }
-pub fn vec_opt_span_build<Origin, Element>(
-    span_build: Opt_span_build<Vec<Origin, Element>>,
+pub fn vec_span_add<Origin, Element>(
+    New·span·vec {
+        mut vec,
+        span,
+        new: new_element,
+    }: New·span·vec<Element, Span<Origin>, Vec<Origin, Element>>,
+) -> Span·vec<Span<Origin>, Vec<Origin, Element>> {
+    let grown_span = vec.span_add(span, new_element);
+    Span·vec {
+        vec: vec,
+        span: grown_span,
+    }
+}
+pub fn vec_opt_span_add_str<Origin>(
+    New·span·vec {
+        mut vec,
+        span,
+        new: new_str,
+    }: New·span·vec<Str, Opt<Span<Origin>>, Vec<Origin, Char>>,
+) -> Span·vec<Opt<Span<Origin>>, Vec<Origin, Char>> {
+    let grown_span = vec.opt_span_add_str(span, new_str);
+    Span·vec {
+        vec: vec,
+        span: grown_span,
+    }
+}
+pub fn vec_span_add_str<Origin>(
+    New·span·vec {
+        mut vec,
+        span,
+        new: new_str,
+    }: New·span·vec<Str, Span<Origin>, Vec<Origin, Char>>,
+) -> Span·vec<Span<Origin>, Vec<Origin, Char>> {
+    let grown_span = vec.span_add_str(span, new_str);
+    Span·vec {
+        vec: vec,
+        span: grown_span,
+    }
+}
+pub fn vec_opt_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
+    New·shrink·span·vec {
+        mut vec,
+        span,
+        shrink: mut shrink_vec,
+        new: shrink_span,
+    }: New·shrink·span·vec<
+        Opt<Span<ShrinkOrigin>>,
+        Vec<ShrinkOrigin, Element>,
+        Opt<Span<GrowOrigin>>,
+        Vec<GrowOrigin, Element>,
+    >,
+) -> Grown·shrunk·span<Vec<GrowOrigin, Element>, Vec<ShrinkOrigin, Element>, Opt<Span<GrowOrigin>>>
+{
+    let maybe_grown_span = match shrink_span {
+        Absent·Present::Absent(Blank {}) => span,
+        Absent·Present::Present(shrink_span) => {
+            Opt::Present(vec.opt_span_snatch_vec_span(span, &mut shrink_vec, shrink_span))
+        }
+    };
+    Grown·shrunk·span {
+        grown: vec,
+        shrunk: shrink_vec,
+        span: maybe_grown_span,
+    }
+}
+pub fn vec_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
+    New·shrink·span·vec {
+        mut vec,
+        span,
+        shrink: mut shrink_vec,
+        new: shrink_span,
+    }: New·shrink·span·vec<
+        Opt<Span<ShrinkOrigin>>,
+        Vec<ShrinkOrigin, Element>,
+        Span<GrowOrigin>,
+        Vec<GrowOrigin, Element>,
+    >,
+) -> Grown·shrunk·span<Vec<GrowOrigin, Element>, Vec<ShrinkOrigin, Element>, Span<GrowOrigin>> {
+    let maybe_grown_span = match shrink_span {
+        Absent·Present::Absent(Blank {}) => span,
+        Absent·Present::Present(shrink_span) => {
+            vec.span_snatch_vec_span(span, &mut shrink_vec, shrink_span)
+        }
+    };
+    Grown·shrunk·span {
+        grown: vec,
+        shrunk: shrink_vec,
+        span: maybe_grown_span,
+    }
+}
+pub fn vec_opt_span_snatch_vec_span<GrowOrigin, ShrinkOrigin, Element>(
+    New·shrink·span·vec {
+        mut vec,
+        span,
+        shrink: mut shrink_vec,
+        new: shrink_span,
+    }: New·shrink·span·vec<
+        Span<ShrinkOrigin>,
+        Vec<ShrinkOrigin, Element>,
+        Opt<Span<GrowOrigin>>,
+        Vec<GrowOrigin, Element>,
+    >,
+) -> Grown·shrunk·span<Vec<GrowOrigin, Element>, Vec<ShrinkOrigin, Element>, Span<GrowOrigin>> {
+    let grown_span = vec.opt_span_snatch_vec_span(span, &mut shrink_vec, shrink_span);
+    Grown·shrunk·span {
+        grown: vec,
+        shrunk: shrink_vec,
+        span: grown_span,
+    }
+}
+pub fn vec_span_snatch_vec_span<GrowOrigin, ShrinkOrigin, Element>(
+    New·shrink·span·vec {
+        mut vec,
+        span,
+        shrink: mut shrink_vec,
+        new: shrink_span,
+    }: New·shrink·span·vec<
+        Span<ShrinkOrigin>,
+        Vec<ShrinkOrigin, Element>,
+        Span<GrowOrigin>,
+        Vec<GrowOrigin, Element>,
+    >,
+) -> Grown·shrunk·span<Vec<GrowOrigin, Element>, Vec<ShrinkOrigin, Element>, Span<GrowOrigin>> {
+    let grown_span = vec.span_snatch_vec_span(span, &mut shrink_vec, shrink_span);
+    Grown·shrunk·span {
+        grown: vec,
+        shrunk: shrink_vec,
+        span: grown_span,
+    }
+}
+
+pub fn vec_move_opt_span_to_vacant<Origin, Element>(
+    Span·vec { span, mut vec }: Span·vec<Opt<Span<Origin>>, Vec<Origin, Element>>,
 ) -> Span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
-    match vec_opt_span_to_span(span_build) {
-        Failure·Success::Failure(backing) => Span·vec {
+    match span {
+        Opt::Absent(Blank {}) => Span·vec {
             span: Opt::Absent(Blank {}),
-            vec: backing,
+            vec: vec,
         },
-        Failure·Success::Success(span_build) => {
-            let Span·vec { span, vec } = vec_span_build(span_build);
+        Opt::Present(span) => {
+            let moved_span = vec.move_span_to_vacant(span);
             Span·vec {
-                span: Opt::Present(span),
-                vec,
+                span: Opt::Present(moved_span),
+                vec: vec,
             }
         }
     }
 }
-pub fn vec_span_build<Origin, Element>(
-    span_build: Span_build<Vec<Origin, Element>>,
+pub fn vec_move_span_to_vacant<Origin, Element>(
+    Span·vec { span, mut vec }: Span·vec<Span<Origin>, Vec<Origin, Element>>,
 ) -> Span·vec<Span<Origin>, Vec<Origin, Element>> {
-    span_build.build()
-}
-pub fn vec_span_build_ignoring_vacant<Origin, Element>(
-    span_build: Span_build<Vec<Origin, Element>>,
-) -> Span·vec<Span<Origin>, Vec<Origin, Element>> {
+    let moved_span = vec.move_span_to_vacant(span);
     Span·vec {
-        span: Span {
-            start: Slot::<Origin>::from_index(span_build.start),
-            length: span_build.length(),
-        },
-        vec: span_build.backing,
+        span: moved_span,
+        vec: vec,
     }
 }

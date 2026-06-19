@@ -1,9 +1,10 @@
 
 fn greet
     .name name str .result-origin result-origin _origin Origin
-    :> _opt-span-build _vec Origin, char >
-    ? _vec-span-empty _vec-empty<char> result-origin = build >
-    ? _vec-opt-span-add-str .build build .new "Hello, " = build >
-    ? _vec-opt-span-add-str .build build .new name = build >
-    _vec-opt-span-add-str .build build .new "!\n"
+    :> .vec _vec Origin, char .span _span Origin >
+    ? _vec-empty<char> result-origin = vec >
+    ? |absent<_opt _span Origin> . = span >
+    ? _vec-opt-span-add-str .vec vec .span span .new "Hello, " = .vec vec .span span >
+    ? _vec-opt-span-add-str .vec vec .span span .new name = .vec vec .span span >
+    _vec-opt-span-add-str .vec vec .span span .new "!\n"
 
