@@ -494,7 +494,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         let munched = consume_iterator(unsafe {
             mut_slice_into_owned_iterator(self.span_slice_mut(&mut shrink_span))
         });
-        self.span_vacate(shrink_span);
+        self.vacate_span(shrink_span);
         munched
     }
     pub fn element_vacate(&mut self, mut slot: Slot<Origin>) -> Element {
@@ -503,21 +503,24 @@ impl<Origin, Element> Vec<Origin, Element> {
             std::ptr::NonNull::read(std::ptr::NonNull::from_ref(self.element_mut(&mut slot)))
         };
         // can maybe be optimized
-        self.span_vacate(slot_to_span(slot));
+        self.vacate_span(slot_to_span(slot));
         element
     }
     /// only use when the element values are safe to not handle or are handled unsafely immediately after
-    fn span_vacate(&mut self, span_to_vacate: Span<Origin>) {
+    fn vacate_span(&mut self, span_to_vacate: Span<Origin>) {
         let maybe_vacant_span_index_connecting_earlier: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
                 std::cmp::PartialEq::<u32>::eq(
-                    &vacant_span.end_index(),
+                    &(vacant_span.end_index() + 1),
                     &span_to_vacate.start.index,
                 )
             });
         let maybe_vacant_span_inde_connecting_later: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
-                std::cmp::PartialEq::<u32>::eq(&span_to_vacate.end_index(), &vacant_span.start)
+                std::cmp::PartialEq::<u32>::eq(
+                    &(span_to_vacate.end_index() + 1),
+                    &vacant_span.start,
+                )
             });
         match (
             maybe_vacant_span_index_connecting_earlier,
@@ -605,20 +608,29 @@ impl<Origin, Element> Vec<Origin, Element> {
     }
     fn mark_length_positive_as_occupied(
         &mut self,
-        element_count: std::num::NonZeroU32,
+        length_to_occupy: std::num::NonZeroU32,
     ) -> std::option::Option<u32> {
         let vacant_opt_span_to_reuse_index =
-            std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_opt_span| {
-                std::cmp::PartialOrd::ge(&vacant_opt_span.length, &element_count)
+            std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
+                std::cmp::PartialOrd::ge(&vacant_span.length, &length_to_occupy)
             });
         match vacant_opt_span_to_reuse_index {
             std::option::Option::None => std::option::Option::None,
             std::option::Option::Some(vacant_opt_span_to_reuse_index) => {
-                let vacant_opt_span_to_reuse = self.vacant[vacant_opt_span_to_reuse_index];
-                if vacant_opt_span_to_reuse.length == element_count {
-                    self.vacant.swap_remove(vacant_opt_span_to_reuse_index);
+                let vacant_opt_span_to_occupy = &mut self.vacant[vacant_opt_span_to_reuse_index];
+                let start_to_occupy_from = vacant_opt_span_to_occupy.start;
+                match std::num::NonZeroU32::new(
+                    vacant_opt_span_to_occupy.length.get() - length_to_occupy.get(),
+                ) {
+                    std::option::Option::None => {
+                        // vacant_opt_span_to_occupy.length == length_to_occupy
+                        self.vacant.swap_remove(vacant_opt_span_to_reuse_index);
+                    }
+                    std::option::Option::Some(remaining_vacant_length) => {
+                        vacant_opt_span_to_occupy.length = remaining_vacant_length;
+                    }
                 }
-                std::option::Option::Some(vacant_opt_span_to_reuse.start)
+                std::option::Option::Some(start_to_occupy_from)
             }
         }
     }
@@ -781,10 +793,10 @@ impl<Origin, Element> Vec<Origin, Element> {
             )
         };
         let moved_span = self.add_iterator_filled_ignoring_vacant(elements_to_move, span.length);
-        self.span_vacate(span);
+        self.vacate_span(span);
         moved_span
     }
-    pub fn move_span_to_vacant(&mut self, span: Span<Origin>) -> Span<Origin> {
+    pub fn move_span_to_vacant(&mut self, mut span: Span<Origin>) -> Span<Origin> {
         if span.end_index() as usize + 1 < self.elements.len() {
             // moving this span would not reduce the amount of vacant space
             return span;
@@ -795,16 +807,19 @@ impl<Origin, Element> Vec<Origin, Element> {
         match earlier_start_to_occupy_from {
             std::option::Option::None => span,
             std::option::Option::Some(earlier_start_to_occupy_from) => {
-                let (before_opt_span_slice, opt_span_slice) =
-                    self.elements.split_at_mut(span.start.index as usize);
-                // mark_length_positive_as_occupied found an existing (vacated) slice with length >= span.length
-                unsafe {
-                    before_opt_span_slice.get_unchecked_mut(
-                        (earlier_start_to_occupy_from as usize)
-                            ..(earlier_start_to_occupy_from as usize + span.length.get() as usize),
+                // the range of the span will be truncated next.
+                // the &mut lifetime is ignored because the edited and read ranges do not overlap
+                let elements_to_move = unsafe {
+                    mut_slice_into_owned_iterator(
+                        std::ptr::NonNull::from_mut(self.span_slice_mut(&mut span)).as_mut(),
                     )
-                }
-                .swap_with_slice(opt_span_slice);
+                };
+                self.elements.splice(
+                    (earlier_start_to_occupy_from as usize)
+                        ..(earlier_start_to_occupy_from as usize + span.length.get() as usize),
+                    elements_to_move,
+                );
+                // we could alternatively have swapped the non-overlapping slices. Not sure what is faster
                 self.elements
                     .truncate(self.elements.len() - span.length.get() as usize);
                 Span {
