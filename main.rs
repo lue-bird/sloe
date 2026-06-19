@@ -11,7 +11,7 @@ struct State<Expressions, Patterns, Types> {
 struct ProjectState<Expressions, Patterns, Types> {
     source: String,
     syntax: sloe::SyntaxProject<Expressions, Patterns, Types>,
-    type_aliases: std::collections::HashMap<sloe::Name, sloe::CompiledTypeAliasInfo>,
+    type_aliases: std::collections::HashMap<sloe::Name, sloe::CheckedTypeAlias>,
     fns: std::collections::HashMap<sloe::Name, sloe::CompiledProjectFnInfo>,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -241,7 +241,7 @@ fn {}{}
 }
 fn present_type_alias_markdown(
     name: &sloe::Name,
-    type_alias_info: &sloe::CompiledTypeAliasInfo,
+    type_alias_info: &sloe::CheckedTypeAlias,
 ) -> String {
     let mut type_string: String = String::new();
     if let Some(type_) = &type_alias_info.type_ {

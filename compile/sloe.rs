@@ -2054,17 +2054,16 @@ fn parse_expression_query_case<Expressions, Patterns, Types>(
 
 pub struct CompiledProject {
     pub rust: syn::File,
-    pub type_aliases: std::collections::HashMap<Name, CompiledTypeAliasInfo>,
+    pub type_aliases: std::collections::HashMap<Name, CheckedTypeAlias>,
     pub fns: std::collections::HashMap<Name, CompiledProjectFnInfo>,
     pub records: std::collections::HashSet<Vec<Name>>,
 }
 #[derive(Clone, Debug)]
-pub struct CompiledTypeAliasInfo {
+pub struct CheckedTypeAlias {
     pub name_range: Option<lsp_types::Range>,
     pub parameters: Vec<Name>,
     pub documentation: Option<Box<str>>,
     pub type_: Option<Type>,
-    pub is_copy: bool,
 }
 #[derive(Clone, Debug)]
 pub enum Type {
@@ -2093,27 +2092,6 @@ pub struct CompiledProjectFnInfo {
     pub result_type: Option<Type>,
 }
 
-fn type_is_copy(variables_are_copy: bool, type_: &Type) -> bool {
-    match type_ {
-        Type::Variable(_) => variables_are_copy,
-        Type::Origin(_) => false,
-        Type::CoreConstruct { name, arguments } => {
-            core_type_aliases
-                .get(name)
-                .is_some_and(|core_type_info| core_type_info.is_copy)
-                && arguments
-                    .iter()
-                    .all(|argument| type_is_copy(variables_are_copy, argument))
-        }
-        Type::Record(fields) => fields
-            .iter()
-            .all(|field| type_is_copy(variables_are_copy, &field.value)),
-        Type::Choice(variants) => variants
-            .iter()
-            .all(|variant| type_is_copy(variables_are_copy, &variant.value)),
-    }
-}
-
 pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     syntax_project: &SyntaxProject<Expressions, Patterns, Types>,
@@ -2131,14 +2109,14 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Vec<Types, SyntaxType<Types>>,
-) -> SyntaxProjectInfo<'a, Expressions, Patterns, Types> {
+) -> CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     let mut type_graph: strongly_connected_components::Graph =
         strongly_connected_components::Graph::new();
     let mut type_graph_node_by_name: std::collections::HashMap<
         &str,
         strongly_connected_components::Node,
     > = std::collections::HashMap::new();
-    let mut type_declaration_by_graph_node: std::collections::HashMap<
+    let mut project_type_by_graph_node: std::collections::HashMap<
         strongly_connected_components::Node,
         SyntaxProjectTypeInfo<Types>,
     > = std::collections::HashMap::new();
@@ -2158,6 +2136,10 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
         std::collections::HashSet::with_capacity(16);
     let mut choices_used: std::collections::HashSet<Vec<Name>> =
         std::collections::HashSet::with_capacity(4);
+
+    let mut checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias> =
+        core_type_aliases.clone();
+    checked_type_aliases.reserve(project_type_by_graph_node.len());
 
     for project_element in &syntax_project.elements {
         match project_element {
@@ -2217,7 +2199,7 @@ If you wanted to start a project declaration, try one of:
                     let existing_type_with_same_name: Option<strongly_connected_components::Node> =
                         type_graph_node_by_name
                             .insert(&name_node.value, type_alias_declaration_graph_node);
-                    type_declaration_by_graph_node.insert(
+                    project_type_by_graph_node.insert(
                         type_alias_declaration_graph_node,
                         SyntaxProjectTypeInfo {
                             documentation: &documentation,
@@ -2304,8 +2286,7 @@ If you wanted to start a project declaration, try one of:
             },
         }
     }
-    for (&type_declaration_graph_node, &type_declaration_info) in
-        type_declaration_by_graph_node.iter()
+    for (&type_declaration_graph_node, &type_declaration_info) in project_type_by_graph_node.iter()
     {
         syntax_project_type_connect_type_names_in_graph_from(
             type_declaration_graph_node,
@@ -2332,16 +2313,33 @@ If you wanted to start a project declaration, try one of:
             );
         }
     }
-    SyntaxProjectInfo {
+    for project_type_strongly_connected_component in type_graph.find_sccs().iter_sccs() {
+        // TODO report and skip (mutually) recursive project types. Currently these are reported as "not found" at best
+        for project_type in project_type_strongly_connected_component
+            .iter_nodes()
+            .filter_map(|variable_declaration_graph_node| {
+                project_type_by_graph_node.get(&variable_declaration_graph_node)
+            })
+            .copied()
+        {
+            checked_type_aliases.insert(
+                project_type.name.value.clone(),
+                project_type_alias_check(errors, &checked_type_aliases, types, project_type),
+            );
+        }
+    }
+    // TODO check project fns
+    CheckedSyntaxProject {
         type_graph: type_graph,
-        project_type_by_graph_node: type_declaration_by_graph_node,
+        project_type_by_graph_node: project_type_by_graph_node,
         project_fn_graph: project_fn_graph,
         project_fn_by_graph_node: project_fn_by_graph_node,
         records_used: records_used,
         choices_used: choices_used,
+        checked_type_aliases: checked_type_aliases,
     }
 }
-pub struct SyntaxProjectInfo<'a, Expressions, Patterns, Types> {
+pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     pub type_graph: strongly_connected_components::Graph,
     pub project_type_by_graph_node: std::collections::HashMap<
         strongly_connected_components::Node,
@@ -2354,6 +2352,7 @@ pub struct SyntaxProjectInfo<'a, Expressions, Patterns, Types> {
     >,
     pub records_used: std::collections::HashSet<Vec<Name>>,
     pub choices_used: std::collections::HashSet<Vec<Name>>,
+    pub checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias>,
 }
 fn syntax_project_type_connect_type_names_in_graph_from<Types>(
     origin_project_type_graph_node: strongly_connected_components::Node,
@@ -3023,96 +3022,29 @@ impl<'a, Types> Clone for SyntaxProjectTypeInfo<'a, Types> {
 
 fn project_info_to_rust<Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
-    SyntaxProjectInfo {
+    CheckedSyntaxProject {
         type_graph,
         project_fn_graph,
-        project_type_by_graph_node,
+        project_type_by_graph_node: _,
         project_fn_by_graph_node,
         records_used,
         choices_used,
-    }: SyntaxProjectInfo<Expressions, Patterns, Types>,
+        checked_type_aliases,
+    }: CheckedSyntaxProject<Expressions, Patterns, Types>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
 ) -> CompiledProject {
     let mut rust_items: Vec<syn::Item> =
         Vec::with_capacity(type_graph.len() * 3 + project_fn_graph.len());
-    let mut compiled_type_aliases: std::collections::HashMap<Name, CompiledTypeAliasInfo> =
-        core_type_aliases.clone();
-    compiled_type_aliases.reserve(project_type_by_graph_node.len());
-    for project_type_strongly_connected_component in type_graph.find_sccs().iter_sccs() {
-        // TODO report and skip (mutually) recursive project types. Currently these are reported as "not found" at best
-        for project_type in project_type_strongly_connected_component
-            .iter_nodes()
-            .filter_map(|variable_declaration_graph_node| {
-                project_type_by_graph_node.get(&variable_declaration_graph_node)
-            })
-            .copied()
-        {
-            let maybe_compiled_type_alias: Option<CompiledTypeAlias> =
-                type_alias_declaration_to_rust(
-                    errors,
-                    &compiled_type_aliases,
-                    types,
-                    project_type.documentation.as_ref(),
-                    &project_type.name,
-                    project_type.parameters.as_ref(),
-                    project_type.type_.as_ref(),
-                );
-            let documentation = project_type.documentation.as_ref().map(|documentation| {
-                documentation
-                    .line1_up
-                    .iter()
-                    .fold(documentation.line0.value.to_string(), |so_far, line| {
-                        so_far + "\n" + &line.value
-                    })
-                    .into_boxed_str()
-            });
-            let parameters = project_type
-                .parameters
-                .iter()
-                .flat_map(|parameters| {
-                    std::iter::once(parameters.parameter0.value.clone()).chain(
-                        parameters
-                            .parameter1_up
-                            .iter()
-                            .filter_map(|parameter| parameter.name.as_ref())
-                            .map(|parameter_name| parameter_name.value.clone()),
-                    )
-                })
-                .collect();
-            match maybe_compiled_type_alias {
-                Some(compiled_type_alias) => {
-                    rust_items.push(compiled_type_alias.rust);
-                    compiled_type_aliases.insert(
-                        project_type.name.value.clone(),
-                        CompiledTypeAliasInfo {
-                            name_range: Some(name_range(with_start_position_as_ref(
-                                &project_type.name,
-                            ))),
-                            documentation: documentation,
-                            parameters: parameters,
-                            type_: Some(compiled_type_alias.type_),
-                            is_copy: compiled_type_alias.is_copy,
-                        },
-                    );
-                }
-                None => {
-                    compiled_type_aliases.insert(
-                        project_type.name.value.clone(),
-                        CompiledTypeAliasInfo {
-                            name_range: Some(name_range(with_start_position_as_ref(
-                                &project_type.name,
-                            ))),
-                            documentation: documentation,
-                            parameters: parameters,
-                            type_: None,
-                            // dummy values that should not be read in practice
-                            is_copy: false,
-                        },
-                    );
-                }
-            }
+    for (checked_type_alias_name, checked_type_alias) in &checked_type_aliases {
+        if let Some(checked_aliased_type) = &checked_type_alias.type_ {
+            rust_items.push(project_type_alias_to_rust(
+                checked_type_alias.documentation.as_deref(),
+                checked_type_alias_name,
+                &checked_type_alias.parameters,
+                checked_aliased_type,
+            ));
         }
     }
     let mut compiled_project_fns: std::collections::HashMap<Name, CompiledProjectFnInfo> =
@@ -3151,7 +3083,7 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                     None,
                     &mut Vec::new(),
                     &mut std::collections::HashMap::new(),
-                    &compiled_type_aliases,
+                    &checked_type_aliases,
                     patterns,
                     types,
                     &std::collections::HashMap::new(),
@@ -3174,7 +3106,7 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
                     let result_type: Option<Type> = syntax_type_to_type(
                         syntax_result_type,
                         &mut Vec::new(),
-                        &compiled_type_aliases,
+                        &checked_type_aliases,
                         types,
                         &std::collections::HashMap::new(),
                     );
@@ -3193,7 +3125,7 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
         for project_fn in project_fns_in_strongly_connected_component {
             let maybe_compiled_project_fn: Option<CompiledProjectFn> = syntax_project_fn_to_rust(
                 errors,
-                &compiled_type_aliases,
+                &checked_type_aliases,
                 &compiled_project_fns,
                 expressions,
                 patterns,
@@ -3253,7 +3185,7 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             attrs: vec![],
             items: rust_items,
         },
-        type_aliases: compiled_type_aliases,
+        type_aliases: checked_type_aliases,
         fns: compiled_project_fns,
         records: records_used,
         // fn_graph: project_fn_graph,
@@ -3360,84 +3292,142 @@ fn syntax_record_to_rust(used_choice_variants: &[Name]) -> syn::Item {
     rust_struct
 }
 
-struct CompiledTypeAlias {
-    rust: syn::Item,
-    is_copy: bool,
-    type_: Type,
-}
-fn type_alias_declaration_to_rust<Types>(
+fn project_type_alias_check<Types>(
     errors: &mut Vec<ErrorNode>,
-    type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    maybe_documentation: Option<&SyntaxComments>,
-    name: &WithStartPosition<Name>,
-    parameters: Option<&TyParameters>,
-    maybe_type: Option<&SyntaxType<Types>>,
-) -> Option<CompiledTypeAlias> {
-    let rust_name: String = name_to_uppercase_rust(&name.value);
-    let Some(aliased_syntax_type) = maybe_type else {
-        errors.push(ErrorNode {
-            range: name_range(with_start_position_as_ref(name)),
-            message: Box::from("missing type after the project ty name ty ..type-name.. here"),
-        });
-        return None;
-    };
-    let Some(aliased_type) = syntax_type_to_type(
-        aliased_syntax_type,
-        errors,
-        type_aliases,
-        types,
-        &std::collections::HashMap::new(),
-    ) else {
-        return None;
-    };
-    let type_rust: syn::Type = type_to_rust(&aliased_type);
-    let mut actually_used_type_variables: std::collections::HashSet<Name> =
-        std::collections::HashSet::with_capacity(
-            parameters
-                .map(|parameters| 1 + parameters.parameter1_up.len())
-                .unwrap_or(0),
-        );
-    type_variables_into(&mut actually_used_type_variables, &aliased_type);
-    let mut rust_parameters: syn::punctuated::Punctuated<syn::GenericParam, syn::token::Comma> =
-        syn::punctuated::Punctuated::new();
-    if let Err(()) = parameters_to_rust_into_error_if_different_to_actual_type_parameters(
-        errors,
-        &mut rust_parameters,
-        name_range(with_start_position_as_ref(name)),
-        parameters.iter().flat_map(|parameters| {
-            std::iter::once(&parameters.parameter0).chain(
-                parameters
-                    .parameter1_up
+    project_type: SyntaxProjectTypeInfo<Types>,
+) -> CheckedTypeAlias {
+    let documentation = project_type.documentation.as_ref().map(|documentation| {
+        documentation
+            .line1_up
+            .iter()
+            .fold(documentation.line0.value.to_string(), |so_far, line| {
+                so_far + "\n" + &line.value
+            })
+            .into_boxed_str()
+    });
+    match &project_type.type_ {
+        None => {
+            errors.push(ErrorNode {
+                range: name_range(with_start_position_as_ref(&project_type.name)),
+                message: Box::from("missing type after the project ty name ty ..type-name.. here"),
+            });
+            CheckedTypeAlias {
+                name_range: Some(name_range(with_start_position_as_ref(&project_type.name))),
+                documentation: documentation,
+                parameters: project_type
+                    .parameters
                     .iter()
-                    .filter_map(|parameter| parameter.name.as_ref()),
-            )
-        }),
-        actually_used_type_variables,
-    ) {
-        return None;
+                    .flat_map(|parameters| {
+                        std::iter::once(parameters.parameter0.value.clone()).chain(
+                            parameters
+                                .parameter1_up
+                                .iter()
+                                .filter_map(|parameter| parameter.name.as_ref())
+                                .map(|parameter_name| parameter_name.value.clone()),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+                type_: None,
+            }
+        }
+        Some(aliased_syntax_type) => {
+            match syntax_type_to_type(
+                aliased_syntax_type,
+                errors,
+                type_aliases,
+                types,
+                &std::collections::HashMap::new(),
+            ) {
+                None => CheckedTypeAlias {
+                    name_range: Some(name_range(with_start_position_as_ref(&project_type.name))),
+                    documentation: documentation,
+                    parameters: project_type
+                        .parameters
+                        .iter()
+                        .flat_map(|parameters| {
+                            std::iter::once(parameters.parameter0.value.clone()).chain(
+                                parameters
+                                    .parameter1_up
+                                    .iter()
+                                    .filter_map(|parameter| parameter.name.as_ref())
+                                    .map(|parameter_name| parameter_name.value.clone()),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    type_: None,
+                },
+                Some(aliased_type) => {
+                    let mut actually_used_type_variables: std::collections::HashSet<Name> =
+                        std::collections::HashSet::with_capacity(
+                            project_type
+                                .parameters
+                                .as_ref()
+                                .map(|parameters| 1 + parameters.parameter1_up.len())
+                                .unwrap_or(0),
+                        );
+                    type_variables_into(&mut actually_used_type_variables, &aliased_type);
+                    let parameters = parameters_check_if_different_to_actual_type_parameters(
+                        errors,
+                        name_range(with_start_position_as_ref(&project_type.name)),
+                        project_type.parameters.iter().flat_map(|parameters| {
+                            std::iter::once(&parameters.parameter0).chain(
+                                parameters
+                                    .parameter1_up
+                                    .iter()
+                                    .filter_map(|parameter| parameter.name.as_ref()),
+                            )
+                        }),
+                        actually_used_type_variables,
+                    );
+                    CheckedTypeAlias {
+                        name_range: Some(name_range(with_start_position_as_ref(
+                            &project_type.name,
+                        ))),
+                        documentation: documentation,
+                        parameters: parameters,
+                        type_: Some(aliased_type),
+                    }
+                }
+            }
+        }
     }
-    Some(CompiledTypeAlias {
-        rust: syn::Item::Type(syn::ItemType {
-            attrs: maybe_documentation
-                .map(|documentation| syn_attribute_doc(&syntax_comments_to_string(documentation)))
-                .into_iter()
-                .collect::<Vec<_>>(),
-            vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
-            type_token: syn::token::Type(syn_span()),
-            ident: syn_ident(&rust_name),
-            generics: syn::Generics {
-                lt_token: Some(syn::token::Lt(syn_span())),
-                params: rust_parameters,
-                gt_token: Some(syn::token::Gt(syn_span())),
-                where_clause: None,
-            },
-            eq_token: syn::token::Eq(syn_span()),
-            ty: Box::new(type_rust),
-            semi_token: syn::token::Semi(syn_span()),
-        }),
-        is_copy: type_is_copy(true, &aliased_type),
-        type_: aliased_type,
+}
+fn project_type_alias_to_rust(
+    maybe_documentation: Option<&str>,
+    name: &Name,
+    parameters: &[Name],
+    aliased_type: &Type,
+) -> syn::Item {
+    let rust_name = name_to_uppercase_rust(name);
+    let type_rust: syn::Type = type_to_rust(aliased_type);
+    let rust_parameters: syn::punctuated::Punctuated<syn::GenericParam, syn::token::Comma> =
+        parameters
+            .iter()
+            .map(|parameter| {
+                syn::GenericParam::Type(syn::TypeParam::from(syn_ident(&type_variable_to_rust(
+                    parameter,
+                ))))
+            })
+            .collect();
+    syn::Item::Type(syn::ItemType {
+        attrs: maybe_documentation
+            .map(|documentation| syn_attribute_doc(documentation))
+            .into_iter()
+            .collect::<Vec<_>>(),
+        vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
+        type_token: syn::token::Type(syn_span()),
+        ident: syn_ident(&rust_name),
+        generics: syn::Generics {
+            lt_token: Some(syn::token::Lt(syn_span())),
+            params: rust_parameters,
+            gt_token: Some(syn::token::Gt(syn_span())),
+            where_clause: None,
+        },
+        eq_token: syn::token::Eq(syn_span()),
+        ty: Box::new(type_rust),
+        semi_token: syn::token::Semi(syn_span()),
     })
 }
 
@@ -3448,7 +3438,7 @@ struct CompiledProjectFn {
 }
 fn syntax_project_fn_to_rust<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
-    type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -3615,7 +3605,7 @@ fn syntax_comments_to_string(comments: &SyntaxComments) -> String {
 pub fn syntax_type_to_type<Types>(
     type_: &SyntaxType<Types>,
     errors: &mut Vec<ErrorNode>,
-    type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
 ) -> Option<Type> {
@@ -3901,7 +3891,7 @@ pub fn syntax_type_to_type<Types>(
     }
 }
 fn type_construct_resolve_type_alias(
-    origin_type_alias: &CompiledTypeAliasInfo,
+    origin_type_alias: &CheckedTypeAlias,
     argument_types: &[Type],
 ) -> Option<Type> {
     let Some(type_alias_type) = &origin_type_alias.type_ else {
@@ -4064,28 +4054,24 @@ fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, typ
         }
     }
 }
-fn parameters_to_rust_into_error_if_different_to_actual_type_parameters<'a>(
+fn parameters_check_if_different_to_actual_type_parameters<'a>(
     errors: &mut Vec<ErrorNode>,
-    rust_parameters: &mut syn::punctuated::Punctuated<syn::GenericParam, syn::token::Comma>,
     parameter_name_range: lsp_types::Range,
     parameters: impl Iterator<Item = &'a WithStartPosition<Name>>,
     mut actually_used_type_variables: std::collections::HashSet<Name>,
-) -> Result<(), ()> {
-    let mut bad_parameters: bool = false;
+) -> Vec<Name> {
+    let mut actually_used_parameters = Vec::<Name>::with_capacity(parameters.size_hint().0);
     for parameter in parameters {
-        if !actually_used_type_variables.remove(parameter.value.as_str()) {
-            bad_parameters = true;
+        if actually_used_type_variables.remove(parameter.value.as_str()) {
+            actually_used_parameters.push(parameter.value.clone());
+        } else {
             errors.push(ErrorNode {
                 range: name_range(with_start_position_as_ref(parameter)),
                 message: Box::from("this type variable is not used. Remove it or use it"),
             });
         }
-        rust_parameters.push(syn::GenericParam::Type(syn::TypeParam::from(syn_ident(
-            &type_variable_to_rust(&parameter.value),
-        ))));
     }
     if !actually_used_type_variables.is_empty() {
-        bad_parameters = true;
         errors.push(ErrorNode {
             range: parameter_name_range,
             message: format!(
@@ -4104,7 +4090,7 @@ fn parameters_to_rust_into_error_if_different_to_actual_type_parameters<'a>(
             .into_boxed_str(),
         });
     }
-    if bad_parameters { Err(()) } else { Ok(()) }
+    actually_used_parameters
 }
 
 struct CompiledPattern {
@@ -4588,7 +4574,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
     expected_type: Option<&Type>,
     errors: &mut Vec<ErrorNode>,
     introduced_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
-    type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
@@ -5018,7 +5004,7 @@ pub struct OriginCompileInfo {
 }
 fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
-    type_aliases: &std::collections::HashMap<Name, CompiledTypeAliasInfo>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -8581,12 +8567,12 @@ use `vec-rid` instead of `vec-fold-with-origin-rid`.",
         ])
     });
 pub static core_type_aliases: std::sync::LazyLock<
-    std::collections::HashMap<Name, CompiledTypeAliasInfo>,
+    std::collections::HashMap<Name, CheckedTypeAlias>,
 > = std::sync::LazyLock::new(|| {
     std::collections::HashMap::from([
         (
             Name::const_new("p32"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A natural number >= 1 (positive integer) with 32 bits.
@@ -8598,12 +8584,11 @@ fn answer . :> p32 >
                 )),
                 parameters: vec![],
                 type_: Some(type_p32),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("u32"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A natural number >= 0 (unsigned integer) with 32 bits.
@@ -8615,12 +8600,11 @@ fn answer . :> u32 >
                 )),
                 parameters: vec![],
                 type_: Some(type_u32),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("i32"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A signed whole number (integer) with 32 bits.
@@ -8632,12 +8616,11 @@ fn answer . :> i32 >
                 )),
                 parameters: vec![],
                 type_: Some(type_i32),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("f32"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"A signed decimal number (floating-point) with 32 bit precision.
@@ -8650,12 +8633,11 @@ fn answer . :> f32 >
                 )),
                 parameters: vec![],
                 type_: Some(type_f32),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("char"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r#"A unicode scalar like `'a'` or `'👀'` or `'\u{2665}'` (hex code for ♥).
@@ -8670,12 +8652,11 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
                 )),
                 parameters: vec![],
                 type_: Some(type_char),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("str"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r#"Text valid for the entire program like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""` (`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
@@ -8685,24 +8666,22 @@ When building strings, use functions like `arena-add-str`.
                 )),
                 parameters: vec![],
                 type_: Some(type_str),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("opt"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"Either you have some value or you have nothing.",
                 )),
                 parameters: vec![Name::const_new("A")],
                 type_: Some(type_opt(type_variable("A"))),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("round-mode"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r#"The are many strategies for deciding which neighboring integer to round to.
@@ -8732,12 +8711,11 @@ Heavily inspired by [swift's FloatingPointRoundingRule](https://developer.apple.
                 )),
                 parameters: vec![],
                 type_: Some(type_round_mode()),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("origin"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "Each variable created with `origin some-origin expression` is of this type.
@@ -8749,12 +8727,11 @@ This type argument is also used in slot, span, arena, vec as the first type argu
                 )),
                 parameters: vec![Name::const_new("LocalOrigin")],
                 type_: Some(type_origin(type_variable("LocalOrigin"))),
-                is_copy: false,
             },
         ),
         (
             Name::const_new("origin-rid"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "If you get this value (for example from `vec-fold-with-origin-rid`),
@@ -8765,12 +8742,11 @@ see `slot-rid`, `span-rid`, `opt-span-rid`.
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_origin_rid(type_variable("Origin"))),
-                is_copy: true,
             },
         ),
         (
             Name::const_new("vec"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A grow- and shrinkable array of elements. Arrays have constant time access and update and constant time add.
@@ -8787,12 +8763,11 @@ fn use-a-vec & u32
                 )),
                 parameters: vec![Name::const_new("Origin"), Name::const_new("Element")],
                 type_: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
-                is_copy: false,
             },
         ),
         (
             Name::const_new("slot"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A valid index into a collection.
@@ -8801,12 +8776,11 @@ This works because each collection has a unique origin and only gives out one sl
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_slot(type_variable("Origin"))),
-                is_copy: false,
             },
         ),
         (
             Name::const_new("span"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A range of consecutive valid indexes into a collection with at least one known index.
@@ -8815,12 +8789,11 @@ This works because each collection has a unique origin and only gives out one sp
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_span(type_variable("Origin"))),
-                is_copy: false,
             },
         ),
         (
             Name::const_new("fn"),
-            CompiledTypeAliasInfo {
+            CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A pure transformation from In to Out.
@@ -8836,7 +8809,6 @@ fn three . :> . >
                 )),
                 parameters: vec![Name::const_new("In"), Name::const_new("Out")],
                 type_: Some(type_fn(type_variable("In"), type_variable("Out"))),
-                is_copy: false,
             },
         ),
     ])
