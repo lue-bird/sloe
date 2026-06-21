@@ -13,6 +13,7 @@ struct ProjectState<Expressions, Patterns, Types> {
     syntax: sloe::SyntaxProject<Expressions, Patterns, Types>,
     type_aliases: std::collections::HashMap<sloe::Name, sloe::CheckedTypeAlias>,
     fns: std::collections::HashMap<sloe::Name, sloe::CheckedProjectFn>,
+    queries: std::collections::HashMap<lsp_types::Position, sloe::CheckedQuery>,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut full_command = std::env::args().skip(1);
@@ -257,6 +258,16 @@ fn present_type_alias_markdown(
         None => description,
         Some(documentation) => {
             description + documentation_comment_to_markdown(documentation).as_str()
+        }
+    }
+}
+fn present_pattern_variable_markdown(type_: Option<&sloe::Type>) -> String {
+    match type_ {
+        None => "pattern variable".to_string(),
+        Some(type_) => {
+            let mut type_string = "pattern variable of type\n```sloe\n".to_string();
+            sloe::type_format(&mut type_string, 4, type_);
+            type_string + "\n```\n"
         }
     }
 }
@@ -881,6 +892,7 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
         type_aliases: compiled_project.type_aliases,
         fns: compiled_project.fns,
         syntax: parsed_project,
+        queries: compiled_project.queries,
     }
 }
 fn sloe_error_node_to_diagnostic(problem: &sloe::ErrorNode) -> lsp_types::Diagnostic {
@@ -911,6 +923,8 @@ fn respond_to_hover<Expressions, Patterns, Types>(
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
+        &project_state.type_aliases,
+        &project_state.queries,
         hover_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -994,20 +1008,17 @@ origin {}
         sloe::SyntaxSymbol::PatternVariable {
             name,
             use_start,
-            origin: _,
-        } => {
-            // possible improvement: infer type
-            Some(lsp_types::Hover {
-                contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
-                    kind: lsp_types::MarkupKind::Markdown,
-                    value: format!("pattern variable"),
-                }),
-                range: Some(sloe::name_range(sloe::WithStartPosition {
-                    start: use_start,
-                    value: name,
-                })),
-            })
-        }
+            origin,
+        } => Some(lsp_types::Hover {
+            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: present_pattern_variable_markdown(origin.type_.as_ref()),
+            }),
+            range: Some(sloe::name_range(sloe::WithStartPosition {
+                start: use_start,
+                value: name,
+            })),
+        }),
     }
 }
 
@@ -1025,6 +1036,8 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
+        &project_state.type_aliases,
+        &project_state.queries,
         goto_definition_arguments
             .text_document_position_params
             .position,
@@ -1110,6 +1123,8 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
+        &project_state.type_aliases,
+        &project_state.queries,
         prepare_rename_arguments.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -1167,6 +1182,8 @@ fn respond_to_rename<Expressions, Patterns, Types>(
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
+        &project_state.type_aliases,
+        &project_state.queries,
         rename_arguments.text_document_position.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -1217,6 +1234,8 @@ fn respond_to_references<Expressions, Patterns, Types>(
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
+        &project_state.type_aliases,
+        &project_state.queries,
         references_arguments.text_document_position.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -1990,6 +2009,8 @@ fn respond_to_completion<Expressions, Patterns, Types>(
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
+        &project_state.type_aliases,
+        &project_state.queries,
         completion_arguments.text_document_position.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -2179,15 +2200,13 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     }
                 })
                 .chain(pattern_variables.into_iter().map(
-                    |(pattern_variable, _pattern_variable_origin)| {
-                        // portential improvement: do not suggest variables and origins that have already been used earlier;
-                        // also types for both
-                        lsp_types::CompletionItem {
-                            label: pattern_variable.to_string(),
-                            kind: Some(lsp_types::CompletionItemKind::VARIABLE),
-                            detail: Some(format!("pattern variable")),
-                            ..lsp_types::CompletionItem::default()
-                        }
+                    |(pattern_variable, pattern_variable_origin)| lsp_types::CompletionItem {
+                        label: pattern_variable.to_string(),
+                        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+                        detail: Some(present_pattern_variable_markdown(
+                            pattern_variable_origin.type_.as_ref(),
+                        )),
+                        ..lsp_types::CompletionItem::default()
                     },
                 ))
                 .chain(origins.into_iter().map(|(origin_name, _origin_origin)| {

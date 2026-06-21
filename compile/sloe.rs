@@ -2057,6 +2057,7 @@ pub struct CompiledProject {
     pub type_aliases: std::collections::HashMap<Name, CheckedTypeAlias>,
     pub fns: std::collections::HashMap<Name, CheckedProjectFn>,
     pub records: std::collections::HashSet<Vec<Name>>,
+    pub queries: std::collections::HashMap<lsp_types::Position, CheckedQuery>,
 }
 #[derive(Clone, Debug)]
 pub struct CheckedTypeAlias {
@@ -3195,6 +3196,7 @@ fn checked_project_to_rust<Expressions, Patterns, Types>(
         type_aliases: checked_type_aliases,
         fns: checked_project_fns,
         records: records_used,
+        queries: checked_queries,
         // fn_graph: project_fn_graph,
         // fn_by_graph_node: project_fn_by_graph_node,
     }
@@ -3456,7 +3458,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
             types,
             &std::collections::HashMap::new(),
         )
-        .map(|compiled_parameter| compiled_parameter.type_)
+        .map(|checked_parameter| checked_parameter.type_)
     });
     let result_type: Option<Type> =
         project_fn
@@ -3589,20 +3591,20 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
     };
     let mut parameter_introduced_variables = std::collections::HashMap::new();
     if let Some(syntax_parameter) = &project_fn.parameter {
-        syntax_pattern_variables_fold(
+        syntax_pattern_untyped_variables_fold(
             syntax_parameter,
             (),
             &mut |(), name, type_| {
                 parameter_introduced_variables.insert(
                     name.value,
-                    PatternVariableCompileInfo {
+                    CheckedPatternVariable {
                         origin_start: name.start,
                         type_: type_.and_then(|type_| {
                             syntax_type_to_type(
                                 type_,
                                 type_aliases,
                                 types,
-                                &mut std::collections::HashMap::new(),
+                                &std::collections::HashMap::<&Name, CheckedOrigin>::new(),
                             )
                         }),
                     },
@@ -3775,11 +3777,11 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
     }))
 }
 // only use if you know `syntax_type` has already been called on it before
-pub fn syntax_type_to_type<Types>(
+pub fn syntax_type_to_type<Types, OriginInfo>(
     type_: &SyntaxType<Types>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
+    origins: &std::collections::HashMap<&Name, OriginInfo>,
 ) -> Option<Type> {
     match type_ {
         SyntaxType::Variable(name) => Some(Type::Variable(name.value.clone())),
@@ -3912,7 +3914,7 @@ pub fn syntax_type_check<Types>(
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
+    origins: &std::collections::HashMap<&Name, CheckedOrigin>,
 ) -> Option<Type> {
     match type_ {
         SyntaxType::Variable(name) => Some(Type::Variable(name.value.clone())),
@@ -4873,15 +4875,15 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     expected_type: Option<&Type>,
     errors: &mut Vec<ErrorNode>,
-    introduced_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
+    origins: &std::collections::HashMap<&Name, CheckedOrigin>,
 ) -> Option<CheckedPattern> {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
-            let maybe_compiled_variable = match type_.as_ref() {
+            let maybe_checked_variable = match type_.as_ref() {
                 None => match expected_type {
                     None => {
                         errors.push(ErrorNode {
@@ -4916,12 +4918,12 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     }
                 }
             };
-            if let Some(compiled_variable) = &maybe_compiled_variable {
+            if let Some(checked_variable) = &maybe_checked_variable {
                 let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
                     &name.value,
-                    PatternVariableCompileInfo {
+                    CheckedPatternVariable {
                         origin_start: name.start,
-                        type_: Some(compiled_variable.type_.clone()),
+                        type_: Some(checked_variable.type_.clone()),
                     },
                 );
                 if maybe_existing_variable_with_the_same_name.is_some() {
@@ -4940,7 +4942,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     return None;
                 }
             }
-            maybe_compiled_variable
+            maybe_checked_variable
         }
         SyntaxPattern::Variant { name, value } => {
             let Some(name_value) = &name.value else {
@@ -5135,7 +5137,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         | Type::Choice { .. } => None,
                         Type::Record(type_fields) => Some(type_fields),
                     });
-                let checked_field_value = syntax_pattern_check(
+                let Some(checked_field_value) = syntax_pattern_check(
                     field_value,
                     maybe_expected_type_record.and_then(|expected_record_type| {
                         // TODO report if this is none
@@ -5150,17 +5152,16 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     patterns,
                     types,
                     origins,
-                );
-                let Some(compiled_field_value) = checked_field_value else {
+                ) else {
                     return None;
                 };
                 if let Some(type_fields) = &mut maybe_type_fields {
                     type_fields.push(TypeField {
                         name: field_name_value.clone(),
-                        value: compiled_field_value.type_,
+                        value: checked_field_value.type_,
                     });
                 }
-                field_catches.insert(field_name_value.clone(), compiled_field_value.catch);
+                field_catches.insert(field_name_value.clone(), checked_field_value.catch);
             }
             let Some(type_fields) = maybe_type_fields else {
                 return None;
@@ -5211,11 +5212,11 @@ fn syntax_pattern_check<'a, Patterns, Types>(
 fn syntax_pattern_to_rust<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     expected_type: Option<&Type>,
-    introduced_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
+    origins: &std::collections::HashMap<&Name, CheckedOrigin>,
 ) -> Option<syn::Pat> {
     match pattern {
         SyntaxPattern::Variable {
@@ -5270,7 +5271,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
             };
             let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
                 &name.value,
-                PatternVariableCompileInfo {
+                CheckedPatternVariable {
                     origin_start: name.start,
                     type_: Some(variable_type),
                 },
@@ -5468,12 +5469,12 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
 }
 
 #[derive(Clone, Debug)]
-struct PatternVariableCompileInfo {
+struct CheckedPatternVariable {
     origin_start: lsp_types::Position,
     type_: Option<Type>,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct OriginCompileInfo {
+pub struct CheckedOrigin {
     origin_start: lsp_types::Position,
 }
 fn syntax_expression_check<'a, Expressions, Patterns, Types>(
@@ -5483,12 +5484,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    pattern_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
+    pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     used_pattern_variables: &mut std::collections::HashMap<
         &'a Name,
         /* start */ lsp_types::Position,
     >,
-    origins: &mut std::collections::HashMap<&'a Name, OriginCompileInfo>,
+    origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     used_origin_variables: &mut std::collections::HashMap<
         &'a Name,
         /* start */ lsp_types::Position,
@@ -6058,7 +6059,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             };
             let mut parameter_introduced_variables: std::collections::HashMap<
                 &Name,
-                PatternVariableCompileInfo,
+                CheckedPatternVariable,
             > = std::collections::HashMap::new();
             let Some(checked_parmeter) = syntax_pattern_check(
                 parameter,
@@ -6169,9 +6170,9 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             };
             let mut maybe_field_types: Option<Vec<TypeField>> = match checked_field0_value_type {
                 None => None,
-                Some(compiled_value_type) => Some(vec![TypeField {
+                Some(checked_field0_value_type) => Some(vec![TypeField {
                     name: field0_name.value.clone(),
-                    value: compiled_value_type,
+                    value: checked_field0_value_type,
                 }]),
             };
             'compiling_fields: for field in field1_up {
@@ -6213,10 +6214,10 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         None => {
                             maybe_field_types = None;
                         }
-                        Some(compiled_value_type) => {
+                        Some(checked_field_value_type) => {
                             field_types.push(TypeField {
                                 name: field_name.clone(),
-                                value: compiled_value_type,
+                                value: checked_field_value_type,
                             });
                         }
                     }
@@ -6345,9 +6346,9 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             };
             let mut case0_pattern_introduced_variables: std::collections::HashMap<
                 &Name,
-                PatternVariableCompileInfo,
+                CheckedPatternVariable,
             > = std::collections::HashMap::new();
-            let Some(case0_pattern_compiled) = syntax_pattern_check(
+            let Some(checked_case0_pattern) = syntax_pattern_check(
                 case0_pattern,
                 Some(&checked_queried_type),
                 errors,
@@ -6397,7 +6398,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 );
                 pattern_variables.remove(case0_pattern_introduced_variable);
             }
-            let mut catch = pattern_catch_to_case_patterns_catch(case0_pattern_compiled.catch);
+            let mut catch = pattern_catch_to_case_patterns_catch(checked_case0_pattern.catch);
             let mut invalid_case_indexes = Vec::new();
             'compiling_case1_up: for (case_index, case) in case1_up
                 .iter()
@@ -6413,9 +6414,9 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 };
                 let mut case_pattern_introduced_variables: std::collections::HashMap<
                     &Name,
-                    PatternVariableCompileInfo,
+                    CheckedPatternVariable,
                 > = std::collections::HashMap::new();
-                let Some(case_pattern_compiled) = syntax_pattern_check(
+                let Some(checked_case_pattern) = syntax_pattern_check(
                     case_pattern,
                     Some(&checked_queried_type),
                     errors,
@@ -6434,7 +6435,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         .map(|(binding, info)| (*binding, info.clone())),
                 );
                 if let Some(queried_pattern_type_diff) =
-                    type_diff(&checked_queried_type, &case_pattern_compiled.type_)
+                    type_diff(&checked_queried_type, &checked_case_pattern.type_)
                 {
                     errors.push(ErrorNode {
                         range: pattern_range(case_pattern, patterns, types),
@@ -6449,7 +6450,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     errors,
                     pattern_range(case_pattern, patterns, types),
                     &mut catch,
-                    case_pattern_compiled.catch,
+                    checked_case_pattern.catch,
                 );
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
@@ -6634,7 +6635,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 }
                 origins.insert(
                     &origin_name.value,
-                    OriginCompileInfo {
+                    CheckedOrigin {
                         origin_start: origin_name.start,
                     },
                 );
@@ -6719,12 +6720,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
-    pattern_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
+    pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     used_pattern_variables: &mut std::collections::HashMap<
         &'a Name,
         /* start */ lsp_types::Position,
     >,
-    origins: &mut std::collections::HashMap<&'a Name, OriginCompileInfo>,
+    origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     used_origin_variables: &mut std::collections::HashMap<
         &'a Name,
         /* start */ lsp_types::Position,
@@ -7071,7 +7072,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             };
             let mut parameter_introduced_variables: std::collections::HashMap<
                 &Name,
-                PatternVariableCompileInfo,
+                CheckedPatternVariable,
             > = std::collections::HashMap::new();
             let Some(compiled_parameter) = syntax_pattern_to_rust(
                 parameter,
@@ -7324,7 +7325,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             };
             let mut case0_pattern_introduced_variables: std::collections::HashMap<
                 &Name,
-                PatternVariableCompileInfo,
+                CheckedPatternVariable,
             > = std::collections::HashMap::new();
             let Some(case0_pattern_compiled) = syntax_pattern_to_rust(
                 case0_pattern,
@@ -7386,7 +7387,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 };
                 let mut case_pattern_introduced_variables: std::collections::HashMap<
                     &Name,
-                    PatternVariableCompileInfo,
+                    CheckedPatternVariable,
                 > = std::collections::HashMap::new();
                 let Some(case_pattern_compiled) = syntax_pattern_to_rust(
                     case_pattern,
@@ -7505,7 +7506,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 let _existing_origin_with_same_name = origins.remove(&origin_name.value);
                 origins.insert(
                     &origin_name.value,
-                    OriginCompileInfo {
+                    CheckedOrigin {
                         origin_start: origin_name.start,
                     },
                 );
@@ -8887,7 +8888,8 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
             (
                 CoreFnInfo {
                     name: "f32-div-clamp",
-                    documentation: (("Saturating n / by")),
+                    documentation: "Saturating n / by.
+Try not to divide by 0.0, as 0.0 will be returned which is not mathematically correct. This behaviour is consistent with gleam, pony, coq, lean.",
                     type_parameters: vec![],
                     parameter_type: (type_record([("n", type_f32), ("by", type_f32)])),
                     result_type: (type_f32),
@@ -11182,7 +11184,7 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
         name: WithStartPosition<&'a Name>,
         pattern_variables: std::collections::HashMap<
             &'a Name,
-            OriginStartAndScope<'a, Expressions, Patterns, Types>,
+            PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
         >,
         origins: std::collections::HashMap<
             &'a Name,
@@ -11192,8 +11194,13 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     PatternVariable {
         name: &'a Name,
         use_start: lsp_types::Position,
-        origin: OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        origin: PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     },
+}
+pub struct PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types> {
+    pub start: lsp_types::Position,
+    pub scope: Option<&'a SyntaxExpression<Expressions, Patterns, Types>>,
+    pub type_: Option<Type>,
 }
 pub struct OriginStartAndScope<'a, Expressions, Patterns, Types> {
     pub start: lsp_types::Position,
@@ -11215,6 +11222,8 @@ impl<'a, Expressions, Patterns, Types> Clone
 }
 pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
     project: &'a SyntaxProject<Expressions, Patterns, Types>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     position: lsp_types::Position,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -11285,6 +11294,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
             documentation: _,
             result,
         } => {
+            // TODO why are origins not propagated here?
             if let Some(name) = name
                 && range_includes_position(name_range(with_start_position_as_ref(name)), position)
             {
@@ -11303,7 +11313,9 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                     parameter.as_ref().and_then(|parameter| {
                         pattern_symbol_at_position(
                             parameter,
+                            None,
                             position,
+                            type_aliases,
                             patterns,
                             types,
                             element,
@@ -11327,31 +11339,40 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                     result.as_ref().and_then(|result| {
                         let mut pattern_variables = std::collections::HashMap::new();
                         if let Some(parameter) = parameter {
-                            syntax_pattern_variables_fold(
+                            syntax_pattern_untyped_variables_fold(
                                 parameter,
                                 (),
-                                &mut |(), name, _type_| {
+                                &mut |(), name, type_| {
                                     pattern_variables.insert(
                                         name.value,
-                                        OriginStartAndScope {
+                                        PatternVariableSymbolOrigin {
                                             start: name.start,
                                             scope: Some(result),
+                                            type_: type_.and_then(|type_| {
+                                                syntax_type_to_type(
+                                                    type_,
+                                                    type_aliases,
+                                                    types,
+                                                    &std::collections::HashMap::<&Name, ()>::new(),
+                                                )
+                                            }),
                                         },
                                     );
                                 },
                                 patterns,
                             )
                         }
-                        let mut origins = std::collections::HashMap::new();
                         expression_symbol_at_position(
                             result,
                             position,
+                            type_aliases,
+                            checked_queries,
                             expressions,
                             patterns,
                             types,
                             element,
                             &mut pattern_variables,
-                            &mut origins,
+                            &mut std::collections::HashMap::new(),
                         )
                     })
                 })
@@ -11363,13 +11384,15 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
 fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
     position: lsp_types::Position,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Vec<Types, SyntaxType<Types>>,
     scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
     pattern_variables: &mut std::collections::HashMap<
         &'a Name,
-        OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     >,
     origins: &mut std::collections::HashMap<
         &'a Name,
@@ -11388,7 +11411,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             .and_then(|value| type_symbol_at_position(value, position, types, scope, origins)),
         SyntaxExpression::Char { .. } => None,
         SyntaxExpression::Str { .. } => None,
-        SyntaxExpression::Variable(name) => Some(match pattern_variables.get(&name.value) {
+        SyntaxExpression::Variable(name) => Some(match pattern_variables.remove(&name.value) {
             None => SyntaxSymbol::ProjectFnOrUnknown {
                 name: with_start_position_as_ref(name),
                 pattern_variables: std::mem::take(pattern_variables),
@@ -11397,7 +11420,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             Some(pattern_variable) => SyntaxSymbol::PatternVariable {
                 name: &name.value,
                 use_start: name.start,
-                origin: *pattern_variable,
+                origin: pattern_variable,
             },
         }),
         SyntaxExpression::Call {
@@ -11415,7 +11438,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     position,
                 )
             {
-                return Some(match pattern_variables.get(&name.value) {
+                return Some(match pattern_variables.remove(&name.value) {
                     None => SyntaxSymbol::ProjectFnOrUnknown {
                         name: with_start_position_as_ref(name),
                         pattern_variables: std::mem::take(pattern_variables),
@@ -11424,7 +11447,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     Some(pattern_variable) => SyntaxSymbol::PatternVariable {
                         name: &name.value,
                         use_start: name.start,
-                        origin: *pattern_variable,
+                        origin: pattern_variable,
                     },
                 });
             }
@@ -11449,6 +11472,8 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         expression_symbol_at_position(
                             expressions.element(argument),
                             position,
+                            type_aliases,
+                            checked_queries,
                             expressions,
                             patterns,
                             types,
@@ -11477,6 +11502,8 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         expression_symbol_at_position(
                             expressions.element(value),
                             position,
+                            type_aliases,
+                            checked_queries,
                             expressions,
                             patterns,
                             types,
@@ -11499,21 +11526,37 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 .as_ref()
                 .and_then(|parameter| {
                     pattern_symbol_at_position(
-                        parameter, position, patterns, types, scope, result, origins,
+                        parameter,
+                        None,
+                        position,
+                        type_aliases,
+                        patterns,
+                        types,
+                        scope,
+                        result,
+                        origins,
                     )
                 })
                 .or_else(|| {
                     result.as_ref().and_then(|result| {
                         if let Some(parameter) = parameter {
-                            syntax_pattern_variables_fold(
+                            syntax_pattern_untyped_variables_fold(
                                 parameter,
                                 (),
-                                &mut |(), name, _type_| {
+                                &mut |(), name, type_| {
                                     pattern_variables.insert(
                                         name.value,
-                                        OriginStartAndScope {
+                                        PatternVariableSymbolOrigin {
                                             start: name.start,
                                             scope: Some(result),
+                                            type_: type_.and_then(|type_| {
+                                                syntax_type_to_type(
+                                                    type_,
+                                                    type_aliases,
+                                                    types,
+                                                    origins,
+                                                )
+                                            }),
                                         },
                                     );
                                 },
@@ -11523,6 +11566,8 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         expression_symbol_at_position(
                             result,
                             position,
+                            type_aliases,
+                            checked_queries,
                             expressions,
                             patterns,
                             types,
@@ -11544,10 +11589,12 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 .as_ref()
                 .map(|field0_value| expressions.element(field0_value)),
             field1_up,
-            |value| {
+            |_, value| {
                 expression_symbol_at_position(
                     value,
                     position,
+                    type_aliases,
+                    checked_queries,
                     expressions,
                     patterns,
                     types,
@@ -11565,6 +11612,8 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             expression_symbol_at_position(
                 expressions.element(inner),
                 position,
+                type_aliases,
+                checked_queries,
                 expressions,
                 patterns,
                 types,
@@ -11580,6 +11629,8 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             expression_symbol_at_position(
                 expressions.element(expression),
                 position,
+                type_aliases,
+                checked_queries,
                 expressions,
                 patterns,
                 types,
@@ -11589,7 +11640,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             )
         }),
         SyntaxExpression::Query {
-            question_mark_start: _,
+            question_mark_start,
             queried,
             cases,
         } => queried
@@ -11598,6 +11649,8 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 expression_symbol_at_position(
                     expressions.element(queried),
                     position,
+                    type_aliases,
+                    checked_queries,
                     expressions,
                     patterns,
                     types,
@@ -11608,9 +11661,13 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             })
             .or_else(|| {
                 cases.iter().find_map(|case| {
+                    let checked_query = checked_queries.get(question_mark_start);
                     expression_query_case_symbol_at_position(
                         case,
+                        checked_query.map(|checked_query| &checked_query.queried_type),
                         position,
+                        type_aliases,
+                        checked_queries,
                         expressions,
                         patterns,
                         types,
@@ -11631,7 +11688,6 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     start: name.start,
                     scope: result,
                 };
-                origins.insert(&name.value, origin_info);
                 if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
                     return Some(SyntaxSymbol::Origin {
                         name: &name.value,
@@ -11639,11 +11695,14 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         origin: origin_info,
                     });
                 }
+                origins.insert(&name.value, origin_info);
             }
             result.as_ref().and_then(|result| {
                 expression_symbol_at_position(
                     result,
                     position,
+                    type_aliases,
+                    checked_queries,
                     expressions,
                     patterns,
                     types,
@@ -11657,14 +11716,17 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
 }
 fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
     case: &'a SyntaxExpressionQueryCase<Expressions, Patterns, Types>,
+    expected_pattern_type: Option<&Type>,
     position: lsp_types::Position,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Vec<Types, SyntaxType<Types>>,
     scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
     pattern_variables: &mut std::collections::HashMap<
         &'a Name,
-        OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     >,
     origins: &mut std::collections::HashMap<
         &'a Name,
@@ -11676,7 +11738,9 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
         .and_then(|pattern| {
             pattern_symbol_at_position(
                 pattern,
+                expected_pattern_type,
                 position,
+                type_aliases,
                 patterns,
                 types,
                 scope,
@@ -11696,15 +11760,17 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
                 return None;
             }
             if let Some(pattern) = &case.pattern {
-                syntax_pattern_variables_fold(
+                syntax_pattern_typed_variables_fold(
                     pattern,
+                    expected_pattern_type,
                     (),
-                    &mut |(), name, _type_| {
+                    &mut |(), name, type_| {
                         pattern_variables.insert(
                             name.value,
-                            OriginStartAndScope {
+                            PatternVariableSymbolOrigin {
                                 start: name.start,
                                 scope: Some(result),
+                                type_: type_.cloned(),
                             },
                         );
                     },
@@ -11714,6 +11780,8 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
             expression_symbol_at_position(
                 result,
                 position,
+                type_aliases,
+                checked_queries,
                 expressions,
                 patterns,
                 types,
@@ -11723,7 +11791,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
             )
         })
 }
-fn syntax_pattern_variables_fold<'a, Patterns, Types, State>(
+fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     state: State,
     reduce: &mut impl FnMut(State, WithStartPosition<&'a Name>, Option<&'a SyntaxType<Types>>) -> State,
@@ -11735,9 +11803,12 @@ fn syntax_pattern_variables_fold<'a, Patterns, Types, State>(
         }
         SyntaxPattern::Variant { name: _, value } => match value {
             None => state,
-            Some(value) => {
-                syntax_pattern_variables_fold(patterns.element(value), state, reduce, patterns)
-            }
+            Some(value) => syntax_pattern_untyped_variables_fold(
+                patterns.element(value),
+                state,
+                reduce,
+                patterns,
+            ),
         },
         SyntaxPattern::RecordEmpty { dot_start: _ } => state,
         SyntaxPattern::Record {
@@ -11749,7 +11820,7 @@ fn syntax_pattern_variables_fold<'a, Patterns, Types, State>(
             .map(|field0_value| patterns.element(field0_value))
             .chain(field1_up.iter().filter_map(|field| field.value.as_ref()))
             .fold(state, |state, field_value| {
-                syntax_pattern_variables_fold(field_value, state, reduce, patterns)
+                syntax_pattern_untyped_variables_fold(field_value, state, reduce, patterns)
             }),
         SyntaxPattern::Parenthesized {
             open_paren_start: _,
@@ -11757,15 +11828,102 @@ fn syntax_pattern_variables_fold<'a, Patterns, Types, State>(
             closed_paren_start: _,
         } => match inner {
             None => state,
-            Some(inner) => {
-                syntax_pattern_variables_fold(patterns.element(inner), state, reduce, patterns)
-            }
+            Some(inner) => syntax_pattern_untyped_variables_fold(
+                patterns.element(inner),
+                state,
+                reduce,
+                patterns,
+            ),
+        },
+    }
+}
+fn syntax_pattern_typed_variables_fold<'a, 'expected_type, Patterns, Types, State>(
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    expected_type: Option<&'expected_type Type>,
+    state: State,
+    reduce: &mut impl FnMut(State, WithStartPosition<&'a Name>, Option<&'expected_type Type>) -> State,
+    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+) -> State {
+    match pattern {
+        SyntaxPattern::Variable { name, type_: _ } => {
+            reduce(state, with_start_position_as_ref(name), expected_type)
+        }
+        SyntaxPattern::Variant { name, value } => match value {
+            None => state,
+            Some(value) => syntax_pattern_typed_variables_fold(
+                patterns.element(value),
+                expected_type
+                    .and_then(|expected_type| match expected_type {
+                        Type::Choice(expected_variants) => {
+                            expected_variants.iter().find(|expected_variant| {
+                                name.value
+                                    .as_ref()
+                                    .is_some_and(|name_value| name_value == expected_variant.name)
+                            })
+                        }
+                        _ => None,
+                    })
+                    .map(|variant| &variant.value),
+                state,
+                reduce,
+                patterns,
+            ),
+        },
+        SyntaxPattern::RecordEmpty { dot_start: _ } => state,
+        SyntaxPattern::Record {
+            field0_name,
+            field0_value,
+            field1_up,
+        } => field0_value
+            .iter()
+            .map(|field0_value| (Some(&field0_name.value), patterns.element(field0_value)))
+            .chain(field1_up.iter().filter_map(|field| {
+                field
+                    .value
+                    .as_ref()
+                    .map(|value| (field.name.value.as_ref(), value))
+            }))
+            .fold(state, |state, (field_name, field_value)| {
+                syntax_pattern_typed_variables_fold(
+                    field_value,
+                    expected_type
+                        .and_then(|expected_type| match expected_type {
+                            Type::Record(expected_fields) => {
+                                expected_fields.iter().find(|expected_field| {
+                                    field_name.is_some_and(|field_name_value| {
+                                        field_name_value == expected_field.name
+                                    })
+                                })
+                            }
+                            _ => None,
+                        })
+                        .map(|variant| &variant.value),
+                    state,
+                    reduce,
+                    patterns,
+                )
+            }),
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => state,
+            Some(inner) => syntax_pattern_typed_variables_fold(
+                patterns.element(inner),
+                expected_type,
+                state,
+                reduce,
+                patterns,
+            ),
         },
     }
 }
 fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
+    expected_type: Option<&Type>,
     position: lsp_types::Position,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Vec<Types, SyntaxType<Types>>,
     project_element_scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
@@ -11784,9 +11942,14 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                 return Some(SyntaxSymbol::PatternVariable {
                     name: &name.value,
                     use_start: name.start,
-                    origin: OriginStartAndScope {
+                    origin: PatternVariableSymbolOrigin {
                         start: name.start,
                         scope: expression_scope,
+                        type_: expected_type.cloned().or_else(|| {
+                            type_.as_ref().and_then(|type_| {
+                                syntax_type_to_type(type_, type_aliases, types, origins)
+                            })
+                        }),
                     },
                 });
             }
@@ -11806,7 +11969,20 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             value.as_ref().and_then(|value| {
                 pattern_symbol_at_position(
                     patterns.element(value),
+                    expected_type
+                        .and_then(|expected_type| match expected_type {
+                            Type::Choice(expected_variants) => {
+                                expected_variants.iter().find(|expected_variant| {
+                                    name.value.as_ref().is_some_and(|name_value| {
+                                        name_value == expected_variant.name
+                                    })
+                                })
+                            }
+                            _ => None,
+                        })
+                        .map(|variant| &variant.value),
                     position,
+                    type_aliases,
                     patterns,
                     types,
                     project_element_scope,
@@ -11824,10 +12000,23 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             with_start_position_as_ref(field0_name),
             field0_value.as_ref().map(|value| patterns.element(value)),
             field1_up,
-            |value| {
+            |field_name, value| {
                 pattern_symbol_at_position(
                     value,
+                    expected_type
+                        .and_then(|expected_type| match expected_type {
+                            Type::Record(expected_fields) => {
+                                expected_fields.iter().find(|expected_field| {
+                                    field_name.is_some_and(|field_name_value| {
+                                        field_name_value == expected_field.name
+                                    })
+                                })
+                            }
+                            _ => None,
+                        })
+                        .map(|variant| &variant.value),
                     position,
+                    type_aliases,
                     patterns,
                     types,
                     project_element_scope,
@@ -11843,7 +12032,9 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
         } => inner.as_ref().and_then(|inner| {
             pattern_symbol_at_position(
                 patterns.element(inner),
+                expected_type,
                 position,
+                type_aliases,
                 patterns,
                 types,
                 project_element_scope,
@@ -11937,7 +12128,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             with_start_position_as_ref(field0_name),
             field0_value.as_ref().map(|value| types.element(value)),
             field1_up,
-            |value| type_symbol_at_position(value, position, types, scope, origins),
+            |_, value| type_symbol_at_position(value, position, types, scope, origins),
         ),
         SyntaxType::ChoiceEmpty { bar_start: _ } => None,
         SyntaxType::Choice {
@@ -11982,18 +12173,25 @@ fn angled_type_parameters_symbol_at_position<'a, Expressions, Patterns, Types>(
         })
 }
 fn fields_find_symbol_at_position<'a, Value, Expressions, Patterns, Types>(
-    _field0_name: WithStartPosition<&Name>,
+    field0_name: WithStartPosition<&Name>,
     field0_value: Option<&'a Value>,
     field1_up: &'a [SyntaxTrailingField<Value>],
     mut value_symbol_at_position: impl FnMut(
+        Option<&Name>,
         &'a Value,
     )
         -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>>,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     field0_value
         .into_iter()
-        .chain(field1_up.iter().filter_map(|field| field.value.as_ref()))
-        .find_map(|field_value| value_symbol_at_position(field_value))
+        .map(|value| (Some(field0_name.value), value))
+        .chain(field1_up.iter().filter_map(|field| {
+            field
+                .value
+                .as_ref()
+                .map(|value| (field.name.value.as_ref(), value))
+        }))
+        .find_map(|(field_name, field_value)| value_symbol_at_position(field_name, field_value))
 }
 
 pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
@@ -12339,7 +12537,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                             let mut parameter_introduced_variables =
                                 std::collections::HashSet::new();
                             if let Some(parameter) = parameter {
-                                syntax_pattern_variables_fold(
+                                syntax_pattern_untyped_variables_fold(
                                     parameter,
                                     (),
                                     &mut |(), parameter_introduced_variable_name, _type_| {
@@ -12692,7 +12890,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     syntax_pattern_symbol_uses_into(
                         uses, parameter, symbol, patterns, types, origins,
                     );
-                    syntax_pattern_variables_fold(
+                    syntax_pattern_untyped_variables_fold(
                         parameter,
                         (),
                         &mut |(), pattern_variable_name, _type_| {
@@ -12807,7 +13005,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         syntax_pattern_symbol_uses_into(
                             uses, pattern, symbol, patterns, types, origins,
                         );
-                        syntax_pattern_variables_fold(
+                        syntax_pattern_untyped_variables_fold(
                             pattern,
                             (),
                             &mut |(), pattern_variable_name, _type_| {
