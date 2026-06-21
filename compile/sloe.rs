@@ -3340,7 +3340,7 @@ fn project_type_alias_check<Types>(
             }
         }
         Some(aliased_syntax_type) => {
-            match syntax_type_to_type(
+            match syntax_type_check(
                 aliased_syntax_type,
                 errors,
                 type_aliases,
@@ -3463,7 +3463,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
             .result_type
             .as_ref()
             .and_then(|syntax_result_type| {
-                syntax_type_to_type(
+                syntax_type_check(
                     syntax_result_type,
                     errors,
                     type_aliases,
@@ -3600,7 +3600,6 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
                         type_: type_.and_then(|type_| {
                             syntax_type_to_type(
                                 type_,
-                                &mut Vec::new(),
                                 type_aliases,
                                 types,
                                 &mut std::collections::HashMap::new(),
@@ -3775,8 +3774,140 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
         block: Box::new(syn_spread_expr_block(compiled_result)),
     }))
 }
-// TODO split into check and to_type versions
+// TODO only if you know `syntax_type` has already been called on it before
 pub fn syntax_type_to_type<Types>(
+    type_: &SyntaxType<Types>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
+) -> Option<Type> {
+    match type_ {
+        SyntaxType::Variable(name) => Some(Type::Variable(name.value.clone())),
+        SyntaxType::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => None,
+            Some(inner) => syntax_type_to_type(types.element(inner), type_aliases, types, origins),
+        },
+        SyntaxType::ConstructWithoutArguments(name) => {
+            if origins.contains_key(&name.value) {
+                Some(Type::Origin(name.value.clone()))
+            } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
+                origin_type_alias.type_.clone()
+            } else {
+                None
+            }
+        }
+        SyntaxType::ConstructWithArguments {
+            underscore_start: _,
+            name,
+            argument0,
+            argument1_up,
+        } => {
+            let Some(name) = name else {
+                return None;
+            };
+            if origins.contains_key(&name.value) {
+                Some(Type::Origin(name.value.clone()))
+            } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
+                let argument_types = argument0
+                    .iter()
+                    .map(|argument0| types.element(argument0))
+                    .chain(
+                        argument1_up
+                            .iter()
+                            .filter_map(|argument| argument.type_.as_ref()),
+                    )
+                    .map(|argument_type| {
+                        syntax_type_to_type(argument_type, type_aliases, types, origins)
+                    })
+                    .collect::<Option<Vec<Type>>>()?;
+                type_construct_resolve_type_alias(origin_type_alias, &argument_types)
+            } else {
+                None
+            }
+        }
+        SyntaxType::RecordEmpty { dot_start: _ } => Some(Type::Record(vec![])),
+        SyntaxType::Record {
+            field0_name,
+            field0_value,
+            field1_up,
+        } => {
+            let Some(field0_value) = field0_value else {
+                return None;
+            };
+            let mut field_types: Vec<TypeField> = Vec::with_capacity(1 + field1_up.len());
+            match syntax_type_to_type(types.element(field0_value), type_aliases, types, origins) {
+                None => {}
+                Some(field0_value_type) => {
+                    field_types.push(TypeField {
+                        name: field0_name.value.clone(),
+                        value: field0_value_type,
+                    });
+                }
+            }
+            for field in field1_up {
+                let Some(field_name) = &field.name.value else {
+                    return None;
+                };
+                let Some(field_value) = &field.value else {
+                    return None;
+                };
+                match syntax_type_to_type(field_value, type_aliases, types, origins) {
+                    None => {}
+                    Some(field_value_type) => {
+                        field_types.push(TypeField {
+                            name: field_name.clone(),
+                            value: field_value_type,
+                        });
+                    }
+                }
+            }
+            Some(Type::Record(field_types))
+        }
+        SyntaxType::ChoiceEmpty { bar_start: _ } => Some(Type::Choice(vec![])),
+        SyntaxType::Choice {
+            variant0_name,
+            variant0_value,
+            variant1_up,
+        } => {
+            let Some(variant0_value) = variant0_value else {
+                return None;
+            };
+            let mut variant_types: Vec<TypeVariant> = Vec::with_capacity(1 + variant1_up.len());
+            match syntax_type_to_type(types.element(variant0_value), type_aliases, types, origins) {
+                None => {}
+                Some(variant_value_type) => {
+                    variant_types.push(TypeVariant {
+                        name: variant0_name.value.clone(),
+                        value: variant_value_type,
+                    });
+                }
+            }
+            for syntax_variant in variant1_up {
+                let Some(variant_name) = &syntax_variant.name.value else {
+                    return None;
+                };
+                let Some(syntax_variant_value) = &syntax_variant.value else {
+                    return None;
+                };
+                match syntax_type_to_type(syntax_variant_value, type_aliases, types, origins) {
+                    None => {}
+                    Some(variant_value_type) => {
+                        variant_types.push(TypeVariant {
+                            name: variant_name.clone(),
+                            value: variant_value_type,
+                        });
+                    }
+                }
+            }
+            Some(Type::Choice(variant_types))
+        }
+    }
+}
+pub fn syntax_type_check<Types>(
     type_: &SyntaxType<Types>,
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
@@ -3803,7 +3934,7 @@ pub fn syntax_type_to_type<Types>(
                 None
             }
             Some(inner) => {
-                syntax_type_to_type(types.element(inner), errors, type_aliases, types, origins)
+                syntax_type_check(types.element(inner), errors, type_aliases, types, origins)
             }
         },
         SyntaxType::ConstructWithoutArguments(name) => {
@@ -3859,7 +3990,7 @@ pub fn syntax_type_to_type<Types>(
                             .filter_map(|argument| argument.type_.as_ref()),
                     )
                     .map(|argument_type| {
-                        syntax_type_to_type(argument_type, errors, type_aliases, types, origins)
+                        syntax_type_check(argument_type, errors, type_aliases, types, origins)
                     })
                     .collect::<Option<Vec<Type>>>()?;
                 let argument_count = 1 + argument1_up.len();
@@ -3913,7 +4044,7 @@ pub fn syntax_type_to_type<Types>(
             };
             let mut field_types: Vec<TypeField> = Vec::with_capacity(1 + field1_up.len());
             let mut any_field_value_has_error: bool = false;
-            match syntax_type_to_type(
+            match syntax_type_check(
                 types.element(field0_value),
                 errors,
                 type_aliases,
@@ -3959,7 +4090,7 @@ pub fn syntax_type_to_type<Types>(
                     });
                     return None;
                 };
-                match syntax_type_to_type(field_value, errors, type_aliases, types, origins) {
+                match syntax_type_check(field_value, errors, type_aliases, types, origins) {
                     None => {
                         any_field_value_has_error = true;
                     }
@@ -3993,7 +4124,7 @@ pub fn syntax_type_to_type<Types>(
             };
             let mut variant_types: Vec<TypeVariant> = Vec::with_capacity(1 + variant1_up.len());
             let mut any_variant_value_has_error: bool = false;
-            match syntax_type_to_type(
+            match syntax_type_check(
                 types.element(variant0_value),
                 errors,
                 type_aliases,
@@ -4039,13 +4170,8 @@ pub fn syntax_type_to_type<Types>(
                     });
                     return None;
                 };
-                match syntax_type_to_type(
-                    syntax_variant_value,
-                    errors,
-                    type_aliases,
-                    types,
-                    origins,
-                ) {
+                match syntax_type_check(syntax_variant_value, errors, type_aliases, types, origins)
+                {
                     None => {
                         any_variant_value_has_error = true;
                     }
@@ -4771,7 +4897,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                 },
                 Some(actual_type) => {
                     let Some(actual_type) =
-                        syntax_type_to_type(actual_type, errors, type_aliases, types, origins)
+                        syntax_type_to_type(actual_type, type_aliases, types, origins)
                     else {
                         return None;
                     };
@@ -5111,13 +5237,9 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     ),
                 },
                 Some(syntax_type) => {
-                    let Some(type_) = syntax_type_to_type(
-                        syntax_type,
-                        &mut Vec::new(),
-                        type_aliases,
-                        types,
-                        origins,
-                    ) else {
+                    let Some(type_) =
+                        syntax_type_to_type(syntax_type, type_aliases, types, origins)
+                    else {
                         return None;
                     };
                     (
@@ -5389,7 +5511,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             }
             Some(syntax_type) => {
                 let Some(type_) =
-                    syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
+                    syntax_type_check(syntax_type, errors, type_aliases, types, origins)
                 else {
                     return None;
                 };
@@ -5740,7 +5862,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 }
                 let mut type_arguments = Vec::new();
                 for syntax_type_argument in syntax_type_arguments.into_iter().flatten() {
-                    let Some(type_argument) = syntax_type_to_type(
+                    let Some(type_argument) = syntax_type_check(
                         syntax_type_argument,
                         errors,
                         type_aliases,
@@ -5848,16 +5970,16 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            let Some(compiled_type) =
-                syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
+            let Some(checked_type) =
+                syntax_type_check(syntax_type, errors, type_aliases, types, origins)
             else {
                 return None;
             };
-            let Type::Choice(origin_choice_type) = &compiled_type else {
+            let Type::Choice(origin_choice_type) = &checked_type else {
                 let mut error_message: String = String::from(
                     "this variant type should be a choice (for example |a u32 |b str) but it's\n",
                 );
-                type_format(&mut error_message, 0, &compiled_type);
+                type_format(&mut error_message, 0, &checked_type);
                 errors.push(ErrorNode {
                     range: optional_variant_name_range(name),
                     message: error_message.into_boxed_str(),
@@ -5875,7 +5997,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     "the actual variant name {} is not included in this type\n",
                     name_value
                 );
-                type_format(&mut error_message, 0, &compiled_type);
+                type_format(&mut error_message, 0, &checked_type);
                 errors.push(ErrorNode {
                     range: type_range(syntax_type, types),
                     message: error_message.into_boxed_str(),
@@ -5919,7 +6041,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             }
-            Some(compiled_type)
+            Some(checked_type)
         }
         SyntaxExpression::Fn {
             fn_keyword_start,
@@ -6613,8 +6735,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Number { value, type_ } => match type_ {
             None => syn_expr_todo(),
             Some(syntax_type) => {
-                let Some(type_) =
-                    syntax_type_to_type(syntax_type, &mut Vec::new(), type_aliases, types, origins)
+                let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins)
                 else {
                     return syn_expr_todo();
                 };
@@ -6827,13 +6948,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
                 let mut type_arguments = Vec::new();
                 for syntax_type_argument in syntax_type_arguments.into_iter().flatten() {
-                    let Some(type_argument) = syntax_type_to_type(
-                        syntax_type_argument,
-                        &mut Vec::new(),
-                        type_aliases,
-                        types,
-                        origins,
-                    ) else {
+                    let Some(type_argument) =
+                        syntax_type_to_type(syntax_type_argument, type_aliases, types, origins)
+                    else {
                         return syn_expr_todo();
                     };
                     type_arguments.push(type_argument);
@@ -6896,7 +7013,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 return syn_expr_todo();
             };
             let Some(compiled_type) =
-                syntax_type_to_type(syntax_type, &mut Vec::new(), type_aliases, types, origins)
+                syntax_type_to_type(syntax_type, type_aliases, types, origins)
             else {
                 return syn_expr_todo();
             };

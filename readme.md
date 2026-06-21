@@ -434,6 +434,8 @@ cargo install --offline --debug --path . sloe
 
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
 
+- provide type info for variables from language server
+
 - rethink the "FFI" story.
   The current idea of `state -> batch vec interface containing fns returning the updated state` simply does not work as dyn closures are not a thing in sloe.
   
