@@ -12,7 +12,7 @@ struct ProjectState<Expressions, Patterns, Types> {
     source: String,
     syntax: sloe::SyntaxProject<Expressions, Patterns, Types>,
     type_aliases: std::collections::HashMap<sloe::Name, sloe::CheckedTypeAlias>,
-    fns: std::collections::HashMap<sloe::Name, sloe::CompiledProjectFnInfo>,
+    fns: std::collections::HashMap<sloe::Name, sloe::CheckedProjectFn>,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut full_command = std::env::args().skip(1);
@@ -211,7 +211,7 @@ fn markdown_convert_indented_code_blocks_to_sloe(builder: &mut String, markdown_
 }
 fn present_project_fn_with_complete_type_markdown(
     name: &sloe::Name,
-    fn_info: &sloe::CompiledProjectFnInfo,
+    fn_info: &sloe::CheckedProjectFn,
 ) -> String {
     let mut type_parameters_string = String::new();
     angled_type_parameters_format(&mut type_parameters_string, &fn_info.type_parameters);

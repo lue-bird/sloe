@@ -1,7 +1,7 @@
 
 fn greet
     .name name str .result-origin result-origin _origin Origin
-    :> .vec _vec Origin, char .span _span Origin >
+    :> .vec _vec Origin, char .span _opt _span Origin >
     ? _vec-empty<char> result-origin = vec >
     ? |absent<_opt _span Origin> . = span >
     ? _vec-opt-span-add-str .vec vec .span span .new "Hello, " = .vec vec .span span >

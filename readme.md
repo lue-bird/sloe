@@ -418,8 +418,13 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- Go through types and fns, converting syntax types to checked types.
-  Then check and compile steps can rely on all the juicy information
+- verify that the current check, then translate check doesn't produce invalid code.
+  For that: always more clearly fail when inner types mismatch.
+  That applies to divergent multi-case query and function call (maybe others?)
+
+- change `:>` to `<` to be in line with type argument syntax.
+  I feel like this is stretching the semantic meaning of `<` and `>` a bit but
+  I prefer it over the current yntax because `<` is more fun :)
 
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.
   This should make things like `.field-names span Field-names .field-values span Values`

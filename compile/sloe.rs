@@ -2055,7 +2055,7 @@ fn parse_expression_query_case<Expressions, Patterns, Types>(
 pub struct CompiledProject {
     pub rust: syn::File,
     pub type_aliases: std::collections::HashMap<Name, CheckedTypeAlias>,
-    pub fns: std::collections::HashMap<Name, CompiledProjectFnInfo>,
+    pub fns: std::collections::HashMap<Name, CheckedProjectFn>,
     pub records: std::collections::HashSet<Vec<Name>>,
 }
 #[derive(Clone, Debug)]
@@ -2084,12 +2084,12 @@ pub struct TypeVariant {
     pub value: Type,
 }
 #[derive(Clone, Debug)]
-pub struct CompiledProjectFnInfo {
+pub struct CheckedProjectFn {
     pub documentation: Option<Box<str>>,
     pub type_parameters: Vec<Name>,
-    // TODO no Option
     pub parameter_type: Option<Type>,
     pub result_type: Option<Type>,
+    pub result_expression_is_invalid: bool,
 }
 
 pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
@@ -2100,9 +2100,8 @@ pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
 ) -> CompiledProject {
     let project_info = syntax_project_check(errors, syntax_project, expressions, patterns, types);
-    project_info_to_rust(errors, project_info, expressions, patterns, types)
+    checked_project_to_rust(project_info, expressions, patterns, types)
 }
-// TODO actually do checking
 pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     syntax_project: &'a SyntaxProject<Expressions, Patterns, Types>,
@@ -2123,8 +2122,8 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
 
     let mut project_fn_graph: strongly_connected_components::Graph =
         strongly_connected_components::Graph::new();
-    let mut variable_graph_node_by_name: std::collections::HashMap<
-        &str,
+    let mut project_fn_graph_node_by_name: std::collections::HashMap<
+        &Name,
         strongly_connected_components::Node,
     > = std::collections::HashMap::with_capacity(syntax_project.elements.len());
     let mut project_fn_by_graph_node: std::collections::HashMap<
@@ -2136,10 +2135,6 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
         std::collections::HashSet::with_capacity(16);
     let mut choices_used: std::collections::HashSet<Vec<Name>> =
         std::collections::HashSet::with_capacity(4);
-
-    let mut checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias> =
-        core_type_aliases.clone();
-    checked_type_aliases.reserve(project_type_by_graph_node.len());
 
     for project_element in &syntax_project.elements {
         match project_element {
@@ -2237,7 +2232,7 @@ If you wanted to start a project declaration, try one of:
                         project_fn_graph.new_node();
                     let existing_variable_with_same_name: Option<
                         strongly_connected_components::Node,
-                    > = variable_graph_node_by_name.insert(&name.value, project_fn_graph_node);
+                    > = project_fn_graph_node_by_name.insert(&name.value, project_fn_graph_node);
                     project_fn_by_graph_node.insert(
                         project_fn_graph_node,
                         SyntaxProjectFnInfo {
@@ -2299,20 +2294,22 @@ If you wanted to start a project declaration, try one of:
         );
     }
     for (&project_fn_graph_node, project_fn_info) in project_fn_by_graph_node.iter() {
-        if let Some(result_node) = project_fn_info.result {
-            syntax_expression_connect_variables_in_graph_from(
-                project_fn_graph_node,
-                &variable_graph_node_by_name,
-                expressions,
-                patterns,
-                types,
-                result_node,
-                &mut project_fn_graph,
-                &mut records_used,
-                &mut choices_used,
-            );
-        }
+        syntax_project_fn_connect_type_names_in_graph_from(
+            project_fn_graph_node,
+            &project_fn_graph_node_by_name,
+            expressions,
+            patterns,
+            types,
+            project_fn_info,
+            &mut project_fn_graph,
+            &mut records_used,
+            &mut choices_used,
+        );
     }
+
+    let mut checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias> =
+        core_type_aliases.clone();
+    checked_type_aliases.reserve(project_type_by_graph_node.len());
     for project_type_strongly_connected_component in type_graph.find_sccs().iter_sccs() {
         // TODO report and skip (mutually) recursive project types. Currently these are reported as "not found" at best
         for project_type in project_type_strongly_connected_component
@@ -2328,15 +2325,66 @@ If you wanted to start a project declaration, try one of:
             );
         }
     }
-    // TODO check project fns
+
+    let mut checked_project_fns: std::collections::HashMap<Name, CheckedProjectFn> =
+        core_fns.clone();
+    checked_project_fns.reserve(project_fn_graph.len());
+    let mut checked_local_fns: std::collections::HashMap<lsp_types::Position, CheckedLocalFn> =
+        std::collections::HashMap::new();
+    let mut checked_queries: std::collections::HashMap<lsp_types::Position, CheckedQuery> =
+        std::collections::HashMap::new();
+    for project_fn_strongly_connected_component in project_fn_graph.find_sccs().iter_sccs() {
+        let project_fns_in_strongly_connected_component: Vec<
+            SyntaxProjectFnInfo<Expressions, Patterns, Types>,
+        > = project_fn_strongly_connected_component
+            .iter_nodes()
+            .filter_map(|project_fn_graph_node| {
+                project_fn_by_graph_node.get(&project_fn_graph_node)
+            })
+            .copied()
+            .collect();
+        // possible optimization: skip pre-compile-type-info computation when project_fns_in_strongly_connected_component is single, non-self-referencing node
+        for project_fn in project_fns_in_strongly_connected_component.iter().copied() {
+            checked_project_fns.insert(
+                project_fn.name.value.clone(),
+                syntax_project_fn_header_check(
+                    errors,
+                    &checked_type_aliases,
+                    patterns,
+                    types,
+                    project_fn,
+                ),
+            );
+        }
+        for project_fn in project_fns_in_strongly_connected_component {
+            checked_project_fns.insert(
+                project_fn.name.value.clone(),
+                syntax_project_fn_check(
+                    errors,
+                    &checked_type_aliases,
+                    &checked_project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    project_fn,
+                    &mut checked_local_fns,
+                    &mut checked_queries,
+                ),
+            );
+        }
+    }
     CheckedSyntaxProject {
         type_graph: type_graph,
         project_type_by_graph_node: project_type_by_graph_node,
         project_fn_graph: project_fn_graph,
+        project_fn_graph_node_by_name: project_fn_graph_node_by_name,
         project_fn_by_graph_node: project_fn_by_graph_node,
         records_used: records_used,
         choices_used: choices_used,
         checked_type_aliases: checked_type_aliases,
+        checked_project_fns: checked_project_fns,
+        checked_local_fns: checked_local_fns,
+        checked_queries: checked_queries,
     }
 }
 pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
@@ -2346,6 +2394,8 @@ pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
         SyntaxProjectTypeInfo<'a, Types>,
     >,
     pub project_fn_graph: strongly_connected_components::Graph,
+    pub project_fn_graph_node_by_name:
+        std::collections::HashMap<&'a Name, strongly_connected_components::Node>,
     pub project_fn_by_graph_node: std::collections::HashMap<
         strongly_connected_components::Node,
         SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
@@ -2353,6 +2403,9 @@ pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     pub records_used: std::collections::HashSet<Vec<Name>>,
     pub choices_used: std::collections::HashSet<Vec<Name>>,
     pub checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias>,
+    pub checked_project_fns: std::collections::HashMap<Name, CheckedProjectFn>,
+    pub checked_local_fns: std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    pub checked_queries: std::collections::HashMap<lsp_types::Position, CheckedQuery>,
 }
 fn syntax_project_type_connect_type_names_in_graph_from<Types>(
     origin_project_type_graph_node: strongly_connected_components::Node,
@@ -2370,6 +2423,46 @@ fn syntax_project_type_connect_type_names_in_graph_from<Types>(
             types,
             aliased_type,
             type_graph,
+            records_used,
+            choices_used,
+        );
+    }
+}
+fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Types>(
+    project_fn_graph_node: strongly_connected_components::Node,
+    project_fn_graph_node_by_name: &std::collections::HashMap<
+        &Name,
+        strongly_connected_components::Node,
+    >,
+    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    project_fn: &SyntaxProjectFnInfo<'_, Expressions, Patterns, Types>,
+    project_fn_graph: &mut strongly_connected_components::Graph,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
+) {
+    if let Some(result_type) = project_fn.result_type {
+        syntax_type_used_records_and_choices(result_type, types, records_used, choices_used);
+    }
+    if let Some(parameter) = project_fn.parameter {
+        syntax_pattern_typed_used_records_and_choices(
+            parameter,
+            patterns,
+            types,
+            records_used,
+            choices_used,
+        );
+    }
+    if let Some(result_node) = project_fn.result {
+        syntax_expression_connect_variables_in_graph_from(
+            project_fn_graph_node,
+            &project_fn_graph_node_by_name,
+            expressions,
+            patterns,
+            types,
+            result_node,
+            project_fn_graph,
             records_used,
             choices_used,
         );
@@ -2644,7 +2737,7 @@ fn syntax_type_used_records_and_choices<Types>(
 fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Types>(
     origin_project_fn_graph_node: strongly_connected_components::Node,
     project_fn_graph_node_by_name: &std::collections::HashMap<
-        &str,
+        &Name,
         strongly_connected_components::Node,
     >,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
@@ -2667,9 +2760,8 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             argument,
         } => {
             if let Some(name) = name
-                && let Some(referenced_fn_graph_node) = project_fn_graph_node_by_name
-                    .get(name.value.as_str())
-                    .copied()
+                && let Some(referenced_fn_graph_node) =
+                    project_fn_graph_node_by_name.get(&name.value).copied()
             {
                 project_fn_graph.new_edge(origin_project_fn_graph_node, referenced_fn_graph_node);
             }
@@ -3020,16 +3112,19 @@ impl<'a, Types> Clone for SyntaxProjectTypeInfo<'a, Types> {
     }
 }
 
-fn project_info_to_rust<Expressions, Patterns, Types>(
-    errors: &mut Vec<ErrorNode>,
+fn checked_project_to_rust<Expressions, Patterns, Types>(
     CheckedSyntaxProject {
         type_graph,
-        project_fn_graph,
         project_type_by_graph_node: _,
+        project_fn_graph,
+        project_fn_graph_node_by_name,
         project_fn_by_graph_node,
         records_used,
         choices_used,
         checked_type_aliases,
+        checked_project_fns,
+        checked_local_fns,
+        checked_queries,
     }: CheckedSyntaxProject<Expressions, Patterns, Types>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -3038,6 +3133,7 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
     let mut rust_items: Vec<syn::Item> =
         Vec::with_capacity(type_graph.len() * 3 + project_fn_graph.len());
     for (checked_type_alias_name, checked_type_alias) in &checked_type_aliases {
+        // TODO a better solution is likely to set core .type_ = None
         if let Some(checked_aliased_type) = &checked_type_alias.type_
             && !core_type_aliases.contains_key(checked_type_alias_name)
         {
@@ -3049,123 +3145,32 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             ));
         }
     }
-    let mut compiled_project_fns: std::collections::HashMap<Name, CompiledProjectFnInfo> =
-        core_fns.clone();
-    compiled_project_fns.reserve(project_fn_graph.len());
-    for project_fn_strongly_connected_component in project_fn_graph.find_sccs().iter_sccs() {
-        let project_fns_in_strongly_connected_component: Vec<
-            SyntaxProjectFnInfo<Expressions, Patterns, Types>,
-        > = project_fn_strongly_connected_component
-            .iter_nodes()
-            .filter_map(|project_fn_graph_node| {
-                project_fn_by_graph_node.get(&project_fn_graph_node)
-            })
-            .copied()
-            .collect();
-        // optimization: skip pre-compile-type-info computation when project_fns_in_strongly_connected_component is single, non-self-referencing node
-        for project_fn in &project_fns_in_strongly_connected_component {
-            let type_parameters = match &project_fn.type_parameters {
-                None => vec![],
-                Some(type_parameters) => type_parameters
-                    .parameter0
-                    .iter()
-                    .chain(
-                        type_parameters
-                            .parameter1_up
-                            .iter()
-                            .filter_map(|parameter| parameter.name.as_ref()),
-                    )
-                    .map(|name| name.value.clone())
-                    .collect(),
-            };
-            // TODO instead populate actual errors etc and use the compiled pattern in expression_to_rust?
-            let maybe_parameter_type = project_fn.parameter.as_ref().and_then(|parameter| {
-                syntax_pattern_to_rust(
-                    parameter,
-                    None,
-                    &mut Vec::new(),
-                    &mut std::collections::HashMap::new(),
-                    &checked_type_aliases,
-                    patterns,
-                    types,
-                    &std::collections::HashMap::new(),
-                )
-                .map(|compiled_parameter| compiled_parameter.type_)
-            });
-            match project_fn.result_type {
-                None => {
-                    compiled_project_fns.insert(
-                        project_fn.name.value.clone(),
-                        CompiledProjectFnInfo {
-                            documentation: None,
-                            type_parameters: type_parameters,
-                            parameter_type: maybe_parameter_type,
-                            result_type: None,
-                        },
-                    );
-                }
-                Some(syntax_result_type) => {
-                    let result_type: Option<Type> = syntax_type_to_type(
-                        syntax_result_type,
-                        &mut Vec::new(),
-                        &checked_type_aliases,
-                        types,
-                        &std::collections::HashMap::new(),
-                    );
-                    compiled_project_fns.insert(
-                        project_fn.name.value.clone(),
-                        CompiledProjectFnInfo {
-                            documentation: None,
-                            type_parameters: type_parameters,
-                            parameter_type: maybe_parameter_type,
-                            result_type: result_type,
-                        },
-                    );
-                }
-            }
-        }
-        for project_fn in project_fns_in_strongly_connected_component {
-            let maybe_compiled_project_fn: Option<CompiledProjectFn> = syntax_project_fn_to_rust(
-                errors,
+    for (project_fn_name, checked_project_fn) in &checked_project_fns {
+        if let Some(syntax_project_fn_node) = project_fn_graph_node_by_name.get(project_fn_name)
+            && let Some(syntax_project_fn) = project_fn_by_graph_node.get(syntax_project_fn_node)
+            && let Some(parameter_type) = &checked_project_fn.parameter_type
+            && let Some(result_type) = &checked_project_fn.result_type
+            && let Some(parameter) = syntax_project_fn.parameter.as_ref()
+            && let Some(result) = syntax_project_fn.result.as_ref()
+        {
+            let maybe_compiled_project_fn: Option<syn::Item> = syntax_project_fn_to_rust(
                 &checked_type_aliases,
-                &compiled_project_fns,
+                &checked_project_fns,
+                &checked_local_fns,
+                &checked_queries,
                 expressions,
                 patterns,
                 types,
-                project_fn,
+                project_fn_name,
+                checked_project_fn.documentation.as_deref(),
+                parameter_type,
+                result_type,
+                checked_project_fn.result_expression_is_invalid,
+                parameter,
+                result,
             );
             if let Some(compiled_project_fn) = maybe_compiled_project_fn {
-                rust_items.push(compiled_project_fn.rust);
-                compiled_project_fns.insert(
-                    project_fn.name.value.clone(),
-                    CompiledProjectFnInfo {
-                        documentation: project_fn.documentation.as_ref().map(|documentation| {
-                            documentation
-                                .line1_up
-                                .iter()
-                                .fold(documentation.line0.value.to_string(), |so_far, line| {
-                                    so_far + "\n" + &line.value
-                                })
-                                .into_boxed_str()
-                        }),
-                        type_parameters: match &project_fn.type_parameters {
-                            None => vec![],
-                            Some(type_parameters) => type_parameters
-                                .parameter0
-                                .iter()
-                                .chain(
-                                    type_parameters
-                                        .parameter1_up
-                                        .iter()
-                                        .filter_map(|parameter| parameter.name.as_ref()),
-                                )
-                                .map(|name| name.value.clone())
-                                .collect(),
-                        },
-                        parameter_type: Some(compiled_project_fn.parameter_type),
-                        result_type: Some(compiled_project_fn.result_type),
-                    },
-                );
+                rust_items.push(compiled_project_fn);
             }
         }
     }
@@ -3188,7 +3193,7 @@ fn project_info_to_rust<Expressions, Patterns, Types>(
             items: rust_items,
         },
         type_aliases: checked_type_aliases,
-        fns: compiled_project_fns,
+        fns: checked_project_fns,
         records: records_used,
         // fn_graph: project_fn_graph,
         // fn_by_graph_node: project_fn_by_graph_node,
@@ -3433,126 +3438,270 @@ fn project_type_alias_to_rust(
     })
 }
 
-struct CompiledProjectFn {
-    rust: syn::Item,
-    parameter_type: Type,
-    result_type: Type,
-}
-fn syntax_project_fn_to_rust<'a, Expressions, Patterns, Types>(
+fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
-    project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
+    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    project_fn: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
+) -> CheckedProjectFn {
+    let maybe_parameter_type = project_fn.parameter.as_ref().and_then(|parameter| {
+        syntax_pattern_check(
+            parameter,
+            None,
+            errors,
+            &mut std::collections::HashMap::new(),
+            type_aliases,
+            patterns,
+            types,
+            &std::collections::HashMap::new(),
+        )
+        .map(|compiled_parameter| compiled_parameter.type_)
+    });
+    let result_type: Option<Type> =
+        project_fn
+            .result_type
+            .as_ref()
+            .and_then(|syntax_result_type| {
+                syntax_type_to_type(
+                    syntax_result_type,
+                    errors,
+                    type_aliases,
+                    types,
+                    &std::collections::HashMap::new(),
+                )
+            });
+    match result_type {
+        Some(result_type) => {
+            let mut type_variables_exclusively_used_in_result =
+                std::collections::HashSet::<Name>::new();
+            type_variables_into(&mut type_variables_exclusively_used_in_result, &result_type);
+            if let Some(parameter_type) = &maybe_parameter_type {
+                // can be optimized
+                let mut parameter_type_variables = std::collections::HashSet::<Name>::new();
+                type_variables_into(&mut parameter_type_variables, parameter_type);
+                type_variables_exclusively_used_in_result
+                    .retain(|var| !parameter_type_variables.contains(var));
+            }
+            let actually_used_parameters = parameters_check_if_different_to_actual_type_parameters(
+                errors,
+                name_range(with_start_position_as_ref(&project_fn.name)),
+                project_fn.type_parameters.iter().flat_map(|parameters| {
+                    parameters.parameter0.iter().chain(
+                        parameters
+                            .parameter1_up
+                            .iter()
+                            .filter_map(|parameter| parameter.name.as_ref()),
+                    )
+                }),
+                type_variables_exclusively_used_in_result,
+            );
+            CheckedProjectFn {
+                documentation: None,
+                type_parameters: actually_used_parameters,
+                parameter_type: maybe_parameter_type,
+                result_type: Some(result_type),
+                result_expression_is_invalid: false,
+            }
+        }
+        None => CheckedProjectFn {
+            documentation: None,
+            type_parameters: match &project_fn.type_parameters {
+                None => vec![],
+                Some(type_parameters) => type_parameters
+                    .parameter0
+                    .iter()
+                    .chain(
+                        type_parameters
+                            .parameter1_up
+                            .iter()
+                            .filter_map(|parameter| parameter.name.as_ref()),
+                    )
+                    .map(|name| name.value.clone())
+                    .collect(),
+            },
+            parameter_type: maybe_parameter_type,
+            result_type: result_type,
+            result_expression_is_invalid: false,
+        },
+    }
+}
+fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
+    errors: &mut Vec<ErrorNode>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-    project_fn_info: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
-) -> Option<CompiledProjectFn> {
-    let Some(result_node) = project_fn_info.result else {
+    project_fn: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
+    checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &mut std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+) -> CheckedProjectFn {
+    let checked_header = project_fns
+        .get(&project_fn.name.value)
+        .cloned()
+        .unwrap_or_else(|| {
+            syntax_project_fn_header_check(errors, type_aliases, patterns, types, project_fn)
+        });
+    let documentation = project_fn.documentation.as_ref().map(|documentation| {
+        documentation
+            .line1_up
+            .iter()
+            .fold(documentation.line0.value.to_string(), |so_far, line| {
+                so_far + "\n" + &line.value
+            })
+            .into_boxed_str()
+    });
+    let Some(header_parameter_type) = checked_header.parameter_type else {
+        // rust top level declarations need explicit types; partial types won't do
+        return CheckedProjectFn {
+            documentation: documentation,
+            type_parameters: checked_header.type_parameters,
+            parameter_type: None,
+            result_type: checked_header.result_type,
+            result_expression_is_invalid: true,
+        };
+    };
+    let Some(header_result_type) = checked_header.result_type else {
+        // rust top level declarations need explicit types; partial types won't do
+        return CheckedProjectFn {
+            documentation: documentation,
+            type_parameters: checked_header.type_parameters,
+            parameter_type: Some(header_parameter_type),
+            result_type: None,
+            result_expression_is_invalid: true,
+        };
+    };
+    let Some(syntax_result) = project_fn.result else {
         errors.push(ErrorNode {
-            range: project_fn_info.range,
+            range: name_range(with_start_position_as_ref(&project_fn.name)),
             message: Box::from(
                 "missing expression after the fn result type. An example would be fn my-function & str \":)\", where & is an empty record as the parameter",
             ),
         });
-        return None;
+        return CheckedProjectFn {
+            documentation: documentation,
+            type_parameters: checked_header.type_parameters,
+            parameter_type: Some(header_parameter_type),
+            result_type: Some(header_result_type),
+            result_expression_is_invalid: true,
+        };
     };
-    let Some(syntax_parameter) = &project_fn_info.parameter else {
-        errors.push(ErrorNode {
-            range: project_fn_info.range,
-            message: Box::from(
-                "missing parameter pattern after the fn name. An example would be fn my-function & str \":)\", where & is an empty record as the parameter",
-            ),
-        });
-        return None;
-    };
-    let mut parameter_introduced_bindings = std::collections::HashMap::new();
-    let Some(compiled_parameter) = syntax_pattern_to_rust(
-        syntax_parameter,
-        None,
-        errors,
-        &mut parameter_introduced_bindings,
-        type_aliases,
-        patterns,
-        types,
-        &std::collections::HashMap::new(),
-    ) else {
-        return None;
-    };
-    let mut used_origin_variables = std::collections::HashMap::new();
-    let mut used_pattern_variables = std::collections::HashMap::new();
-    let compiled_result: CompiledExpression = syntax_expression_to_rust(
+    let mut parameter_introduced_variables = std::collections::HashMap::new();
+    if let Some(syntax_parameter) = &project_fn.parameter {
+        syntax_pattern_variables_fold(
+            syntax_parameter,
+            (),
+            &mut |(), name, type_| {
+                parameter_introduced_variables.insert(
+                    name.value,
+                    PatternVariableCompileInfo {
+                        origin_start: name.start,
+                        type_: type_.and_then(|type_| {
+                            syntax_type_to_type(
+                                type_,
+                                &mut Vec::new(),
+                                type_aliases,
+                                types,
+                                &mut std::collections::HashMap::new(),
+                            )
+                        }),
+                    },
+                );
+            },
+            patterns,
+        );
+    }
+    let mut result_used_pattern_variables = std::collections::HashMap::new();
+    let Some(checked_result_expression_type) = syntax_expression_check(
         errors,
         type_aliases,
         project_fns,
         expressions,
         patterns,
         types,
-        &mut parameter_introduced_bindings,
-        &mut used_pattern_variables,
+        &mut parameter_introduced_variables,
+        &mut result_used_pattern_variables,
         &mut std::collections::HashMap::new(),
-        &mut used_origin_variables,
-        result_node,
-    );
-    for (parameter_introduced_binding_name, parameter_introduced_binding_origin) in
-        parameter_introduced_bindings
+        &mut std::collections::HashMap::new(),
+        syntax_result,
+        checked_local_fns,
+        checked_queries,
+    ) else {
+        return CheckedProjectFn {
+            documentation: documentation,
+            type_parameters: checked_header.type_parameters,
+            parameter_type: Some(header_parameter_type),
+            result_type: Some(header_result_type),
+            result_expression_is_invalid: true,
+        };
+    };
+    for (parameter_introduced_variable_name, parameter_introduced_variable_origin) in
+        parameter_introduced_variables
     {
         push_error_if_introduced_pattern_variable_is_unused(
             errors,
-            parameter_introduced_binding_origin.origin_start,
-            parameter_introduced_binding_name,
-            used_pattern_variables
-                .get(parameter_introduced_binding_name)
+            parameter_introduced_variable_origin.origin_start,
+            parameter_introduced_variable_name,
+            result_used_pattern_variables
+                .get(parameter_introduced_variable_name)
                 .copied(),
         );
     }
-    let Some(actual_result_expression_type) = compiled_result.type_ else {
-        // rust top level declarations need explicit types; partial types won't do
-        return None;
+    if let Some(result_type_diff) = type_diff(&header_result_type, &checked_result_expression_type)
+    {
+        errors.push(ErrorNode {
+            range: expression_range(syntax_result, expressions, patterns, types),
+            message: type_diff_error_message(&result_type_diff).into_boxed_str(),
+        });
+        return CheckedProjectFn {
+            documentation: documentation,
+            type_parameters: checked_header.type_parameters,
+            parameter_type: Some(header_parameter_type),
+            result_type: Some(header_result_type),
+            result_expression_is_invalid: true,
+        };
     };
-    // TODO compare with actual syntax result type
-    let rust_attrs: Vec<syn::Attribute> = project_fn_info
-        .documentation
-        .as_ref()
-        .map(|n| syn_attribute_doc(&syntax_comments_to_string(n)))
+    CheckedProjectFn {
+        documentation: documentation,
+        type_parameters: checked_header.type_parameters,
+        parameter_type: Some(header_parameter_type),
+        result_type: Some(header_result_type),
+        result_expression_is_invalid: false,
+    }
+}
+fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    project_fn_name: &Name,
+    project_fn_documentation: Option<&str>,
+    parameter_type: &Type,
+    result_type: &Type,
+    result_expression_is_invalid: bool,
+    syntax_parameter: &SyntaxPattern<Patterns, Types>,
+    syntax_result: &SyntaxExpression<Expressions, Patterns, Types>,
+) -> Option<syn::Item> {
+    let rust_attrs: Vec<syn::Attribute> = project_fn_documentation
+        .map(|n| syn_attribute_doc(n))
         .into_iter()
         .collect::<Vec<_>>();
-    let rust_ident: syn::Ident = syn_ident(&name_to_lowercase_rust(&project_fn_info.name.value));
-    let mut input_type_parameters: std::collections::HashSet<&Name> =
-        std::collections::HashSet::new();
-    syntax_pattern_type_variables_into(
-        &mut input_type_parameters,
-        syntax_parameter,
-        patterns,
-        types,
-    );
-    if let Some(result_type) = project_fn_info.result_type {
-        let mut result_type_parameters: std::collections::HashSet<&Name> =
-            std::collections::HashSet::new();
-        syntax_type_variables_into(&mut result_type_parameters, result_type, types);
-        result_type_parameters
-            .retain(|result_type_parameter| !input_type_parameters.contains(result_type_parameter));
-        if !result_type_parameters.is_empty() {
-            let mut full_type_as_string: String = String::new();
-            type_format(&mut full_type_as_string, 0, &actual_result_expression_type);
-            errors.push(ErrorNode {
-                range: name_range(with_start_position_as_ref(project_fn_info.name)),
-                message: format!(
-                    "its output type contains variables not introduced in its input types, namely {}. In sloe, every value has a concrete type, so no value could satisfy such a type. Here is the full type:\n{}",
-                    result_type_parameters.iter().map(|parameter| parameter.as_str()).collect::<Vec<&str>>().join(", "),
-                    &full_type_as_string
-                ).into_boxed_str()
-            });
-            return None;
-        }
-    }
+    let rust_ident: syn::Ident = syn_ident(&name_to_lowercase_rust(project_fn_name));
+    let mut type_parameters: std::collections::HashSet<Name> = std::collections::HashSet::new();
+    type_variables_into(&mut type_parameters, parameter_type);
+    type_variables_into(&mut type_parameters, result_type);
     let rust_generics: syn::Generics = syn::Generics {
         lt_token: Some(syn::token::Lt(syn_span())),
-        params: input_type_parameters
-            .iter()
+        params: type_parameters
+            .into_iter()
             .map(|name| {
                 syn::GenericParam::Type(syn::TypeParam {
                     attrs: vec![],
-                    ident: syn_ident(&type_variable_to_rust(name)),
+                    ident: syn_ident(&type_variable_to_rust(&name)),
                     colon_token: Some(syn::token::Colon(syn_span())),
                     bounds: syn::punctuated::Punctuated::new(),
                     eq_token: None,
@@ -3563,47 +3712,70 @@ fn syntax_project_fn_to_rust<'a, Expressions, Patterns, Types>(
         gt_token: Some(syn::token::Gt(syn_span())),
         where_clause: None,
     };
-    Some(CompiledProjectFn {
-        rust: syn::Item::Fn(syn::ItemFn {
-            attrs: rust_attrs,
-            vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
-            sig: syn::Signature {
-                constness: None,
-                asyncness: None,
-                unsafety: None,
-                abi: None,
-                fn_token: syn::token::Fn(syn_span()),
-                ident: rust_ident,
-                generics: rust_generics,
-                paren_token: syn::token::Paren(syn_span()),
-                inputs: [syn::FnArg::Typed(syn::PatType {
-                    pat: Box::new(compiled_parameter.rust),
-                    attrs: vec![],
-                    colon_token: syn::token::Colon(syn_span()),
-                    ty: Box::new(type_to_rust(&compiled_parameter.type_)),
-                })]
-                .into_iter()
-                .collect(),
-                output: syn::ReturnType::Type(
-                    syn::token::RArrow(syn_span()),
-                    Box::new(type_to_rust(&actual_result_expression_type)),
-                ),
-                variadic: None,
-            },
-            block: Box::new(syn_spread_expr_block(compiled_result.rust)),
+    let mut parameter_introduced_variables = std::collections::HashMap::new();
+    let compiled_parameter = match syntax_pattern_to_rust(
+        syntax_parameter,
+        None,
+        &mut parameter_introduced_variables,
+        type_aliases,
+        patterns,
+        types,
+        &std::collections::HashMap::new(),
+    ) {
+        None => syn::Pat::Wild(syn::PatWild {
+            attrs: vec![],
+            underscore_token: syn::token::Underscore(syn_span()),
         }),
-        parameter_type: compiled_parameter.type_,
-        result_type: actual_result_expression_type,
-    })
+        Some(compiled_parameter) => compiled_parameter,
+    };
+    let compiled_result = if result_expression_is_invalid {
+        syn_expr_todo()
+    } else {
+        syntax_expression_to_rust(
+            type_aliases,
+            project_fns,
+            expressions,
+            patterns,
+            types,
+            checked_local_fns,
+            checked_queries,
+            &mut parameter_introduced_variables,
+            &mut std::collections::HashMap::new(),
+            &mut std::collections::HashMap::new(),
+            &mut std::collections::HashMap::new(),
+            syntax_result,
+        )
+    };
+    Some(syn::Item::Fn(syn::ItemFn {
+        attrs: rust_attrs,
+        vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
+        sig: syn::Signature {
+            constness: None,
+            asyncness: None,
+            unsafety: None,
+            abi: None,
+            fn_token: syn::token::Fn(syn_span()),
+            ident: rust_ident,
+            generics: rust_generics,
+            paren_token: syn::token::Paren(syn_span()),
+            inputs: [syn::FnArg::Typed(syn::PatType {
+                pat: Box::new(compiled_parameter),
+                attrs: vec![],
+                colon_token: syn::token::Colon(syn_span()),
+                ty: Box::new(type_to_rust(parameter_type)),
+            })]
+            .into_iter()
+            .collect(),
+            output: syn::ReturnType::Type(
+                syn::token::RArrow(syn_span()),
+                Box::new(type_to_rust(result_type)),
+            ),
+            variadic: None,
+        },
+        block: Box::new(syn_spread_expr_block(compiled_result)),
+    }))
 }
-fn syntax_comments_to_string(comments: &SyntaxComments) -> String {
-    std::iter::once(&comments.line0)
-        .chain(&comments.line1_up)
-        .map(|line| line.value.as_ref())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
+// TODO split into check and to_type versions
 pub fn syntax_type_to_type<Types>(
     type_: &SyntaxType<Types>,
     errors: &mut Vec<ErrorNode>,
@@ -4033,6 +4205,7 @@ fn type_to_rust(type_: &Type) -> syn::Type {
         }
     }
 }
+// TODO return Set<&Name> instead
 fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, type_: &Type) {
     match type_ {
         Type::Variable(name) => {
@@ -4058,7 +4231,7 @@ fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, typ
 }
 fn parameters_check_if_different_to_actual_type_parameters<'a>(
     errors: &mut Vec<ErrorNode>,
-    parameter_name_range: lsp_types::Range,
+    parent_name_range: lsp_types::Range,
     parameters: impl Iterator<Item = &'a WithStartPosition<Name>>,
     mut actually_used_type_variables: std::collections::HashSet<Name>,
 ) -> Vec<Name> {
@@ -4075,7 +4248,7 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
     }
     if !actually_used_type_variables.is_empty() {
         errors.push(ErrorNode {
-            range: parameter_name_range,
+            range: parent_name_range,
             message: format!(
                 "some type variables are used but not declared, namely {}. Add {}",
                 actually_used_type_variables
@@ -4095,8 +4268,7 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
     actually_used_parameters
 }
 
-struct CompiledPattern {
-    rust: syn::Pat,
+struct CheckedPattern {
     type_: Type,
     catch: PatternCatch,
 }
@@ -4571,7 +4743,7 @@ fn possibilities_of_pattern_catches_are_exhaustive<'a>(
     }
 }
 
-fn syntax_pattern_to_rust<'a, Patterns, Types>(
+fn syntax_pattern_check<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     expected_type: Option<&Type>,
     errors: &mut Vec<ErrorNode>,
@@ -4580,7 +4752,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
-) -> Option<CompiledPattern> {
+) -> Option<CheckedPattern> {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
             let maybe_compiled_variable = match type_.as_ref() {
@@ -4592,14 +4764,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         });
                         None
                     }
-                    Some(expected_type) => Some(CompiledPattern {
-                        rust: syn::Pat::Ident(syn::PatIdent {
-                            attrs: vec![],
-                            by_ref: None,
-                            mutability: None,
-                            ident: syn_ident(&name_to_lowercase_rust(&name.value)),
-                            subpat: None,
-                        }),
+                    Some(expected_type) => Some(CheckedPattern {
                         type_: expected_type.clone(),
                         catch: PatternCatch::Exhaustive,
                     }),
@@ -4611,32 +4776,13 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         return None;
                     };
                     match expected_type {
-                        None => Some(CompiledPattern {
-                            rust: syn::Pat::Ident(syn::PatIdent {
-                                attrs: vec![],
-                                by_ref: None,
-                                mutability: None,
-                                ident: syn_ident(&name_to_lowercase_rust(&name.value)),
-                                subpat: None,
-                            }),
+                        None => Some(CheckedPattern {
                             type_: actual_type,
                             catch: PatternCatch::Exhaustive,
                         }),
-                        Some(expected_type) => {
+                        Some(_expected_type) => {
                             // TODO report if diff?
-                            Some(CompiledPattern {
-                                rust: syn::Pat::Type(syn::PatType {
-                                    attrs: vec![],
-                                    pat: Box::new(syn::Pat::Ident(syn::PatIdent {
-                                        attrs: vec![],
-                                        by_ref: None,
-                                        mutability: None,
-                                        ident: syn_ident(&name_to_lowercase_rust(&name.value)),
-                                        subpat: None,
-                                    })),
-                                    colon_token: syn::token::Colon(syn_span()),
-                                    ty: Box::new(type_to_rust(expected_type)),
-                                }),
+                            Some(CheckedPattern {
                                 type_: actual_type,
                                 catch: PatternCatch::Exhaustive,
                             })
@@ -4687,7 +4833,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         });
                         return None;
                     };
-                    let Some(compiled_value) = syntax_pattern_to_rust(
+                    let Some(checked_value) = syntax_pattern_check(
                         patterns.element(value),
                         None,
                         errors,
@@ -4699,24 +4845,12 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     ) else {
                         return None;
                     };
-                    Some(CompiledPattern {
-                        rust: syn::Pat::TupleStruct(syn::PatTupleStruct {
-                            attrs: vec![],
-                            qself: None,
-                            path: syn_path_reference([
-                                &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
-                                    std::iter::once(name_value),
-                                )),
-                                &name_to_uppercase_rust(&name_value),
-                            ]),
-                            paren_token: syn::token::Paren(syn_span()),
-                            elems: std::iter::once(compiled_value.rust).collect(),
-                        }),
+                    Some(CheckedPattern {
                         type_: Type::Choice(vec![TypeVariant {
                             name: name_value.clone(),
-                            value: compiled_value.type_,
+                            value: checked_value.type_,
                         }]),
-                        catch: compiled_value.catch,
+                        catch: checked_value.catch,
                     })
                 }
                 Some(expected_type) => {
@@ -4762,7 +4896,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         return None;
                     };
                     let value = patterns.element(value);
-                    let Some(compiled_value) = syntax_pattern_to_rust(
+                    let Some(checked_value) = syntax_pattern_check(
                         value,
                         Some(expected_value_type),
                         errors,
@@ -4775,7 +4909,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         return None;
                     };
                     if let Some(variant_value_type_diff) =
-                        type_diff(expected_value_type, &compiled_value.type_)
+                        type_diff(expected_value_type, &checked_value.type_)
                     {
                         errors.push(ErrorNode {
                             range: pattern_range(value, patterns, types),
@@ -4784,24 +4918,10 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         });
                         return None;
                     }
-                    Some(CompiledPattern {
-                        rust: syn::Pat::TupleStruct(syn::PatTupleStruct {
-                            attrs: vec![],
-                            qself: None,
-                            path: syn_path_reference([
-                                &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
-                                    origin_choice_type_variants
-                                        .iter()
-                                        .map(|variant| &variant.name),
-                                )),
-                                &name_to_uppercase_rust(name_value),
-                            ]),
-                            paren_token: syn::token::Paren(syn_span()),
-                            elems: std::iter::once(compiled_value.rust).collect(),
-                        }),
+                    Some(CheckedPattern {
                         type_: expected_type.clone(),
                         catch: if origin_choice_type_variants.len() == 1 {
-                            compiled_value.catch
+                            checked_value.catch
                         } else {
                             let mut variants: std::collections::BTreeMap<
                                 Name,
@@ -4811,7 +4931,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                                 .map(|variant| (variant.name.clone(), VariantCatch::Uncaught))
                                 .collect();
                             if let Some(variant_catch) = variants.get_mut(name_value) {
-                                *variant_catch = VariantCatch::Caught(compiled_value.catch);
+                                *variant_catch = VariantCatch::Caught(checked_value.catch);
                             }
                             PatternCatch::Variant(variants)
                         },
@@ -4819,15 +4939,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 }
             }
         }
-        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(CompiledPattern {
-            rust: syn::Pat::Struct(syn::PatStruct {
-                attrs: vec![],
-                qself: None,
-                path: syn_path_reference([record_empty_rust_struct_name]),
-                brace_token: syn::token::Brace(syn_span()),
-                fields: syn::punctuated::Punctuated::new(),
-                rest: None,
-            }),
+        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(CheckedPattern {
             type_: Type::Record(vec![]),
             catch: PatternCatch::Exhaustive,
         }),
@@ -4840,9 +4952,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 Some(Vec::with_capacity(1 + field1_up.len()));
             let mut field_catches: std::collections::BTreeMap<Name, PatternCatch> =
                 std::collections::BTreeMap::new();
-            let mut rust_fields: syn::punctuated::Punctuated<syn::FieldPat, syn::token::Comma> =
-                syn::punctuated::Punctuated::new();
-            'converting_fields: for (field_name, field_value) in std::iter::once((
+            for (field_name, field_value) in std::iter::once((
                 WithStartPosition {
                     start: field0_name.start,
                     value: Some(&field0_name.value),
@@ -4889,7 +4999,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                             "a field with this name already exists in the record pattern",
                         ),
                     });
-                    continue 'converting_fields;
+                    return None;
                 }
                 let maybe_expected_type_record =
                     expected_type.and_then(|expected_type| match expected_type {
@@ -4899,7 +5009,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         | Type::Choice { .. } => None,
                         Type::Record(type_fields) => Some(type_fields),
                     });
-                let compiled_field_value = syntax_pattern_to_rust(
+                let checked_field_value = syntax_pattern_check(
                     field_value,
                     maybe_expected_type_record.and_then(|expected_record_type| {
                         // TODO report if this is none
@@ -4915,7 +5025,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     types,
                     origins,
                 );
-                let Some(compiled_field_value) = compiled_field_value else {
+                let Some(compiled_field_value) = checked_field_value else {
                     return None;
                 };
                 if let Some(type_fields) = &mut maybe_type_fields {
@@ -4925,30 +5035,12 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     });
                 }
                 field_catches.insert(field_name_value.clone(), compiled_field_value.catch);
-                rust_fields.push(syn::FieldPat {
-                    attrs: vec![],
-                    member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(
-                        field_name_value,
-                    ))),
-                    colon_token: Some(syn::token::Colon(syn_span())),
-                    pat: Box::new(compiled_field_value.rust),
-                });
             }
             let Some(type_fields) = maybe_type_fields else {
                 return None;
             };
             // TODO report if diff maybe_expected_type_record has additional fields
-            Some(CompiledPattern {
-                rust: syn::Pat::Struct(syn::PatStruct {
-                    attrs: vec![],
-                    qself: None,
-                    path: syn_path_reference([&field_names_to_rust_record_struct_name(
-                        type_fields.iter().map(|field| &field.name),
-                    )]),
-                    brace_token: syn::token::Brace(syn_span()),
-                    fields: rust_fields,
-                    rest: None,
-                }),
+            Some(CheckedPattern {
                 type_: Type::Record(type_fields),
                 catch: if field_catches
                     .iter()
@@ -4977,7 +5069,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 });
                 None
             }
-            Some(inner) => syntax_pattern_to_rust(
+            Some(inner) => syntax_pattern_check(
                 patterns.element(inner),
                 expected_type,
                 errors,
@@ -4990,11 +5082,269 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
         },
     }
 }
-
-struct CompiledExpression {
-    rust: syn::Expr,
-    type_: Option<Type>,
+fn syntax_pattern_to_rust<'a, Patterns, Types>(
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    expected_type: Option<&Type>,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    origins: &std::collections::HashMap<&Name, OriginCompileInfo>,
+) -> Option<syn::Pat> {
+    match pattern {
+        SyntaxPattern::Variable {
+            name,
+            type_: syntax_type,
+        } => {
+            let (variable_type, variable_rust) = match syntax_type.as_ref() {
+                None => match expected_type {
+                    None => return None,
+                    Some(expected_type) => (
+                        expected_type.clone(),
+                        syn::Pat::Ident(syn::PatIdent {
+                            attrs: vec![],
+                            by_ref: None,
+                            mutability: None,
+                            ident: syn_ident(&name_to_lowercase_rust(&name.value)),
+                            subpat: None,
+                        }),
+                    ),
+                },
+                Some(syntax_type) => {
+                    let Some(type_) = syntax_type_to_type(
+                        syntax_type,
+                        &mut Vec::new(),
+                        type_aliases,
+                        types,
+                        origins,
+                    ) else {
+                        return None;
+                    };
+                    (
+                        type_,
+                        match expected_type {
+                            None => syn::Pat::Ident(syn::PatIdent {
+                                attrs: vec![],
+                                by_ref: None,
+                                mutability: None,
+                                ident: syn_ident(&name_to_lowercase_rust(&name.value)),
+                                subpat: None,
+                            }),
+                            Some(expected_type) => syn::Pat::Type(syn::PatType {
+                                attrs: vec![],
+                                pat: Box::new(syn::Pat::Ident(syn::PatIdent {
+                                    attrs: vec![],
+                                    by_ref: None,
+                                    mutability: None,
+                                    ident: syn_ident(&name_to_lowercase_rust(&name.value)),
+                                    subpat: None,
+                                })),
+                                colon_token: syn::token::Colon(syn_span()),
+                                ty: Box::new(type_to_rust(expected_type)),
+                            }),
+                        },
+                    )
+                }
+            };
+            let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
+                &name.value,
+                PatternVariableCompileInfo {
+                    origin_start: name.start,
+                    type_: Some(variable_type),
+                },
+            );
+            if maybe_existing_variable_with_the_same_name.is_some() {
+                return None;
+            } else if origins.contains_key(&name.value) {
+                return None;
+            }
+            Some(variable_rust)
+        }
+        SyntaxPattern::Variant { name, value } => {
+            let Some(name_value) = &name.value else {
+                return None;
+            };
+            match expected_type {
+                None => {
+                    let Some(value) = value else {
+                        return None;
+                    };
+                    let Some(compiled_value) = syntax_pattern_to_rust(
+                        patterns.element(value),
+                        None,
+                        introduced_variables,
+                        type_aliases,
+                        patterns,
+                        types,
+                        origins,
+                    ) else {
+                        return None;
+                    };
+                    Some(syn::Pat::TupleStruct(syn::PatTupleStruct {
+                        attrs: vec![],
+                        qself: None,
+                        path: syn_path_reference([
+                            &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
+                                std::iter::once(name_value),
+                            )),
+                            &name_to_uppercase_rust(&name_value),
+                        ]),
+                        paren_token: syn::token::Paren(syn_span()),
+                        elems: std::iter::once(compiled_value).collect(),
+                    }))
+                }
+                Some(expected_type) => {
+                    let Type::Choice(origin_choice_type_variants) = &expected_type else {
+                        return None;
+                    };
+                    let Some(expected_value_type) =
+                        origin_choice_type_variants.iter().find_map(|variant| {
+                            if variant.name == name_value {
+                                Some(&variant.value)
+                            } else {
+                                None
+                            }
+                        })
+                    else {
+                        return None;
+                    };
+                    let Some(value) = value else {
+                        return None;
+                    };
+                    let value = patterns.element(value);
+                    let Some(compiled_value) = syntax_pattern_to_rust(
+                        value,
+                        Some(expected_value_type),
+                        introduced_variables,
+                        type_aliases,
+                        patterns,
+                        types,
+                        origins,
+                    ) else {
+                        return None;
+                    };
+                    Some(syn::Pat::TupleStruct(syn::PatTupleStruct {
+                        attrs: vec![],
+                        qself: None,
+                        path: syn_path_reference([
+                            &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
+                                origin_choice_type_variants
+                                    .iter()
+                                    .map(|variant| &variant.name),
+                            )),
+                            &name_to_uppercase_rust(name_value),
+                        ]),
+                        paren_token: syn::token::Paren(syn_span()),
+                        elems: std::iter::once(compiled_value).collect(),
+                    }))
+                }
+            }
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(syn::Pat::Struct(syn::PatStruct {
+            attrs: vec![],
+            qself: None,
+            path: syn_path_reference([record_empty_rust_struct_name]),
+            brace_token: syn::token::Brace(syn_span()),
+            fields: syn::punctuated::Punctuated::new(),
+            rest: None,
+        })),
+        SyntaxPattern::Record {
+            field0_name,
+            field0_value,
+            field1_up,
+        } => {
+            let mut rust_fields: syn::punctuated::Punctuated<syn::FieldPat, syn::token::Comma> =
+                syn::punctuated::Punctuated::new();
+            for (field_name, field_value) in std::iter::once((
+                WithStartPosition {
+                    start: field0_name.start,
+                    value: Some(&field0_name.value),
+                },
+                field0_value.as_ref().map(|value| patterns.element(value)),
+            ))
+            .chain(field1_up.iter().map(|field| {
+                (
+                    WithStartPosition {
+                        start: field.name.start,
+                        value: field.name.value.as_ref(),
+                    },
+                    field.value.as_ref(),
+                )
+            })) {
+                let Some(field_name_value) = field_name.value else {
+                    return None;
+                };
+                let Some(field_value) = field_value else {
+                    return None;
+                };
+                let maybe_expected_type_record =
+                    expected_type.and_then(|expected_type| match expected_type {
+                        Type::Variable(_)
+                        | Type::Origin(_)
+                        | Type::CoreConstruct { .. }
+                        | Type::Choice { .. } => None,
+                        Type::Record(type_fields) => Some(type_fields),
+                    });
+                let compiled_field_value = syntax_pattern_to_rust(
+                    field_value,
+                    maybe_expected_type_record.and_then(|expected_record_type| {
+                        expected_record_type
+                            .iter()
+                            .find(|expected_field| expected_field.name == field_name_value)
+                            .map(|expected_field| &expected_field.value)
+                    }),
+                    introduced_variables,
+                    type_aliases,
+                    patterns,
+                    types,
+                    origins,
+                );
+                let Some(compiled_field_value) = compiled_field_value else {
+                    return None;
+                };
+                rust_fields.push(syn::FieldPat {
+                    attrs: vec![],
+                    member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(
+                        field_name_value,
+                    ))),
+                    colon_token: Some(syn::token::Colon(syn_span())),
+                    pat: Box::new(compiled_field_value),
+                });
+            }
+            Some(syn::Pat::Struct(syn::PatStruct {
+                attrs: vec![],
+                qself: None,
+                path: syn_path_reference([&field_names_to_rust_record_struct_name(
+                    std::iter::once(&field0_name.value).chain(
+                        field1_up
+                            .iter()
+                            .filter_map(|field| field.name.value.as_ref()),
+                    ),
+                )]),
+                brace_token: syn::token::Brace(syn_span()),
+                fields: rust_fields,
+                rest: None,
+            }))
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => None,
+            Some(inner) => syntax_pattern_to_rust(
+                patterns.element(inner),
+                expected_type,
+                introduced_variables,
+                type_aliases,
+                patterns,
+                types,
+                origins,
+            ),
+        },
+    }
 }
+
 #[derive(Clone, Debug)]
 struct PatternVariableCompileInfo {
     origin_start: lsp_types::Position,
@@ -5004,10 +5354,10 @@ struct PatternVariableCompileInfo {
 pub struct OriginCompileInfo {
     origin_start: lsp_types::Position,
 }
-fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
+fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
-    project_fns: &std::collections::HashMap<Name, CompiledProjectFnInfo>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
@@ -5022,7 +5372,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         /* start */ lsp_types::Position,
     >,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
-) -> CompiledExpression {
+    checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &mut std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+) -> Option<Type> {
     match expression {
         SyntaxExpression::Number { value, type_ } => match type_ {
             None => {
@@ -5033,51 +5385,18 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     },
                     message: Box::from("missing type after this number. Each number requires an explicit type to know its precision and range, like 0 u32 or 0 f32"),
                 });
-                CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                }
+                None
             }
             Some(syntax_type) => {
                 let Some(type_) =
                     syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
                 else {
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 };
-                let maybe_compiled = match &type_ {
+                match &type_ {
                     Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
                         "p32" => match value.value.parse::<std::num::NonZeroU32>() {
-                            Ok(number) => {
-                                let rust_number_predecessor = syn::Expr::Lit(syn::ExprLit {
-                                    attrs: vec![],
-                                    lit: syn::Lit::Int(syn::LitInt::new(
-                                        &((number.get() - 1).to_string() + "u32"),
-                                        syn_span(),
-                                    )),
-                                });
-                                // there is no native NonZeroU32 int literal (AFAIK),
-                                // so we do saturating_add(NonZeroU32::MIN /* = 1 */, p32 - 1)
-                                // which should optimize back into NonZeroU32::new_unchecked(p32)
-                                Some(syn::Expr::Call(syn::ExprCall {
-                                    attrs: vec![],
-                                    func: Box::new(syn_expr_reference([
-                                        "std",
-                                        "num",
-                                        "NonZeroU32",
-                                        "saturating_add",
-                                    ])),
-                                    paren_token: syn::token::Paren(syn_span()),
-                                    args: [
-                                        syn_expr_reference(["std", "num", "NonZeroU32", "MIN"]),
-                                        rust_number_predecessor,
-                                    ]
-                                    .into_iter()
-                                    .collect(),
-                                }))
-                            }
+                            Ok(_) => Some(type_p32),
                             Err(parse_error) => {
                                 errors.push(ErrorNode {
                                     range: lsp_types::Range {
@@ -5091,17 +5410,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                         "number cannot be parsed as a p32: {parse_error}"
                                     )),
                                 });
-                                Some(syn_expr_todo())
+                                None
                             }
                         },
                         "u32" => match value.value.parse::<u32>() {
-                            Ok(number) => Some(syn::Expr::Lit(syn::ExprLit {
-                                attrs: vec![],
-                                lit: syn::Lit::Int(syn::LitInt::new(
-                                    &(number.to_string() + "u32"),
-                                    syn_span(),
-                                )),
-                            })),
+                            Ok(_) => Some(type_u32),
                             Err(parse_error) => {
                                 errors.push(ErrorNode {
                                     range: lsp_types::Range {
@@ -5115,17 +5428,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                         "number cannot be parsed as an u32: {parse_error}"
                                     )),
                                 });
-                                Some(syn_expr_todo())
+                                None
                             }
                         },
                         "i32" => match value.value.parse::<i32>() {
-                            Ok(number) => Some(syn::Expr::Lit(syn::ExprLit {
-                                attrs: vec![],
-                                lit: syn::Lit::Int(syn::LitInt::new(
-                                    &(number.to_string() + "i32"),
-                                    syn_span(),
-                                )),
-                            })),
+                            Ok(_) => Some(type_i32),
                             Err(parse_error) => {
                                 errors.push(ErrorNode {
                                     range: lsp_types::Range {
@@ -5139,17 +5446,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                         "number cannot be parsed as an i32: {parse_error}"
                                     )),
                                 });
-                                Some(syn_expr_todo())
+                                None
                             }
                         },
                         "f32" => match value.value.parse::<f32>() {
-                            Ok(number) => Some(syn::Expr::Lit(syn::ExprLit {
-                                attrs: vec![],
-                                lit: syn::Lit::Float(syn::LitFloat::new(
-                                    &(number.to_string() + "f32"),
-                                    syn_span(),
-                                )),
-                            })),
+                            Ok(_) => Some(type_f32),
                             Err(parse_error) => {
                                 errors.push(ErrorNode {
                                     range: lsp_types::Range {
@@ -5163,15 +5464,21 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                         "number cannot be parsed as an f32: {parse_error}"
                                     )),
                                 });
-                                Some(syn_expr_todo())
+                                None
                             }
                         },
-                        _ => None,
+                        _ => {
+                            errors.push(ErrorNode {
+                            range: lsp_types::Range {
+                                start: value.start,
+                                end: position_add_characters(value.start, value.value.len() as u32),
+                            },
+                            message: Box::from("the type after this number is not a number type. The possible types are: p32 u32 i32 f32"),
+                        });
+                            None
+                        }
                     },
-                    _ => None,
-                };
-                match maybe_compiled {
-                    None => {
+                    _ => {
                         errors.push(ErrorNode {
                             range: lsp_types::Range {
                                 start: value.start,
@@ -5179,15 +5486,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             },
                             message: Box::from("the type after this number is not a number type. The possible types are: p32 u32 i32 f32"),
                         });
-                        CompiledExpression {
-                            rust: syn_expr_todo(),
-                            type_: None,
-                        }
+                        None
                     }
-                    Some(compiled) => CompiledExpression {
-                        rust: compiled,
-                        type_: Some(type_),
-                    },
                 }
             }
         },
@@ -5196,41 +5496,29 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             content,
             content_end,
             closed_quote_exists,
-        } => CompiledExpression {
-            type_: Some(type_char),
-            rust: match *content {
-                None => {
-                    errors.push(ErrorNode {
-                        range: lsp_types::Range {
-                            start: *open_quote_start,
-                            end: if *closed_quote_exists {
-                                symbol_end(*content_end, "'")
-                            } else {
-                                *content_end
-                            },
+        } => match *content {
+            None => {
+                errors.push(ErrorNode {
+                    range: lsp_types::Range {
+                        start: *open_quote_start,
+                        end: if *closed_quote_exists {
+                            symbol_end(*content_end, "'")
+                        } else {
+                            *content_end
                         },
-                        message: Box::from("missing character between 'here'"),
-                    });
-                    syn_expr_todo()
-                }
-                Some(char) => syn::Expr::Lit(syn::ExprLit {
-                    attrs: vec![],
-                    lit: syn::Lit::Char(syn::LitChar::new(char, syn_span())),
-                }),
-            },
+                    },
+                    message: Box::from("missing character between 'here'"),
+                });
+                None
+            }
+            Some(_) => Some(type_char),
         },
         SyntaxExpression::Str {
             open_quote_start: _,
-            content,
+            content: _,
             content_end: _,
             closed_quote_exists: _,
-        } => CompiledExpression {
-            rust: syn::Expr::Lit(syn::ExprLit {
-                attrs: vec![],
-                lit: syn::Lit::Str(syn::LitStr::new(content, syn_span())),
-            }),
-            type_: Some(type_str),
-        },
+        } => Some(type_str),
         SyntaxExpression::Variable(name) => {
             if let Some(_origin_info) = origins.get(&name.value) {
                 let maybe_existing_origin_variable_use_start =
@@ -5242,17 +5530,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         range: name_range(with_start_position_as_ref(name)),
                         message: format!("this origin variable is already used earlier starting at {}. Each value can only be used once, that includes origins. Each collection needs its own origin", position_to_string(existing_origin_variable_use_start)).into_boxed_str(),
                     });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
-                CompiledExpression {
-                    rust: rust_reference,
-                    type_: Some(type_origin(Type::Origin(name.value.clone()))),
-                }
+                Some(type_origin(Type::Origin(name.value.clone())))
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
                     used_pattern_variables.insert(&name.value, name.start);
@@ -5263,23 +5543,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         range: name_range(with_start_position_as_ref(name)),
                         message: format!("this variable is already used earlier starting at {}. Each value can only be used once, even simple numbers etc. To duplicate the value, use the helpers like u32-dup, char-dup or create your own dup helpers", position_to_string(existing_pattern_variable_use_start)).into_boxed_str(),
                     });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 let Some(variable_type) = variable_info.type_.clone() else {
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 };
-                CompiledExpression {
-                    rust: rust_reference,
-                    type_: Some(variable_type),
-                }
+                Some(variable_type)
             } else {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
@@ -5291,10 +5560,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         }
                     )
                 });
-                CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                }
+                None
             }
         }
         SyntaxExpression::Call {
@@ -5308,10 +5574,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: symbol_range(*underscore_start, "_"),
                     message: Box::from("missing function name after this underscore _ . An example of a valid function call is _u32-dup 2 u32"),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
@@ -5323,13 +5586,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         range: name_range(with_start_position_as_ref(name)),
                         message: format!("this variable is already used earlier starting at {}. Each value can only be used once, even simple numbers etc. To duplicate the value, use the helpers like u32-dup, char-dup or create your own dup helpers", position_to_string(existing_pattern_variable_use_start)).into_boxed_str(),
                     });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 if let Some(type_arguments) = type_arguments {
                     errors.push(ErrorNode {
                         range: lsp_types::Range {
@@ -5342,19 +5600,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     })
                 }
                 let Some(variable_type) = variable_info.type_.clone() else {
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 };
                 match syntax_argument {
-                    None => CompiledExpression {
-                        rust: rust_reference,
-                        type_: Some(variable_type),
-                    },
+                    None => Some(variable_type),
                     Some(argument) => {
                         let syntax_argument = expressions.element(argument);
-                        let compiled_argument: CompiledExpression = syntax_expression_to_rust(
+                        let Some(checked_argument_type) = syntax_expression_check(
                             errors,
                             type_aliases,
                             project_fns,
@@ -5366,12 +5618,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             origins,
                             used_origin_variables,
                             syntax_argument,
-                        );
-                        let Some(argument_type) = compiled_argument.type_ else {
-                            return CompiledExpression {
-                                rust: syn_expr_todo(),
-                                type_: None,
-                            };
+                            checked_local_fns,
+                            checked_queries,
+                        ) else {
+                            return None;
                         };
                         let variable_type_arguments = match variable_type {
                             Type::CoreConstruct {
@@ -5387,22 +5637,16 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                     range: name_range(with_start_position_as_ref(name)),
                                     message: error_message.into_boxed_str(),
                                 });
-                                return CompiledExpression {
-                                    rust: syn_expr_todo(),
-                                    type_: None,
-                                };
+                                return None;
                             }
                         };
                         let [variable_type_input, variable_type_output] =
                             variable_type_arguments.as_slice()
                         else {
-                            return CompiledExpression {
-                                rust: syn_expr_todo(),
-                                type_: None,
-                            };
+                            return None;
                         };
                         if let Some(argument_variable_input_type_diff) =
-                            type_diff(variable_type_input, &argument_type)
+                            type_diff(variable_type_input, &checked_argument_type)
                         {
                             errors.push(ErrorNode {
                                 range: expression_range(
@@ -5416,24 +5660,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 )
                                 .into_boxed_str(),
                             });
-                            return CompiledExpression {
-                                rust: syn_expr_todo(),
-                                type_: None,
-                            };
+                            return None;
                         }
-                        CompiledExpression {
-                            rust: syn::Expr::Call(syn::ExprCall {
-                                attrs: vec![],
-                                func: Box::new(syn_expr_reference([&name_to_lowercase_rust(
-                                    &name.value,
-                                )])),
-                                paren_token: syn::token::Paren(syn_span()),
-                                args: std::iter::once(compiled_argument.rust)
-                                    .into_iter()
-                                    .collect(),
-                            }),
-                            type_: Some(variable_type_output.clone()),
-                        }
+                        Some(variable_type_output.clone())
                     }
                 }
             } else if let Some(_origin_info) = origins.get(&name.value) {
@@ -5446,13 +5675,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         range: name_range(with_start_position_as_ref(name)),
                         message: format!("this origin variable is already used earlier starting at {}. Each value can only be used once, that includes origins. Each collection needs its own origin", position_to_string(existing_origin_variable_use_start)).into_boxed_str(),
                     });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 if let Some(type_arguments) = type_arguments {
                     errors.push(ErrorNode {
                         range: lsp_types::Range {
@@ -5477,27 +5701,18 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         ),
                     })
                 }
-                CompiledExpression {
-                    rust: rust_reference,
-                    type_: Some(type_origin(Type::Origin(name.value.clone()))),
-                }
+                Some(type_origin(Type::Origin(name.value.clone())))
             } else {
                 let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
                     errors.push(ErrorNode { range: name_range(with_start_position_as_ref(name)), message: Box::from("unknown name. No project fn or local variable has this name. Note that a local fn can not refer to any variable from the outside. Otherwise check for typos.") });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 };
                 let Some((project_fn_parameter_type, project_fn_result_type)) = project_fn_info
                     .parameter_type
                     .as_ref()
                     .zip(project_fn_info.result_type.as_ref())
                 else {
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 };
                 let (syntax_type_argument_count, syntax_type_arguments) = match type_arguments {
                     None => (0, None),
@@ -5521,10 +5736,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             argument_count = syntax_type_argument_count
                         ).into_boxed_str()
                     });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 }
                 let mut type_arguments = Vec::new();
                 for syntax_type_argument in syntax_type_arguments.into_iter().flatten() {
@@ -5535,10 +5747,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         types,
                         origins,
                     ) else {
-                        return CompiledExpression {
-                            rust: syn_expr_todo(),
-                            type_: None,
-                        };
+                        return None;
                     };
                     type_arguments.push(type_argument);
                 }
@@ -5557,16 +5766,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 let mut fn_result_type = project_fn_result_type.clone();
                 type_replace_variables(&type_parameter_replacements, &mut fn_parameter_type);
                 type_replace_variables(&type_parameter_replacements, &mut fn_result_type);
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 match syntax_argument {
-                    None => CompiledExpression {
-                        rust: rust_reference,
-                        type_: Some(type_fn(fn_parameter_type, fn_result_type)),
-                    },
+                    None => Some(type_fn(fn_parameter_type, fn_result_type)),
                     Some(syntax_argument) => {
                         let syntax_argument = expressions.element(syntax_argument);
-                        let compiled_argument: CompiledExpression = syntax_expression_to_rust(
+                        let Some(checked_argument_type) = syntax_expression_check(
                             errors,
                             type_aliases,
                             project_fns,
@@ -5578,19 +5782,17 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             origins,
                             used_origin_variables,
                             syntax_argument,
-                        );
-                        let Some(argument_type) = compiled_argument.type_ else {
-                            return CompiledExpression {
-                                rust: syn_expr_todo(),
-                                type_: None,
-                            };
+                            checked_local_fns,
+                            checked_queries,
+                        ) else {
+                            return None;
                         };
                         let mut argument_type_variable_replacements =
                             std::collections::HashMap::new();
                         type_collect_variables_that_are_concrete_into(
                             &mut argument_type_variable_replacements,
                             &fn_parameter_type,
-                            &argument_type,
+                            &checked_argument_type,
                         );
                         let mut expected_argument_type = fn_parameter_type.clone();
                         type_replace_variables(
@@ -5603,7 +5805,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             &mut result_type,
                         );
                         if let Some(argument_variable_input_type_diff) =
-                            type_diff(&expected_argument_type, &argument_type)
+                            type_diff(&expected_argument_type, &checked_argument_type)
                         {
                             errors.push(ErrorNode {
                                 range: expression_range(
@@ -5617,24 +5819,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 )
                                 .into_boxed_str(),
                             });
-                            return CompiledExpression {
-                                rust: syn_expr_todo(),
-                                type_: None,
-                            };
+                            return None;
                         }
-                        CompiledExpression {
-                            rust: syn::Expr::Call(syn::ExprCall {
-                                attrs: vec![],
-                                func: Box::new(syn_expr_reference([&name_to_lowercase_rust(
-                                    &name.value,
-                                )])),
-                                paren_token: syn::token::Paren(syn_span()),
-                                args: std::iter::once(compiled_argument.rust)
-                                    .into_iter()
-                                    .collect(),
-                            }),
-                            type_: Some(result_type),
-                        }
+                        Some(result_type)
                     }
                 }
             }
@@ -5645,38 +5832,26 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: optional_variant_name_range(name),
                     message: Box::from("missing variant name after this bar | . An example of a valid variant is |present<_opt str> \"hi c:\""),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let Some(syntax_type_argument) = type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(name.start, "|"),
                     message: Box::from("missing type argument in angle brackets after this variant name. An example of a valid variant is |present<_opt str> \"hi c:\""),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_angle_start, "<"),
                     message: Box::from("missing type argument in angle brackets. An example of a valid variant is |present<_opt str> \"hi c:\""),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let Some(compiled_type) =
                 syntax_type_to_type(syntax_type, errors, type_aliases, types, origins)
             else {
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let Type::Choice(origin_choice_type) = &compiled_type else {
                 let mut error_message: String = String::from(
@@ -5687,10 +5862,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: optional_variant_name_range(name),
                     message: error_message.into_boxed_str(),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let Some(expected_value_type) = origin_choice_type.iter().find_map(|variant| {
                 if variant.name == name_value {
@@ -5708,10 +5880,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: type_range(syntax_type, types),
                     message: error_message.into_boxed_str(),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let Some(value) = value else {
                 let mut error_message: String =
@@ -5721,16 +5890,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: optional_variant_name_range(name),
                     message: error_message.into_boxed_str(),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let value = expressions.element(value);
-            let CompiledExpression {
-                type_: Some(compiled_value_type),
-                rust: compiled_value_rust,
-            } = syntax_expression_to_rust(
+            let Some(checked_value_type) = syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -5742,43 +5905,21 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 value,
-            )
-            else {
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                checked_local_fns,
+                checked_queries,
+            ) else {
+                return None;
             };
             if let Some(variant_value_type_diff) =
-                type_diff(expected_value_type, &compiled_value_type)
+                type_diff(expected_value_type, &checked_value_type)
             {
                 errors.push(ErrorNode {
                     range: expression_range(value, expressions, patterns, types),
                     message: type_diff_error_message(&variant_value_type_diff).into_boxed_str(),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             }
-            CompiledExpression {
-                rust: syn::Expr::Call(syn::ExprCall {
-                    attrs: vec![],
-                    func: Box::new(syn::Expr::Path(syn::ExprPath {
-                        attrs: vec![],
-                        qself: None,
-                        path: syn_path_reference([
-                            &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
-                                origin_choice_type.iter().map(|variant| &variant.name),
-                            )),
-                            &name_to_uppercase_rust(name_value),
-                        ]),
-                    })),
-                    paren_token: syn::token::Paren(syn_span()),
-                    args: std::iter::once(compiled_value_rust).collect(),
-                }),
-                type_: Some(compiled_type),
-            }
+            Some(compiled_type)
         }
         SyntaxExpression::Fn {
             fn_keyword_start,
@@ -5791,26 +5932,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: symbol_range(*fn_keyword_start, "fn"),
                     message: Box::from("missing parameter after fn. An example of a local fn expression is fn (n u32) u32-add & (a n) (b 1 u32)"),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
-            };
-            let Some(result) = result else {
-                errors.push(ErrorNode {
-                    range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing result after fn ..pattern.. here"),
-                });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let mut parameter_introduced_variables: std::collections::HashMap<
                 &Name,
                 PatternVariableCompileInfo,
             > = std::collections::HashMap::new();
-            let Some(compiled_parameter) = syntax_pattern_to_rust(
+            let Some(checked_parmeter) = syntax_pattern_check(
                 parameter,
                 None,
                 errors,
@@ -5820,14 +5948,18 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 types,
                 origins,
             ) else {
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let mut result_used_pattern_variables = std::collections::HashMap::new();
             let mut result_used_origin_variables = std::collections::HashMap::new();
-            let compiled_result = syntax_expression_to_rust(
+            let Some(result) = result else {
+                errors.push(ErrorNode {
+                    range: symbol_range(*fn_keyword_start, "fn"),
+                    message: Box::from("missing result after fn ..pattern.. here"),
+                });
+                return None;
+            };
+            let Some(checked_result_type) = syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -5839,7 +5971,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 &mut result_used_origin_variables,
                 expressions.element(result),
-            );
+                checked_local_fns,
+                checked_queries,
+            ) else {
+                return None;
+            };
             if let Some((use_of_outside_origin_name, use_of_outside_origin_start)) =
                 result_used_origin_variables
                     .into_iter()
@@ -5854,17 +5990,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     }),
                     message: Box::from("use of an origin variable that is created outside of a local fn. Local fns do not capture variables, so pass them in via arguments explicitly"),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             }
-            let Some(actual_result_type) = compiled_result.type_ else {
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
-            };
             for (parameter_introduced_variable_name, parameter_introduced_variable_origin) in
                 parameter_introduced_variables
             {
@@ -5877,90 +6004,22 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         .copied(),
                 );
             }
-            let mut type_variables = std::collections::HashSet::new();
-            type_variables_into(&mut type_variables, &compiled_parameter.type_);
-            type_variables_into(&mut type_variables, &actual_result_type);
-            CompiledExpression {
-                rust: syn::Expr::Block(syn::ExprBlock {
-                    attrs: vec![],
-                    label: None,
-                    block: syn::Block {
-                        brace_token: syn::token::Brace(syn_span()),
-                        stmts: vec![
-                            syn::Stmt::Item(syn::Item::Fn(syn::ItemFn {
-                                attrs: vec![],
-                                vis: syn::Visibility::Inherited,
-                                sig: syn::Signature {
-                                    constness: None,
-                                    asyncness: None,
-                                    unsafety: None,
-                                    abi: None,
-                                    fn_token: syn::token::Fn(syn_span()),
-                                    ident: syn_ident(local_unnamed_function_name),
-                                    generics: syn::Generics {
-                                        lt_token: Some(syn::token::Lt(syn_span())),
-                                        params: type_variables
-                                            .iter()
-                                            .map(|field_name| {
-                                                syn::GenericParam::Type(syn::TypeParam {
-                                                    attrs: vec![],
-                                                    ident: syn_ident(&type_variable_to_rust(
-                                                        field_name,
-                                                    )),
-                                                    colon_token: None,
-                                                    bounds: syn::punctuated::Punctuated::new(),
-                                                    eq_token: None,
-                                                    default: None,
-                                                })
-                                            })
-                                            .collect(),
-                                        gt_token: Some(syn::token::Gt(syn_span())),
-                                        where_clause: None,
-                                    },
-                                    paren_token: syn::token::Paren(syn_span()),
-                                    inputs: std::iter::once(syn::FnArg::Typed(syn::PatType {
-                                        attrs: vec![],
-                                        pat: Box::new(compiled_parameter.rust),
-                                        colon_token: syn::token::Colon(syn_span()),
-                                        ty: Box::new(type_to_rust(&compiled_parameter.type_)),
-                                    }))
-                                    .collect(),
-                                    variadic: None,
-                                    output: syn::ReturnType::Type(
-                                        syn::token::RArrow(syn_span()),
-                                        Box::new(type_to_rust(&actual_result_type)),
-                                    ),
-                                },
-                                block: Box::new(syn_spread_expr_block(compiled_result.rust)),
-                            })),
-                            syn::Stmt::Expr(
-                                syn_expr_reference([local_unnamed_function_name]),
-                                None,
-                            ),
-                        ],
-                    },
-                }),
-                type_: Some(type_fn(compiled_parameter.type_, actual_result_type)),
-            }
+            checked_local_fns.insert(
+                *fn_keyword_start,
+                CheckedLocalFn {
+                    parameter_type: checked_parmeter.type_.clone(),
+                    result_type: checked_result_type.clone(),
+                },
+            );
+            Some(type_fn(checked_parmeter.type_, checked_result_type))
         }
-        SyntaxExpression::RecordEmpty { dot_start: _ } => CompiledExpression {
-            rust: syn::Expr::Struct(syn::ExprStruct {
-                attrs: vec![],
-                qself: None,
-                path: syn_path_reference([record_empty_rust_struct_name]),
-                brace_token: syn::token::Brace(syn_span()),
-                fields: syn::punctuated::Punctuated::new(),
-                dot2_token: None,
-                rest: None,
-            }),
-            type_: Some(Type::Record(vec![])),
-        },
+        SyntaxExpression::RecordEmpty { dot_start: _ } => Some(Type::Record(vec![])),
         SyntaxExpression::Record {
             field0_name,
             field0_value,
             field1_up,
         } => {
-            let compiled_field_value: CompiledExpression = match &field0_value {
+            let checked_field0_value_type: Option<Type> = match &field0_value {
                 None => {
                     errors.push(ErrorNode {
                         range: field_name_range(with_start_position_as_ref(field0_name)),
@@ -5968,12 +6027,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             "missing field value expression after this first field name",
                         ),
                     });
-                    CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    }
+                    None
                 }
-                Some(field_value) => syntax_expression_to_rust(
+                Some(field_value) => syntax_expression_check(
                     errors,
                     type_aliases,
                     project_fns,
@@ -5985,25 +6041,16 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     origins,
                     used_origin_variables,
                     expressions.element(field_value),
+                    checked_local_fns,
+                    checked_queries,
                 ),
             };
-            let mut rust_fields = syn::punctuated::Punctuated::new();
-            let mut maybe_field_types: Option<Vec<TypeField>> = match compiled_field_value.type_ {
+            let mut maybe_field_types: Option<Vec<TypeField>> = match checked_field0_value_type {
                 None => None,
-                Some(compiled_value_type) => {
-                    rust_fields.push(syn::FieldValue {
-                        attrs: vec![],
-                        member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(
-                            &field0_name.value,
-                        ))),
-                        colon_token: Some(syn::token::Colon(syn_span())),
-                        expr: compiled_field_value.rust,
-                    });
-                    Some(vec![TypeField {
-                        name: field0_name.value.clone(),
-                        value: compiled_value_type,
-                    }])
-                }
+                Some(compiled_value_type) => Some(vec![TypeField {
+                    name: field0_name.value.clone(),
+                    value: compiled_value_type,
+                }]),
             };
             'compiling_fields: for field in field1_up {
                 let Some(field_name) = &field.name.value else {
@@ -6013,7 +6060,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     });
                     continue 'compiling_fields;
                 };
-                let compiled_field_value: CompiledExpression = match &field.value {
+                let checked_field_value_type: Option<Type> = match &field.value {
                     None => {
                         errors.push(ErrorNode {
                             range: optional_field_name_range(&field.name),
@@ -6021,12 +6068,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 "missing field value expression after this field name",
                             ),
                         });
-                        CompiledExpression {
-                            rust: syn_expr_todo(),
-                            type_: None,
-                        }
+                        None
                     }
-                    Some(field_value) => syntax_expression_to_rust(
+                    Some(field_value) => syntax_expression_check(
                         errors,
                         type_aliases,
                         project_fns,
@@ -6038,10 +6082,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         origins,
                         used_origin_variables,
                         field_value,
+                        checked_local_fns,
+                        checked_queries,
                     ),
                 };
                 if let Some(field_types) = &mut maybe_field_types {
-                    match compiled_field_value.type_ {
+                    match checked_field_value_type {
                         None => {
                             maybe_field_types = None;
                         }
@@ -6050,40 +6096,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 name: field_name.clone(),
                                 value: compiled_value_type,
                             });
-                            rust_fields.push(syn::FieldValue {
-                                attrs: vec![],
-                                member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(
-                                    field_name,
-                                ))),
-                                colon_token: Some(syn::token::Colon(syn_span())),
-                                expr: compiled_field_value.rust,
-                            });
                         }
                     }
                 }
             }
             match maybe_field_types {
-                None => CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                },
-                Some(field_types) => {
-                    let rust_struct_name: String = field_names_to_rust_record_struct_name(
-                        sorted_field_names(field_types.iter().map(|field| &field.name)).iter(),
-                    );
-                    CompiledExpression {
-                        rust: syn::Expr::Struct(syn::ExprStruct {
-                            attrs: vec![],
-                            qself: None,
-                            path: syn_path_reference([&rust_struct_name]),
-                            brace_token: syn::token::Brace(syn_span()),
-                            fields: rust_fields,
-                            dot2_token: None,
-                            rest: None,
-                        }),
-                        type_: Some(Type::Record(field_types)),
-                    }
-                }
+                None => None,
+                Some(field_types) => Some(Type::Record(field_types)),
             }
         }
         SyntaxExpression::Parenthesized {
@@ -6101,12 +6120,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     },
                     message: Box::from("missing expression in parens between (here)"),
                 });
-                CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                }
+                None
             }
-            Some(inner) => syntax_expression_to_rust(
+            Some(inner) => syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -6118,6 +6134,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 expressions.element(inner),
+                checked_local_fns,
+                checked_queries,
             ),
         },
         SyntaxExpression::Commented {
@@ -6134,12 +6152,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         "missing expression after comments # your comment \\n ..here..",
                     ),
                 });
-                CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                }
+                None
             }
-            Some(expression) => syntax_expression_to_rust(
+            Some(expression) => syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -6151,6 +6166,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 expressions.element(expression),
+                checked_local_fns,
+                checked_queries,
             ),
         },
         SyntaxExpression::Query {
@@ -6163,10 +6180,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: symbol_range(*question_mark_start, "?"),
                     message: Box::from("missing queried expression after this colon. An example of a query is ? option = |present n > n = |absent . > 0 u32")
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let queried = expressions.element(queried);
             let Some((case0, case1_up)) = cases.split_first() else {
@@ -6174,15 +6188,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     range: symbol_range(*question_mark_start, "?"),
                     message: Box::from("missing case(s) after the queried expression. Cases look like = pattern > result-expression. An example of a query is ? option = |present n > n = |absent . > 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
-            let CompiledExpression {
-                rust: compiled_queried_rust,
-                type_: Some(compiled_queried_type),
-            } = syntax_expression_to_rust(
+            let Some(checked_queried_type) = syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -6194,40 +6202,32 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 queried,
-            )
-            else {
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                checked_local_fns,
+                checked_queries,
+            ) else {
+                return None;
             };
             let Some(case0_pattern) = &case0.pattern else {
                 errors.push(ErrorNode {
                     range:  symbol_range(case0.equals_start, "="),
                     message: Box::from("missing query case pattern after this equals = . Cases consist of = pattern > result-expression. An example of a query is :option = |present n > n = |absent > 0 u32")
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let Some(case0_result) = &case0.result else {
                 errors.push(ErrorNode {
                     range: case0.right_angle_start.map(|right_angle_start| symbol_range(right_angle_start, ">")).unwrap_or_else(|| pattern_range(case0_pattern, patterns, types)),
                     message: Box::from("missing result expression after this query case pattern. Cases look like = pattern > result-expression. An example of a query is :option = |present n > n = |absent > 0 u32")
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             let mut case0_pattern_introduced_variables: std::collections::HashMap<
                 &Name,
                 PatternVariableCompileInfo,
             > = std::collections::HashMap::new();
-            let Some(case0_pattern_compiled) = syntax_pattern_to_rust(
+            let Some(case0_pattern_compiled) = syntax_pattern_check(
                 case0_pattern,
-                Some(&compiled_queried_type),
+                Some(&checked_queried_type),
                 errors,
                 &mut case0_pattern_introduced_variables,
                 type_aliases,
@@ -6235,10 +6235,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 types,
                 origins,
             ) else {
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             pattern_variables.extend(
                 case0_pattern_introduced_variables
@@ -6247,10 +6244,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             );
             let mut case0_result_used_pattern_variables = std::collections::HashMap::new();
             let mut case0_result_used_origin_variables = std::collections::HashMap::new();
-            let CompiledExpression {
-                rust: case0_compiled_result_rust,
-                type_: Some(query_result_type),
-            } = syntax_expression_to_rust(
+            let Some(checked_query_result_type) = syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -6262,15 +6256,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 &mut case0_result_used_origin_variables,
                 case0_result,
-            )
-            else {
+                checked_local_fns,
+                checked_queries,
+            ) else {
                 pattern_variables.retain(|variable, _| {
                     !case0_pattern_introduced_variables.contains_key(variable)
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             for (case0_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
                 case0_pattern_introduced_variables
@@ -6284,19 +6276,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 pattern_variables.remove(case0_pattern_introduced_variable);
             }
             let mut catch = pattern_catch_to_case_patterns_catch(case0_pattern_compiled.catch);
-            let mut rust_arms: Vec<syn::Arm> = vec![syn::Arm {
-                attrs: vec![],
-                pat: case0_pattern_compiled.rust,
-                guard: None,
-                fat_arrow_token: syn::token::FatArrow(syn_span()),
-                body: Box::new(syn::Expr::Block(syn::ExprBlock {
-                    attrs: vec![],
-                    label: None,
-                    block: syn_spread_expr_block(case0_compiled_result_rust),
-                })),
-                comma: None,
-            }];
-            let mut cases_were_skipped = false;
+            let mut invalid_case_indexes = Vec::new();
             'compiling_case1_up: for (case_index, case) in case1_up
                 .iter()
                 .enumerate()
@@ -6313,9 +6293,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     &Name,
                     PatternVariableCompileInfo,
                 > = std::collections::HashMap::new();
-                let Some(case_pattern_compiled) = syntax_pattern_to_rust(
+                let Some(case_pattern_compiled) = syntax_pattern_check(
                     case_pattern,
-                    Some(&compiled_queried_type),
+                    Some(&checked_queried_type),
                     errors,
                     &mut case_pattern_introduced_variables,
                     type_aliases,
@@ -6323,7 +6303,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     types,
                     origins,
                 ) else {
-                    cases_were_skipped = true;
+                    invalid_case_indexes.push(case_index);
                     continue 'compiling_case1_up;
                 };
                 pattern_variables.extend(
@@ -6332,7 +6312,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         .map(|(binding, info)| (*binding, info.clone())),
                 );
                 if let Some(queried_pattern_type_diff) =
-                    type_diff(&compiled_queried_type, &case_pattern_compiled.type_)
+                    type_diff(&checked_queried_type, &case_pattern_compiled.type_)
                 {
                     errors.push(ErrorNode {
                         range: pattern_range(case_pattern, patterns, types),
@@ -6340,7 +6320,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             + "\n\nA query case pattern must have the same type as the queried expression")
                                 .into_boxed_str(),
                     });
-                    cases_were_skipped = true;
+                    invalid_case_indexes.push(case_index);
                     continue 'compiling_case1_up;
                 }
                 pattern_catch_merge_with(
@@ -6354,15 +6334,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         range: case.right_angle_start.map(|right_angle_start| symbol_range(right_angle_start, "<")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
                         message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. An example of a query is : option = |present n > n = |absent > 0 u32")
                     });
-                    rust_arms.push(syn_arm(case_pattern_compiled.rust, syn_expr_todo()));
                     continue 'compiling_case1_up;
                 };
                 let mut case_result_used_pattern_variables = std::collections::HashMap::new();
                 let mut case_result_used_origin_variables = std::collections::HashMap::new();
-                let CompiledExpression {
-                    rust: case_compiled_result_rust,
-                    type_: Some(case_result_type),
-                } = syntax_expression_to_rust(
+                let Some(checked_case_result_type) = syntax_expression_check(
                     errors,
                     type_aliases,
                     project_fns,
@@ -6374,9 +6350,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     origins,
                     &mut case_result_used_origin_variables,
                     case_result,
-                )
-                else {
-                    rust_arms.push(syn_arm(case_pattern_compiled.rust, syn_expr_todo()));
+                    checked_local_fns,
+                    checked_queries,
+                ) else {
+                    invalid_case_indexes.push(case_index);
                     continue 'compiling_case1_up;
                 };
                 for (case_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
@@ -6451,7 +6428,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     }
                 }
                 if let Some(match_result_case_result_type_diff) =
-                    type_diff(&query_result_type, &case_result_type)
+                    type_diff(&checked_query_result_type, &checked_case_result_type)
                 {
                     errors.push(ErrorNode {
                         range: expression_range(case_result, expressions, patterns, types),
@@ -6459,32 +6436,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             + "\n\nAll query case results must have the same type")
                             .into_boxed_str(),
                     });
-                    rust_arms.push(syn_arm(case_pattern_compiled.rust, syn_expr_todo()));
-                    continue 'compiling_case1_up;
+                    invalid_case_indexes.push(case_index);
                 }
-                fn syn_arm(pattern: syn::Pat, result: syn::Expr) -> syn::Arm {
-                    syn::Arm {
-                        attrs: vec![],
-                        pat: pattern,
-                        guard: None,
-                        fat_arrow_token: syn::token::FatArrow(syn_span()),
-                        body: Box::new(syn::Expr::Block(syn::ExprBlock {
-                            attrs: vec![],
-                            label: None,
-                            block: syn_spread_expr_block(result),
-                        })),
-                        comma: None,
-                    }
-                }
-                rust_arms.push(syn_arm(
-                    case_pattern_compiled.rust,
-                    case_compiled_result_rust,
-                ));
             }
             match catch {
                 CasePatternsCatch::Exhaustive => {}
-                _catch_not_exhaustive => {
-                    if !cases_were_skipped {
+                _ => {
+                    if invalid_case_indexes.is_empty() {
                         errors.push(ErrorNode {
                             range: symbol_range(*question_mark_start, "?"),
                             message: Box::from("inexhaustive pattern match.
@@ -6492,58 +6450,22 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     It might be that a case is not indented enough."),
                         });
                     }
-                    // _ => todo!() is appended to still make inexhaustive matching compile
-                    // and be able to be run, rust will emit a warning
-                    rust_arms.push(syn::Arm {
-                        attrs: vec![],
-                        pat: syn::Pat::Wild(syn::PatWild {
-                            attrs: vec![],
-                            underscore_token: syn::token::Underscore(syn_span()),
-                        }),
-                        fat_arrow_token: syn::token::FatArrow(syn_span()),
-                        guard: None,
-                        body: Box::new(syn_expr_todo()),
-                        comma: None,
-                    });
                 }
             }
             used_pattern_variables.extend(case0_result_used_pattern_variables);
             used_origin_variables.extend(case0_result_used_origin_variables);
-            CompiledExpression {
-                rust: if rust_arms.len() == 1
-                    && let Some(only_match_arm) = rust_arms.pop()
-                {
-                    syn::Expr::Block(syn::ExprBlock {
-                        attrs: vec![],
-                        label: None,
-                        block: syn::Block {
-                            brace_token: syn::token::Brace(syn_span()),
-                            stmts: std::iter::once(syn::Stmt::Local(syn::Local {
-                                attrs: vec![],
-                                let_token: syn::token::Let(syn_span()),
-                                pat: only_match_arm.pat,
-                                init: Some(syn::LocalInit {
-                                    eq_token: syn::token::Eq(syn_span()),
-                                    expr: Box::new(compiled_queried_rust),
-                                    diverge: None,
-                                }),
-                                semi_token: syn::token::Semi(syn_span()),
-                            }))
-                            .chain(syn_spread_expr_block_into_stmts(*only_match_arm.body))
-                            .collect(),
-                        },
-                    })
-                } else {
-                    syn::Expr::Match(syn::ExprMatch {
-                        attrs: vec![],
-                        match_token: syn::token::Match(syn_span()),
-                        expr: Box::new(compiled_queried_rust),
-                        brace_token: syn::token::Brace(syn_span()),
-                        arms: rust_arms,
-                    })
+            checked_queries.insert(
+                *question_mark_start,
+                CheckedQuery {
+                    is_exhaustive: match catch {
+                        CasePatternsCatch::Exhaustive => true,
+                        _ => false,
+                    },
+                    queried_type: checked_queried_type,
+                    invalid_case_indexes: invalid_case_indexes,
                 },
-                type_: Some(query_result_type),
-            }
+            );
+            Some(checked_query_result_type)
         }
         SyntaxExpression::Origin {
             origin_keyword_start,
@@ -6561,10 +6483,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     },
                     message: Box::from("missing expression after origin origin-name ..here.."),
                 });
-                return CompiledExpression {
-                    rust: syn_expr_todo(),
-                    type_: None,
-                };
+                return None;
             };
             if let Some(origin_name) = name {
                 if let Some(existing_origin_with_same_name) = origins.remove(&origin_name.value) {
@@ -6598,7 +6517,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     },
                 );
             }
-            let result_compiled = syntax_expression_to_rust(
+            let checked_result_type = syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -6610,11 +6529,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 expressions.element(result),
+                checked_local_fns,
+                checked_queries,
             );
             let Some(origin_name) = name else {
-                return result_compiled;
+                return checked_result_type;
             };
-            if let Some(result_type) = &result_compiled.type_ {
+            if let Some(result_type) = &checked_result_type {
                 if type_references_origin(result_type, &origin_name.value) {
                     let mut type_string = String::new();
                     type_format(&mut type_string, 0, result_type);
@@ -6625,10 +6546,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             type_string
                         ).into_boxed_str(),
                     });
-                    return CompiledExpression {
-                        rust: syn_expr_todo(),
-                        type_: None,
-                    };
+                    return None;
                 }
             }
             if used_origin_variables.remove(&origin_name.value).is_none() {
@@ -6638,48 +6556,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         "this origin is never used as a variable. Use it or remove it",
                     ),
                 });
-                return result_compiled;
+                return checked_result_type;
             }
-            CompiledExpression {
-                rust: syn::Expr::Block(syn::ExprBlock {
-                    attrs: vec![],
-                    label: None,
-                    block: syn::Block {
-                        brace_token: syn::token::Brace(syn_span()),
-                        stmts: vec![
-                            syn::Stmt::Macro(syn::StmtMacro {
-                                attrs: vec![],
-                                mac: syn::Macro {
-                                    path: syn_path_reference(["origin_new"]),
-                                    bang_token: syn::token::Not(syn_span()),
-                                    delimiter: syn::MacroDelimiter::Paren(syn::token::Paren(
-                                        syn_span(),
-                                    )),
-                                    tokens: {
-                                        let mut token_stream = proc_macro2::TokenStream::new();
-                                        proc_macro2::TokenStream::append_separated(
-                                            &mut token_stream,
-                                            [
-                                                syn_ident(&name_to_lowercase_rust(
-                                                    origin_name.value.as_str(),
-                                                )),
-                                                syn_ident(&name_to_uppercase_rust(
-                                                    origin_name.value.as_str(),
-                                                )),
-                                            ],
-                                            syn::token::Comma(syn_span()),
-                                        );
-                                        token_stream
-                                    },
-                                },
-                                semi_token: None,
-                            }),
-                            syn::Stmt::Expr(result_compiled.rust, None),
-                        ],
-                    },
-                }),
-                type_: result_compiled.type_,
-            }
+            checked_result_type
         }
     }
 }
@@ -6699,6 +6578,879 @@ fn push_error_if_introduced_pattern_variable_is_unused(
                 "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result.."
             )
         });
+    }
+}
+pub struct CheckedQuery {
+    pub is_exhaustive: bool,
+    pub queried_type: Type,
+    pub invalid_case_indexes: Vec<usize>,
+}
+pub struct CheckedLocalFn {
+    pub parameter_type: Type,
+    pub result_type: Type,
+}
+fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    pattern_variables: &mut std::collections::HashMap<&'a Name, PatternVariableCompileInfo>,
+    used_pattern_variables: &mut std::collections::HashMap<
+        &'a Name,
+        /* start */ lsp_types::Position,
+    >,
+    origins: &mut std::collections::HashMap<&'a Name, OriginCompileInfo>,
+    used_origin_variables: &mut std::collections::HashMap<
+        &'a Name,
+        /* start */ lsp_types::Position,
+    >,
+    expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
+) -> syn::Expr {
+    match expression {
+        SyntaxExpression::Number { value, type_ } => match type_ {
+            None => syn_expr_todo(),
+            Some(syntax_type) => {
+                let Some(type_) =
+                    syntax_type_to_type(syntax_type, &mut Vec::new(), type_aliases, types, origins)
+                else {
+                    return syn_expr_todo();
+                };
+                match &type_ {
+                    Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
+                        "p32" => match value.value.parse::<std::num::NonZeroU32>() {
+                            Ok(number) => {
+                                let rust_number_predecessor = syn::Expr::Lit(syn::ExprLit {
+                                    attrs: vec![],
+                                    lit: syn::Lit::Int(syn::LitInt::new(
+                                        &((number.get() - 1).to_string() + "u32"),
+                                        syn_span(),
+                                    )),
+                                });
+                                // there is no native NonZeroU32 int literal (AFAIK),
+                                // so we do saturating_add(NonZeroU32::MIN /* = 1 */, p32 - 1)
+                                // which should optimize back into NonZeroU32::new_unchecked(p32)
+                                syn::Expr::Call(syn::ExprCall {
+                                    attrs: vec![],
+                                    func: Box::new(syn_expr_reference([
+                                        "std",
+                                        "num",
+                                        "NonZeroU32",
+                                        "saturating_add",
+                                    ])),
+                                    paren_token: syn::token::Paren(syn_span()),
+                                    args: [
+                                        syn_expr_reference(["std", "num", "NonZeroU32", "MIN"]),
+                                        rust_number_predecessor,
+                                    ]
+                                    .into_iter()
+                                    .collect(),
+                                })
+                            }
+                            Err(_) => syn_expr_todo(),
+                        },
+                        "u32" => match value.value.parse::<u32>() {
+                            Ok(number) => syn::Expr::Lit(syn::ExprLit {
+                                attrs: vec![],
+                                lit: syn::Lit::Int(syn::LitInt::new(
+                                    &(number.to_string() + "u32"),
+                                    syn_span(),
+                                )),
+                            }),
+                            Err(_) => syn_expr_todo(),
+                        },
+                        "i32" => match value.value.parse::<i32>() {
+                            Ok(number) => syn::Expr::Lit(syn::ExprLit {
+                                attrs: vec![],
+                                lit: syn::Lit::Int(syn::LitInt::new(
+                                    &(number.to_string() + "i32"),
+                                    syn_span(),
+                                )),
+                            }),
+                            Err(_) => syn_expr_todo(),
+                        },
+                        "f32" => match value.value.parse::<f32>() {
+                            Ok(number) => syn::Expr::Lit(syn::ExprLit {
+                                attrs: vec![],
+                                lit: syn::Lit::Float(syn::LitFloat::new(
+                                    &(number.to_string() + "f32"),
+                                    syn_span(),
+                                )),
+                            }),
+                            Err(_) => syn_expr_todo(),
+                        },
+                        _ => syn_expr_todo(),
+                    },
+                    _ => syn_expr_todo(),
+                }
+            }
+        },
+        SyntaxExpression::Char {
+            open_quote_start: _,
+            content,
+            content_end: _,
+            closed_quote_exists: _,
+        } => match *content {
+            None => syn_expr_todo(),
+            Some(char) => syn::Expr::Lit(syn::ExprLit {
+                attrs: vec![],
+                lit: syn::Lit::Char(syn::LitChar::new(char, syn_span())),
+            }),
+        },
+        SyntaxExpression::Str {
+            open_quote_start: _,
+            content,
+            content_end: _,
+            closed_quote_exists: _,
+        } => syn::Expr::Lit(syn::ExprLit {
+            attrs: vec![],
+            lit: syn::Lit::Str(syn::LitStr::new(content, syn_span())),
+        }),
+        SyntaxExpression::Variable(name) => {
+            if let Some(_origin_info) = origins.get(&name.value) {
+                let maybe_existing_origin_variable_use_start =
+                    used_origin_variables.insert(&name.value, name.start);
+                if let Some(_existing_origin_variable_use_start) =
+                    maybe_existing_origin_variable_use_start
+                {
+                    return syn_expr_todo();
+                }
+                let rust_reference: syn::Expr =
+                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
+                rust_reference
+            } else if let Some(variable_info) = pattern_variables.get(&name.value) {
+                let maybe_existing_pattern_variable_use_start =
+                    used_pattern_variables.insert(&name.value, name.start);
+                if let Some(_existing_pattern_variable_use_start) =
+                    maybe_existing_pattern_variable_use_start
+                {
+                    return syn_expr_todo();
+                }
+                let rust_reference: syn::Expr =
+                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
+                let Some(_) = variable_info.type_.clone() else {
+                    return syn_expr_todo();
+                };
+                rust_reference
+            } else {
+                syn_expr_todo()
+            }
+        }
+        SyntaxExpression::Call {
+            underscore_start: _,
+            name,
+            type_arguments,
+            argument: syntax_argument,
+        } => {
+            let Some(name) = name else {
+                return syn_expr_todo();
+            };
+            if let Some(variable_info) = pattern_variables.get(&name.value) {
+                let maybe_existing_pattern_variable_use_start =
+                    used_pattern_variables.insert(&name.value, name.start);
+                if let Some(_existing_pattern_variable_use_start) =
+                    maybe_existing_pattern_variable_use_start
+                {
+                    return syn_expr_todo();
+                }
+                let rust_reference: syn::Expr =
+                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
+                let Some(_) = variable_info.type_.clone() else {
+                    return syn_expr_todo();
+                };
+                match syntax_argument {
+                    None => rust_reference,
+                    Some(argument) => {
+                        let syntax_argument = expressions.element(argument);
+                        let compiled_argument: syn::Expr = syntax_expression_to_rust(
+                            type_aliases,
+                            project_fns,
+                            expressions,
+                            patterns,
+                            types,
+                            checked_local_fns,
+                            checked_queries,
+                            pattern_variables,
+                            used_pattern_variables,
+                            origins,
+                            used_origin_variables,
+                            syntax_argument,
+                        );
+                        syn::Expr::Call(syn::ExprCall {
+                            attrs: vec![],
+                            func: Box::new(syn_expr_reference([&name_to_lowercase_rust(
+                                &name.value,
+                            )])),
+                            paren_token: syn::token::Paren(syn_span()),
+                            args: std::iter::once(compiled_argument).into_iter().collect(),
+                        })
+                    }
+                }
+            } else if let Some(_origin_info) = origins.get(&name.value) {
+                let maybe_existing_origin_variable_use_start =
+                    used_origin_variables.insert(&name.value, name.start);
+                if let Some(_existing_origin_variable_use_start) =
+                    maybe_existing_origin_variable_use_start
+                {
+                    return syn_expr_todo();
+                }
+                syn_expr_reference([&name_to_lowercase_rust(&name.value)])
+            } else {
+                let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
+                    return syn_expr_todo();
+                };
+                let Some((project_fn_parameter_type, project_fn_result_type)) = project_fn_info
+                    .parameter_type
+                    .as_ref()
+                    .zip(project_fn_info.result_type.as_ref())
+                else {
+                    return syn_expr_todo();
+                };
+                let (syntax_type_argument_count, syntax_type_arguments) = match type_arguments {
+                    None => (0, None),
+                    Some(type_arguments) => (
+                        1 + type_arguments.argument1_up.len(),
+                        Some(
+                            type_arguments.argument0.iter().chain(
+                                type_arguments
+                                    .argument1_up
+                                    .iter()
+                                    .filter_map(|argument| argument.type_.as_ref()),
+                            ),
+                        ),
+                    ),
+                };
+                if syntax_type_argument_count != project_fn_info.type_parameters.len() {
+                    return syn_expr_todo();
+                }
+                let mut type_arguments = Vec::new();
+                for syntax_type_argument in syntax_type_arguments.into_iter().flatten() {
+                    let Some(type_argument) = syntax_type_to_type(
+                        syntax_type_argument,
+                        &mut Vec::new(),
+                        type_aliases,
+                        types,
+                        origins,
+                    ) else {
+                        return syn_expr_todo();
+                    };
+                    type_arguments.push(type_argument);
+                }
+                let type_parameter_replacements = project_fn_info
+                    .type_parameters
+                    .iter()
+                    .zip(type_arguments)
+                    .map(|(type_parameter, type_argument)| {
+                        (
+                            type_parameter.as_str(),
+                            std::borrow::Cow::Owned(type_argument),
+                        )
+                    })
+                    .collect();
+                let mut fn_parameter_type = project_fn_parameter_type.clone();
+                let mut fn_result_type = project_fn_result_type.clone();
+                type_replace_variables(&type_parameter_replacements, &mut fn_parameter_type);
+                type_replace_variables(&type_parameter_replacements, &mut fn_result_type);
+                let rust_reference: syn::Expr =
+                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
+                match syntax_argument {
+                    None => rust_reference,
+                    Some(syntax_argument) => {
+                        let syntax_argument = expressions.element(syntax_argument);
+                        let compiled_argument: syn::Expr = syntax_expression_to_rust(
+                            type_aliases,
+                            project_fns,
+                            expressions,
+                            patterns,
+                            types,
+                            checked_local_fns,
+                            checked_queries,
+                            pattern_variables,
+                            used_pattern_variables,
+                            origins,
+                            used_origin_variables,
+                            syntax_argument,
+                        );
+                        syn::Expr::Call(syn::ExprCall {
+                            attrs: vec![],
+                            func: Box::new(syn_expr_reference([&name_to_lowercase_rust(
+                                &name.value,
+                            )])),
+                            paren_token: syn::token::Paren(syn_span()),
+                            args: std::iter::once(compiled_argument).into_iter().collect(),
+                        })
+                    }
+                }
+            }
+        }
+        SyntaxExpression::Variant { name, type_, value } => {
+            let Some(name_value) = &name.value else {
+                return syn_expr_todo();
+            };
+            let Some(syntax_type_argument) = type_ else {
+                return syn_expr_todo();
+            };
+            let Some(syntax_type) = &syntax_type_argument.type_ else {
+                return syn_expr_todo();
+            };
+            let Some(compiled_type) =
+                syntax_type_to_type(syntax_type, &mut Vec::new(), type_aliases, types, origins)
+            else {
+                return syn_expr_todo();
+            };
+            let Type::Choice(origin_choice_type) = &compiled_type else {
+                return syn_expr_todo();
+            };
+            let Some(value) = value else {
+                return syn_expr_todo();
+            };
+            let value = expressions.element(value);
+            let compiled_value_rust = syntax_expression_to_rust(
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_local_fns,
+                checked_queries,
+                pattern_variables,
+                used_pattern_variables,
+                origins,
+                used_origin_variables,
+                value,
+            );
+            syn::Expr::Call(syn::ExprCall {
+                attrs: vec![],
+                func: Box::new(syn::Expr::Path(syn::ExprPath {
+                    attrs: vec![],
+                    qself: None,
+                    path: syn_path_reference([
+                        &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
+                            origin_choice_type.iter().map(|variant| &variant.name),
+                        )),
+                        &name_to_uppercase_rust(name_value),
+                    ]),
+                })),
+                paren_token: syn::token::Paren(syn_span()),
+                args: std::iter::once(compiled_value_rust).collect(),
+            })
+        }
+        SyntaxExpression::Fn {
+            fn_keyword_start,
+            parameter,
+            angle_right_start: _,
+            result,
+        } => {
+            let Some(checked_local_fn) = checked_local_fns.get(fn_keyword_start) else {
+                return syn_expr_todo();
+            };
+            let Some(parameter) = parameter else {
+                return syn_expr_todo();
+            };
+            let Some(result) = result else {
+                return syn_expr_todo();
+            };
+            let mut parameter_introduced_variables: std::collections::HashMap<
+                &Name,
+                PatternVariableCompileInfo,
+            > = std::collections::HashMap::new();
+            let Some(compiled_parameter) = syntax_pattern_to_rust(
+                parameter,
+                None,
+                &mut parameter_introduced_variables,
+                type_aliases,
+                patterns,
+                types,
+                origins,
+            ) else {
+                return syn_expr_todo();
+            };
+            let mut result_used_pattern_variables = std::collections::HashMap::new();
+            let mut result_used_origin_variables = std::collections::HashMap::new();
+            let compiled_result = syntax_expression_to_rust(
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_local_fns,
+                checked_queries,
+                &mut parameter_introduced_variables,
+                &mut result_used_pattern_variables,
+                origins,
+                &mut result_used_origin_variables,
+                expressions.element(result),
+            );
+            let mut type_variables = std::collections::HashSet::new();
+            type_variables_into(&mut type_variables, &checked_local_fn.parameter_type);
+            type_variables_into(&mut type_variables, &checked_local_fn.result_type);
+            syn::Expr::Block(syn::ExprBlock {
+                attrs: vec![],
+                label: None,
+                block: syn::Block {
+                    brace_token: syn::token::Brace(syn_span()),
+                    stmts: vec![
+                        syn::Stmt::Item(syn::Item::Fn(syn::ItemFn {
+                            attrs: vec![],
+                            vis: syn::Visibility::Inherited,
+                            sig: syn::Signature {
+                                constness: None,
+                                asyncness: None,
+                                unsafety: None,
+                                abi: None,
+                                fn_token: syn::token::Fn(syn_span()),
+                                ident: syn_ident(local_unnamed_function_name),
+                                generics: syn::Generics {
+                                    lt_token: Some(syn::token::Lt(syn_span())),
+                                    params: type_variables
+                                        .iter()
+                                        .map(|field_name| {
+                                            syn::GenericParam::Type(syn::TypeParam {
+                                                attrs: vec![],
+                                                ident: syn_ident(&type_variable_to_rust(
+                                                    field_name,
+                                                )),
+                                                colon_token: None,
+                                                bounds: syn::punctuated::Punctuated::new(),
+                                                eq_token: None,
+                                                default: None,
+                                            })
+                                        })
+                                        .collect(),
+                                    gt_token: Some(syn::token::Gt(syn_span())),
+                                    where_clause: None,
+                                },
+                                paren_token: syn::token::Paren(syn_span()),
+                                inputs: std::iter::once(syn::FnArg::Typed(syn::PatType {
+                                    attrs: vec![],
+                                    pat: Box::new(compiled_parameter),
+                                    colon_token: syn::token::Colon(syn_span()),
+                                    ty: Box::new(type_to_rust(&checked_local_fn.parameter_type)),
+                                }))
+                                .collect(),
+                                variadic: None,
+                                output: syn::ReturnType::Type(
+                                    syn::token::RArrow(syn_span()),
+                                    Box::new(type_to_rust(&checked_local_fn.result_type)),
+                                ),
+                            },
+                            block: Box::new(syn_spread_expr_block(compiled_result)),
+                        })),
+                        syn::Stmt::Expr(syn_expr_reference([local_unnamed_function_name]), None),
+                    ],
+                },
+            })
+        }
+        SyntaxExpression::RecordEmpty { dot_start: _ } => syn::Expr::Struct(syn::ExprStruct {
+            attrs: vec![],
+            qself: None,
+            path: syn_path_reference([record_empty_rust_struct_name]),
+            brace_token: syn::token::Brace(syn_span()),
+            fields: syn::punctuated::Punctuated::new(),
+            dot2_token: None,
+            rest: None,
+        }),
+        SyntaxExpression::Record {
+            field0_name,
+            field0_value,
+            field1_up,
+        } => {
+            let mut rust_fields = syn::punctuated::Punctuated::new();
+            let compiled_field0_value: syn::Expr = match &field0_value {
+                None => syn_expr_todo(),
+                Some(field_value) => syntax_expression_to_rust(
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_local_fns,
+                    checked_queries,
+                    pattern_variables,
+                    used_pattern_variables,
+                    origins,
+                    used_origin_variables,
+                    expressions.element(field_value),
+                ),
+            };
+            rust_fields.push(syn::FieldValue {
+                attrs: vec![],
+                member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(&field0_name.value))),
+                colon_token: Some(syn::token::Colon(syn_span())),
+                expr: compiled_field0_value,
+            });
+            'compiling_fields: for field in field1_up {
+                let Some(field_name) = &field.name.value else {
+                    continue 'compiling_fields;
+                };
+                let compiled_field_value: syn::Expr = match &field.value {
+                    None => syn_expr_todo(),
+                    Some(field_value) => syntax_expression_to_rust(
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_local_fns,
+                        checked_queries,
+                        pattern_variables,
+                        used_pattern_variables,
+                        origins,
+                        used_origin_variables,
+                        field_value,
+                    ),
+                };
+                rust_fields.push(syn::FieldValue {
+                    attrs: vec![],
+                    member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(field_name))),
+                    colon_token: Some(syn::token::Colon(syn_span())),
+                    expr: compiled_field_value,
+                });
+            }
+            let rust_struct_name: String = field_names_to_rust_record_struct_name(
+                sorted_field_names(
+                    std::iter::once(&field0_name.value).chain(
+                        field1_up
+                            .iter()
+                            .filter_map(|field| field.name.value.as_ref()),
+                    ),
+                )
+                .iter(),
+            );
+            syn::Expr::Struct(syn::ExprStruct {
+                attrs: vec![],
+                qself: None,
+                path: syn_path_reference([&rust_struct_name]),
+                brace_token: syn::token::Brace(syn_span()),
+                fields: rust_fields,
+                dot2_token: None,
+                rest: None,
+            })
+        }
+        SyntaxExpression::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => syn_expr_todo(),
+            Some(inner) => syntax_expression_to_rust(
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_local_fns,
+                checked_queries,
+                pattern_variables,
+                used_pattern_variables,
+                origins,
+                used_origin_variables,
+                expressions.element(inner),
+            ),
+        },
+        SyntaxExpression::Commented {
+            comments: _,
+            expression,
+        } => match expression {
+            None => syn_expr_todo(),
+            Some(expression) => syntax_expression_to_rust(
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_local_fns,
+                checked_queries,
+                pattern_variables,
+                used_pattern_variables,
+                origins,
+                used_origin_variables,
+                expressions.element(expression),
+            ),
+        },
+        SyntaxExpression::Query {
+            question_mark_start,
+            queried,
+            cases,
+        } => {
+            let Some(checked_query) = checked_queries.get(question_mark_start) else {
+                return syn_expr_todo();
+            };
+            let Some(queried) = queried else {
+                return syn_expr_todo();
+            };
+            let queried = expressions.element(queried);
+            let Some((case0, case1_up)) = cases.split_first() else {
+                return syn_expr_todo();
+            };
+            let compiled_queried_rust = syntax_expression_to_rust(
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_local_fns,
+                checked_queries,
+                pattern_variables,
+                used_pattern_variables,
+                origins,
+                used_origin_variables,
+                queried,
+            );
+            let Some(case0_pattern) = &case0.pattern else {
+                return syn_expr_todo();
+            };
+            let Some(case0_result) = &case0.result else {
+                return syn_expr_todo();
+            };
+            let mut case0_pattern_introduced_variables: std::collections::HashMap<
+                &Name,
+                PatternVariableCompileInfo,
+            > = std::collections::HashMap::new();
+            let Some(case0_pattern_compiled) = syntax_pattern_to_rust(
+                case0_pattern,
+                Some(&checked_query.queried_type),
+                &mut case0_pattern_introduced_variables,
+                type_aliases,
+                patterns,
+                types,
+                origins,
+            ) else {
+                return syn_expr_todo();
+            };
+            pattern_variables.extend(
+                case0_pattern_introduced_variables
+                    .iter()
+                    .map(|(binding, info)| (*binding, info.clone())),
+            );
+            let mut case0_result_used_pattern_variables = std::collections::HashMap::new();
+            let mut case0_result_used_origin_variables = std::collections::HashMap::new();
+            let case0_compiled_result_rust = syntax_expression_to_rust(
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_local_fns,
+                checked_queries,
+                pattern_variables,
+                &mut case0_result_used_pattern_variables,
+                origins,
+                &mut case0_result_used_origin_variables,
+                case0_result,
+            );
+            for (case0_pattern_introduced_variable, _) in case0_pattern_introduced_variables {
+                pattern_variables.remove(case0_pattern_introduced_variable);
+            }
+            let mut rust_arms: Vec<syn::Arm> = vec![syn::Arm {
+                attrs: vec![],
+                pat: case0_pattern_compiled,
+                guard: None,
+                fat_arrow_token: syn::token::FatArrow(syn_span()),
+                body: Box::new(syn::Expr::Block(syn::ExprBlock {
+                    attrs: vec![],
+                    label: None,
+                    block: syn_spread_expr_block(case0_compiled_result_rust),
+                })),
+                comma: None,
+            }];
+            'compiling_case1_up: for (case_index, case) in case1_up
+                .iter()
+                .enumerate()
+                .map(|(i_in_1up, case)| (i_in_1up + 1, case))
+            {
+                if checked_query.invalid_case_indexes.contains(&case_index) {
+                    continue 'compiling_case1_up;
+                }
+                let Some(case_pattern) = &case.pattern else {
+                    continue 'compiling_case1_up;
+                };
+                let mut case_pattern_introduced_variables: std::collections::HashMap<
+                    &Name,
+                    PatternVariableCompileInfo,
+                > = std::collections::HashMap::new();
+                let Some(case_pattern_compiled) = syntax_pattern_to_rust(
+                    case_pattern,
+                    Some(&checked_query.queried_type),
+                    &mut case_pattern_introduced_variables,
+                    type_aliases,
+                    patterns,
+                    types,
+                    origins,
+                ) else {
+                    continue 'compiling_case1_up;
+                };
+                pattern_variables.extend(
+                    case_pattern_introduced_variables
+                        .iter()
+                        .map(|(binding, info)| (*binding, info.clone())),
+                );
+                let Some(case_result) = &case.result else {
+                    rust_arms.push(syn_arm(case_pattern_compiled, syn_expr_todo()));
+                    continue 'compiling_case1_up;
+                };
+                let mut case_result_used_pattern_variables = std::collections::HashMap::new();
+                let mut case_result_used_origin_variables = std::collections::HashMap::new();
+                let case_compiled_result_rust = syntax_expression_to_rust(
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_local_fns,
+                    checked_queries,
+                    pattern_variables,
+                    &mut case_result_used_pattern_variables,
+                    origins,
+                    &mut case_result_used_origin_variables,
+                    case_result,
+                );
+                for (case_pattern_introduced_variable, _) in case_pattern_introduced_variables {
+                    pattern_variables.remove(case_pattern_introduced_variable);
+                }
+                fn syn_arm(pattern: syn::Pat, result: syn::Expr) -> syn::Arm {
+                    syn::Arm {
+                        attrs: vec![],
+                        pat: pattern,
+                        guard: None,
+                        fat_arrow_token: syn::token::FatArrow(syn_span()),
+                        body: Box::new(syn::Expr::Block(syn::ExprBlock {
+                            attrs: vec![],
+                            label: None,
+                            block: syn_spread_expr_block(result),
+                        })),
+                        comma: None,
+                    }
+                }
+                rust_arms.push(syn_arm(case_pattern_compiled, case_compiled_result_rust));
+            }
+            if !checked_query.is_exhaustive {
+                // _ => todo!() is appended to still make inexhaustive matching compile
+                // and be able to be run, rust will emit a warning
+                rust_arms.push(syn::Arm {
+                    attrs: vec![],
+                    pat: syn::Pat::Wild(syn::PatWild {
+                        attrs: vec![],
+                        underscore_token: syn::token::Underscore(syn_span()),
+                    }),
+                    fat_arrow_token: syn::token::FatArrow(syn_span()),
+                    guard: None,
+                    body: Box::new(syn_expr_todo()),
+                    comma: None,
+                });
+            }
+            used_pattern_variables.extend(case0_result_used_pattern_variables);
+            used_origin_variables.extend(case0_result_used_origin_variables);
+            if rust_arms.len() == 1
+                && let Some(only_match_arm) = rust_arms.pop()
+            {
+                syn::Expr::Block(syn::ExprBlock {
+                    attrs: vec![],
+                    label: None,
+                    block: syn::Block {
+                        brace_token: syn::token::Brace(syn_span()),
+                        stmts: std::iter::once(syn::Stmt::Local(syn::Local {
+                            attrs: vec![],
+                            let_token: syn::token::Let(syn_span()),
+                            pat: only_match_arm.pat,
+                            init: Some(syn::LocalInit {
+                                eq_token: syn::token::Eq(syn_span()),
+                                expr: Box::new(compiled_queried_rust),
+                                diverge: None,
+                            }),
+                            semi_token: syn::token::Semi(syn_span()),
+                        }))
+                        .chain(syn_spread_expr_block_into_stmts(*only_match_arm.body))
+                        .collect(),
+                    },
+                })
+            } else {
+                syn::Expr::Match(syn::ExprMatch {
+                    attrs: vec![],
+                    match_token: syn::token::Match(syn_span()),
+                    expr: Box::new(compiled_queried_rust),
+                    brace_token: syn::token::Brace(syn_span()),
+                    arms: rust_arms,
+                })
+            }
+        }
+        SyntaxExpression::Origin {
+            origin_keyword_start: _,
+            name,
+            result,
+        } => {
+            let Some(result) = result else {
+                return syn_expr_todo();
+            };
+            if let Some(origin_name) = name {
+                let _existing_origin_with_same_name = origins.remove(&origin_name.value);
+                origins.insert(
+                    &origin_name.value,
+                    OriginCompileInfo {
+                        origin_start: origin_name.start,
+                    },
+                );
+            }
+            let result_compiled = syntax_expression_to_rust(
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_local_fns,
+                checked_queries,
+                pattern_variables,
+                used_pattern_variables,
+                origins,
+                used_origin_variables,
+                expressions.element(result),
+            );
+            let Some(origin_name) = name else {
+                return result_compiled;
+            };
+            if used_origin_variables.remove(&origin_name.value).is_none() {
+                return result_compiled;
+            }
+            syn::Expr::Block(syn::ExprBlock {
+                attrs: vec![],
+                label: None,
+                block: syn::Block {
+                    brace_token: syn::token::Brace(syn_span()),
+                    stmts: vec![
+                        syn::Stmt::Macro(syn::StmtMacro {
+                            attrs: vec![],
+                            mac: syn::Macro {
+                                path: syn_path_reference(["origin_new"]),
+                                bang_token: syn::token::Not(syn_span()),
+                                delimiter: syn::MacroDelimiter::Paren(
+                                    syn::token::Paren(syn_span()),
+                                ),
+                                tokens: {
+                                    let mut token_stream = proc_macro2::TokenStream::new();
+                                    proc_macro2::TokenStream::append_separated(
+                                        &mut token_stream,
+                                        [
+                                            syn_ident(&name_to_lowercase_rust(
+                                                origin_name.value.as_str(),
+                                            )),
+                                            syn_ident(&name_to_uppercase_rust(
+                                                origin_name.value.as_str(),
+                                            )),
+                                        ],
+                                        syn::token::Comma(syn_span()),
+                                    );
+                                    token_stream
+                                },
+                            },
+                            semi_token: None,
+                        }),
+                        syn::Stmt::Expr(result_compiled, None),
+                    ],
+                },
+            })
+        }
     }
 }
 fn type_references_origin(type_: &Type, origin: &Name) -> bool {
@@ -7873,155 +8625,161 @@ fn type_round_mode() -> Type {
         .map(|name| (name, type_record([]))),
     )
 }
-pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, CompiledProjectFnInfo>> =
+pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, CheckedProjectFn>> =
     std::sync::LazyLock::new(|| {
+        struct CoreFnInfo {
+            name: &'static str,
+            documentation: &'static str,
+            type_parameters: Vec<Name>,
+            parameter_type: Type,
+            result_type: Type,
+        }
+        // TODO add the snatching
         std::collections::HashMap::from([
             (
-                Name::const_new("p32-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
+                CoreFnInfo {
+                    name: "p32-dup",
+                    documentation:
                         "Split the p32 in two values with the same content",
-                    )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_p32),
-                    result_type: Some(type_record([("a", type_p32), ("b", type_p32)])),
-                },
+                    parameter_type:  (type_p32),
+                    result_type:  (type_record([("a", type_p32), ("b", type_p32)])),
+                }
             ),
             (
-                Name::const_new("p32-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
+                CoreFnInfo {
+                    name: "p32-rid",
+                    documentation:
                         "Mark the given p32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                    type_parameters: vec![],
+                    parameter_type:  (type_p32),
+                    result_type:  (type_record([])),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "p32-add-clamp",
+                    documentation: (("Saturating a + b")),
+                    type_parameters: vec![],
+                    parameter_type: (type_record([("p", type_p32), ("u", type_u32)])),
+                    result_type: (type_p32),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "u32-dup",
+                    documentation: ((
+                        "Split the u32 in two values with the same content"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_p32),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_u32),
+                    result_type: (type_record([("a", type_u32), ("b", type_u32)])),
+                }
             ),
             (
-                Name::const_new("p32-add-clamp"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("Saturating a + b")),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_record([("p", type_p32), ("u", type_u32)])),
-                    result_type: Some(type_p32),
-                },
-            ),
-            (
-                Name::const_new("u32-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Split the u32 in two values with the same content",
+                CoreFnInfo {
+                    name: "u32-rid",
+                    documentation: ((
+                        "Mark the given u32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_u32),
-                    result_type: Some(type_record([("a", type_u32), ("b", type_u32)])),
-                },
+                    parameter_type: (type_u32),
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("u32-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given u32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                CoreFnInfo {
+                    name: "u32-add-clamp",
+                    documentation: (("Saturating a + b")),
+                    type_parameters: vec![],
+                    parameter_type: (type_record([("a", type_u32), ("b", type_u32)])),
+                    result_type: (type_u32),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "i32-dup",
+                    documentation: ((
+                        "Split the i32 in two values with the same content"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_u32),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_i32),
+                    result_type: (type_record([("a", type_i32), ("b", type_i32)])),
+                }
             ),
             (
-                Name::const_new("u32-add-clamp"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("Saturating a + b")),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_record([("a", type_u32), ("b", type_u32)])),
-                    result_type: Some(type_u32),
-                },
-            ),
-            (
-                Name::const_new("i32-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Split the i32 in two values with the same content",
+                CoreFnInfo {
+                    name: "i32-rid",
+                    documentation: ((
+                        "Mark the given i32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_i32),
-                    result_type: Some(type_record([("a", type_i32), ("b", type_i32)])),
-                },
+                    parameter_type: (type_i32),
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("i32-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given i32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                CoreFnInfo {
+                    name: "i32-add-clamp",
+                    documentation: (("Saturating a + b")),
+                    type_parameters: vec![],
+                    parameter_type: (type_record([("a", type_i32), ("b", type_i32)])),
+                    result_type: (type_i32),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "f32-dup",
+                    documentation: ((
+                        "Split the f32 in two values with the same content"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_i32),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_f32),
+                    result_type: (type_record([("a", type_f32), ("b", type_f32)])),
+                }
             ),
             (
-                Name::const_new("i32-add-clamp"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("Saturating a + b")),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_record([("a", type_i32), ("b", type_i32)])),
-                    result_type: Some(type_i32),
-                },
-            ),
-            (
-                Name::const_new("f32-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Split the f32 in two values with the same content",
+                CoreFnInfo {
+                    name: "f32-rid",
+                    documentation: ((
+                        "Mark the given f32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_f32),
-                    result_type: Some(type_record([("a", type_f32), ("b", type_f32)])),
-                },
+                    parameter_type: (type_f32),
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("f32-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given f32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
-                    )),
+                CoreFnInfo {
+                    name: "f32-add-clamp",
+                    documentation: (("Saturating a + b")),
                     type_parameters: vec![],
-                    parameter_type: Some(type_f32),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_record([("a", type_f32), ("b", type_f32)])),
+                    result_type: (type_f32),
+                }
             ),
             (
-                Name::const_new("f32-add-clamp"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("Saturating a + b")),
+                CoreFnInfo {
+                    name: "f32-mul-clamp",
+                    documentation: (("Saturating a * b")),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([("a", type_f32), ("b", type_f32)])),
-                    result_type: Some(type_f32),
-                },
+                    parameter_type: (type_record([("a", type_f32), ("b", type_f32)])),
+                    result_type: (type_f32),
+                }
             ),
             (
-                Name::const_new("f32-mul-clamp"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("Saturating a * b")),
+                CoreFnInfo {
+                    name: "f32-div-clamp",
+                    documentation: (("Saturating n / by")),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([("a", type_f32), ("b", type_f32)])),
-                    result_type: Some(type_f32),
-                },
+                    parameter_type: (type_record([("n", type_f32), ("by", type_f32)])),
+                    result_type: (type_f32),
+                }
             ),
             (
-                Name::const_new("f32-div-clamp"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("Saturating n / by")),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_record([("n", type_f32), ("by", type_f32)])),
-                    result_type: Some(type_f32),
-                },
-            ),
-            (
-                Name::const_new("f32-round"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("If not already equal to an integer value,
+                CoreFnInfo {
+                    name: "f32-round",
+                    documentation: (("If not already equal to an integer value,
 find a neighboring integer with a given `round-mode`.
 For math-type round for example, use
 ```sloe
@@ -8029,14 +8787,14 @@ fn age . :> f32 >
     f32-round .n 68.8 .mode |nearest-else-away-from-0<round-mode> .
 ```")),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([("n", type_f32), ("mode", type_round_mode())])),
-                    result_type: Some(type_f32),
-                },
+                    parameter_type: (type_record([("n", type_f32), ("mode", type_round_mode())])),
+                    result_type: (type_f32),
+                }
             ),
             (
-                Name::const_new("f32-to-i32-clamp"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("If not already equal to an integer value,
+                CoreFnInfo {
+                    name: "f32-to-i32-clamp",
+                    documentation: (("If not already equal to an integer value,
 find a neighboring integer with a given `round-mode`. Finally, clamp it to within 32 bits.
 For truncating off at the decimal point for example, use
 ```sloe
@@ -8044,271 +8802,276 @@ fn age . :> f32 >
     f32-to-i32-clamp .n 68.8 .mode |toward-0<round-mode> .
 ```")),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([("n", type_f32), ("mode", type_round_mode(  ))])),
-                    result_type: Some(type_i32),
-                },
-            ),
-            (
-                Name::const_new("char-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Split the char in two values with the same content",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_char),
-                    result_type: Some(type_record([("a", type_char), ("b", type_char)])),
-                },
-            ),
-            (
-                Name::const_new("char-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given char value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_char),
-                    result_type: Some(type_record([])),
-                },
-            ),
-            (
-                Name::const_new("str-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Split the str in two values with the same content",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_str),
-                    result_type: Some(type_record([("a", type_str), ("b", type_str)])),
-                },
-            ),
-            (
-                Name::const_new("str-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given str value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_str),
-                    result_type: Some(type_record([])),
-                },
-            ),
-            (
-                Name::const_new("opt-present"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from("Shorthand for |present<opt ..value type..> value")),
-                    type_parameters: vec![],
-                    parameter_type: Some(type_variable("Present")),
-                    result_type: Some(type_opt(type_variable("Present")))
+                    parameter_type: (type_record([("n", type_f32), ("mode", type_round_mode(  ))])),
+                    result_type: (type_i32),
                 }
             ),
             (
-                Name::const_new("fn-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Split the fn in two values with the same content",
+                CoreFnInfo {
+                    name: "char-dup",
+                    documentation: ((
+                        "Split the char in two values with the same content"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_fn(type_variable("In"), type_variable("Out"))),
-                    result_type: Some(type_record([
+                    parameter_type: (type_char),
+                    result_type: (type_record([("a", type_char), ("b", type_char)])),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "char-rid",
+                    documentation: ((
+                        "Mark the given char value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: (type_char),
+                    result_type: (type_record([])),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "str-dup",
+                    documentation: ((
+                        "Split the str in two values with the same content"
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: (type_str),
+                    result_type: (type_record([("a", type_str), ("b", type_str)])),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "str-rid",
+                    documentation: ((
+                        "Mark the given str value as \"won't be used anymore\".
+This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: (type_str),
+                    result_type: (type_record([])),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "opt-present",
+                    documentation: (("Shorthand for |present<opt ..value type..> value")),
+                    type_parameters: vec![],
+                    parameter_type: (type_variable("Present")),
+                    result_type: (type_opt(type_variable("Present")))
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "fn-dup",
+                    documentation: ((
+                        "Split the fn in two values with the same content"
+                    )),
+                    type_parameters: vec![],
+                    parameter_type: (type_fn(type_variable("In"), type_variable("Out"))),
+                    result_type: (type_record([
                         ("a", type_fn(type_variable("In"), type_variable("Out"))),
                         ("b", type_fn(type_variable("In"), type_variable("Out"))),
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("fn-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given fn value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                CoreFnInfo {
+                    name: "fn-rid",
+                    documentation: ((
+                        "Mark the given fn value as \"won't be used anymore\".
+This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_fn(type_variable("In"), type_variable("Out"))),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_fn(type_variable("In"), type_variable("Out"))),
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("origin-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case",
+                CoreFnInfo {
+                    name: "origin-rid",
+                    documentation: ((
+                        "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_origin(type_variable("Origin"))),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_origin(type_variable("Origin"))),
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("origin-rid-dup"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Split the origin-rid in two values with the same content",
+                CoreFnInfo {
+                    name: "origin-rid-dup",
+                    documentation: ((
+                        "Split the origin-rid in two values with the same content"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_origin_rid(type_variable("Origin"))),
-                    result_type: Some(type_record([
+                    parameter_type: (type_origin_rid(type_variable("Origin"))),
+                    result_type: (type_record([
                         ("a", type_origin_rid(type_variable("Origin"))),
                         ("b", type_origin_rid(type_variable("Origin"))),
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("origin-rid-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given origin-rid value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to ignore it only in some case",
+                CoreFnInfo {
+                    name: "origin-rid-rid",
+                    documentation: ((
+                        "Mark the given origin-rid value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to ignore it only in some case"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_origin_rid(type_variable("Origin"))),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_origin_rid(type_variable("Origin"))),
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("slot-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given slot value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case",
+                CoreFnInfo {
+                    name: "slot-rid",
+                    documentation: ((
+                        "Mark the given slot value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         ("slot", type_slot(type_variable("Origin"))),
                         ("origin-rid", type_origin_rid(type_variable("Origin"))),
                     ])),
-                    result_type: Some(type_record([])),
-                },
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("span-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given span value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case",
+                CoreFnInfo {
+                    name: "span-rid",
+                    documentation: ((
+                        "Mark the given span value as \"won't be used anymore\", given a proof that the backing collection is gone.
+This is usually done to scrap some function byproduct or to ignore it only in some case"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         ("span", type_span(type_variable("Origin"))),
                         ("origin-rid", type_origin_rid(type_variable("Origin"))),
                     ])),
-                    result_type: Some(type_record([])),
-                },
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("opt-span-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Mark the given opt span value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case",
+                CoreFnInfo {
+                    name: "opt-span-rid",
+                    documentation: ((
+                        "Mark the given opt span value as \"won't be used anymore\", given a proof that the backing collection is gone.
+This is usually done to scrap some function byproduct or to ignore it only in some case"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         ("span", type_opt(type_span(type_variable("Origin")))),
                         ("origin-rid", type_origin_rid(type_variable("Origin"))),
                     ])),
-                    result_type: Some(type_record([])),
-                },
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("vec-empty"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc.",
+                CoreFnInfo {
+                    name: "vec-empty",
+                    documentation: ((
+                        "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc."
                     )),
                     type_parameters: vec![Name::const_new("Element")],
-                    parameter_type: Some(type_origin(type_variable("Origin"))),
-                    result_type: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
-                },
+                    parameter_type: (type_origin(type_variable("Origin"))),
+                    result_type: (type_vec(type_variable("Origin"), type_variable("Element"))),
+                }
             ),
             (
-                Name::const_new("vec-pre-allocate-at-least"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Reserves capacity for at least `length` more elements to be added. This can prevent frequent re-allocation of the underlying array.",
+                CoreFnInfo {
+                    name: "vec-pre-allocate-at-least",
+                    documentation: ((
+                        "Reserves capacity for at least `length` more elements to be added. This can prevent frequent re-allocation of the underlying array."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("length", type_u32),
                     ])),
-                    result_type: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
-                },
+                    result_type: (type_vec(type_variable("Origin"), type_variable("Element"))),
+                }
             ),
             (
-                Name::const_new("vec-add"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Add a new element into the vec and keep a slot to it.",
+                CoreFnInfo {
+                    name: "vec-add",
+                    documentation: ((
+                        "Add a new element into the vec and keep a slot to it."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("new", type_variable("Element")),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-add-ignoring-vacant"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Add a new element into the vec and keep a slot to it without trying to reuse already vacant slots. Can be faster than vec-add for temporary vecs where all the storage gets scrapped anyway, see also vec-element-without-vacating.",
+                CoreFnInfo {
+                    name: "vec-add-ignoring-vacant",
+                    documentation: ((
+                        "Add a new element into the vec and keep a slot to it without trying to reuse already vacant slots.
+Can potentially be faster than vec-add for temporary vecs where all the storage gets scrapped anyway."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("new", type_variable("Element")),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-element"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Remove and retrieve an element from the vec at a given slot (the inverse of vec-add).",
+                CoreFnInfo {
+                    name: "vec-element",
+                    documentation: ((
+                        "Remove and retrieve an element from the vec at a given slot (the inverse of vec-add)"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("element", type_variable("Element")),
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-opt-span-add"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Attach a given element at the end of the span.",
+                CoreFnInfo {
+                    name: "vec-opt-span-add",
+                    documentation: ((
+                        "Attach a given element at the end of the span."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8319,7 +9082,7 @@ fn age . :> f32 >
                         ("span", type_opt(type_span(type_variable("Origin")))),
                         ("new", type_variable("Element")),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8329,16 +9092,16 @@ fn age . :> f32 >
                         ),
                         ("span", type_span(type_variable("Origin")))
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-span-add"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Attach a given element at the end of the span.",
+                CoreFnInfo {
+                    name: "vec-span-add",
+                    documentation: ((
+                        "Attach a given element at the end of the span"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8349,7 +9112,7 @@ fn age . :> f32 >
                         ("span", type_span(type_variable("Origin"))),
                         ("new", type_variable("Element")),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8359,16 +9122,16 @@ fn age . :> f32 >
                         ),
                         ("span", type_span(type_variable("Origin")))
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-opt-span-add-str"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Attach a given `str` at the end of the span.",
+                CoreFnInfo {
+                    name: "vec-opt-span-add-str",
+                    documentation: ((
+                        "Attach a given `str` at the end of the span"
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8379,7 +9142,7 @@ fn age . :> f32 >
                         ("span", type_opt(type_span(type_variable("Origin")))),
                         ("new", type_str),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8389,16 +9152,16 @@ fn age . :> f32 >
                         ),
                         ("span", type_opt(type_span(type_variable("Origin"))))
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-span-add-str"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Attach a given `str` at the end of the span.",
+                CoreFnInfo {
+                    name: "vec-span-add-str",
+                    documentation: ((
+                        "Attach a given `str` at the end of the span."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8409,7 +9172,7 @@ fn age . :> f32 >
                         ("span", type_span(type_variable("Origin"))),
                         ("new", type_str),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                              type_vec(
@@ -8419,77 +9182,75 @@ fn age . :> f32 >
                         ),
                         ("span", type_span(type_variable("Origin"))),
                     ])),
-                },
+                }
             ),
-            // TODO add the snatching
             (
-                Name::const_new("vec-move-opt-span-to-vacant"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
+                CoreFnInfo {
+                    name: "vec-move-opt-span-to-vacant",
+                    documentation: ((
+                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_opt(type_span(type_variable("Origin")))),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_opt(type_span(type_variable("Origin")))),
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-move-opt-span-to-vacant"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
-                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
+                CoreFnInfo {
+                    name: "vec-move-opt-span-to-vacant",
+                    documentation: ((
+                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_span(type_variable("Origin"))),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_span(type_variable("Origin"))),
                     ])),
-                },
+                }
             ),
             (
-                Name::const_new("vec-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
+                CoreFnInfo {
+                    name: "vec-rid",
+                    documentation: ((
                         "Mark the given vec value as \"won't be used anymore\". This is usually done for temporary vecs at the end of their scope
 once you've used up all its elements.
 If any slots or spans are still floating around, you will not be able to get rid of them.
 This nicely forces you to handle all remaining elements before you can get rid of the vec.
 If you still hold slots and spans to the elements inside
 that you don't want to vacate one-by-one yet,
-there are also helpers like `vec-fold` or `vec-fold-with-origin-rid`.
-",
+there are also helpers like `vec-fold` or `vec-fold-with-origin-rid`."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
-                    result_type: Some(type_record([])),
-                },
+                    parameter_type: (type_vec(type_variable("Origin"), type_variable("Element"))),
+                    result_type: (type_record([])),
+                }
             ),
             (
-                Name::const_new("vec-fold"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
+                CoreFnInfo {
+                    name: "vec-fold",
+                    documentation: ((
                         "Consume all elements, stepping a state through first to last.
 This is mainly intended as a cleanup mechanism to flush out any remaining elements.
 ```sloe
@@ -8504,11 +9265,10 @@ _vec-fold
 If you know there are no more slots and spans left, use `vec-rid`.
 For regular folds over spans, use helpers like `span-fold`.
 If you end up needing to scrap some remaining slots and spans after or during `vec-fold`,
-check out `vec-fold-with-origin-rid`.
-",
+check out `vec-fold-with-origin-rid`."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
@@ -8526,22 +9286,22 @@ check out `vec-fold-with-origin-rid`.
                             ),
                         ),
                     ])),
-                    result_type: Some(type_variable("State")),
-                },
+                    result_type: (type_variable("State")),
+                }
             ),
             (
-                Name::const_new("vec-fold-with-origin-rid"),
-                CompiledProjectFnInfo {
-                    documentation: Some(Box::from(
+                CoreFnInfo {
+                    name: "vec-fold-with-origin-rid",
+                    documentation: ((
                         "Consume all elements, stepping a state through first to last.
 If any element contains slots and spans to the exact same vec, you can use the provided `origin-rid`
 to get rid of them.
 The resulting `origin-rid` can be used to get rid of remaining slots and spans elsewhere.
 If you know there were already no more slots and spans left from the start,
-use `vec-rid` instead of `vec-fold-with-origin-rid`.",
+use `vec-rid` instead of `vec-fold-with-origin-rid`."
                     )),
                     type_parameters: vec![],
-                    parameter_type: Some(type_record([
+                    parameter_type: (type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
@@ -8560,13 +9320,24 @@ use `vec-rid` instead of `vec-fold-with-origin-rid`.",
                             ),
                         ),
                     ])),
-                    result_type: Some(type_record([
+                    result_type: (type_record([
                         ("state", type_variable("State")),
                         ("origin-rid", type_origin_rid(type_variable("Origin"))),
                     ])),
-                },
+                }
             ),
-        ])
+        ].map(|core_fn_info| {
+            (
+                Name::const_new(core_fn_info.name),
+                CheckedProjectFn {
+                    documentation: Some(Box::from(core_fn_info.documentation)),
+                    type_parameters: core_fn_info.type_parameters,
+                    parameter_type: Some(core_fn_info.parameter_type),
+                    result_type: Some(core_fn_info.result_type),
+                    result_expression_is_invalid: true
+                },
+            )
+        }))
     });
 pub static core_type_aliases: std::sync::LazyLock<
     std::collections::HashMap<Name, CheckedTypeAlias>,
