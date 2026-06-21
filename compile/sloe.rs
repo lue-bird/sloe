@@ -3774,7 +3774,7 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
         block: Box::new(syn_spread_expr_block(compiled_result)),
     }))
 }
-// TODO only if you know `syntax_type` has already been called on it before
+// only use if you know `syntax_type` has already been called on it before
 pub fn syntax_type_to_type<Types>(
     type_: &SyntaxType<Types>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
