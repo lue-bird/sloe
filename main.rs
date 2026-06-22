@@ -2029,7 +2029,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         if type_alias_info.parameters.is_empty() {
                             inserted_text.push_str(type_alias_name);
                         } else {
-                            inserted_text.push('(');
+                            inserted_text.push_str("(_");
                             inserted_text.push_str(type_alias_name);
                             for parameter in &type_alias_info.parameters {
                                 inserted_text.push(' ');
@@ -2168,23 +2168,39 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                             );
                         }
                         Some(parameter_type) => {
-                            inserted_text.push('(');
+                            inserted_text.push_str("(_");
                             inserted_text.push_str(fn_name);
                             angled_type_parameters_format(
                                 &mut inserted_text,
                                 &fn_info.type_parameters,
                             );
-                            inserted_text.push(' ');
+
                             match parameter_type {
                                 sloe::Type::Record(parameter_fields) => {
-                                    inserted_text.push_str("&");
                                     for field in parameter_fields {
-                                        inserted_text.push_str(" (");
+                                        inserted_text.push_str(" .");
                                         inserted_text.push_str(&field.name);
-                                        inserted_text.push_str(" )");
+                                        inserted_text.push(' ');
+                                        inserted_text.push_str(&field.name);
                                     }
                                 }
-                                _ => {}
+                                sloe_compile::Type::Variable(_) => {
+                                    inserted_text.push(' ');
+                                }
+                                sloe_compile::Type::Origin(_) => {
+                                    inserted_text.push(' ');
+                                }
+                                sloe_compile::Type::Choice(variants) => {
+                                    inserted_text.push(' ');
+                                    if let [variant] = variants.as_slice() {
+                                        inserted_text.push_str("(|");
+                                        inserted_text.push_str(&variant.name);
+                                        inserted_text.push_str("<> )");
+                                    }
+                                }
+                                sloe_compile::Type::CoreConstruct { .. } => {
+                                    inserted_text.push(' ');
+                                }
                             }
                             inserted_text.push(')');
                         }

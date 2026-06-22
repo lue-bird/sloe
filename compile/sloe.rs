@@ -3742,8 +3742,6 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
             checked_queries,
             &mut parameter_introduced_variables,
             &mut std::collections::HashMap::new(),
-            &mut std::collections::HashMap::new(),
-            &mut std::collections::HashMap::new(),
             syntax_result,
         )
     };
@@ -6721,94 +6719,85 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
-    used_pattern_variables: &mut std::collections::HashMap<
-        &'a Name,
-        /* start */ lsp_types::Position,
-    >,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
-    used_origin_variables: &mut std::collections::HashMap<
-        &'a Name,
-        /* start */ lsp_types::Position,
-    >,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
 ) -> syn::Expr {
     match expression {
-        SyntaxExpression::Number { value, type_ } => match type_ {
-            None => syn_expr_todo(),
-            Some(syntax_type) => {
-                let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins)
-                else {
-                    return syn_expr_todo();
-                };
-                match &type_ {
-                    Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
-                        "p32" => match value.value.parse::<std::num::NonZeroU32>() {
-                            Ok(number) => {
-                                let rust_number_predecessor = syn::Expr::Lit(syn::ExprLit {
-                                    attrs: vec![],
-                                    lit: syn::Lit::Int(syn::LitInt::new(
-                                        &((number.get() - 1).to_string() + "u32"),
-                                        syn_span(),
-                                    )),
-                                });
-                                // there is no native NonZeroU32 int literal (AFAIK),
-                                // so we do saturating_add(NonZeroU32::MIN /* = 1 */, p32 - 1)
-                                // which should optimize back into NonZeroU32::new_unchecked(p32)
-                                syn::Expr::Call(syn::ExprCall {
-                                    attrs: vec![],
-                                    func: Box::new(syn_expr_reference([
-                                        "std",
-                                        "num",
-                                        "NonZeroU32",
-                                        "saturating_add",
-                                    ])),
-                                    paren_token: syn::token::Paren(syn_span()),
-                                    args: [
-                                        syn_expr_reference(["std", "num", "NonZeroU32", "MIN"]),
-                                        rust_number_predecessor,
-                                    ]
-                                    .into_iter()
-                                    .collect(),
-                                })
-                            }
-                            Err(_) => syn_expr_todo(),
-                        },
-                        "u32" => match value.value.parse::<u32>() {
-                            Ok(number) => syn::Expr::Lit(syn::ExprLit {
+        SyntaxExpression::Number { value, type_ } => {
+            let Some(syntax_type) = type_ else {
+                return syn_expr_todo();
+            };
+            let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins) else {
+                return syn_expr_todo();
+            };
+            match &type_ {
+                Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
+                    "p32" => match value.value.parse::<std::num::NonZeroU32>() {
+                        Ok(number) => {
+                            let rust_number_predecessor = syn::Expr::Lit(syn::ExprLit {
                                 attrs: vec![],
                                 lit: syn::Lit::Int(syn::LitInt::new(
-                                    &(number.to_string() + "u32"),
+                                    &((number.get() - 1).to_string() + "u32"),
                                     syn_span(),
                                 )),
-                            }),
-                            Err(_) => syn_expr_todo(),
-                        },
-                        "i32" => match value.value.parse::<i32>() {
-                            Ok(number) => syn::Expr::Lit(syn::ExprLit {
+                            });
+                            // there is no native NonZeroU32 int literal (AFAIK),
+                            // so we do saturating_add(NonZeroU32::MIN /* = 1 */, p32 - 1)
+                            // which should optimize back into NonZeroU32::new_unchecked(p32)
+                            syn::Expr::Call(syn::ExprCall {
                                 attrs: vec![],
-                                lit: syn::Lit::Int(syn::LitInt::new(
-                                    &(number.to_string() + "i32"),
-                                    syn_span(),
-                                )),
-                            }),
-                            Err(_) => syn_expr_todo(),
-                        },
-                        "f32" => match value.value.parse::<f32>() {
-                            Ok(number) => syn::Expr::Lit(syn::ExprLit {
-                                attrs: vec![],
-                                lit: syn::Lit::Float(syn::LitFloat::new(
-                                    &(number.to_string() + "f32"),
-                                    syn_span(),
-                                )),
-                            }),
-                            Err(_) => syn_expr_todo(),
-                        },
-                        _ => syn_expr_todo(),
+                                func: Box::new(syn_expr_reference([
+                                    "std",
+                                    "num",
+                                    "NonZeroU32",
+                                    "saturating_add",
+                                ])),
+                                paren_token: syn::token::Paren(syn_span()),
+                                args: [
+                                    syn_expr_reference(["std", "num", "NonZeroU32", "MIN"]),
+                                    rust_number_predecessor,
+                                ]
+                                .into_iter()
+                                .collect(),
+                            })
+                        }
+                        Err(_) => syn_expr_todo(),
+                    },
+                    "u32" => match value.value.parse::<u32>() {
+                        Ok(number) => syn::Expr::Lit(syn::ExprLit {
+                            attrs: vec![],
+                            lit: syn::Lit::Int(syn::LitInt::new(
+                                &(number.to_string() + "u32"),
+                                syn_span(),
+                            )),
+                        }),
+                        Err(_) => syn_expr_todo(),
+                    },
+                    "i32" => match value.value.parse::<i32>() {
+                        Ok(number) => syn::Expr::Lit(syn::ExprLit {
+                            attrs: vec![],
+                            lit: syn::Lit::Int(syn::LitInt::new(
+                                &(number.to_string() + "i32"),
+                                syn_span(),
+                            )),
+                        }),
+                        Err(_) => syn_expr_todo(),
+                    },
+                    "f32" => match value.value.parse::<f32>() {
+                        Ok(number) => syn::Expr::Lit(syn::ExprLit {
+                            attrs: vec![],
+                            lit: syn::Lit::Float(syn::LitFloat::new(
+                                &(number.to_string() + "f32"),
+                                syn_span(),
+                            )),
+                        }),
+                        Err(_) => syn_expr_todo(),
                     },
                     _ => syn_expr_todo(),
-                }
+                },
+                _ => syn_expr_todo(),
             }
-        },
+        }
         SyntaxExpression::Char {
             open_quote_start: _,
             content,
@@ -6832,30 +6821,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         }),
         SyntaxExpression::Variable(name) => {
             if let Some(_origin_info) = origins.get(&name.value) {
-                let maybe_existing_origin_variable_use_start =
-                    used_origin_variables.insert(&name.value, name.start);
-                if let Some(_existing_origin_variable_use_start) =
-                    maybe_existing_origin_variable_use_start
-                {
-                    return syn_expr_todo();
-                }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
-                rust_reference
+                syn_expr_reference([&name_to_lowercase_rust(&name.value)])
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
-                let maybe_existing_pattern_variable_use_start =
-                    used_pattern_variables.insert(&name.value, name.start);
-                if let Some(_existing_pattern_variable_use_start) =
-                    maybe_existing_pattern_variable_use_start
-                {
-                    return syn_expr_todo();
-                }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 let Some(_) = variable_info.type_.clone() else {
                     return syn_expr_todo();
                 };
-                rust_reference
+                syn_expr_reference([&name_to_lowercase_rust(&name.value)])
             } else {
                 syn_expr_todo()
             }
@@ -6870,18 +6841,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 return syn_expr_todo();
             };
             if let Some(variable_info) = pattern_variables.get(&name.value) {
-                let maybe_existing_pattern_variable_use_start =
-                    used_pattern_variables.insert(&name.value, name.start);
-                if let Some(_existing_pattern_variable_use_start) =
-                    maybe_existing_pattern_variable_use_start
-                {
-                    return syn_expr_todo();
-                }
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 let Some(_) = variable_info.type_.clone() else {
                     return syn_expr_todo();
                 };
+                let rust_reference: syn::Expr =
+                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
                 match syntax_argument {
                     None => rust_reference,
                     Some(argument) => {
@@ -6895,9 +6859,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             checked_local_fns,
                             checked_queries,
                             pattern_variables,
-                            used_pattern_variables,
                             origins,
-                            used_origin_variables,
                             syntax_argument,
                         );
                         syn::Expr::Call(syn::ExprCall {
@@ -6911,13 +6873,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     }
                 }
             } else if let Some(_origin_info) = origins.get(&name.value) {
-                let maybe_existing_origin_variable_use_start =
-                    used_origin_variables.insert(&name.value, name.start);
-                if let Some(_existing_origin_variable_use_start) =
-                    maybe_existing_origin_variable_use_start
-                {
-                    return syn_expr_todo();
-                }
                 syn_expr_reference([&name_to_lowercase_rust(&name.value)])
             } else {
                 let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
@@ -6986,9 +6941,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             checked_local_fns,
                             checked_queries,
                             pattern_variables,
-                            used_pattern_variables,
                             origins,
-                            used_origin_variables,
                             syntax_argument,
                         );
                         syn::Expr::Call(syn::ExprCall {
@@ -7034,9 +6987,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
-                used_origin_variables,
                 value,
             );
             syn::Expr::Call(syn::ExprCall {
@@ -7085,8 +7036,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             ) else {
                 return syn_expr_todo();
             };
-            let mut result_used_pattern_variables = std::collections::HashMap::new();
-            let mut result_used_origin_variables = std::collections::HashMap::new();
             let compiled_result = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
@@ -7096,9 +7045,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 &mut parameter_introduced_variables,
-                &mut result_used_pattern_variables,
                 origins,
-                &mut result_used_origin_variables,
                 expressions.element(result),
             );
             let mut type_variables = std::collections::HashSet::new();
@@ -7187,9 +7134,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     pattern_variables,
-                    used_pattern_variables,
                     origins,
-                    used_origin_variables,
                     expressions.element(field_value),
                 ),
             };
@@ -7214,9 +7159,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         pattern_variables,
-                        used_pattern_variables,
                         origins,
-                        used_origin_variables,
                         field_value,
                     ),
                 };
@@ -7262,9 +7205,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
-                used_origin_variables,
                 expressions.element(inner),
             ),
         },
@@ -7282,9 +7223,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
-                used_origin_variables,
                 expressions.element(expression),
             ),
         },
@@ -7312,9 +7251,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
-                used_origin_variables,
                 queried,
             );
             let Some(case0_pattern) = &case0.pattern else {
@@ -7343,8 +7280,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     .iter()
                     .map(|(binding, info)| (*binding, info.clone())),
             );
-            let mut case0_result_used_pattern_variables = std::collections::HashMap::new();
-            let mut case0_result_used_origin_variables = std::collections::HashMap::new();
             let case0_compiled_result_rust = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
@@ -7354,9 +7289,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 pattern_variables,
-                &mut case0_result_used_pattern_variables,
                 origins,
-                &mut case0_result_used_origin_variables,
                 case0_result,
             );
             for (case0_pattern_introduced_variable, _) in case0_pattern_introduced_variables {
@@ -7409,8 +7342,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     rust_arms.push(syn_arm(case_pattern_compiled, syn_expr_todo()));
                     continue 'compiling_case1_up;
                 };
-                let mut case_result_used_pattern_variables = std::collections::HashMap::new();
-                let mut case_result_used_origin_variables = std::collections::HashMap::new();
                 let case_compiled_result_rust = syntax_expression_to_rust(
                     type_aliases,
                     project_fns,
@@ -7420,9 +7351,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     pattern_variables,
-                    &mut case_result_used_pattern_variables,
                     origins,
-                    &mut case_result_used_origin_variables,
                     case_result,
                 );
                 for (case_pattern_introduced_variable, _) in case_pattern_introduced_variables {
@@ -7459,8 +7388,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     comma: None,
                 });
             }
-            used_pattern_variables.extend(case0_result_used_pattern_variables);
-            used_origin_variables.extend(case0_result_used_origin_variables);
             if rust_arms.len() == 1
                 && let Some(only_match_arm) = rust_arms.pop()
             {
@@ -7520,17 +7447,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
-                used_origin_variables,
                 expressions.element(result),
             );
             let Some(origin_name) = name else {
                 return result_compiled;
             };
-            if used_origin_variables.remove(&origin_name.value).is_none() {
-                return result_compiled;
-            }
             syn::Expr::Block(syn::ExprBlock {
                 attrs: vec![],
                 label: None,

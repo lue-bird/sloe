@@ -1,12 +1,12 @@
-Small, fast pure functional programming language where indexes are valid and values can't be shared.
+Small, fast programming language where indexes are valid and values can't be shared.
 
 The goal is representing tree-like data structures without segmented memory or plain index integers (along with the need to handle failure and generations),
-instead offering a safe, infallible way to refer to values and slices stored in flat memory structures.
+instead offering a safe, infallible way to refer to elements and slices stored in flat memory structures.
 
 [skip to examples](#examples)
 
 Note that while as a side effect this avoids any bounds checks,
-bounds-checking in general is not slow (typically only around 2% slower than unchecked access in practice).
+bounds-checking in general is not slow.
 
 Install with
 
@@ -27,10 +27,10 @@ This allows
 - representing things that should be cleaned up in a specific way, like memory that should be freed
 - guaranteeing non-overlapping pointed memory regions can enable some more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently none of the languages sloe compile to make much explicit use of this fact)
 
-This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec _vec ... :> .vec _vec ... .count u32`.
-Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a modified vec.
+This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec _vec ... :> .vec _vec ... .count u32` (take a collection, give back its size and the given collection).
+Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't).
 
-The _big_ advantage is that this rule is easy to understand and _way simpler and faster to statically analyze_ than lifetimes or similar.
+The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
 Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types).
 Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
@@ -42,14 +42,14 @@ Note that this functionality is entirely optional and you can at no cost just us
 
 Further reading if interested: This concept is often called slot map, reusing memory.
 In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
-Various kinds of similar rust collections are compared here: https://donsz.nl/blog/arenas/
+[Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
 There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
 
 # concept: distinct origin of a collection in your code
 Every created collection has a correlated origin.
 A value whose type contains an origin can't escape the function scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
-```
+```sloe
 fn some-vec . :> _vec ??origin cannot even be annotated??, u32 >
     origin vec-origin
     ? _vec-empty<u32> vec-origin = vec >
@@ -74,7 +74,7 @@ In my opinion this isn't quite a solved problem and if you have other ideas, I w
 
 # examples
 ## pass in an origin from the outside (rare)
-```
+```sloe
 fn vec-empty<Element> origin _origin Origin :> _vec Origin, Element
 ```
 shift the responsibility for cleanup to the caller.
@@ -85,7 +85,7 @@ For most other functions, it's more common to pass in an existing collection
 `origin some-name` creates a new origin variable and a local unique type for the start offset of its scope.
 An origin type does not have a `-dup` helper and thus can only be used for one collection.
 At the end of the underlying origin of the annotated origin type, the memory of the value with that origin will be deallocated.
-```
+```sloe
 # use a temporary value within a scope
 fn use-vec . :> u32 >
     origin vec-origin
@@ -175,7 +175,7 @@ fn state-to-interfaces-into
 # syntax
 Syntax is secondary but I tried to make it coherent and practical, avoiding parens and indentation when possible, especially for trailing syntax.
 Sloe is a very explicit language, so any extra verbosity is not tolerable.
-```
+```sloe
 # line comment
 
 # number type, so for example
@@ -272,7 +272,7 @@ ty type-name Potential Type-Parameters
   which usefully exposes a way to use vacant spaces
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
-  ```
+  ```sloe
   fn recurse
       .consume-origin consume-origin Consume-origin
       .result-origin result-origin Result-origin
@@ -342,7 +342,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   The issue currently is that it feels hard to optimally construct/query such a heterogenous structure.
   Its structure _must_ be created at compile-time. Dynamically this doesn't fly: `vec origin = { bucket: Map<for type_byte_size: { key: type_byte_size, value: Vec<type_byte_size> }> }`.
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
-  ```
+  ```sloe
   origin vec-origin
   ? _vec-empty<.expression expression .pattern pattern vec-origin> vec-origin = vec >
   ? _vec-add .vec vec .new some-expression = .vec vec slot some-expression-slot >
@@ -410,6 +410,28 @@ a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly
 "Positionality" in general is pretty much absent in sloe. E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
 Sloe had positional arguments once, largely because the rust-sloe interface is simpler in rust with positional arguments.
 
+# general quetions you might have
+
+## does sloe fill any niche well enough to be worth it?
+Domains where languages like safe rust, C#, roc, swift, safe haskell, maybe go stand today:
+  - not extensive enough to have any place in systems programming,
+    but comfortably sitting on top of a somewhat thin platform layer.
+  - not as easy to (ab)use as scripting languages like python, gleam, prolog, elm, lua, etc.
+  - mainly used for applications or similar where maintainability and being easy to reason about is important
+
+Don't be afraid to program in a language sloe compiles to for tasks sloe feels annoying to use for.
+E.g. I imagine writing a recursive file watcher in sloe
+
+## why put work into transpiling to existing languages
+The best user experience interfacing with sloe code from existing system-level languages
+is directly generating code in that language. Just sharing type names, structs, tagged unions, function signatures etc without any work by you is tasty enough.
+And if you end up outgrowing sloe, you have all the code right there (that's the hope anyway but output readability is likely wose than as if it was hand-written).
+Being easy to transpile is an explicit goal of sloe, enabled by its very limited set of features.
+
+## why write the compiler and tooling in rust?
+It did that before and it does it's job.
+I imagine the current style leaves some performance on the table but I'd be surprised if it was too slow for its only potential user, the human reading this (<3). 
+
 # dev setup
 to re-compile
 ```bash
@@ -471,7 +493,30 @@ cargo install --offline --debug --path . sloe
   ```
   while this would cleanly solve all issues it leaves a bitter taste in my mouth.
   I've previously come to the conslusion that this is bad design as it leads to query cases that should be impossible (e.g. getting user settings from http even though the client isn't logged in. These cases should really be unreachable).
-  It's also not optimal (doubly indirect function call with 2 queries through `interface` and `event` and constructing a vec at every step).
+  It's also not optimal (doubly indirect function call with 2 queries through `interface` and `event` and populating a vec at every step).
   Of course going through an explicit event choice type also has it's nicities (probably nice to debug, test, isolate io from business logic (?)) but the other two issues are more important.
 
-  Another solution which is taken by almost all other languages is to scrap purity and allow calling into user functions and potentially opaque user types. However, I'd like to avoid this, at least for the default path. (Note that this is kinda already possible by passing in impure functions as arguments when calling sloe functions from user code)
+  Another solution which is taken by almost all other languages is to scrap purity and allow calling into user functions and potentially opaque user types. However, I'd like to avoid direct FFI (because sloe should be compilable to various languages, FFI not being testable etc.).
+  A form of this is already necessarily possible by passing in impure functions (which could even modify global variables) as arguments when calling sloe functions from user code: "impure functions in, impure output".
+  This existing functionality already covers a wide array of use-cases.
+  Think e.g. (string and result types simplified for readability):
+  ```sloe
+  ty _io-interface Io
+      .write-file _fn (.path str .content str .io Io), (.result ... .io Io)
+      .read-file _fn (.path str .io Io), (.content str .io Io)
+  
+  fn event-loop
+      .io io Io .io-interface io-interface io-interface
+      :> .state state .io Io >
+      ? io-interface = .write-file write-file .read-file .read-file >
+      ? read-file .path "from.txt" .io io = .content from-content .io io >
+      ? write-file .path "to.txt" .io io = .result ... .io io >
+      .io io
+  ```
+  Honestly this just seems wonderful, no?
+  The `io-interface` and `io` could also be packaged up together in sloe code
+  so that `io-interface` functions don't need to be duplicated all over the place.
+  Open problem: How to actually make an event system out of this?
+  Look for inspiration at zig and rust.
+  I'm also wondering... would this still make sloe a pure functional language?
+  Another question is if there is a suitable concurrent runtime in rust that would satisfy this "io as an argument"
