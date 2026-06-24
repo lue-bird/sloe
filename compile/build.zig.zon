@@ -1,0 +1,7 @@
+.{
+    .name = .sloe_core,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.17.0-dev.864+3deb86baf",
+    .paths = .{""},
+    .fingerprint = 0x7d2efee609fb8191,
+}
