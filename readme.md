@@ -350,7 +350,10 @@ It also makes initial_state much easier to call from the rust side (though we ne
   ...
   ```
   This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
-
+- allowing field and variant names to start with numbers, like `fn char-dup char char :> .0 char .1 char`.
+  The nice thing is that this matches what most language use as field names for tuples.
+  Overall though, this is also a little bit confusing.
+  If you have a use-case for this, I will probably reconsider (e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`; something in that ballpark)
 
 ## why no `&mut`/`inout`
 While seemingly convenient and magnitudes better than regular mutable pointers,
@@ -456,67 +459,16 @@ cargo install --offline --debug --path . sloe
 
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
 
-- rethink the "FFI" story.
-  The current idea of `state -> batch vec interface containing fns returning the updated state` simply does not work as dyn closures are not a thing in sloe.
-  
-  A typical solution is to split up interface into interface-with-event and change-state-based-on-event
-  (where event could also just be `_fn state, state`)
-  ```sloe
-  ty event
-      |audio-has-been-started .
-      |window-has-been-opened .
-      |...
-
-  ty state ...
-  
-  ty interface
-      |start-audio ...
-      |...
-
-  fn interface
-      .origin result-origin Origin .state state state
-      :> .vec _vec Origin, _interface event .span _span Origin >
-      ? _vec-empty<_interface event> result-origin = vec >
-      ? |absent<_opt _span Origin> . = span >
-      ? vec-opt-span-add .vec vec .span span .new (|start-audio<_interface event> .) = .vec vec .span span >
-      ..add.. |...
-      .vec vec .span span
-
-  fn react
-      .state state state .event event event
-      :> state >
-      ? event
-      = |window-has-been-opened . >
-          ...
-      = |audio-has-been-started . >
-          ...
-  ```
-  while this would cleanly solve all issues it leaves a bitter taste in my mouth.
-  I've previously come to the conslusion that this is bad design as it leads to query cases that should be impossible (e.g. getting user settings from http even though the client isn't logged in. These cases should really be unreachable).
-  It's also not optimal (doubly indirect function call with 2 queries through `interface` and `event` and populating a vec at every step).
-  Of course going through an explicit event choice type also has it's nicities (probably nice to debug, test, isolate io from business logic (?)) but the other two issues are more important.
-
-  Another solution which is taken by almost all other languages is to scrap purity and allow calling into user functions and potentially opaque user types. However, I'd like to avoid direct FFI (because sloe should be compilable to various languages, FFI not being testable etc.).
-  A form of this is already necessarily possible by passing in impure functions (which could even modify global variables) as arguments when calling sloe functions from user code: "impure functions in, impure output".
-  This existing functionality already covers a wide array of use-cases.
-  Think e.g. (string and result types simplified for readability):
-  ```sloe
-  ty _io-interface Io
-      .write-file _fn (.path str .content str .io Io), (.result ... .io Io)
-      .read-file _fn (.path str .io Io), (.content str .io Io)
-  
-  fn event-loop
-      .io io Io .io-interface io-interface io-interface
-      :> .state state .io Io >
-      ? io-interface = .write-file write-file .read-file .read-file >
-      ? read-file .path "from.txt" .io io = .content from-content .io io >
-      ? write-file .path "to.txt" .io io = .result ... .io io >
-      .io io
-  ```
-  Honestly this just seems wonderful, no?
-  The `io-interface` and `io` could also be packaged up together in sloe code
-  so that `io-interface` functions don't need to be duplicated all over the place.
-  Open problem: How to actually make an event system out of this?
-  Look for inspiration at zig and rust.
-  I'm also wondering... would this still make sloe a pure functional language?
-  Another question is if there is a suitable concurrent runtime in rust that would satisfy this "io as an argument"
+- implement conversion to zig. current semi-blockers:
+    - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
+    - zig actually doesn't have concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
+      Let it be said that I'm legit sad that zig removed support like most other languages.
+    - find existing work on pattern matching. I will probably start with a
+      ```zig
+      if (some_magic(case0_pattern, value)) |case0_value| ...
+      else if (some_magic(case0_pattern, value)) |case0_value| ...
+      else unreachable
+      ```
+      and then consider switching to manually generated decision-tree-like code with nested switches
+    - local variables cannot shadow project fn and const names.
+      I think the most reasonable resolution is to change every `local_variable` to `@"%local_variable"` quite like llvm. Same for type arguments but uppercase

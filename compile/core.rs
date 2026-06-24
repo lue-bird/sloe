@@ -49,16 +49,6 @@ pub struct Max·min<Max, Min> {
     pub min: Min,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Build·new<Build, New> {
-    pub build: Build,
-    pub new: New,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Build·length<Build, Length> {
-    pub build: Build,
-    pub length: Length,
-}
-#[derive(Clone, Copy, Debug)]
 pub struct Element·in<Element, In> {
     pub element: Element,
     pub in_: In,
@@ -246,11 +236,6 @@ pub enum Down·Up<Down, Up> {
 pub enum Contained·Overflowed<Contained, Overflowed> {
     Contained(Contained),
     Overflowed(Overflowed),
-}
-#[derive(Clone, Copy, Debug)]
-pub enum Failure·Success<Failure, Success> {
-    Failure(Failure),
-    Success(Success),
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Away_from_0·Down·Nearest_else_away_from_0·Nearest_else_even·Toward_0·Up<

@@ -3368,14 +3368,8 @@ fn project_type_alias_check<Types>(
                     type_: None,
                 },
                 Some(aliased_type) => {
-                    let mut actually_used_type_variables: std::collections::HashSet<Name> =
-                        std::collections::HashSet::with_capacity(
-                            project_type
-                                .parameters
-                                .as_ref()
-                                .map(|parameters| 1 + parameters.parameter1_up.len())
-                                .unwrap_or(0),
-                        );
+                    let mut actually_used_type_variables: std::collections::BTreeSet<&Name> =
+                        std::collections::BTreeSet::new();
                     type_variables_into(&mut actually_used_type_variables, &aliased_type);
                     let parameters = parameters_check_if_different_to_actual_type_parameters(
                         errors,
@@ -3476,11 +3470,11 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
     match result_type {
         Some(result_type) => {
             let mut type_variables_exclusively_used_in_result =
-                std::collections::HashSet::<Name>::new();
+                std::collections::BTreeSet::<&Name>::new();
             type_variables_into(&mut type_variables_exclusively_used_in_result, &result_type);
             if let Some(parameter_type) = &maybe_parameter_type {
                 // can be optimized
-                let mut parameter_type_variables = std::collections::HashSet::<Name>::new();
+                let mut parameter_type_variables = std::collections::BTreeSet::<&Name>::new();
                 type_variables_into(&mut parameter_type_variables, parameter_type);
                 type_variables_exclusively_used_in_result
                     .retain(|var| !parameter_type_variables.contains(var));
@@ -3692,7 +3686,7 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
         .into_iter()
         .collect::<Vec<_>>();
     let rust_ident: syn::Ident = syn_ident(&name_to_lowercase_rust(project_fn_name));
-    let mut type_parameters: std::collections::HashSet<Name> = std::collections::HashSet::new();
+    let mut type_parameters = std::collections::BTreeSet::<&Name>::new();
     type_variables_into(&mut type_parameters, parameter_type);
     type_variables_into(&mut type_parameters, result_type);
     let rust_generics: syn::Generics = syn::Generics {
@@ -4200,19 +4194,19 @@ fn type_construct_resolve_type_alias(
     if origin_type_alias.parameters.is_empty() {
         return Some(type_alias_type.clone());
     }
-    let type_parameter_replacements: std::collections::HashMap<&str, std::borrow::Cow<Type>> =
+    let type_parameter_replacements: std::collections::BTreeMap<&str, std::borrow::Cow<Type>> =
         origin_type_alias
             .parameters
             .iter()
             .map(|n| n.as_str())
             .zip(argument_types.iter().map(std::borrow::Cow::Borrowed))
-            .collect::<std::collections::HashMap<_, _>>();
+            .collect::<std::collections::BTreeMap<_, _>>();
     let mut peeled: Type = type_alias_type.clone();
     type_replace_variables(&type_parameter_replacements, &mut peeled);
     Some(peeled)
 }
 fn type_replace_variables(
-    type_parameter_replacements: &std::collections::HashMap<&str, std::borrow::Cow<Type>>,
+    type_parameter_replacements: &std::collections::BTreeMap<&str, std::borrow::Cow<Type>>,
     type_: &mut Type,
 ) {
     match type_ {
@@ -4331,11 +4325,13 @@ fn type_to_rust(type_: &Type) -> syn::Type {
         }
     }
 }
-// TODO return Set<&Name> instead
-fn type_variables_into(type_variables: &mut std::collections::HashSet<Name>, type_: &Type) {
+fn type_variables_into<'a>(
+    type_variables: &mut std::collections::BTreeSet<&'a Name>,
+    type_: &'a Type,
+) {
     match type_ {
         Type::Variable(name) => {
-            type_variables.insert(name.clone());
+            type_variables.insert(name);
         }
         Type::Origin(_) => {}
         Type::CoreConstruct { name: _, arguments } => {
@@ -4359,11 +4355,11 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
     errors: &mut Vec<ErrorNode>,
     parent_name_range: lsp_types::Range,
     parameters: impl Iterator<Item = &'a WithStartPosition<Name>>,
-    mut actually_used_type_variables: std::collections::HashSet<Name>,
+    mut actually_used_type_variables: std::collections::BTreeSet<&Name>,
 ) -> Vec<Name> {
     let mut actually_used_parameters = Vec::<Name>::with_capacity(parameters.size_hint().0);
     for parameter in parameters {
-        if actually_used_type_variables.remove(parameter.value.as_str()) {
+        if actually_used_type_variables.remove(&parameter.value) {
             actually_used_parameters.push(parameter.value.clone());
         } else {
             errors.push(ErrorNode {
@@ -4379,6 +4375,7 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
                 "some type variables are used but not declared, namely {}. Add {}",
                 actually_used_type_variables
                     .iter()
+                    .copied()
                     .map(Name::as_str)
                     .collect::<Vec<&str>>()
                     .join(", "),
@@ -4901,19 +4898,10 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     else {
                         return None;
                     };
-                    match expected_type {
-                        None => Some(CheckedPattern {
-                            type_: actual_type,
-                            catch: PatternCatch::Exhaustive,
-                        }),
-                        Some(_expected_type) => {
-                            // TODO report if diff?
-                            Some(CheckedPattern {
-                                type_: actual_type,
-                                catch: PatternCatch::Exhaustive,
-                            })
-                        }
-                    }
+                    Some(CheckedPattern {
+                        type_: actual_type,
+                        catch: PatternCatch::Exhaustive,
+                    })
                 }
             };
             if let Some(checked_variable) = &maybe_checked_variable {
@@ -5138,7 +5126,6 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                 let Some(checked_field_value) = syntax_pattern_check(
                     field_value,
                     maybe_expected_type_record.and_then(|expected_record_type| {
-                        // TODO report if this is none
                         expected_record_type
                             .iter()
                             .find(|expected_field| expected_field.name == field_name_value)
@@ -5164,7 +5151,6 @@ fn syntax_pattern_check<'a, Patterns, Types>(
             let Some(type_fields) = maybe_type_fields else {
                 return None;
             };
-            // TODO report if diff maybe_expected_type_record has additional fields
             Some(CheckedPattern {
                 type_: Type::Record(type_fields),
                 catch: if field_catches
@@ -5909,7 +5895,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             return None;
                         };
                         let mut argument_type_variable_replacements =
-                            std::collections::HashMap::new();
+                            std::collections::BTreeMap::new();
                         type_collect_variables_that_are_concrete_into(
                             &mut argument_type_variable_replacements,
                             &fn_parameter_type,
@@ -7048,7 +7034,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 expressions.element(result),
             );
-            let mut type_variables = std::collections::HashSet::new();
+            let mut type_variables = std::collections::BTreeSet::new();
             type_variables_into(&mut type_variables, &checked_local_fn.parameter_type);
             type_variables_into(&mut type_variables, &checked_local_fn.result_type);
             syn::Expr::Block(syn::ExprBlock {
@@ -7669,8 +7655,8 @@ mod test_type_collect_variables_that_are_concrete_into {
         fn concrete_type_variables<'a>(
             type_with_variables: &'a Type,
             concrete_type: &'a Type,
-        ) -> std::collections::HashMap<&'a str, std::borrow::Cow<'a, Type>> {
-            let mut type_parameter_replacements = std::collections::HashMap::new();
+        ) -> std::collections::BTreeMap<&'a str, std::borrow::Cow<'a, Type>> {
+            let mut type_parameter_replacements = std::collections::BTreeMap::new();
             type_collect_variables_that_are_concrete_into(
                 &mut type_parameter_replacements,
                 type_with_variables,
@@ -7680,8 +7666,8 @@ mod test_type_collect_variables_that_are_concrete_into {
         }
         fn type_variables_from<const N: usize>(
             type_variables: [(&'static str, Type); N],
-        ) -> std::collections::HashMap<&'static str, std::borrow::Cow<'static, Type>> {
-            std::collections::HashMap::from_iter(
+        ) -> std::collections::BTreeMap<&'static str, std::borrow::Cow<'static, Type>> {
+            std::collections::BTreeMap::from_iter(
                 [("A", type_unt)]
                     .into_iter()
                     .map(|(name, type_)| (name, std::borrow::Cow::Owned(type_))),
@@ -7701,7 +7687,7 @@ mod test_type_collect_variables_that_are_concrete_into {
     }
 }
 fn type_collect_variables_that_are_concrete_into<'a>(
-    type_parameter_replacements: &mut std::collections::HashMap<
+    type_parameter_replacements: &mut std::collections::BTreeMap<
         &'a str,
         std::borrow::Cow<'a, Type>,
     >,
@@ -9707,7 +9693,7 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
     });
 
 pub struct ErrorNode {
-    // TODO change to either cow or dedicated error enum
+    // TODO change to more structured output
     pub message: Box<str>,
     pub range: lsp_types::Range,
 }
