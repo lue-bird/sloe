@@ -125,6 +125,13 @@ pub struct New·slot·vec<New, Slot, Vec> {
     pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct In_·slot·update·vec<In, Slot, Update, Vec> {
+    pub in_: In,
+    pub slot: Slot,
+    pub update: Update,
+    pub vec: Vec,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Span·vec<Span, Vec> {
     pub span: Span,
     pub vec: Vec,
@@ -1687,10 +1694,17 @@ pub fn vec_replace<Origin, Element>(
 }
 /// Often used for copying (dup) a value out or altering the element
 pub fn vec_update<Origin, Element, In, Out>(
-    mut vec: Vec<Origin, Element>,
-    slot: Slot<Origin>,
-    in_: In,
-    element_update: Fn<Element·in<Element, In>, Element·out<Element, Out>>,
+    In_·slot·update·vec {
+        mut vec,
+        slot,
+        in_,
+        update: element_update,
+    }: In_·slot·update·vec<
+        In,
+        Slot<Origin>,
+        Fn<Element·in<Element, In>, Element·out<Element, Out>>,
+        Vec<Origin, Element>,
+    >,
 ) -> Out·slot·vec<Out, Slot<Origin>, Vec<Origin, Element>> {
     // this should just be an in-place edit at one index. rust does not yet have a primitive for this
     let index = slot.index as usize;

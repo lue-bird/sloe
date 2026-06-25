@@ -93,9 +93,9 @@ test "vec add to span" {
     const VecOrigin = enum { vec };
     const origin: core.Origin(VecOrigin) = .vec;
     var vec = core.Vec(VecOrigin, u32).empty(origin);
-    const span0 = try vec.opt_span_add(allocator, core.Opt(core.Span(VecOrigin)){ .absent = {} }, 123);
+    const span0 = try vec.optSpanAdd(allocator, core.Opt(core.Span(VecOrigin)){ .absent = {} }, 123);
     const slot_causing_span_move_to_end = try vec.add(allocator, 4);
-    const span1 = try vec.span_add(allocator, span0, 567);
+    const span1 = try vec.spanAdd(allocator, span0, 567);
     try std.testing.expectEqual(4, try vec.element(allocator, slot_causing_span_move_to_end));
     try std.testing.expectEqual(2, span1.start.index);
     try std.testing.expectEqual(2, span1.length.positive);
@@ -109,9 +109,9 @@ test "anonymous structs and union(enum)" {
     // This is very annoying: Zig just recently used to have real anonymous structs
     // which were removed from the language because their implementation was buggy.
     // Curiously, anonymous tuples still exist so I wonder what gives?
-    const one = core.@".a.b"(@as(core.Str, ""), @as(core.Str, ""));
-    const two = core.@".a.b"(@as(core.Str, ""), @as(core.Str, ""));
-    rid_both(core.@"Record.a.b"(core.Str, core.Str), one, two);
+    const one = core.@"record.a.b"(@as(core.Str, ""), @as(core.Str, ""));
+    const two = core.@"record.a.b"(@as(core.Str, ""), @as(core.Str, ""));
+    rid_both(core.@".a.b"(core.Str, core.Str), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
 fn rid_both(value: type, _: value, _: value) void {}
