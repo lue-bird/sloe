@@ -5953,8 +5953,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             };
             let Some(syntax_type_argument) = type_ else {
                 errors.push(ErrorNode {
-                    range: symbol_range(name.start, "|"),
-                    message: Box::from("missing type argument in angle brackets after this variant name. An example of a valid variant is |present<_opt str> \"hi c:\""),
+                    range: optional_variant_name_range(name),
+                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |present<_opt str> \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
                 });
                 return None;
             };

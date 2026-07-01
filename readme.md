@@ -515,8 +515,6 @@ cargo install --offline --debug --path . sloe
 
 - rename `vec-element` to `vec-take` to make vacate aspect clear
 
-- report variant expressions without a type by suggesting single-field record
-
 - add field spread syntax `..existing-record .other-fields-before-and-or-after` (in patterns, types, expressions). The spreaded syntax must have a known (not-variable) type.
   The benefit is: flat records, flat choices, much less repetition/verbosity, e.g.
   ```sloe
