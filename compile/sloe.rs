@@ -9810,23 +9810,26 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                         linebreak_indented_into(&mut formatted, next_indent(0));
                         syntax_comments_format(&mut formatted, next_indent(0), documentation);
                     }
-                    None => {
-                        formatted.push(' ');
-                    }
+                    None => match type_ {
+                        Some(type_) => {
+                            space_or_linebreak_indented_into(
+                                &mut formatted,
+                                range_line_span(type_range(type_, types)),
+                                next_indent(0),
+                            );
+                        }
+                        None => {
+                            formatted.push(' ');
+                        }
+                    },
                 }
                 if let Some(type_) = type_ {
-                    if let SyntaxType::Variable(variable) = type_to_unparenthesized(type_, types) {
-                        formatted.push('(');
-                        formatted.push_str(&variable.value);
-                        formatted.push(')');
-                    } else {
-                        syntax_type_unparenthesized_format(
-                            &mut formatted,
-                            next_indent(0),
-                            types,
-                            type_,
-                        );
-                    }
+                    syntax_type_unparenthesized_format(
+                        &mut formatted,
+                        next_indent(0),
+                        types,
+                        type_,
+                    );
                 }
             }
             SyntaxProjectElement::Fn {
