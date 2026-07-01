@@ -146,12 +146,20 @@ pub fn Opt(@"%Present": type) type {
     return @"|absent|present"(void, @"%Present");
 }
 pub const Round_mode = @"|away_from_0|down|nearest_else_away_from_0|nearest_else_even|toward_0|up"(void, void, void, void, void, void);
-/// This wrapper is largely meaningless in zig. It exists to make it safe on the rust side
+
+/// This wrapper is largely meaningless in zig. It exists to make it safe on the rust side.
+/// I have tried to patch in some mechanisms to avoid having multiple origins with the same name in a scope
+/// but due to the (reasonable) lack of comptime mutable variables/mutable pointers it can't be done
 pub fn Origin(@"%Origin": type) type {
-    return if (@bitSizeOf(@"%Origin") == 0) @"%Origin" else @compileError(std.fmt.comptimePrint(
-        "Only zero-sized values should be used as origins, as they are stored within slots, spans, vecs etc (found bit size {} for origin type {}). Try using e.g. `enum {{ myExampleVec }}`",
+    const valid_name = switch (@typeInfo(@"%Origin")) {
+        .@"enum" => |enum_info| if (enum_info.field_names.len == 1 and @bitSizeOf(@"%Origin") == 0) @as(?[]const u8, enum_info.field_names[0]) else null,
+        else => null,
+    };
+    if (valid_name == null) @compileError(std.fmt.comptimePrint(
+        "Only zero-sized enum values should be used as origins, as they are stored within slots, spans, vecs etc. and should be safe to copy and free (found bit size {} for origin type {}). Try using e.g. `enum {{ myExampleVec }}`",
         .{ @bitSizeOf(@"%Origin"), @"%Origin" },
     ));
+    return @"%Origin";
 }
 pub fn Origin_rid(@"%Origin": type) type {
     return struct { origin_rid: @"%Origin" };
