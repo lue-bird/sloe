@@ -1,6 +1,6 @@
 #![allow(non_upper_case_globals)]
 
-use quote::TokenStreamExt;
+use gen_lsp_types as lsp_types;
 pub mod core;
 
 pub type Name = compact_str::CompactString;
@@ -7465,7 +7465,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 ),
                                 tokens: {
                                     let mut token_stream = proc_macro2::TokenStream::new();
-                                    proc_macro2::TokenStream::append_separated(
+                                    <proc_macro2::TokenStream as quote::TokenStreamExt>::append_separated(
                                         &mut token_stream,
                                         [
                                             syn_ident(&name_to_lowercase_rust(
@@ -9935,28 +9935,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
     }
     formatted
 }
-fn type_to_unparenthesized<'a, Types>(
-    type_: &'a SyntaxType<Types>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
-) -> &'a SyntaxType<Types> {
-    match type_ {
-        SyntaxType::Parenthesized {
-            open_paren_start: _,
-            inner,
-            closed_paren_start: _,
-        } => match inner {
-            None => type_,
-            Some(inner) => type_to_unparenthesized(types.element(inner), types),
-        },
-        SyntaxType::Variable(_)
-        | SyntaxType::ConstructWithoutArguments(_)
-        | SyntaxType::ConstructWithArguments { .. }
-        | SyntaxType::RecordEmpty { .. }
-        | SyntaxType::Record { .. }
-        | SyntaxType::ChoiceEmpty { .. }
-        | SyntaxType::Choice { .. } => type_,
-    }
-}
+
 fn syntax_angled_type_parameters_format(
     formatted: &mut String,
     angled_type_parameters: &SyntaxAngledTypeParameters,

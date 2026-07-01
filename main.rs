@@ -1,4 +1,5 @@
 #![allow(non_upper_case_globals)]
+use gen_lsp_types as lsp_types;
 use sloe_compile as sloe;
 
 struct State<Expressions, Patterns, Types> {
@@ -512,33 +513,36 @@ fn initial_state<Expressions, Patterns, Types>(
 }
 fn server_capabilities() -> lsp_types::ServerCapabilities {
     lsp_types::ServerCapabilities {
-        hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
-        definition_provider: Some(lsp_types::OneOf::Left(true)),
-        semantic_tokens_provider: Some(
-            lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(
-                lsp_types::SemanticTokensOptions {
-                    work_done_progress_options: lsp_types::WorkDoneProgressOptions {
-                        work_done_progress: None,
-                    },
-                    legend: lsp_types::SemanticTokensLegend {
-                        token_modifiers: vec![],
-                        token_types: Vec::from(token_types),
-                    },
-                    range: None,
-                    full: Some(lsp_types::SemanticTokensFullOptions::Bool(true)),
+        hover_provider: Some(lsp_types::HoverProvider::Bool(true)),
+        definition_provider: Some(lsp_types::DefinitionProvider::Bool(true)),
+        semantic_tokens_provider: Some(lsp_types::SemanticTokensProvider::SemanticTokensOptions(
+            lsp_types::SemanticTokensOptions {
+                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                    work_done_progress: None,
                 },
-            ),
-        ),
-        text_document_sync: Some(lsp_types::TextDocumentSyncCapability::Kind(
-            lsp_types::TextDocumentSyncKind::INCREMENTAL,
-        )),
-        rename_provider: Some(lsp_types::OneOf::Right(lsp_types::RenameOptions {
-            prepare_provider: Some(true),
-            work_done_progress_options: lsp_types::WorkDoneProgressOptions {
-                work_done_progress: None,
+                legend: lsp_types::SemanticTokensLegend {
+                    token_modifiers: vec![],
+                    token_types: token_types
+                        .iter()
+                        .map(|token_type| token_type.as_str().to_string())
+                        .collect(),
+                },
+                range: None,
+                full: Some(lsp_types::Full::Bool(true)),
             },
-        })),
-        references_provider: Some(lsp_types::OneOf::Left(true)),
+        )),
+        text_document_sync: Some(lsp_types::TextDocumentSync::Kind(
+            lsp_types::TextDocumentSyncKind::Incremental,
+        )),
+        rename_provider: Some(lsp_types::RenameProvider::RenameOptions(
+            lsp_types::RenameOptions {
+                prepare_provider: Some(true),
+                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                    work_done_progress: None,
+                },
+            },
+        )),
+        references_provider: Some(lsp_types::ReferencesProvider::Bool(true)),
         completion_provider: Some(lsp_types::CompletionOptions {
             resolve_provider: Some(false),
             trigger_characters: None,
@@ -546,12 +550,12 @@ fn server_capabilities() -> lsp_types::ServerCapabilities {
             work_done_progress_options: lsp_types::WorkDoneProgressOptions {
                 work_done_progress: None,
             },
-            completion_item: Some(lsp_types::CompletionOptionsCompletionItem {
+            completion_item: Some(lsp_types::ServerCompletionItemOptions {
                 label_details_support: None,
             }),
         }),
-        document_formatting_provider: Some(lsp_types::OneOf::Left(true)),
-        document_symbol_provider: Some(lsp_types::OneOf::Left(true)),
+        document_formatting_provider: Some(lsp_types::DocumentFormattingProvider::Bool(true)),
+        document_symbol_provider: Some(lsp_types::DocumentSymbolProvider::Bool(true)),
         ..lsp_types::ServerCapabilities::default()
     }
 }
@@ -570,7 +574,7 @@ fn server_loop<Expressions, Patterns, Types>(
                     connection,
                     &state,
                     request.id,
-                    &request.method,
+                    lsp_types::LspRequestMethod::from(request.method.as_str()),
                     request.params,
                 ) {
                     eprintln!("request {} failed: {error}", &request.method);
@@ -580,7 +584,7 @@ fn server_loop<Expressions, Patterns, Types>(
                 if let Err(err) = handle_notification(
                     connection,
                     &mut state,
-                    &notification.method,
+                    lsp_types::LspNotificationMethod::from(notification.method.as_str()),
                     notification.params,
                 ) {
                     eprintln!("notification {} failed: {err}", notification.method);
@@ -594,17 +598,17 @@ fn server_loop<Expressions, Patterns, Types>(
 fn handle_notification<Expressions, Patterns, Types>(
     connection: &lsp_server::Connection,
     state: &mut State<Expressions, Patterns, Types>,
-    notification_method: &str,
+    notification_method: lsp_types::LspNotificationMethod,
     notification_arguments_json: serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match notification_method {
-        <lsp_types::notification::DidOpenTextDocument as lsp_types::notification::Notification>::METHOD => {
-            let arguments: <lsp_types::notification::DidOpenTextDocument as lsp_types::notification::Notification>::Params =
+        <lsp_types::DidOpenTextDocumentNotification as lsp_types::Notification>::METHOD => {
+            let arguments: <lsp_types::DidOpenTextDocumentNotification as lsp_types::Notification>::Params =
                 serde_json::from_value(notification_arguments_json)?;
             update_state_on_did_open_text_document(state, connection, arguments);
         }
-        <lsp_types::notification::DidCloseTextDocument as lsp_types::notification::Notification>::METHOD => {
-            let arguments: <lsp_types::notification::DidCloseTextDocument as lsp_types::notification::Notification>::Params =
+        <lsp_types::DidCloseTextDocumentNotification as lsp_types::Notification>::METHOD => {
+            let arguments: <lsp_types::DidCloseTextDocumentNotification as lsp_types::Notification>::Params =
                 serde_json::from_value(notification_arguments_json)?;
             publish_diagnostics(
                 connection,
@@ -615,12 +619,12 @@ fn handle_notification<Expressions, Patterns, Types>(
                 },
             );
         }
-        <lsp_types::notification::DidChangeTextDocument as lsp_types::notification::Notification>::METHOD => {
-            let arguments: <lsp_types::notification::DidChangeTextDocument as lsp_types::notification::Notification>::Params =
+        <lsp_types::DidChangeTextDocumentNotification as lsp_types::Notification>::METHOD => {
+            let arguments: <lsp_types::DidChangeTextDocumentNotification as lsp_types::Notification>::Params =
                 serde_json::from_value(notification_arguments_json)?;
             update_state_on_did_change_text_document(state, connection, arguments);
         }
-        <lsp_types::notification::Exit as lsp_types::notification::Notification>::METHOD => {}
+        <lsp_types::ExitNotification as lsp_types::Notification>::METHOD => {}
         _ => {}
     }
     Ok(())
@@ -630,7 +634,8 @@ fn update_state_on_did_open_text_document<Expressions, Patterns, Types>(
     connection: &lsp_server::Connection,
     arguments: lsp_types::DidOpenTextDocumentParams,
 ) {
-    if arguments.text_document.language_id == "sloe"
+    if arguments.text_document.language_id
+        == lsp_types::LanguageKind::Custom(std::borrow::Cow::Borrowed("sloe"))
         || lsp_uri_to_file_path(&arguments.text_document.uri)
             .is_some_and(|file_path| file_path.extension().is_some_and(|ext| ext == "sloe"))
     {
@@ -666,81 +671,81 @@ fn handle_request<Expressions, Patterns, Types>(
     connection: &lsp_server::Connection,
     state: &State<Expressions, Patterns, Types>,
     request_id: lsp_server::RequestId,
-    request_method: &str,
+    request_method: lsp_types::LspRequestMethod,
     request_arguments_json: serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let response: Result<serde_json::Value, lsp_server::ResponseError> = match request_method {
-        <lsp_types::request::HoverRequest as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::HoverRequest as lsp_types::request::Request>::Params =
+        <lsp_types::HoverRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::HoverRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let maybe_hover_result: <lsp_types::request::HoverRequest as lsp_types::request::Request>::Result =
+            let maybe_hover_result: <lsp_types::HoverRequest as lsp_types::Request>::Result =
                 respond_to_hover(state, &arguments);
             Ok(serde_json::to_value(maybe_hover_result)?)
         }
-        <lsp_types::request::GotoDefinition as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::GotoDefinition as lsp_types::request::Request>::Params =
+        <lsp_types::DefinitionRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::DefinitionRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let maybe_hover_result: <lsp_types::request::GotoDefinition as lsp_types::request::Request>::Result =
+            let maybe_hover_result: <lsp_types::DefinitionRequest as lsp_types::Request>::Result =
                 respond_to_goto_definition(state, arguments);
             Ok(serde_json::to_value(maybe_hover_result)?)
         }
-        <lsp_types::request::PrepareRenameRequest as lsp_types::request::Request>::METHOD => {
-            let prepare_rename_arguments: <lsp_types::request::PrepareRenameRequest as lsp_types::request::Request>::Params =
+        <lsp_types::PrepareRenameRequest as lsp_types::Request>::METHOD => {
+            let prepare_rename_arguments: <lsp_types::PrepareRenameRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let response: <lsp_types::request::PrepareRenameRequest as lsp_types::request::Request>::Result =
-                 respond_to_prepare_rename(state, &prepare_rename_arguments);
+            let response: <lsp_types::PrepareRenameRequest as lsp_types::Request>::Result =
+                respond_to_prepare_rename(state, &prepare_rename_arguments);
             Ok(serde_json::to_value(response)?)
         }
-        <lsp_types::request::Rename as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::Rename as lsp_types::request::Request>::Params =
+        <lsp_types::RenameRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::RenameRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let maybe_rename_edits: Option<Vec<lsp_types::TextDocumentEdit>> =
+            let maybe_rename_edits: Option<Vec<lsp_types::DocumentChange>> =
                 respond_to_rename(state, arguments);
-            let result: <lsp_types::request::Rename as lsp_types::request::Request>::Result =
+            let result: <lsp_types::RenameRequest as lsp_types::Request>::Result =
                 maybe_rename_edits.map(|rename_edits| lsp_types::WorkspaceEdit {
                     changes: None,
-                    document_changes: Some(lsp_types::DocumentChanges::Edits(rename_edits)),
+                    document_changes: Some(rename_edits),
                     change_annotations: None,
                 });
             Ok(serde_json::to_value(result)?)
         }
-        <lsp_types::request::References as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::References as lsp_types::request::Request>::Params =
+        <lsp_types::ReferencesRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::ReferencesRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let result: <lsp_types::request::References as lsp_types::request::Request>::Result =
+            let result: <lsp_types::ReferencesRequest as lsp_types::Request>::Result =
                 respond_to_references(state, &arguments);
             Ok(serde_json::to_value(result)?)
         }
-        <lsp_types::request::SemanticTokensFullRequest as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::SemanticTokensFullRequest as lsp_types::request::Request>::Params =
+        <lsp_types::SemanticTokensRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::SemanticTokensRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let result: <lsp_types::request::SemanticTokensFullRequest as lsp_types::request::Request>::Result =
+            let result: <lsp_types::SemanticTokensRequest as lsp_types::Request>::Result =
                 respond_to_semantic_tokens_full(state, &arguments);
             Ok(serde_json::to_value(result)?)
         }
-        <lsp_types::request::Completion as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::Completion as lsp_types::request::Request>::Params =
+        <lsp_types::CompletionRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::CompletionRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let result: <lsp_types::request::Completion as lsp_types::request::Request>::Result =
+            let result: <lsp_types::CompletionRequest as lsp_types::Request>::Result =
                 respond_to_completion(state, &arguments);
             Ok(serde_json::to_value(result)?)
         }
-        <lsp_types::request::Formatting as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::Formatting as lsp_types::request::Request>::Params =
+        <lsp_types::DocumentFormattingRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::DocumentFormattingRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let result: <lsp_types::request::Formatting as lsp_types::request::Request>::Result =
+            let result: <lsp_types::DocumentFormattingRequest as lsp_types::Request>::Result =
                 respond_to_document_formatting(state, &arguments);
             Ok(serde_json::to_value(result)?)
         }
-        <lsp_types::request::DocumentSymbolRequest as lsp_types::request::Request>::METHOD => {
-            let arguments: <lsp_types::request::DocumentSymbolRequest as lsp_types::request::Request>::Params =
+        <lsp_types::DocumentSymbolRequest as lsp_types::Request>::METHOD => {
+            let arguments: <lsp_types::DocumentSymbolRequest as lsp_types::Request>::Params =
                 serde_json::from_value(request_arguments_json)?;
-            let result: <lsp_types::request::DocumentSymbolRequest as lsp_types::request::Request>::Result =
+            let result: <lsp_types::DocumentSymbolRequest as lsp_types::Request>::Result =
                 respond_to_document_symbols(state, &arguments);
             Ok(serde_json::to_value(result)?)
         }
-        <lsp_types::request::Shutdown as lsp_types::request::Request>::METHOD => {
-            let result: <lsp_types::request::Shutdown as lsp_types::request::Request>::Result = ();
+        <lsp_types::ShutdownRequest as lsp_types::Request>::METHOD => {
+            let result: <lsp_types::ShutdownRequest as lsp_types::Request>::Result = ();
             Ok(serde_json::to_value(result)?)
         }
         _ => Err(lsp_server::ResponseError {
@@ -787,7 +792,7 @@ fn send_response_error(
 }
 fn publish_diagnostics(
     connection: &lsp_server::Connection,
-    diagnostics: <lsp_types::notification::PublishDiagnostics as lsp_types::notification::Notification>::Params,
+    diagnostics: <lsp_types::PublishDiagnosticsNotification as lsp_types::Notification>::Params,
 ) {
     let diagnostics_json: serde_json::Value = match serde_json::to_value(diagnostics) {
         Ok(diagnostics_json) => diagnostics_json,
@@ -796,14 +801,19 @@ fn publish_diagnostics(
             return;
         }
     };
-    connection.sender.send(lsp_server::Message::Notification(
-        lsp_server::Notification {
-            method: <lsp_types::notification::PublishDiagnostics as lsp_types::notification::Notification>::METHOD.to_string(),
-            params: diagnostics_json,
-        },
-    )).unwrap_or_else(|err| {
-        eprintln!("failed to send diagnostics {err}");
-    });
+    connection
+        .sender
+        .send(lsp_server::Message::Notification(
+            lsp_server::Notification {
+                method:
+                    <lsp_types::PublishDiagnosticsNotification as lsp_types::Notification>::METHOD
+                        .to_string(),
+                params: diagnostics_json,
+            },
+        ))
+        .unwrap_or_else(|err| {
+            eprintln!("failed to send diagnostics {err}");
+        });
 }
 
 fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
@@ -811,37 +821,44 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
     connection: &lsp_server::Connection,
     did_change_text_document: lsp_types::DidChangeTextDocumentParams,
 ) {
-    if let Some(project_state) = state
-        .projects
-        .get_mut(&did_change_text_document.text_document.uri)
-    {
+    if let Some(project_state) = state.projects.get_mut(
+        &did_change_text_document
+            .text_document
+            .text_document_identifier
+            .uri,
+    ) {
         let mut updated_source: String = std::mem::take(&mut project_state.source);
         for change in did_change_text_document.content_changes {
-            match (change.range, change.range_length) {
-                // means full replacement
-                (None, None) => {
-                    updated_source = change.text;
+            match change {
+                lsp_types::TextDocumentContentChangeEvent::TextDocumentContentChangeWholeDocument(new_text) => {
+                    updated_source = new_text.text;
                 }
-                // zed for example does not send a span length
-                (Some(span), None) => {
-                    string_replace_lsp_span(&mut updated_source, span, &change.text);
+                lsp_types::TextDocumentContentChangeEvent::TextDocumentContentChangePartial(change) => {
+                    match { #[allow(deprecated)] change.range_length } {
+                        // zed for example does not send a range length
+                        None => {
+                            string_replace_lsp_span(&mut updated_source, change.range, &change.text);
+                        }
+                        // sending a range length is deprecated but e.g. vscode still sends it
+                        // which allows us to do a faster string replace
+                        Some(range_length) => {
+                            string_replace_lsp_span_for_length(
+                                &mut updated_source,
+                                change.range,
+                                range_length as usize,
+                                &change.text,
+                            );
+                        }
+                    }
                 }
-                // sending a span is deprecated but e.g. vscode still sends it
-                // which allows us to do a faster string replace
-                (Some(span), Some(span_length)) => {
-                    string_replace_lsp_span_for_length(
-                        &mut updated_source,
-                        span,
-                        span_length as usize,
-                        &change.text,
-                    );
-                }
-                (None, Some(_)) => {}
             }
         }
         *project_state = initialize_project_state_from_source(
             connection,
-            did_change_text_document.text_document.uri,
+            did_change_text_document
+                .text_document
+                .text_document_identifier
+                .uri,
             &mut state.syntax_expressions,
             &mut state.syntax_patterns,
             &mut state.syntax_types,
@@ -898,11 +915,13 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
 fn sloe_error_node_to_diagnostic(problem: &sloe::ErrorNode) -> lsp_types::Diagnostic {
     lsp_types::Diagnostic {
         range: problem.range,
-        severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+        severity: Some(lsp_types::DiagnosticSeverity::Warning),
         code: None,
         code_description: None,
         source: None,
-        message: problem.message.to_string(),
+        // preferably we would render errors as markdown
+        // but this is not implemented in any big editors, yet (vscode, zed, gram, ...)
+        message: lsp_types::Message::String(problem.message.to_string()),
         related_information: None,
         tags: None,
         data: None,
@@ -942,7 +961,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
             .find_map(|(type_alias_name, type_alias_info)| {
                 if type_alias_name == &symbol_name.value {
                     Some(lsp_types::Hover {
-                        contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                        contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                             kind: lsp_types::MarkupKind::Markdown,
                             value: present_type_alias_markdown(type_alias_name, type_alias_info),
                         }),
@@ -957,7 +976,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
             use_start,
             origin: _,
         } => Some(lsp_types::Hover {
-            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+            contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: format!(
                     "```sloe
@@ -976,7 +995,7 @@ origin {}
             use_start,
             scope: _,
         } => Some(lsp_types::Hover {
-            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+            contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: format!("type variable"),
             }),
@@ -995,7 +1014,7 @@ origin {}
                 let choice_type_formatted =
                     present_project_fn_with_complete_type_markdown(fn_name, fn_info);
                 Some(lsp_types::Hover {
-                    contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                    contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                         kind: lsp_types::MarkupKind::Markdown,
                         value: choice_type_formatted,
                     }),
@@ -1010,7 +1029,7 @@ origin {}
             use_start,
             origin,
         } => Some(lsp_types::Hover {
-            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+            contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: present_pattern_variable_markdown(origin.type_.as_ref()),
             }),
@@ -1024,8 +1043,8 @@ origin {}
 
 fn respond_to_goto_definition<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
-    goto_definition_arguments: lsp_types::GotoDefinitionParams,
-) -> Option<lsp_types::GotoDefinitionResponse> {
+    goto_definition_arguments: lsp_types::DefinitionParams,
+) -> Option<lsp_types::DefinitionResponse> {
     let Some(project_state) = state.projects.get(
         &goto_definition_arguments
             .text_document_position_params
@@ -1101,31 +1120,37 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
         })),
     };
     origin_name_range.map(|origin_name_range| {
-        lsp_types::GotoDefinitionResponse::Scalar(lsp_types::Location {
-            uri: goto_definition_arguments
-                .text_document_position_params
-                .text_document
-                .uri,
-            range: origin_name_range,
-        })
+        lsp_types::DefinitionResponse::Definition(lsp_types::Definition::Location(
+            lsp_types::Location {
+                uri: goto_definition_arguments
+                    .text_document_position_params
+                    .text_document
+                    .uri,
+                range: origin_name_range,
+            },
+        ))
     })
 }
 
 fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
-    prepare_rename_arguments: &lsp_types::TextDocumentPositionParams,
-) -> Option<lsp_types::PrepareRenameResponse> {
-    let Some(project_state) = state
-        .projects
-        .get(&prepare_rename_arguments.text_document.uri)
-    else {
+    prepare_rename_arguments: &lsp_types::PrepareRenameParams,
+) -> Option<lsp_types::PrepareRenameResult> {
+    let Some(project_state) = state.projects.get(
+        &prepare_rename_arguments
+            .text_document_position_params
+            .text_document
+            .uri,
+    ) else {
         return None;
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
-        prepare_rename_arguments.position,
+        prepare_rename_arguments
+            .text_document_position_params
+            .position,
         &state.syntax_expressions,
         &state.syntax_patterns,
         &state.syntax_types,
@@ -1167,24 +1192,26 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
             start: use_start,
         }),
     };
-    Some(lsp_types::PrepareRenameResponse::Range(symbol_range))
+    Some(lsp_types::PrepareRenameResult::Range(symbol_range))
 }
 
 fn respond_to_rename<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     rename_arguments: lsp_types::RenameParams,
-) -> Option<Vec<lsp_types::TextDocumentEdit>> {
-    let Some(project_state) = state
-        .projects
-        .get(&rename_arguments.text_document_position.text_document.uri)
-    else {
+) -> Option<Vec<lsp_types::DocumentChange>> {
+    let Some(project_state) = state.projects.get(
+        &rename_arguments
+            .text_document_position_params
+            .text_document
+            .uri,
+    ) else {
         return None;
     };
     let Some(symbol) = sloe::project_symbol_at_position(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
-        rename_arguments.text_document_position.position,
+        rename_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
         &state.syntax_types,
@@ -1203,21 +1230,28 @@ fn respond_to_rename<Expressions, Patterns, Types>(
     {
         symbol_ranges.push(symbol_origin_range);
     }
-    Some(vec![lsp_types::TextDocumentEdit {
-        text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
-            uri: rename_arguments.text_document_position.text_document.uri,
-            version: None,
-        },
-        edits: symbol_ranges
-            .into_iter()
-            .map(|symbol_range| {
-                lsp_types::OneOf::Left(lsp_types::TextEdit {
-                    range: symbol_range,
-                    new_text: rename_arguments.new_name.clone(),
+    Some(vec![lsp_types::DocumentChange::TextDocumentEdit(
+        lsp_types::TextDocumentEdit {
+            text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
+                text_document_identifier: lsp_types::TextDocumentIdentifier {
+                    uri: rename_arguments
+                        .text_document_position_params
+                        .text_document
+                        .uri,
+                },
+                version: None,
+            },
+            edits: symbol_ranges
+                .into_iter()
+                .map(|symbol_range| {
+                    lsp_types::Edit::TextEdit(lsp_types::TextEdit {
+                        range: symbol_range,
+                        new_text: rename_arguments.new_name.clone(),
+                    })
                 })
-            })
-            .collect(),
-    }])
+                .collect(),
+        },
+    )])
 }
 
 fn respond_to_references<Expressions, Patterns, Types>(
@@ -1226,7 +1260,7 @@ fn respond_to_references<Expressions, Patterns, Types>(
 ) -> Option<Vec<lsp_types::Location>> {
     let Some(project_state) = state.projects.get(
         &references_arguments
-            .text_document_position
+            .text_document_position_params
             .text_document
             .uri,
     ) else {
@@ -1236,7 +1270,7 @@ fn respond_to_references<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
-        references_arguments.text_document_position.position,
+        references_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
         &state.syntax_types,
@@ -1261,7 +1295,7 @@ fn respond_to_references<Expressions, Patterns, Types>(
             .into_iter()
             .map(|range| lsp_types::Location {
                 uri: references_arguments
-                    .text_document_position
+                    .text_document_position_params
                     .text_document
                     .uri
                     .clone(),
@@ -1274,7 +1308,7 @@ fn respond_to_references<Expressions, Patterns, Types>(
 fn respond_to_semantic_tokens_full<Expressions, Patterns, Types>(
     state: &State<Expressions, Patterns, Types>,
     semantic_tokens_arguments: &lsp_types::SemanticTokensParams,
-) -> Option<lsp_types::SemanticTokensResult> {
+) -> Option<lsp_types::SemanticTokens> {
     let Some(project_state) = state
         .projects
         .get(&semantic_tokens_arguments.text_document.uri)
@@ -1295,12 +1329,10 @@ fn respond_to_semantic_tokens_full<Expressions, Patterns, Types>(
         &state.syntax_patterns,
         &state.syntax_types,
     );
-    Some(lsp_types::SemanticTokensResult::Tokens(
-        lsp_types::SemanticTokens {
-            result_id: None,
-            data: highlight_state.tokens,
-        },
-    ))
+    Some(lsp_types::SemanticTokens {
+        result_id: None,
+        data: highlight_state.tokens,
+    })
 }
 struct HighlightState {
     tokens: Vec<lsp_types::SemanticToken>,
@@ -1308,7 +1340,7 @@ struct HighlightState {
 }
 fn highlight_state_add_token_with_start_and_length(
     state: &mut HighlightState,
-    new_token_kind: lsp_types::SemanticTokenType,
+    new_token_kind: lsp_types::SemanticTokenTypes,
     new_token_start: lsp_types::Position,
     new_token_length: usize,
 ) {
@@ -1337,7 +1369,7 @@ fn symbol_highlight(
     state: &mut HighlightState,
     symbol: &'static str,
     new_token_start: lsp_types::Position,
-    new_token_kind: lsp_types::SemanticTokenType,
+    new_token_kind: lsp_types::SemanticTokenTypes,
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
@@ -1355,7 +1387,7 @@ fn keyword_highlight(
         state,
         keyword,
         new_token_start,
-        lsp_types::SemanticTokenType::KEYWORD,
+        lsp_types::SemanticTokenTypes::Keyword,
     );
 }
 fn sloe_project_highlight<Expressions, Patterns, Types>(
@@ -1384,7 +1416,7 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                 if let Some(name) = name {
                     highlight_state_add_token_with_start_and_length(
                         state,
-                        lsp_types::SemanticTokenType::TYPE,
+                        lsp_types::SemanticTokenTypes::Type,
                         name.start,
                         name.value.len(),
                     );
@@ -1392,7 +1424,7 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                 if let Some(parameters) = parameters {
                     highlight_state_add_token_with_start_and_length(
                         state,
-                        lsp_types::SemanticTokenType::TYPE_PARAMETER,
+                        lsp_types::SemanticTokenTypes::TypeParameter,
                         parameters.parameter0.start,
                         parameters.parameter0.value.len(),
                     );
@@ -1400,7 +1432,7 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                         if let Some(parameter_name) = &parameter.name {
                             highlight_state_add_token_with_start_and_length(
                                 state,
-                                lsp_types::SemanticTokenType::TYPE_PARAMETER,
+                                lsp_types::SemanticTokenTypes::TypeParameter,
                                 parameter_name.start,
                                 parameter_name.value.len(),
                             );
@@ -1429,7 +1461,7 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                 if let Some(name) = name {
                     highlight_state_add_token_with_start_and_length(
                         state,
-                        lsp_types::SemanticTokenType::VARIABLE,
+                        lsp_types::SemanticTokenTypes::Variable,
                         name.start,
                         name.value.len(),
                     );
@@ -1464,7 +1496,7 @@ fn sloe_syntax_comments_highlight(state: &mut HighlightState, comments: &sloe::S
     for line in std::iter::once(&comments.line0).chain(comments.line1_up.iter()) {
         highlight_state_add_token_with_start_and_length(
             state,
-            lsp_types::SemanticTokenType::VARIABLE,
+            lsp_types::SemanticTokenTypes::Variable,
             line.start,
             line.value.encode_utf16().count(),
         );
@@ -1473,7 +1505,7 @@ fn sloe_syntax_comments_highlight(state: &mut HighlightState, comments: &sloe::S
 fn sloe_syntax_name_highlight(
     state: &mut HighlightState,
     name: &sloe::WithStartPosition<sloe::Name>,
-    kind: lsp_types::SemanticTokenType,
+    kind: lsp_types::SemanticTokenTypes,
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
@@ -1490,7 +1522,7 @@ fn sloe_angled_type_parameters_highlight(
         sloe_syntax_name_highlight(
             state,
             parameter0,
-            lsp_types::SemanticTokenType::TYPE_PARAMETER,
+            lsp_types::SemanticTokenTypes::TypeParameter,
         );
     }
     for parameter in &angled_type_parameters.parameter1_up {
@@ -1498,7 +1530,7 @@ fn sloe_angled_type_parameters_highlight(
             sloe_syntax_name_highlight(
                 state,
                 parameter_name,
-                lsp_types::SemanticTokenType::TYPE_PARAMETER,
+                lsp_types::SemanticTokenTypes::TypeParameter,
             );
         }
     }
@@ -1533,7 +1565,7 @@ fn sloe_syntax_field_name_highlight(
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
-        lsp_types::SemanticTokenType::PROPERTY,
+        lsp_types::SemanticTokenTypes::Property,
         field_name.start,
         sloe::field_name_length(&field_name.value),
     );
@@ -1544,7 +1576,7 @@ fn sloe_syntax_optional_field_name_highlight(
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
-        lsp_types::SemanticTokenType::PROPERTY,
+        lsp_types::SemanticTokenTypes::Property,
         field_name.start,
         sloe::optional_field_name_length(field_name.value.as_ref()),
     );
@@ -1555,7 +1587,7 @@ fn sloe_syntax_variant_name_highlight(
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
-        lsp_types::SemanticTokenType::ENUM_MEMBER,
+        lsp_types::SemanticTokenTypes::EnumMember,
         variant_name.start,
         sloe::variant_name_length(&variant_name.value),
     );
@@ -1566,7 +1598,7 @@ fn sloe_syntax_optional_variant_name_highlight(
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
-        lsp_types::SemanticTokenType::ENUM_MEMBER,
+        lsp_types::SemanticTokenTypes::EnumMember,
         variant_name.start,
         sloe::optional_variant_name_length(variant_name.value.as_ref()),
     );
@@ -1579,7 +1611,7 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
 ) {
     match pattern {
         sloe::SyntaxPattern::Variable { name, type_ } => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::PARAMETER);
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Parameter);
             if let Some(type_) = type_ {
                 sloe_syntax_type_highlight(state, types, type_)
             }
@@ -1631,10 +1663,10 @@ fn sloe_syntax_type_highlight<Types>(
 ) {
     match type_ {
         sloe::SyntaxType::Variable(name) => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE_PARAMETER);
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::TypeParameter);
         }
         sloe::SyntaxType::ConstructWithoutArguments(name) => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE);
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Type);
         }
         sloe::SyntaxType::ConstructWithArguments {
             underscore_start,
@@ -1646,10 +1678,10 @@ fn sloe_syntax_type_highlight<Types>(
                 state,
                 ".",
                 *underscore_start,
-                lsp_types::SemanticTokenType::TYPE,
+                lsp_types::SemanticTokenTypes::Type,
             );
             if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::TYPE);
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Type);
             }
             if let Some(argument0) = argument0 {
                 sloe_syntax_type_highlight(state, types, types.element(argument0));
@@ -1718,7 +1750,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         sloe::SyntaxExpression::Number { value, type_ } => {
             highlight_state_add_token_with_start_and_length(
                 state,
-                lsp_types::SemanticTokenType::NUMBER,
+                lsp_types::SemanticTokenTypes::Number,
                 value.start,
                 value.value.len(),
             );
@@ -1734,7 +1766,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         } => {
             highlight_state_add_token_with_start_and_length(
                 state,
-                lsp_types::SemanticTokenType::STRING,
+                lsp_types::SemanticTokenTypes::String,
                 *open_quote_start,
                 (content_end.character - open_quote_start.character
                     + (if *closed_quote_exists { 1 } else { 0 })) as usize,
@@ -1748,14 +1780,14 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         } => {
             highlight_state_add_token_with_start_and_length(
                 state,
-                lsp_types::SemanticTokenType::STRING,
+                lsp_types::SemanticTokenTypes::String,
                 *open_quote_start,
                 (content_end.character - open_quote_start.character
                     + (if *closed_quote_exists { 1 } else { 0 })) as usize,
             );
         }
         sloe::SyntaxExpression::Variable(name) => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::VARIABLE);
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
         }
         sloe::SyntaxExpression::Call {
             underscore_start,
@@ -1767,10 +1799,10 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 state,
                 "_",
                 *underscore_start,
-                lsp_types::SemanticTokenType::FUNCTION,
+                lsp_types::SemanticTokenTypes::Function,
             );
             if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::FUNCTION);
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
             }
             if let Some(type_arguments) = type_arguments {
                 sloe_angled_type_arguments_highlight(state, types, type_arguments);
@@ -1914,7 +1946,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         } => {
             keyword_highlight(state, "origin", *origin_keyword_start);
             if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenType::VARIABLE);
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
             }
             if let Some(result) = result {
                 sloe_syntax_expression_highlight(
@@ -1929,21 +1961,21 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
     }
 }
 
-const token_types: [lsp_types::SemanticTokenType; 11] = [
-    lsp_types::SemanticTokenType::NUMBER,
-    lsp_types::SemanticTokenType::STRING,
-    lsp_types::SemanticTokenType::NAMESPACE,
-    lsp_types::SemanticTokenType::VARIABLE,
-    lsp_types::SemanticTokenType::TYPE,
-    lsp_types::SemanticTokenType::TYPE_PARAMETER,
-    lsp_types::SemanticTokenType::KEYWORD,
-    lsp_types::SemanticTokenType::ENUM_MEMBER,
-    lsp_types::SemanticTokenType::PROPERTY,
-    lsp_types::SemanticTokenType::COMMENT,
-    lsp_types::SemanticTokenType::FUNCTION,
+const token_types: [lsp_types::SemanticTokenTypes; 11] = [
+    lsp_types::SemanticTokenTypes::Number,
+    lsp_types::SemanticTokenTypes::String,
+    lsp_types::SemanticTokenTypes::Namespace,
+    lsp_types::SemanticTokenTypes::Variable,
+    lsp_types::SemanticTokenTypes::Type,
+    lsp_types::SemanticTokenTypes::TypeParameter,
+    lsp_types::SemanticTokenTypes::Keyword,
+    lsp_types::SemanticTokenTypes::EnumMember,
+    lsp_types::SemanticTokenTypes::Property,
+    lsp_types::SemanticTokenTypes::Comment,
+    lsp_types::SemanticTokenTypes::Function,
 ];
 
-fn semantic_token_type_to_id(semantic_token: &lsp_types::SemanticTokenType) -> u32 {
+fn semantic_token_type_to_id(semantic_token: &lsp_types::SemanticTokenTypes) -> u32 {
     token_types
         .iter()
         .enumerate()
@@ -2001,7 +2033,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
 ) -> Option<lsp_types::CompletionResponse> {
     let Some(project_state) = state.projects.get(
         &completion_arguments
-            .text_document_position
+            .text_document_position_params
             .text_document
             .uri,
     ) else {
@@ -2011,7 +2043,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
-        completion_arguments.text_document_position.position,
+        completion_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
         &state.syntax_types,
@@ -2020,7 +2052,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
     };
     match symbol {
         sloe::SyntaxSymbol::ProjectTypeOrUnknown { name: _, origins } => {
-            Some(lsp_types::CompletionResponse::Array(
+            Some(lsp_types::CompletionResponse::CompletionItemList(
                 project_state
                     .type_aliases
                     .iter()
@@ -2039,7 +2071,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         }
                         lsp_types::CompletionItem {
                             label: type_alias_name.to_string(),
-                            kind: Some(lsp_types::CompletionItemKind::STRUCT),
+                            kind: Some(lsp_types::CompletionItemKind::Struct),
                             documentation: Some(lsp_documentation_markdown(
                                 present_type_alias_markdown(type_alias_name, type_alias_info),
                             )),
@@ -2050,7 +2082,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     .chain(origins.into_iter().map(|(origin_name, _origin_origin)| {
                         lsp_types::CompletionItem {
                             label: origin_name.to_string(),
-                            kind: Some(lsp_types::CompletionItemKind::STRUCT),
+                            kind: Some(lsp_types::CompletionItemKind::Struct),
                             documentation: Some(lsp_documentation_markdown(format!(
                                 "```sloe\norigin {}\n```",
                                 origin_name
@@ -2133,12 +2165,12 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::Comments(_) => {}
                 sloe::SyntaxProjectElement::Unrecognized { .. } => {}
             }
-            Some(lsp_types::CompletionResponse::Array(
+            Some(lsp_types::CompletionResponse::CompletionItemList(
                 available_existing_variables
                     .into_iter()
                     .map(|available_existing_variable| lsp_types::CompletionItem {
                         label: available_existing_variable.to_string(),
-                        kind: Some(lsp_types::CompletionItemKind::TYPE_PARAMETER),
+                        kind: Some(lsp_types::CompletionItemKind::TypeParameter),
                         detail: Some("type variable".to_string()),
                         ..lsp_types::CompletionItem::default()
                     })
@@ -2153,7 +2185,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
             name: _,
             pattern_variables,
             origins,
-        } => Some(lsp_types::CompletionResponse::Array(
+        } => Some(lsp_types::CompletionResponse::CompletionItemList(
             project_state
                 .fns
                 .iter()
@@ -2207,7 +2239,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     }
                     lsp_types::CompletionItem {
                         label: fn_name.to_string(),
-                        kind: Some(lsp_types::CompletionItemKind::FUNCTION),
+                        kind: Some(lsp_types::CompletionItemKind::Function),
                         documentation: Some(lsp_documentation_markdown(
                             present_project_fn_with_complete_type_markdown(fn_name, fn_info),
                         )),
@@ -2218,7 +2250,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 .chain(pattern_variables.into_iter().map(
                     |(pattern_variable, pattern_variable_origin)| lsp_types::CompletionItem {
                         label: pattern_variable.to_string(),
-                        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+                        kind: Some(lsp_types::CompletionItemKind::Variable),
                         detail: Some(present_pattern_variable_markdown(
                             pattern_variable_origin.type_.as_ref(),
                         )),
@@ -2228,7 +2260,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 .chain(origins.into_iter().map(|(origin_name, _origin_origin)| {
                     lsp_types::CompletionItem {
                         label: origin_name.to_string(),
-                        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+                        kind: Some(lsp_types::CompletionItemKind::Variable),
                         detail: Some(format!("origin variable")),
                         ..lsp_types::CompletionItem::default()
                     }
@@ -2291,7 +2323,7 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
     let project = state
         .projects
         .get(&document_symbol_arguments.text_document.uri)?;
-    Some(lsp_types::DocumentSymbolResponse::Nested(
+    Some(lsp_types::DocumentSymbolResponse::DocumentSymbolList(
         project
             .syntax
             .elements
@@ -2312,7 +2344,7 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                     Some(lsp_types::DocumentSymbol {
                         name: name.value.to_string(),
                         detail: None,
-                        kind: lsp_types::SymbolKind::STRUCT,
+                        kind: lsp_types::SymbolKind::Struct,
                         tags: None,
                         #[allow(deprecated)]
                         deprecated: None,
@@ -2346,7 +2378,7 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                     Some(lsp_types::DocumentSymbol {
                         name: name.value.to_string(),
                         detail: None,
-                        kind: lsp_types::SymbolKind::FUNCTION,
+                        kind: lsp_types::SymbolKind::Function,
                         tags: None,
                         #[allow(deprecated)]
                         deprecated: None,
@@ -2460,38 +2492,11 @@ fn str_starting_utf8_length_for_utf16_length(slice: &str, starting_utf16_length:
     utf8_length
 }
 
-/// "polyfill" for the removed lsp_types::Uri::to_file_path (removed after 0.95.1)
-/// Inspired by (thank you!): https://github.com/tower-lsp-community/tower-lsp-server/blob/ff1562a33bda1da55ef4edbfc9ee24ecd50f6807/src/uri_ext.rs
-fn lsp_uri_to_file_path(uri: &lsp_types::Uri) -> Option<std::borrow::Cow<'_, std::path::Path>> {
-    let Ok(path_as_str) = uri.path().as_estr().decode().into_string() else {
-        return None;
-    };
-    let path_as_file_path: std::borrow::Cow<std::path::Path> = match path_as_str {
-        std::borrow::Cow::Borrowed(str) => std::borrow::Cow::Borrowed(std::path::Path::new(str)),
-        std::borrow::Cow::Owned(owned) => std::borrow::Cow::Owned(std::path::PathBuf::from(owned)),
-    };
-    if cfg!(windows) {
-        let Some(authority) = uri.authority() else {
-            return None;
-        };
-        let host = authority.host();
-        if host.as_str().is_empty() {
-            // assume file:/// → path includes leading /
-            let path_with_leading_slash_str: std::borrow::Cow<str> =
-                path_as_file_path.to_string_lossy();
-            let Some(path_without_leading_slash) = path_with_leading_slash_str.get(1..) else {
-                return None;
-            };
-            Some(std::borrow::Cow::Owned(std::path::PathBuf::from(
-                path_without_leading_slash,
-            )))
-        } else {
-            let mut full_file_path: std::path::PathBuf =
-                std::path::PathBuf::from(format!("{host}:"));
-            full_file_path.push(path_as_file_path);
-            Some(std::borrow::Cow::Owned(full_file_path))
-        }
-    } else {
-        Some(path_as_file_path)
-    }
+/// This not airtight and thus should not be relied upon for critical code.
+/// For example, this does not work for localhost or file:... redox uris.
+/// If a better solution is needed in the future, use the `url` crate
+fn lsp_uri_to_file_path(uri: &lsp_types::Uri) -> Option<&'_ std::path::Path> {
+    uri.0
+        .strip_prefix("file://")
+        .map(|path| std::path::Path::new(path))
 }
