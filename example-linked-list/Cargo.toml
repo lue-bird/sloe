@@ -1,6 +1,6 @@
 [package]
-name = "hello-world"
+name = "example-linked-list"
 edition = "2024"
 [[bin]]
-name = "hello-world"
+name = "example-linked-list"
 path = "main.rs"
