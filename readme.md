@@ -259,17 +259,60 @@ ty type-name Potential Type-Parameters
 # potential improvements in the (far) future
 - add field and variant rename and references
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
-- add `set Origin, Element` with an initialization function like `set-empty .origin ... .hash fn Element, Hash :> set Origin, Element`
-- add something like `map Origin, Key, Value` (or just `map Origin, Element` where key is derived from element) which still gives out `slot Origin`s for each entry but can be queried by key or similar. `map-empty` will require providing a `fn .a Key .b Key, .a Key .b Key .order order` or similar.
-  Alternatively, check if implementing in userland via e.g. AVL or red-black tree backed by a regular `vec` is fast enough
+- add `set Origin, Element` along with add something like `map Origin, Key, Value` (or just `map Origin, Element` where key is derived from element) which still gives out `slot Origin`s for each entry but can be queried by key or similar. `map-empty` will require providing a `fn .a Key .b Key, .a Key .b Key .order order` or similar.
+  Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `vec` is fast enough
 - consider adding record update syntax
-- consider adding `vec-generational`, `slot-strong` (and `slot-weak`?) which can reference a slot that is already in use, without any guarantee that it still points to an occupied slot: `slot-dup-weak slot-strong slot Origin :> .slot slot-strong, Origin .weak slot-weak Origin` + `slot-weak-dup`. This would enable graph structures, child-parent relations, doubly-linked lists etc.
-  **important**: This requires generational slots.
-  Can be implemented using e.g. [slotmap](https://docs.rs/crate/slotmap/latest), [thunderdome](https://docs.rs/crate/thunderdome/latest), [riddance](https://docs.rs/riddance/latest/riddance/) or on top of `vec` with an added generation counter in slot and collection.
-  Shelved for now because the model is quite different and I don't yet have a use case
-- consider adding `vec-add-vacant vec _vec Origin, Element :> _vec Origin, ELement` (probably same for vacant length)
+- consider adding `vec-counting` and `slot` which can reference a slot that is already in use:
+  ```sloe
+  fn vec-counting-slot-dup
+      .vec _vec-counting Origin, Element
+      .slot slot _slot Origin
+      :>
+          .vec _vec-counting Origin, Element
+          .a _slot Origin
+          .b _slot Origin
+      >
+  # what about spans?
+  ```
+  In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `set-counting`) etc.
+  Things I dislike with this design:
+    - access via `vec-counting-element` which does not guarantee seems maybe too difficult (first un-occupy all known slots and even then there is no guarantee). `vec-counting-update` should work nicely, especially for copiable types at the cost of: cannot access the vec at the same time and spooky action at a distance
+    - _every_ element is reference-counted. A slot to a known single-reference element cannot be represented. This is not a biggie because I don't know if there is a use for this
+    - TODO maybe also -counting versions of map/set etc.
+  
+  The alternative is of course to do `slot-weak` and generational indexes. However, this is un-usable for e.g. inlined string storage and also comes with overhead and even less guarantees.
+  
+  Open question of representation:
+    - `Vec<{ count: u32/16, element: Element }>`:
+      Finding vacant slots takes linear time. Generally fast.
+      Takes the least space on the stack
+    - `{ elements: Vec<Element>, counts: Vec<u32/16> }`:
+      Finding vacant slots takes linear time. Generally fastest.
+      A bit more error-prone than single vec
+    - `{ elements: Vec<Element>, vacant: Vec<u32>, occoupied_counts: Vec<NonZeroU32/16> }`:
+      Finding vacant slots takes constant time but doesn't feel deterministic.
+      Generally fastest but vacating is more expensive.
+      More error-prone than single or double-vec.
+      Takes most space on the stack
+    - `{ elements: Vec<Element>, counts: Vec<{ range: Range, count: u32/16 }>`:
+      Tough to handle and error-prone.
+      Inefficient for cases where slots are handled one by one (no spans exist).
+      Efficient for things like inline storage where spans are clearly defined.
+    - the above but with vacant ranges and occupied counts split
+
+  I think I prefer not storing counts in ranges, as for example for string interning, you could store counted spans in separate collections:
+  ```sloe
+  chars # of type _vec Chars, char
+  names # of type _vec-counting Names, _span Chars
+  ..other vecs pointing into chars, e.g. for number literals..
+  ```
+  This is likely the better option anyway (even though it "hops twice")
+  as it makes searching for the right span possible (and reasonably fast)
+- introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html), maybe even alongside `in-a-to-z`, `in-0-to-9` and other choice types). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the reverse operations which return `opt`
+- consider introducing variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
+- consider introducing a way to usefully make use of vacant/occupied space in sloe code.
+  e.g. consider adding `vec-add-vacant vec _vec Origin, Element :> _vec Origin, ELement` (probably same for vacant length)
   and `vec-fold-including-vacant .vec vec _vec Origin, Element .state State .step fn .state State .element opt Element, State :> State` (and maybe ways to peek for vacant spaces by plain `u32`)
-  which usefully exposes a way to use vacant spaces
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```sloe
@@ -296,7 +339,6 @@ ty type-name Potential Type-Parameters
         - `A·B<Vec<A>, Vec<B>>` (which requires the index to hold both the tag and the value index, aka 64 bit instead of 32, which somewhat defeats the point of reducing padding of the variant when values get bigger. Potentially there could however be struct-of-arrays for individual variant values making this worth it: https://github.com/dist1ll/osmium & https://alic.dev/blog/dense-enums)
         - `A·B<Vec<A>, Map<u32, B>>` (which is inefficient, and wasteful if `B` is common, and also doesn't scale with more than 2 variants)
 - look into soa_derive for rust, maybe this already does most of the useful work
-- try adding a compiler output to zig or similar which I think fits well (few free(), no need for lifetimes, fast compilation, anonymous structs, allocators, MultiArrayList. Downsides: pattern matching is underdeveloped, less-utilized memory niches (e.g. I think no NonZeroU32 and variant-in-variant niche usage for example), ecosystem, no language-level ownership, making sloe values prone to mistakes south of the the ffi border) and the overall philosophy (explicitness, data oriented)
 - imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
 
 # not coherently formulated thoughts
@@ -354,6 +396,17 @@ It also makes initial_state much easier to call from the rust side (though we ne
   The nice thing is that this matches what most language use as field names for tuples.
   Overall though, this is also a little bit confusing.
   If you have a use-case for this, I will probably reconsider (e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`; something in that ballpark)
+- allowing `.. (|variant ...)` with a single variant and untyped variant expressions. No, should consistently use single-field record
+- field and variants are changed so field names and variant names are uppercase
+  and `.` is spread (same for `|`), e.g.
+  ```sloe
+  ty event
+      |Counter-clicked
+      |Mouse-moved .X u32 .Y u32
+  ```
+  The benefit is that the question above is answered (single field = single variant).
+  Overall this is "more correct" than the current solution.
+  Rejected because this is harder to type (and would require a change of type variable syntax)
 
 ## why no `&mut`/`inout`
 While seemingly convenient and magnitudes better than regular mutable pointers,
@@ -366,6 +419,7 @@ While seemingly convenient and magnitudes better than regular mutable pointers,
 - `&mut` means the resulting changed collection is not returned, making use as the input to another function impossible. This almost necessarily results in the classic procedural-style statement form as opposed to the functional-style expression form. Minor gripe: especially in languages that don't allow local scopes with local returns (far, far too many) this basically makes it impossible to locally introduce a value, change it and implant it somewhere; instead you have to move the variable up to the top level.
 - returning `.` (like returning `Unit` in gleam) feels super awkward to my brain. Most often, languages then automatically return void/... in the absence of a return and introduce all kinds of constructs like re-assignable variables, additional constructs for looping and branching that all can only return void/... . To my brain, this just confuses matters; it loves simple to follow flow of state!
 - &mut usually comes with the need to check for non-overlapping references to the same parts of data. This isn't possible with owned data passing in the first place
+- &mut usually necessitates the need for offering the same APIs in two shapes, e.g. `make_uppercase(&mut self)` vs `to_uppercase(self)->Self` on rust's char/str types, `take()`/`take_mut()`, `std::mem::swap` etc. This to me just feels wrong
 
 rusts immutable references `&` have some similar trade-offs but seem kind of unavoidable at least for languages like rust.
 
@@ -390,11 +444,11 @@ Note that the current design does not natively have a `dyn Fn`; it needs to be m
 Because traits cover a vast theoretical area of use, they tend to be used a bunch. I've never found them particularily pleasant to use. Libraries often only expose some functionality through these, without proper documentation. Incidentally, I've also found editor tooling to be lacking in these areas, not knowing if you want to look at the general or specific function.
 
 ## why no (mathematical) operators
-- operators introduce a good amount of complexity: infix (and prefix) notation, associativity, precedence, most likely a way to overload based on context.
-- edge-case behavior (e.g. saturating vs overflowing vs checked vs ...) should be easier to control
+- operators introduce a good amount of complexity: infix (and prefix) notation, associativity, precedence, most likely a way to overload based on context
+- edge-case behavior (e.g. saturating vs overflowing vs checked vs carry vs ...) should be easier to control
 - in general, operators are concise but as a result quite ambiguous. For example, changing a boolean to an integer may silently not generate a compiler error when `!` is binary not, or when changing a list to a string with `++`
-- while numbers are not exactly uncommon, there are features that would deserve these symbols more, even in typical imparative languages (think `return`, `switch { case }`, `structure`, `import`, `public`, `static`, ...)
-- 
+- while numbers, bool and bit operations are not that uncommon, there are features that would deserve these symbols more, even in typical imparative languages (think `return`, `switch { case }`, `structure`, `import`, `public`, `static`, `void`, `null`, ...)
+- allowing infix `-` and prefix `-` leads can lead to very confusing situations like `call-1` but more importantly using `-` as an operator pretty much prevents languages from using the superior (easier to type) kebab-style for identifiers
 
 Somehow despite it's issues (math syntax kind of sucks, even the tiny subset), operators are one of the most prevalent features in programming languages, even hobby and experimental ones (0th class citizen). I do not quite understand this (well I guess not adding operators adds to the weirdness budget) .
 
@@ -459,6 +513,33 @@ cargo install --offline --debug --path . sloe
 
 - fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
 
+- rename `vec-element` to `vec-take` to make vacate aspect clear
+
+- report variant expressions without a type by suggesting single-field record
+
+- add field spread syntax `..existing-record .other-fields-before-and-or-after` (in patterns, types, expressions). The spreaded syntax must have a known (not-variable) type.
+  The benefit is: flat records, flat choices, much less repetition/verbosity, e.g.
+  ```sloe
+  fn draw-rectangle-centered .x x f32 .y y f32 .width width f32 .height height f32 :> ...
+  
+  fn example-0 . :> ... >
+      ? .x 300 f32 .y 400 f32 = dimensions >
+      ? .x 500 f32 .y 500 f32 = dimensions >
+      _draw-rectangle-centered ..dimensions ..center
+  
+  fn greet
+    .name name str .result-origin result-origin _origin Origin
+    :> .vec _vec Origin, char .span _opt _span Origin >
+    ? .vec _vec-empty<char> result-origin .span |absent<_opt _span Origin> .
+    = build >
+    ? _vec-opt-span-add-str ..build .new "Hello, " = build >
+    ? _vec-opt-span-add-str ..build .new name = build >
+    _vec-opt-span-add-str ..build .new "!\n"
+  ```
+  In general, this is wonderful for context and state of which parts are only sometimes changed (so also not quite as explicit).
+  A disadvantage of this sugar is that this bloats the language
+  for a feature that is not relevant for correctness (apart from making relevant things more obvious)
+
 - implement conversion to zig. current semi-blockers:
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
     - zig actually doesn't have concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
@@ -472,3 +553,44 @@ cargo install --offline --debug --path . sloe
       and then consider switching to manually generated decision-tree-like code with nested switches
     - local variables cannot shadow project fn and const names.
       I think the most reasonable resolution is to change every `local_variable` to `@"%local_variable"` quite like llvm. Same for type arguments but uppercase
+    - (not sure) think of a way to "split an origin". Something like 
+      ```
+      origin-dup origin _origin Local :> .a _origin (.a Local) .b _origin (.b Local)
+      ```
+      As you can see, this is already possible. However notice that annotating
+      an origin like that is very undescriptive.
+      type aliases can alleviate this problem a tiny bit but the default is still meh.
+      
+      Why would an `origin-dup` be useful at all?
+        - creating initial state in sloe code, without needing to pass
+          an unknown amount of origins in from the outside.
+        - type aliases may only need to take a single origin type parameter
+          for spans/slots with connected lifetimes, e.g.
+          ```sloe
+          ty expression Origin
+              |int i32
+              |string _opt _span _str-origin Origin
+              |vec _opt _span _expression-origin Origin
+              |call
+                  .function _slot _expression-origin Origin
+                  .arguments _span _expression-origin Origin
+              |lambda
+                  .parameters _span _pattern-origin Origin
+                  .result _slot _expression-origin Origin
+        
+          ty str-origin Origin .a Origin
+          ty expression-origin .b .a Origin
+          ty pattern-origin .b .b Origin
+          ```
+          The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
+          
+          I think baking `origin-derive` into the language is the easiest solution but I'd prefer to avoid this if at all possible
+          ```sloe
+          origin derived-origin derived-from original-origin
+          # derived-origin is of type _origin (.derived-origin original-origin)
+          # the original-origin variable is not available anymore if it existed
+          # but its type is still available
+          ...
+          result-expression
+          ```
+          This avoids potential overlapping origins with the sme name. However, this seems very confusing.
