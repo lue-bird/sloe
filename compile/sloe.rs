@@ -4004,8 +4004,13 @@ pub fn syntax_type_check<Types>(
                         errors.push(ErrorNode {
                             range: name_range(with_start_position_as_ref(name)),
                             message: format!(
-                                "this type alias has {} more parameters than arguments are provided here. The additional parameters are called {}",
+                                "this type alias has {} more parameters than arguments are provided here. Maybe you forgot a comma between the arguments? The additional {} called {}",
                                 origin_type_alias.parameters.len() - argument_count,
+                                if origin_type_alias.parameters.len() - argument_count == 1 {
+                                    "parameter is"
+                                } else {
+                                    "parameters are"
+                                },
                                 origin_type_alias.parameters.iter().map(|parameter| parameter.as_str()).skip(argument_count).collect::<Vec<_>>().join(", ")
                             ).into_boxed_str()
                         });
@@ -5838,8 +5843,13 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 if syntax_type_argument_count != project_fn_info.type_parameters.len() {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type parameters, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in _arena-empty<u32> origin, each type parenthesized if necessary.",
+                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in _arena-empty<u32> origin, each type parenthesized if necessary.",
                             parameter_count = project_fn_info.type_parameters.len(),
+                            parameter_pluralized = if project_fn_info.type_parameters.len() == 1 {
+                                "parameter"
+                            } else {
+                                "parameters"
+                            },
                             argument_count = syntax_type_argument_count
                         ).into_boxed_str()
                     });
