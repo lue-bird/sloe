@@ -105,13 +105,23 @@ test "vec add to span" {
     vec.rid(allocator);
 }
 
-test "anonymous structs and union(enum)" {
+test "anonymous struct" {
     // This is very annoying: Zig just recently used to have real anonymous structs
     // which were removed from the language because their implementation was buggy.
     // Curiously, anonymous tuples still exist so I wonder what gives?
     const one = core.@"record.a.b"(@as(core.Str, ""), @as(core.Str, ""));
     const two = core.@"record.a.b"(@as(core.Str, ""), @as(core.Str, ""));
     rid_both(core.@".a.b"(core.Str, core.Str), one, two);
+    try std.testing.expectEqualDeep(one, two);
+}
+test "anonymous union(enum)" {
+    // below would not type-check
+    // const one = @as(union(enum) { absent: void, present: core.Str }, .{ .present = "" });
+    // const two = @as(union(enum) { absent: void, present: core.Str }, .{ .present = "" });
+    // rid_both(union(enum) { absent: void, present: core.Str }, one, two);
+    const one = @as(core.@"|absent|present"(void, core.Str), .{ .present = "" });
+    const two = @as(core.@"|absent|present"(void, core.Str), .{ .present = "" });
+    rid_both(core.@"|absent|present"(void, core.Str), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
 fn rid_both(value: type, _: value, _: value) void {}
