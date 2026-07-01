@@ -37,7 +37,7 @@ Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making th
 
 # concept: flat memory collection `vec`
 A collection which can mark some ranges within itself as vacant.
-This can be used to "return" memory which has become outdated or useless, for example with `vec-element` and `vec-span-snatch-vec-span`.
+This can be used to "return" memory which has become outdated or useless, for example with `vec-take` and `vec-span-snatch-vec-span`.
 Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
 Further reading if interested: This concept is often called slot map, reusing memory.
@@ -91,7 +91,7 @@ fn use-vec . :> u32 >
     origin vec-origin
   	? _vec-empty<u32> vec-origin = vec >
   	? _vec-add .vec vec .new 123 u32 = .vec vec .slot first-slot >
-  	? _vec-element .vec vec .slot first-slot = .vec vec .element first >
+  	? _vec-take .vec vec .slot first-slot = .vec vec .element first >
   	? |absent<_opt vec-origin> . = after-first >
   	? _vec-opt-span-add .vec vec .span after-first .new 456 u32 = .vec vec .span after-first >
   	? _vec-span-add .vec vec .span after-first .new 789 u32 = .vec vec .span after-first >
@@ -166,11 +166,47 @@ fn state-to-interfaces-into
     interfaces
 ```
 
-# known limitations
+# known limitations & design weaknesses
 - scattered sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
   For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
   However, this would mean that slots and spans within the AST would not be owning
-- the pattern of removing, then re-inserting an element at a slot just to access it (potentially immutably) is not optimal. This can be mitigated somewhat by using `vec-update` & friends or compiling to/asking for code that uses `vec-replace .slot new-element .slot old-element` with a dummy element followed by `vec-replace` ignoring the returned dummy new-element instead
+- the pattern of removing, then re-inserting an element at a slot just to access it (potentially immutably) is not optimal. This can be mitigated somewhat by using `vec-update` or compiling to/asking for code that uses `? vec-replace .slot slot .new dummy = .old old .slot slot` followed by `vec-replace .slot slot .new old` scrapping the returned dummy element instead. This is much better than rusts swap because you're forced to handle the old element but it's still not ideal as many types do not have a dummy.
+  TODO experiment with an API around a new type
+  ```sloe
+  ty empty-slot Origin
+      # A slot whose referenced element has been read
+      # with the intention of setting it again in the near future.
+      # Couldn't you just `vec-take` followed by `vec-add`?
+      # Yes, but `vec-element` followed by `vec-set` is faster
+      # and guarantees that the underlying position in the vec stays the same.
+      # Storing an `empty-slot` unnecessarily is a memory leak;
+      # close to all reasonable uses consume an empty-slot moments after creation
+      ...
+
+  # potentially empty-span. Is there a common use?
+  
+  fn vec-element
+      .vec _vec Origin, Element .slot
+      :> .vec _vec Origin, Element .element Element .slot _empty-slot Origin
+  
+  fn vec-set
+      .vec _vec Origin, Element .slot _empty-slot Origin
+      :> .vec _vec Origin, Element .slot _slot Origin
+
+  fn vec-slot-empty-rid
+      .vec _vec Origin, Element .slot _empty-slot Origin
+      :> _vec Origin, Element
+  ```
+  I much prefer this to the stinky and loaded `vec-update`.
+  As a result, `ty origin-rid`, `origin-rid-dup`, `origin-rid-rid`, `vec-fold`, `vec-fold-with-origin-rid` should be removed as they might hit emptied slots.
+  I don't believe the `origin-rid` API had any future anyway (obscure, complex, no real use case)
+- no way to connect slots and spans that are known to be adjacent:
+  `span-end` for example splits a span into the last slot and before.
+  However, reconnecting these with `span-connect-opt-span .start _slot-to-span ...`
+  runs into the need to handle the impossible case of the given parts being disconnected.
+  Operations like `vec-opt-span-add` are a resonable compromise on its face
+  but are pretty far from optimal (it will (!) move the whole span to the end and add the span as vacant instead of reusing).
+- currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
 
 # syntax
 Syntax is secondary but I tried to make it coherent and practical, avoiding parens and indentation when possible, especially for trailing syntax.
@@ -497,23 +533,13 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- verify that the current check, then translate check doesn't produce invalid code.
-  For that: always more clearly fail when inner types mismatch.
-  That applies to divergent multi-case query and function call (maybe others?)
-
-- change `:>` to `<` to be in line with type argument syntax.
-  I feel like this is stretching the semantic meaning of `<` and `>` a bit but
-  I prefer it over the current yntax because `<` is more fun :)
-
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.
   This should make things like `.field-names span Field-names .field-values span Values`
   much more attractive/viable. This pattern can avoid "type parameter spam" for any record
 
-- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-p`, `vec-opt-span-add-own-element`, `vec-opt-span-add-own-span`, `vec-span-add-own-opt-span` (for these -own functions, try to move the (opt-)span-buid's start backwards if possible)
+- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-p`, `vec-opt-span-snatch-own-element`, `vec-opt-span-snatch-own-span`, `vec-span-snatch-own-opt-span`
 
-- fix bugs and inline TODOs including completions for functions (should not wrap fields and replace anything before it!)
-
-- rename `vec-element` to `vec-take` to make vacate aspect clear
+- fix bugs and inline TODOs
 
 - add field spread syntax `..existing-record .other-fields-before-and-or-after` (in patterns, types, expressions). The spreaded syntax must have a known (not-variable) type.
   The benefit is: flat records, flat choices, much less repetition/verbosity, e.g.

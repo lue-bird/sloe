@@ -489,7 +489,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         self.vacate_span(shrink_span);
         munched
     }
-    pub fn element_vacate(&mut self, mut slot: Slot<Origin>) -> Element {
+    pub fn take(&mut self, mut slot: Slot<Origin>) -> Element {
         // vacated opt_span elements are never accessed, not even while vacating them
         let element = unsafe {
             std::ptr::NonNull::read(std::ptr::NonNull::from_ref(self.element_mut(&mut slot)))
@@ -1505,10 +1505,10 @@ pub fn vec_pre_allocate_at_least<Origin, Element>(
         vacant: vec.vacant,
     }
 }
-pub fn vec_element<Origin, Element>(
+pub fn vec_take<Origin, Element>(
     Slot·vec { mut vec, slot }: Slot·vec<Slot<Origin>, Vec<Origin, Element>>,
 ) -> Element·vec<Element, Vec<Origin, Element>> {
-    let element = vec.element_vacate(slot);
+    let element = vec.take(slot);
     Element·vec {
         element: element,
         vec: vec,

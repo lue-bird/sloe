@@ -37,7 +37,7 @@ fn stack-pop
                 >
             .
     = |stacked .head head .tail tail-slot > (
-        ? _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
+        ? _vec-take .vec backing .slot tail-slot = .vec backing .element tail >
         .backing backing
         .element (
             |present<
@@ -64,7 +64,7 @@ fn stack-rid-fold
         .backing backing .state state
         )
     = |stacked .head head .tail tail-slot > (
-        ? _vec-element .vec backing .slot tail-slot = .vec backing .element tail >
+        ? _vec-take .vec backing .slot tail-slot = .vec backing .element tail >
         ? _fn-dup element-rid = .a vacate-element-a .b vacate-element-b >
         ? _vacate-element-a .state state .element head = elements-backing >
         _stack-rid-fold

@@ -9080,7 +9080,7 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
             ),
             (
                 CoreFnInfo {
-                    name: "vec-element",
+                    name: "vec-take",
                     documentation: ((
                         "Remove and retrieve an element from the vec at a given slot (the inverse of vec-add)"
                     )),
@@ -9565,7 +9565,7 @@ fn use-a-vec & u32
     origin my-elements-origin
     ? _vec-empty<u32> my-elements-origin = my-elements >
     ? _vec-add .vec my-elements .element 609 u32 = .vec my-elements .slot first-element-slot >
-    ? _vec-element .vec my-elements .slot first-element-slot = .vec my-elements .element first-element >
+    ? _vec-take .vec my-elements .slot first-element-slot = .vec my-elements .element first-element >
     ? vec-rid my-elements = . >
     first-element # = 609 u32
 ```

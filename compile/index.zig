@@ -69,7 +69,7 @@ test "f32 round ties even" {
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
 }
-test "vec add, element, occupiedCount, rid" {
+test "vec add, take, occupiedCount, rid" {
     const allocator = std.testing.allocator;
     const VecOrigin = enum { vec };
     const origin: core.Origin(VecOrigin) = .vec;
@@ -78,13 +78,13 @@ test "vec add, element, occupiedCount, rid" {
     const slot0 = try vec.add(allocator, 123);
     const slot1 = try vec.add(allocator, 456);
     try std.testing.expectEqual(2, vec.occupiedCount());
-    try std.testing.expectEqual(123, vec.element(allocator, slot0));
+    try std.testing.expectEqual(123, vec.take(allocator, slot0));
     try std.testing.expectEqual(1, vec.occupiedCount());
     const slot0_reused = try vec.add(allocator, 789);
     try std.testing.expectEqual(0, slot0_reused.index);
-    try std.testing.expectEqual(789, vec.element(allocator, slot0_reused));
+    try std.testing.expectEqual(789, vec.take(allocator, slot0_reused));
     try std.testing.expectEqual(1, vec.occupiedCount());
-    try std.testing.expectEqual(456, vec.element(allocator, slot1));
+    try std.testing.expectEqual(456, vec.take(allocator, slot1));
     try std.testing.expectEqual(0, vec.occupiedCount());
     vec.rid(allocator);
 }
@@ -96,7 +96,7 @@ test "vec add to span" {
     const span0 = try vec.optSpanAdd(allocator, core.Opt(core.Span(VecOrigin)){ .absent = {} }, 123);
     const slot_causing_span_move_to_end = try vec.add(allocator, 4);
     const span1 = try vec.spanAdd(allocator, span0, 567);
-    try std.testing.expectEqual(4, try vec.element(allocator, slot_causing_span_move_to_end));
+    try std.testing.expectEqual(4, try vec.take(allocator, slot_causing_span_move_to_end));
     try std.testing.expectEqual(2, span1.start.index);
     try std.testing.expectEqual(2, span1.length.positive);
     const span1_moved = vec.moveSpanToVacant(span1);
