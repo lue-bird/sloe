@@ -251,7 +251,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             }
             return @"%combined_length";
         }
-        pub fn occupiedCount(@"%vec": @This()) usize {
+        /// counts both occupied positions and temporarily empty ones referenced by `empty-slot`s
+        pub fn notVacantCount(@"%vec": @This()) usize {
             return @"%vec".elements.items.len - @"%vec".vacantSlotCount();
         }
         pub fn addIgnoringVacant(@"%vec": *@This(), @"%allocator": std.mem.Allocator, @"%new_element": @"%Element") error{OutOfMemory}!Slot(@"%Origin") {

@@ -10,7 +10,8 @@
     clippy::redundant_field_names,
     clippy::type_complexity,
     clippy::match_single_binding,
-    clippy::needless_update
+    clippy::needless_update,
+    clippy::must_use_candidate
 )]
 extern crate std;
 
@@ -192,11 +193,6 @@ pub struct Direction·span·state·step<Direction, Span, State, Step> {
     pub span: Span,
     pub state: State,
     pub step: Step,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Occupied_count·vec<Occupied_count, Vec> {
-    pub occupied_count: Occupied_count,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Carry·wrapped<Carry, Wrapped> {
@@ -383,10 +379,11 @@ impl<'a, Element> std::iter::Iterator for OwnedSliceIterator<'a, Element> {
     }
 }
 
-/// This constructor is exposed because sadly macros (namely origin_new!) require it.
-/// It's _very strongly_ recommended to instead only construct new origins with `origin_new!`.
-/// Misusing this constructor can lead to UB like unchecked out of bounds access.
 impl<LocalOrigin> Origin<LocalOrigin> {
+    /// # Safety
+    /// This constructor is exposed because sadly macros (namely origin_new!) require it.
+    /// It's _very strongly_ recommended to instead only construct new origins with `origin_new!`.
+    /// Misusing this constructor can lead to UB like unchecked out of bounds access.
     pub unsafe fn new_use_macro_instead(local_type_instance: LocalOrigin) -> Origin<LocalOrigin> {
         Origin(local_type_instance)
     }
@@ -677,10 +674,9 @@ impl<Origin, Element> Vec<Origin, Element> {
         shrink_span: Span<ShrinkOrigin>,
     ) -> Span<Origin> {
         let shrink_span_length = shrink_span.length;
-        let grow_span = shrink.vacate_and_consume_span_iterator(shrink_span, |shrink_elements| {
+        shrink.vacate_and_consume_span_iterator(shrink_span, |shrink_elements| {
             self.add_iterator_filled(shrink_elements, shrink_span_length)
-        });
-        grow_span
+        })
     }
     pub fn snatch_vec_span_ignoring_vacant<ShrinkOrigin>(
         &mut self,
@@ -688,10 +684,9 @@ impl<Origin, Element> Vec<Origin, Element> {
         shrink_span: Span<ShrinkOrigin>,
     ) -> Span<Origin> {
         let shrink_span_length = shrink_span.length;
-        let grow_span = shrink.vacate_and_consume_span_iterator(shrink_span, |shrink_elements| {
+        shrink.vacate_and_consume_span_iterator(shrink_span, |shrink_elements| {
             self.add_iterator_filled_ignoring_vacant(shrink_elements, shrink_span_length)
-        });
-        grow_span
+        })
     }
     pub fn opt_span_snatch_vec_span<ShrinkOrigin>(
         &mut self,
@@ -802,11 +797,9 @@ impl<Origin, Element> Vec<Origin, Element> {
             r.length.get()
         }))
     }
-    pub fn occupied_count_usize(&self) -> usize {
+    /// counts both occupied positions and temporarily empty ones referenced by `empty-slot`s
+    pub fn not_vacant_count_usize(&self) -> usize {
         usize::saturating_sub(self.elements.len(), self.vacant_count_usize())
-    }
-    pub fn occupied_count_u32(&self) -> u32 {
-        u32::saturating_sub(self.elements.len() as u32, self.vacant_count_u32())
     }
     pub fn into_occupied_elements(mut self) -> VecIter<Element> {
         let maybe_occupied_elements =
@@ -945,7 +938,7 @@ impl<Origin> Span<Origin> {
     }
 }
 
-impl<'a, Origin> Opt<&'a Span<Origin>> {
+impl<Origin> Opt<&Span<Origin>> {
     pub fn to_range(self) -> std::ops::Range<usize> {
         match self {
             Opt::Absent(Blank {}) => <std::ops::Range<usize> as std::default::Default>::default(),
@@ -990,6 +983,7 @@ pub fn u32_rid(_: U32) -> Blank {
 pub fn u32_dup(n: U32) -> A·b<U32, U32> {
     A·b { a: n, b: n }
 }
+#[expect(clippy::cast_precision_loss)]
 pub fn u32_to_f32(n: U32) -> F32 {
     n as F32
 }
@@ -1021,6 +1015,7 @@ pub fn i32_dup(n: I32) -> A·b<I32, I32> {
 pub fn i32_rid(_: I32) -> Blank {
     Blank {}
 }
+#[expect(clippy::cast_precision_loss)]
 pub fn i32_to_f32(n: I32) -> F32 {
     n as F32
 }
@@ -1156,7 +1151,7 @@ pub fn str_chars_fold<State>(
     Direction·state·step·str {
         direction,
         str,
-        state,
+        state: initial_state,
         step,
     }: Direction·state·step·str<
         Down·Up<Blank, Blank>,
@@ -1172,17 +1167,21 @@ pub fn str_chars_fold<State>(
         })
     };
     match direction {
-        Down·Up::Up(Blank {}) => std::iter::Iterator::fold(&mut str.chars(), state, reduce),
-        Down·Up::Down(Blank {}) => {
-            std::iter::Iterator::fold(&mut std::iter::Iterator::rev(str.chars()), state, reduce)
+        Down·Up::Up(Blank {}) => {
+            std::iter::Iterator::fold(&mut str.chars(), initial_state, reduce)
         }
+        Down·Up::Down(Blank {}) => std::iter::Iterator::fold(
+            &mut std::iter::Iterator::rev(str.chars()),
+            initial_state,
+            reduce,
+        ),
     }
 }
 pub fn str_chars_fold_while<Exit, GoOn>(
     Direction·state·step·str {
         direction,
         str,
-        state,
+        state: initial_state,
         step,
     }: Direction·state·step·str<
         Down·Up<Blank, Blank>,
@@ -1193,10 +1192,14 @@ pub fn str_chars_fold_while<Exit, GoOn>(
 ) -> Exit·Go_on<Exit, GoOn> {
     let reduce = |state, char| Exit·Go_on::into_control_flow(step(Char·state { state, char }));
     Exit·Go_on::from_control_flow(match direction {
-        Down·Up::Up(Blank {}) => std::iter::Iterator::try_fold(&mut str.chars(), state, reduce),
-        Down·Up::Down(Blank {}) => {
-            std::iter::Iterator::try_fold(&mut std::iter::Iterator::rev(str.chars()), state, reduce)
+        Down·Up::Up(Blank {}) => {
+            std::iter::Iterator::try_fold(&mut str.chars(), initial_state, reduce)
         }
+        Down·Up::Down(Blank {}) => std::iter::Iterator::try_fold(
+            &mut std::iter::Iterator::rev(str.chars()),
+            initial_state,
+            reduce,
+        ),
     })
 }
 
@@ -1303,7 +1306,7 @@ pub fn opt_span_fold<Origin, State>(
     Direction·span·state·step {
         direction,
         span,
-        state,
+        state: initial_state,
         step,
     }: Direction·span·state·step<
         Down·Up<Blank, Blank>,
@@ -1320,11 +1323,11 @@ pub fn opt_span_fold<Origin, State>(
     };
     match direction {
         Down·Up::Up(Blank {}) => {
-            std::iter::Iterator::fold(&mut span.as_ref().to_range_u32(), state, reduce)
+            std::iter::Iterator::fold(&mut span.as_ref().to_range_u32(), initial_state, reduce)
         }
         Down·Up::Down(Blank {}) => std::iter::Iterator::fold(
             &mut std::iter::Iterator::rev(span.as_ref().to_range_u32()),
-            state,
+            initial_state,
             reduce,
         ),
     }
@@ -1333,7 +1336,7 @@ pub fn opt_span_fold_while<Origin, Exit, GoOn>(
     Direction·span·state·step {
         direction,
         span,
-        state,
+        state: initial_state,
         step,
     }: Direction·span·state·step<
         Down·Up<Blank, Blank>,
@@ -1352,11 +1355,11 @@ pub fn opt_span_fold_while<Origin, Exit, GoOn>(
     let state_after_fold = match direction {
         Down·Up::Down(Blank {}) => std::iter::Iterator::try_fold(
             &mut std::iter::Iterator::rev(span.as_ref().to_range_u32()),
-            state,
+            initial_state,
             reduce,
         ),
         Down·Up::Up(Blank {}) => {
-            std::iter::Iterator::try_fold(&mut span.as_ref().to_range_u32(), state, reduce)
+            std::iter::Iterator::try_fold(&mut span.as_ref().to_range_u32(), initial_state, reduce)
         }
     };
     match state_after_fold {
@@ -1449,11 +1452,7 @@ pub fn vec_pre_allocate_at_least<Origin, Element>(
     }: Length·vec<u32, Vec<Origin, Element>>,
 ) -> Vec<Origin, Element> {
     vec.pre_allocate_at_least(min_pre_allocated_length);
-    Vec {
-        origin: vec.origin,
-        elements: vec.elements,
-        vacant: vec.vacant,
-    }
+    vec
 }
 pub fn vec_take<Origin, Element>(
     Slot·vec { mut vec, slot }: Slot·vec<Slot<Origin>, Vec<Origin, Element>>,
@@ -1490,14 +1489,6 @@ pub fn vec_span_fold<Origin, Element, State>(
         })
     });
     vec
-}
-pub fn vec_occupied_count<Origin, Element, State>(
-    vec: Vec<Origin, Element>,
-) -> Occupied_count·vec<u32, Vec<Origin, Element>> {
-    Occupied_count·vec {
-        occupied_count: vec.occupied_count_u32(),
-        vec: vec,
-    }
 }
 pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Blank {
     Blank {}
