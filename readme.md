@@ -198,8 +198,6 @@ fn state-to-interfaces-into
       :> _vec Origin, Element
   ```
   I much prefer this to the stinky and loaded `vec-update`.
-  As a result, `ty origin-rid`, `origin-rid-dup`, `origin-rid-rid`, `vec-fold`, `vec-fold-with-origin-rid` should be removed as they might hit emptied slots.
-  I don't believe the `origin-rid` API had any future anyway (obscure, complex, no real use case)
 - no way to connect slots and spans that are known to be adjacent:
   `span-end` for example splits a span into the last slot and before.
   However, reconnecting these with `span-connect-opt-span .start _slot-to-span ...`

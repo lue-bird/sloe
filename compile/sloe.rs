@@ -8621,12 +8621,6 @@ fn type_origin(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
-fn type_origin_rid(origin: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::const_new("origin-rid"),
-        arguments: vec![origin],
-    }
-}
 fn type_vec(origin: Type, element: Type) -> Type {
     Type::CoreConstruct {
         name: Name::const_new("vec"),
@@ -8936,75 +8930,6 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             ),
             (
                 CoreFnInfo {
-                    name: "origin-rid-dup",
-                    documentation: ((
-                        "Split the origin-rid in two values with the same content"
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: (type_origin_rid(type_variable("Origin"))),
-                    result_type: (type_record([
-                        ("a", type_origin_rid(type_variable("Origin"))),
-                        ("b", type_origin_rid(type_variable("Origin"))),
-                    ])),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "origin-rid-rid",
-                    documentation: ((
-                        "Mark the given origin-rid value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to ignore it only in some case"
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: (type_origin_rid(type_variable("Origin"))),
-                    result_type: (type_record([])),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "slot-rid",
-                    documentation: ((
-                        "Mark the given slot value as \"won't be used anymore\", given a proof that the backing collection is gone. This is usually done to scrap some function byproduct or to ignore it only in some case"
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: (type_record([
-                        ("slot", type_slot(type_variable("Origin"))),
-                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
-                    ])),
-                    result_type: (type_record([])),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "span-rid",
-                    documentation: ((
-                        "Mark the given span value as \"won't be used anymore\", given a proof that the backing collection is gone.
-This is usually done to scrap some function byproduct or to ignore it only in some case"
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: (type_record([
-                        ("span", type_span(type_variable("Origin"))),
-                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
-                    ])),
-                    result_type: (type_record([])),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "opt-span-rid",
-                    documentation: ((
-                        "Mark the given opt span value as \"won't be used anymore\", given a proof that the backing collection is gone.
-This is usually done to scrap some function byproduct or to ignore it only in some case"
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: (type_record([
-                        ("span", type_opt(type_span(type_variable("Origin")))),
-                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
-                    ])),
-                    result_type: (type_record([])),
-                }
-            ),
-            (
-                CoreFnInfo {
                     name: "vec-empty",
                     documentation: ((
                         "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc."
@@ -9271,96 +9196,14 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                 CoreFnInfo {
                     name: "vec-rid",
                     documentation: ((
-                        "Mark the given vec value as \"won't be used anymore\". This is usually done for temporary vecs at the end of their scope
-once you've used up all its elements.
+                        "Mark the given vec value as \"won't be used anymore\".
+Used for temporary vecs at the end of their scope once all of their elements are used up.
 If any slots or spans are still floating around, you will not be able to get rid of them.
-This nicely forces you to handle all remaining elements before you can get rid of the vec.
-If you still hold slots and spans to the elements inside
-that you don't want to vacate one-by-one yet,
-there are also helpers like `vec-fold` or `vec-fold-with-origin-rid`."
+This nicely forces you to handle all remaining elements before you can get rid of the vec."
                     )),
                     type_parameters: vec![],
                     parameter_type: (type_vec(type_variable("Origin"), type_variable("Element"))),
                     result_type: (type_record([])),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "vec-fold",
-                    documentation: ((
-                        "Consume all elements, stepping a state through first to last.
-This is mainly intended as a cleanup mechanism to flush out any remaining elements.
-```sloe
-origin example-origin
-? _vec-empty<u32> example-origin = example-vec >
-_vec-fold
-.vec example-vec
-.direction |up<|up . |down .> .
-.state .
-.step fn .state state .element element u32 > _u32-rid element
-```
-If you know there are no more slots and spans left, use `vec-rid`.
-For regular folds over spans, use helpers like `span-fold`.
-If you end up needing to scrap some remaining slots and spans after or during `vec-fold`,
-check out `vec-fold-with-origin-rid`."
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: (type_record([
-                        (
-                            "vec",
-                            type_vec(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
-                        ("state", type_variable("State")),
-                        (
-                            "step",
-                            type_fn(
-                                type_record([
-                                    ("state", type_variable("State")),
-                                    ("element", type_variable("Element")),
-                                ]),
-                                type_variable("State"),
-                            ),
-                        ),
-                    ])),
-                    result_type: (type_variable("State")),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "vec-fold-with-origin-rid",
-                    documentation: ((
-                        "Consume all elements, stepping a state through first to last.
-If any element contains slots and spans to the exact same vec, you can use the provided `origin-rid`
-to get rid of them.
-The resulting `origin-rid` can be used to get rid of remaining slots and spans elsewhere.
-If you know there were already no more slots and spans left from the start,
-use `vec-rid` instead of `vec-fold-with-origin-rid`."
-                    )),
-                    type_parameters: vec![],
-                    parameter_type: (type_record([
-                        (
-                            "vec",
-                            type_vec(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
-                        ("state", type_variable("State")),
-                        (
-                            "step",
-                            type_fn(
-                                type_record([
-                                    ("state", type_variable("State")),
-                                    ("element", type_variable("Element")),
-                                    ("origin-rid", type_origin_rid(type_variable("Origin"))),
-                                ]),
-                                type_variable("State"),
-                            ),
-                        ),
-                    ])),
-                    result_type: (type_record([
-                        ("state", type_variable("State")),
-                        ("origin-rid", type_origin_rid(type_variable("Origin"))),
-                    ])),
                 }
             ),
         ].map(|core_fn_info| {
@@ -9537,21 +9380,6 @@ This type argument is also used in slot, span, arena, vec as the first type argu
                 )),
                 parameters: vec![Name::const_new("LocalOrigin")],
                 type_: Some(type_origin(type_variable("LocalOrigin"))),
-            },
-        ),
-        (
-            Name::const_new("origin-rid"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "If you get this value (for example from `vec-fold-with-origin-rid`),
-it's proof that the value with this origin is not available anymore.
-Providing an `origin-rid` allows you to get rid of any remaining slots or spans you have lying around,
-see `slot-rid`, `span-rid`, `opt-span-rid`.
-"
-                )),
-                parameters: vec![Name::const_new("Origin")],
-                type_: Some(type_origin_rid(type_variable("Origin"))),
             },
         ),
         (

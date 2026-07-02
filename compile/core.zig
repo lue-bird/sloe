@@ -30,6 +30,24 @@ pub fn @".mode.n"(@"%Mode": type, @"%N": type) type {
 pub fn @"record.mode.n"(@"%mode": anytype, @"%n": anytype) @".mode.n"(@TypeOf(@"%mode"), @TypeOf(@"%n")) {
     return .{ .mode = @"%mode", .n = @"%n" };
 }
+pub fn @".end.start"(@"%End": type, @"%Start": type) type {
+    return struct { end: @"%End", start: @"%Start" };
+}
+pub fn @"record.end.start"(@"%end": anytype, @"%start": anytype) @".end.start"(@TypeOf(@"%end"), @TypeOf(@"%start")) {
+    return .{ .end = @"%end", .start = @"%start" };
+}
+pub fn @".index.slot"(@"%Index": type, @"%Slot": type) type {
+    return struct { index: @"%Index", slot: @"%Slot" };
+}
+pub fn @"record.slot.index"(@"%index": anytype, @"%slot": anytype) @".index.slot"(@TypeOf(@"%index"), @TypeOf(@"%slot")) {
+    return .{ .index = @"%index", .slot = @"%slot" };
+}
+pub fn @".length.span"(@"%Length": type, @"%Span": type) type {
+    return struct { length: @"%Length", span: @"%Span" };
+}
+pub fn @"record.span.length"(@"%length": anytype, @"%span": anytype) @".length.span"(@TypeOf(@"%length"), @TypeOf(@"%span")) {
+    return .{ .length = @"%length", .span = @"%span" };
+}
 pub fn @".new.vec"(@"%New": type, @"%Vec": type) type {
     return struct { new: @"%New", vec: @"%Vec" };
 }
@@ -96,18 +114,6 @@ pub fn @".in.slot.update.vec"(@"%In": type, @"%Slot": type, @"%Update": type, @"
 pub fn @"record.in.slot.update.vec"(@"%in": anytype, @"%slot": anytype, @"%update": anytype, @"%vec": anytype) @".in.slot.update.vec"(@TypeOf(@"%in"), @TypeOf(@"%slot"), @TypeOf(@"%update"), @TypeOf(@"%vec")) {
     return .{ .in = @"%in", .slot = @"%slot", .update = @"%update", .vec = @"%vec" };
 }
-pub fn @".origin_rid.slot"(@"%Origin_rid": type, @"%Slot": type) type {
-    return struct { origin_rid: @"%Origin_rid", slot: @"%Slot" };
-}
-pub fn @"record.origin_rid.slot"(@"%origin_rid": anytype, @"%slot": anytype) @".origin_rid.slot"(@TypeOf(@"%origin_rid"), @TypeOf(@"%slot")) {
-    return .{ .origin_rid = @"%origin_rid", .slot = @"%slot" };
-}
-pub fn @".origin_rid.span"(@"%Origin_rid": type, @"%Span": type) type {
-    return struct { origin_rid: @"%Origin_rid", span: @"%Span" };
-}
-pub fn @"record.origin_rid.span"(@"%origin_rid": anytype, @"%span": anytype) @".origin_rid.span"(@TypeOf(@"%origin_rid"), @TypeOf(@"%span")) {
-    return .{ .origin_rid = @"%origin_rid", .span = @"%span" };
-}
 pub fn @"|contained|overflowed"(@"%Contained": type, @"%Overflowed": type) type {
     return union(enum) { contained: @"%Contained", overflowed: @"%Overflowed" };
 }
@@ -120,10 +126,17 @@ pub fn @"|away_from_0|down|nearest_else_away_from_0|nearest_else_even|toward_0|u
 
 pub const P32 = struct {
     // zig does not have non-zero number types, yet.
-    // This is quite wasteful
+    // This is quite wasteful.
+    // The one tiny performance benefit is that .predecessor() never underflows on valid P32s
     positive: u32,
     pub const one = P32{ .positive = 1 };
     pub const max = P32{ .positive = std.math.maxInt(u32) };
+    pub fn fromComptime(comptime @"%u32": u32) @This() {
+        return if (@"%u32" == 0) @compileError("given unsigned integer is not positive") else .{ .positive = @"%u32" };
+    }
+    pub fn fromU32(@"%u32": U32) ?@This() {
+        return if (@"%u32" == 0) null else .{ .positive = @"%u32" };
+    }
     pub fn predecessor(@"%p": @This()) u32 {
         return @"%p".positive - 1;
     }
@@ -157,18 +170,15 @@ pub const Round_mode = @"|away_from_0|down|nearest_else_away_from_0|nearest_else
 /// I have tried to patch in some mechanisms to avoid having multiple origins with the same name in a scope
 /// but due to the (reasonable) lack of comptime mutable variables/mutable pointers it can't be done
 pub fn Origin(@"%Origin": type) type {
-    const valid_name = switch (@typeInfo(@"%Origin")) {
-        .@"enum" => |enum_info| if (enum_info.field_names.len == 1 and @bitSizeOf(@"%Origin") == 0) @as(?[]const u8, enum_info.field_names[0]) else null,
-        else => null,
+    const @"%is_valid" = switch (@typeInfo(@"%Origin")) {
+        .@"enum" => |enum_info| (enum_info.field_names.len == 1 and @bitSizeOf(@"%Origin") == 0),
+        else => false,
     };
-    if (valid_name == null) @compileError(std.fmt.comptimePrint(
+    if (!@"%is_valid") @compileError(std.fmt.comptimePrint(
         "Only zero-sized enum values should be used as origins, as they are stored within slots, spans, vecs etc. and should be safe to copy and free (found bit size {} for origin type {}). Try using e.g. `enum {{ myExampleVec }}`",
         .{ @bitSizeOf(@"%Origin"), @"%Origin" },
     ));
     return @"%Origin";
-}
-pub fn Origin_rid(@"%Origin": type) type {
-    return struct { origin_rid: @"%Origin" };
 }
 pub const SpanRaw = struct {
     start: u32,
@@ -176,7 +186,7 @@ pub const SpanRaw = struct {
     pub fn endIndexUsize(@"%span": @This()) usize {
         return @as(usize, @"%span".start) + @as(usize, @"%span".length.predecessor());
     }
-    // the fact that this can return an error and which isn't checked for earlier is a little sad
+    // preferrably the potential overflow would be caught earlier
     pub fn endIndex(@"%span": @This()) error{OutOfMemory}!u32 {
         return std.math.add(u32, @"%span".start, @"%span".length.predecessor()) catch return error.OutOfMemory;
     }
@@ -348,7 +358,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 @"%vec".spanSlice(@"%span"),
             )) {
                 .absent => unreachable,
-                .present => |moved_span| moved_span,
+                .present => |@"%moved_span"| @"%moved_span",
             };
             try @"%vec".vacateSpan(@"%allocator", @"%span");
             return @"%moved_span";
@@ -462,6 +472,9 @@ pub fn u32_add_clamp(@"%": @".a.b"(U32, U32)) error{OutOfMemory}!U32 {
 pub fn u32_mul_clamp(@"%": @".a.b"(U32, U32)) error{OutOfMemory}!U32 {
     return @"%".a *| @"%".b;
 }
+pub fn u32_to_p32(@"%n": U32) error{OutOfMemory}!Opt(P32) {
+    return if (P32.fromU32(@"%n")) |@"%p32"| .{ .present = @"%p32" } else .{ .absent = {} };
+}
 
 pub fn i32_rid(_: I32) error{OutOfMemory}!void {}
 pub fn i32_dup(@"%n": I32) error{OutOfMemory}!@".a.b"(I32, I32) {
@@ -555,17 +568,52 @@ pub fn fn_dup(@"%In": type, @"%Out": type, @"%function": Fn(@"%In", @"%Out")) er
 
 pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
 
-pub fn origin_rid_rid(@"%Origin": type, _: Origin_rid(@"%Origin")) error{OutOfMemory}!void {}
-pub fn origin_rid_dup(@"%Origin": type, @"%origin_rid_proof": Origin_rid(@"%Origin")) error{OutOfMemory}!@".a.b"(Origin_rid(@"%Origin"), Origin_rid(@"%Origin")) {
-    return .{ .a = @"%origin_rid_proof", .b = @"%origin_rid_proof" };
+pub fn slot_index(@"%Origin": type, @"%slot": Slot(@"%Origin")) @".index.slot"(U32, Slot(@"%Origin")) {
+    return .{ .slot = @"%slot", .index = @"%slot".index };
 }
-
-pub fn slot_rid(@"%Origin": type, _: @".origin_rid.slot"(Origin_rid(@"%Origin"), Slot(@"%Origin"))) error{OutOfMemory}!void {}
 pub fn slot_to_span(@"%Origin": type, @"%slot": Slot(@"%Origin")) Span(@"%Origin") {
     return @"%slot".to_span();
 }
 
-pub fn span_rid(@"%Origin": type, _: @".origin_rid.span"(Origin_rid(@"%Origin"), Span(@"%Origin"))) error{OutOfMemory}!void {}
+pub fn span_length(@"%Origin": type, @"%span": Span(@"%Origin")) @".length.span"(P32, Span(@"%Origin")) {
+    return .{ .span = @"%span", .length = @"%span".length };
+}
+pub fn opt_span_length(@"%Origin": type, @"%opt_span": Opt(Span(@"%Origin"))) @".length.span"(U32, Opt(Span(@"%Origin"))) {
+    return .{
+        .span = @"%opt_span",
+        .length = switch (@"%opt_span") {
+            .absent => 0,
+            .present => |@"%span"| @"%span".length.positive,
+        },
+    };
+}
+pub fn span_start(@"%Origin": type, @"%span": Span(@"%Origin")) error{OutOfMemory}!@".end.start"(Opt(Span(@"%Origin")), Slot(@"%Origin")) {
+    return .{
+        .start = @"%span".start,
+        .end = if (P32.fromU32(@"%span".length.predecessor())) |@"%end_length"|
+            .{ .present = .{
+                .start = .{
+                    .origin = @"%span".start.origin,
+                    .index = try (std.math.add(u32, @"%span".start.index, 1) catch error.OutOfMemory),
+                },
+                .length = @"%end_length",
+            } }
+        else
+            .{ .absent = {} },
+    };
+}
+pub fn span_end(@"%Origin": type, @"%span": Span(@"%Origin")) error{OutOfMemory}!@".end.start"(Slot(@"%Origin"), Opt(Span(@"%Origin"))) {
+    return .{
+        .end = .{ .origin = @"%span".start.origin, .index = try @"%span".endIndex() },
+        .start = if (P32.fromU32(@"%span".length.predecessor())) |@"%start_length"|
+            .{ .present = .{
+                .start = @"%span".start,
+                .length = @"%start_length",
+            } }
+        else
+            .{ .absent = {} },
+    };
+}
 
 pub fn vec_empty(@"%Element": type, @"%Origin": type, @"%origin": Origin(@"%Origin")) error{OutOfMemory}!Vec(@"%Origin", @"%Element") {
     return Vec(@"%Origin", @"%Element").empty(@"%origin");
@@ -579,12 +627,12 @@ pub fn vec_add_ignoring_vacant(@"%Element": type, @"%Origin": type, @"%allocator
     return .{ .vec = @"%".vec, .slot = @"%slot" };
 }
 pub fn vec_take(@"%Element": type, @"%Origin": type, @"%allocator": std.mem.Allocator, @"%": @".slot.vec"(Slot(@"%Origin"), Vec(@"%Origin", @"%Element"))) error{OutOfMemory}!@".element.vec"(@"%Element", @"%") {
-    const element = @"%".vec.take(@"%allocator", @"%".slot);
-    return .{ .vec = @"%".vec, .element = element };
+    const @"%element" = @"%".vec.take(@"%allocator", @"%".slot);
+    return .{ .vec = @"%".vec, .element = @"%element" };
 }
 pub fn vec_update(@"%Element": type, @"%In": type, @"%Origin": type, @"%Out": type, @"%": @".in.slot.update.vec"(@"%In", Slot(@"%Origin"), Fn(@".element.in"(@"%Element", @"%In"), @".element.out"(@"%Element", @"%Out")), Vec(@"%Origin", @"%Element"))) error{OutOfMemory}!@".out.vec"(@"%Out", @"%") {
-    const updated = @"%".vec.update(@"%".slot, @"%".in, @"%".update);
-    return .{ .vec = @"%".vec, .out = updated.out, .slot = updated.slot };
+    const @"%updated" = @"%".vec.update(@"%".slot, @"%".in, @"%".update);
+    return .{ .vec = @"%".vec, .out = @"%updated".out, .slot = @"%updated".slot };
 }
 pub fn vec_opt_span_add(@"%Element": type, @"%Origin": type, allocator: std.mem.Allocator, @"%": @".new.span.vec"(@"%Element", Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element"))) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", @"%Element")) {
     const @"%combined_span" = @"%".vec.optSpanAdd(allocator, @"%".span, @"%".new);
@@ -601,6 +649,10 @@ pub fn vec_opt_span_add_str(@"%Element": type, @"%Origin": type, allocator: std.
 pub fn vec_span_add_str(@"%Element": type, @"%Origin": type, allocator: std.mem.Allocator, @"%": @".new.span.vec"(Str, Span(@"%Origin"), Vec(@"%Origin", @"%Element"))) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", @"%Element")) {
     const @"%combined_span" = @"%".vec.spanAddSlice(allocator, @"%".span, @"%".new);
     return .{ .span = @"%combined_span", .vec = @"%".vec };
+}
+pub fn vec_span_move_to_vacant(@"%Element": type, @"%Origin": type, allocator: std.mem.Allocator, @"%": @".span.vec"(Span(@"%Origin"), Vec(@"%Origin", @"%Element"))) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", @"%Element")) {
+    const @"%moved_span" = @"%".vec.moveSpanToVacant(allocator, @"%".span);
+    return .{ .span = @"%moved_span", .vec = @"%".vec };
 }
 pub fn vec_rid(@"%Element": type, @"%Origin": type, @"%allocator": std.mem.Allocator, @"%vec": Vec(@"%Origin", @"%Element")) error{OutOfMemory}!void {
     @"%vec".rid(@"%allocator");

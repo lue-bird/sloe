@@ -194,27 +194,6 @@ pub struct Direction·span·state·step<Direction, Span, State, Step> {
     pub step: Step,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Element·origin_rid·state<Element, Origin_rid, State> {
-    pub element: Element,
-    pub origin_rid: Origin_rid,
-    pub state: State,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Origin_rid·state<Origin_rid, State> {
-    pub origin_rid: Origin_rid,
-    pub state: State,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Origin_rid·slot<Origin_rid, Slot> {
-    pub origin_rid: Origin_rid,
-    pub slot: Slot,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Origin_rid·span<Origin_rid, Span> {
-    pub origin_rid: Origin_rid,
-    pub span: Span,
-}
-#[derive(Clone, Copy, Debug)]
 pub struct Occupied_count·vec<Occupied_count, Vec> {
     pub occupied_count: Occupied_count,
     pub vec: Vec,
@@ -286,8 +265,6 @@ pub type Round_mode = Away_from_0·Down·Nearest_else_away_from_0·Nearest_else_
 #[derive(Debug)]
 pub struct Origin<LocalOrigin>(LocalOrigin);
 #[derive(Debug)]
-pub struct Origin_rid<Origin>(std::marker::PhantomData<Origin>);
-#[derive(Debug)]
 pub struct Vec<LocalOrigin, Element> {
     // invariants:
     // - no SpanRaws in vacant are connected
@@ -328,12 +305,6 @@ pub struct Span<LocalOrigin> {
     pub length: std::num::NonZeroU32,
 }
 
-impl<Origin> std::marker::Copy for Origin_rid<Origin> {}
-impl<Origin> std::clone::Clone for Origin_rid<Origin> {
-    fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
 impl<Origin> std::fmt::Debug for Slot<Origin> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Slot").field("index", &self.index).finish()
@@ -1233,9 +1204,6 @@ pub fn opt_present<Present>(present: Present) -> Opt<Present> {
     Opt::Present(present)
 }
 
-pub fn slot_rid<Origin>(_: Origin_rid·slot<Origin_rid<Origin>, Slot<Origin>>) -> Blank {
-    Blank {}
-}
 pub fn slot_index<Origin>(slot: Slot<Origin>) -> Index·slot<u32, Slot<Origin>> {
     Index·slot {
         index: slot.index,
@@ -1249,12 +1217,6 @@ pub fn slot_to_span<Origin>(slot: Slot<Origin>) -> Span<Origin> {
     }
 }
 
-pub fn span_rid<Origin>(_: Origin_rid·span<Origin_rid<Origin>, Span<Origin>>) -> Blank {
-    Blank {}
-}
-pub fn opt_span_rid<Origin>(_: Origin_rid·span<Origin_rid<Origin>, Opt<Span<Origin>>>) -> Blank {
-    Blank {}
-}
 pub fn span_start<Origin>(span: Span<Origin>) -> After·start<Opt<Span<Origin>>, Slot<Origin>> {
     After·start {
         after: match std::num::NonZeroU32::new(p32_predecessor(span.length)) {
@@ -1473,18 +1435,6 @@ pub fn origin_rid<LocalOrigin>(_: Origin<LocalOrigin>) -> Blank {
     Blank {}
 }
 
-pub fn origin_rid_rid<Origin>(_: Origin_rid<Origin>) -> Blank {
-    Blank {}
-}
-pub fn origin_rid_dup<Origin>(
-    origin_rid: Origin_rid<Origin>,
-) -> A·b<Origin_rid<Origin>, Origin_rid<Origin>> {
-    A·b {
-        a: origin_rid,
-        b: origin_rid,
-    }
-}
-
 pub fn vec_empty<LocalOrigin, Element>(origin: Origin<LocalOrigin>) -> Vec<LocalOrigin, Element> {
     Vec {
         origin: origin,
@@ -1552,84 +1502,6 @@ pub fn vec_occupied_count<Origin, Element, State>(
 pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Blank {
     Blank {}
 }
-pub fn vec_fold<Origin, Element, State>(
-    Direction·state·step·vec {
-        direction,
-        state,
-        step,
-        vec,
-    }: Direction·state·step·vec<
-        Down·Up<Blank, Blank>,
-        State,
-        Fn<Element·state<Element, State>, State>,
-        Vec<Origin, Element>,
-    >,
-) -> State {
-    match direction {
-        Down·Up::Up(Blank {}) => std::iter::Iterator::fold(
-            &mut vec.into_occupied_elements(),
-            state,
-            |state, element| {
-                step(Element·state {
-                    element: element,
-                    state: state,
-                })
-            },
-        ),
-        Down·Up::Down(Blank {}) => std::iter::Iterator::fold(
-            &mut vec.into_occupied_elements_rev(),
-            state,
-            |state, element| {
-                step(Element·state {
-                    element: element,
-                    state: state,
-                })
-            },
-        ),
-    }
-}
-pub fn vec_fold_with_origin_rid<Origin, Element, State>(
-    Direction·state·step·vec {
-        direction,
-        state,
-        step,
-        vec,
-    }: Direction·state·step·vec<
-        Down·Up<Blank, Blank>,
-        State,
-        Fn<Element·origin_rid·state<Element, Origin_rid<Origin>, State>, State>,
-        Vec<Origin, Element>,
-    >,
-) -> Origin_rid·state<Origin_rid<Origin>, State> {
-    let origin_rid = Origin_rid(std::marker::PhantomData::<Origin>);
-    Origin_rid·state {
-        origin_rid: origin_rid,
-        state: match direction {
-            Down·Up::Up(Blank {}) => std::iter::Iterator::fold(
-                &mut vec.into_occupied_elements(),
-                state,
-                |state, element| {
-                    step(Element·origin_rid·state {
-                        element: element,
-                        state: state,
-                        origin_rid: origin_rid,
-                    })
-                },
-            ),
-            Down·Up::Down(Blank {}) => std::iter::Iterator::fold(
-                &mut vec.into_occupied_elements_rev(),
-                state,
-                |state, element| {
-                    step(Element·origin_rid·state {
-                        element: element,
-                        state: state,
-                        origin_rid: origin_rid,
-                    })
-                },
-            ),
-        },
-    }
-}
 pub fn vec_add_ignoring_vacant<Origin, Element>(
     New·vec {
         mut vec,
@@ -1654,7 +1526,7 @@ pub fn vec_add<Origin, Element>(
         slot: slot,
     }
 }
-pub fn vec_add_vec_span<Origin, ShrinkOrigin, Element>(
+pub fn vec_snatch_vec_span<Origin, ShrinkOrigin, Element>(
     mut grow: Vec<Origin, Element>,
     mut shrink: Vec<ShrinkOrigin, Element>,
     shrink_span: Span<ShrinkOrigin>,
@@ -1692,7 +1564,6 @@ pub fn vec_replace<Origin, Element>(
         slot: slot,
     }
 }
-/// Often used for copying (dup) a value out or altering the element
 pub fn vec_update<Origin, Element, In, Out>(
     In_·slot·update·vec {
         mut vec,
