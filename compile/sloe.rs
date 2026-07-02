@@ -16,6 +16,10 @@ pub struct SyntaxProject<Expressions, Patterns, Types> {
 }
 
 #[derive(Debug)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "::Fn is the largest but almost all variants in practice are ::Fn anyway"
+)]
 pub enum SyntaxProjectElement<Expressions, Patterns, Types> {
     TypeAlias {
         ty_keyword_start: lsp_types::Position,
@@ -8675,8 +8679,8 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                     documentation:
                         "Split the p32 in two values with the same content",
                     type_parameters: vec![],
-                    parameter_type:  (type_p32),
-                    result_type:  (type_record([("a", type_p32), ("b", type_p32)])),
+                    parameter_type: type_p32,
+                    result_type: type_record([("a", type_p32), ("b", type_p32)]),
                 }
             ),
             (
@@ -8686,118 +8690,106 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                         "Mark the given p32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                     type_parameters: vec![],
                     parameter_type:  (type_p32),
-                    result_type:  (type_record([])),
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "p32-add-clamp",
-                    documentation: (("Saturating a + b")),
+                    documentation: "Saturating a + b",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("p", type_p32), ("u", type_u32)])),
-                    result_type: (type_p32),
+                    parameter_type: type_record([("p", type_p32), ("u", type_u32)]),
+                    result_type: type_p32,
                 }
             ),
             (
                 CoreFnInfo {
                     name: "u32-dup",
-                    documentation: ((
-                        "Split the u32 in two values with the same content"
-                    )),
+                    documentation: "Split the u32 in two values with the same content",
                     type_parameters: vec![],
-                    parameter_type: (type_u32),
-                    result_type: (type_record([("a", type_u32), ("b", type_u32)])),
+                    parameter_type: type_u32,
+                    result_type: type_record([("a", type_u32), ("b", type_u32)]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "u32-rid",
-                    documentation: ((
-                        "Mark the given u32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
-                    )),
+                    documentation: "Mark the given u32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                     type_parameters: vec![],
-                    parameter_type: (type_u32),
-                    result_type: (type_record([])),
+                    parameter_type: type_u32,
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "u32-add-clamp",
-                    documentation: (("Saturating a + b")),
+                    documentation: "Saturating a + b",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("a", type_u32), ("b", type_u32)])),
-                    result_type: (type_u32),
+                    parameter_type: type_record([("a", type_u32), ("b", type_u32)]),
+                    result_type: type_u32,
                 }
             ),
             (
                 CoreFnInfo {
                     name: "i32-dup",
-                    documentation: ((
-                        "Split the i32 in two values with the same content"
-                    )),
+                    documentation: "Split the i32 in two values with the same content",
                     type_parameters: vec![],
-                    parameter_type: (type_i32),
-                    result_type: (type_record([("a", type_i32), ("b", type_i32)])),
+                    parameter_type: type_i32,
+                    result_type: type_record([("a", type_i32), ("b", type_i32)]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "i32-rid",
-                    documentation: ((
-                        "Mark the given i32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
-                    )),
+                    documentation: "Mark the given i32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                     type_parameters: vec![],
-                    parameter_type: (type_i32),
-                    result_type: (type_record([])),
+                    parameter_type: type_i32,
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "i32-add-clamp",
-                    documentation: (("Saturating a + b")),
+                    documentation: "Saturating a + b",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("a", type_i32), ("b", type_i32)])),
-                    result_type: (type_i32),
+                    parameter_type: type_record([("a", type_i32), ("b", type_i32)]),
+                    result_type: type_i32,
                 }
             ),
             (
                 CoreFnInfo {
                     name: "f32-dup",
-                    documentation: ((
-                        "Split the f32 in two values with the same content"
-                    )),
+                    documentation: "Split the f32 in two values with the same content",
                     type_parameters: vec![],
-                    parameter_type: (type_f32),
-                    result_type: (type_record([("a", type_f32), ("b", type_f32)])),
+                    parameter_type: type_f32,
+                    result_type: type_record([("a", type_f32), ("b", type_f32)]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "f32-rid",
-                    documentation: ((
-                        "Mark the given f32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
-                    )),
+                    documentation: "Mark the given f32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                     type_parameters: vec![],
-                    parameter_type: (type_f32),
-                    result_type: (type_record([])),
+                    parameter_type: type_f32,
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "f32-add-clamp",
-                    documentation: (("Saturating a + b")),
+                    documentation: "Saturating a + b",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("a", type_f32), ("b", type_f32)])),
-                    result_type: (type_f32),
+                    parameter_type: type_record([("a", type_f32), ("b", type_f32)]),
+                    result_type: type_f32,
                 }
             ),
             (
                 CoreFnInfo {
                     name: "f32-mul-clamp",
-                    documentation: (("Saturating a * b")),
+                    documentation: "Saturating a * b",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("a", type_f32), ("b", type_f32)])),
-                    result_type: (type_f32),
+                    parameter_type: type_record([("a", type_f32), ("b", type_f32)]),
+                    result_type: type_f32,
                 }
             ),
             (
@@ -8806,239 +8798,213 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                     documentation: "Saturating n / by.
 Try not to divide by 0.0, as 0.0 will be returned which is not mathematically correct. This behaviour is consistent with gleam, pony, coq, lean.",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("n", type_f32), ("by", type_f32)])),
-                    result_type: (type_f32),
+                    parameter_type: type_record([("n", type_f32), ("by", type_f32)]),
+                    result_type: type_f32,
                 }
             ),
             (
                 CoreFnInfo {
                     name: "f32-round",
-                    documentation: (("If not already equal to an integer value,
+                    documentation: "If not already equal to an integer value,
 find a neighboring integer with a given `round-mode`.
 For math-type round for example, use
 ```sloe
 fn age . :> f32 >
     f32-round .n 68.8 .mode |nearest-else-away-from-0<round-mode> .
-```")),
+```",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("n", type_f32), ("mode", type_round_mode())])),
-                    result_type: (type_f32),
+                    parameter_type: type_record([("n", type_f32), ("mode", type_round_mode())]),
+                    result_type: type_f32,
                 }
             ),
             (
                 CoreFnInfo {
                     name: "f32-to-i32-clamp",
-                    documentation: (("If not already equal to an integer value,
+                    documentation: "If not already equal to an integer value,
 find a neighboring integer with a given `round-mode`. Finally, clamp it to within 32 bits.
 For truncating off at the decimal point for example, use
 ```sloe
 fn age . :> f32 >
     f32-to-i32-clamp .n 68.8 .mode |toward-0<round-mode> .
-```")),
+```",
                     type_parameters: vec![],
-                    parameter_type: (type_record([("n", type_f32), ("mode", type_round_mode(  ))])),
-                    result_type: (type_i32),
+                    parameter_type: type_record([("n", type_f32), ("mode", type_round_mode(  ))]),
+                    result_type: type_i32,
                 }
             ),
             (
                 CoreFnInfo {
                     name: "char-dup",
-                    documentation: ((
-                        "Split the char in two values with the same content"
-                    )),
+                    documentation: "Split the char in two values with the same content",
                     type_parameters: vec![],
-                    parameter_type: (type_char),
-                    result_type: (type_record([("a", type_char), ("b", type_char)])),
+                    parameter_type: type_char,
+                    result_type: type_record([("a", type_char), ("b", type_char)]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "char-rid",
-                    documentation: ((
-                        "Mark the given char value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
-                    )),
+                    documentation: "Mark the given char value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                     type_parameters: vec![],
-                    parameter_type: (type_char),
-                    result_type: (type_record([])),
+                    parameter_type: type_char,
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "str-dup",
-                    documentation: ((
-                        "Split the str in two values with the same content"
-                    )),
+                    documentation: "Split the str in two values with the same content",
                     type_parameters: vec![],
-                    parameter_type: (type_str),
-                    result_type: (type_record([("a", type_str), ("b", type_str)])),
+                    parameter_type: type_str,
+                    result_type: type_record([("a", type_str), ("b", type_str)]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "str-rid",
-                    documentation: ((
-                        "Mark the given str value as \"won't be used anymore\".
-This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
-                    )),
+                    documentation: "Mark the given str value as \"won't be used anymore\".
+This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                     type_parameters: vec![],
-                    parameter_type: (type_str),
-                    result_type: (type_record([])),
+                    parameter_type: type_str,
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "opt-present",
-                    documentation: (("Shorthand for |present<opt ..value type..> value")),
+                    documentation: "Shorthand for |present<opt ..value type..> value",
                     type_parameters: vec![],
-                    parameter_type: (type_variable("Present")),
-                    result_type: (type_opt(type_variable("Present")))
+                    parameter_type: type_variable("Present"),
+                    result_type: type_opt(type_variable("Present"))
                 }
             ),
             (
                 CoreFnInfo {
                     name: "fn-dup",
-                    documentation: ((
-                        "Split the fn in two values with the same content"
-                    )),
+                    documentation: "Split the fn in two values with the same content",
                     type_parameters: vec![],
-                    parameter_type: (type_fn(type_variable("In"), type_variable("Out"))),
-                    result_type: (type_record([
+                    parameter_type: type_fn(type_variable("In"), type_variable("Out")),
+                    result_type: type_record([
                         ("a", type_fn(type_variable("In"), type_variable("Out"))),
                         ("b", type_fn(type_variable("In"), type_variable("Out"))),
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "fn-rid",
-                    documentation: ((
-                        "Mark the given fn value as \"won't be used anymore\".
-This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope"
-                    )),
+                    documentation: "Mark the given fn value as \"won't be used anymore\".
+This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                     type_parameters: vec![],
-                    parameter_type: (type_fn(type_variable("In"), type_variable("Out"))),
-                    result_type: (type_record([])),
+                    parameter_type: type_fn(type_variable("In"), type_variable("Out")),
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "origin-rid",
-                    documentation: ((
-                        "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case"
-                    )),
+                    documentation: "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case",
                     type_parameters: vec![],
-                    parameter_type: (type_origin(type_variable("Origin"))),
-                    result_type: (type_record([])),
+                    parameter_type: type_origin(type_variable("Origin")),
+                    result_type: type_record([]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-empty",
-                    documentation: ((
-                        "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc."
-                    )),
+                    documentation: "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc.",
                     type_parameters: vec![Name::const_new("Element")],
-                    parameter_type: (type_origin(type_variable("Origin"))),
-                    result_type: (type_vec(type_variable("Origin"), type_variable("Element"))),
+                    parameter_type: type_origin(type_variable("Origin")),
+                    result_type: type_vec(type_variable("Origin"), type_variable("Element")),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-pre-allocate-at-least",
-                    documentation: ((
-                        "Reserves capacity for at least `length` more elements to be added.
+                    documentation: "Reserves capacity for at least `length` more elements to be added.
 This can prevent frequent re-allocation of the underlying array.
-If you can estimate a lower bound of how many elements are ultimately added, this is always worth it!"
-                    )),
+If you can estimate a lower bound of how many elements are ultimately added, this is always worth it!",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("length", type_u32),
-                    ])),
-                    result_type: (type_vec(type_variable("Origin"), type_variable("Element"))),
+                    ]),
+                    result_type: type_vec(type_variable("Origin"), type_variable("Element")),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-add",
-                    documentation: ((
-                        "Add a new element into the vec and keep a slot to it."
-                    )),
+                    documentation: "Add a new element into the vec and keep a slot to it.",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("new", type_variable("Element")),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-add-ignoring-vacant",
-                    documentation: ((
-                        "Add a new element into the vec and keep a slot to it without trying to reuse already vacant slots.
-Can potentially be faster than vec-add for temporary vecs where all the storage gets scrapped anyway."
-                    )),
+                    documentation: "Add a new element into the vec and keep a slot to it without trying to reuse already vacant slots.
+Can potentially be faster than vec-add for temporary vecs where all the storage gets scrapped anyway.",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("new", type_variable("Element")),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-take",
-                    documentation: ((
-                        "Remove and retrieve an element from the vec at a given slot (the inverse of vec-add)"
-                    )),
+                    documentation: "Remove and retrieve an element from the vec at a given slot (the inverse of vec-add)",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("element", type_variable("Element")),
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-opt-span-add",
-                    documentation: ((
-                        "Attach a given element at the end of the span."
-                    )),
+                    documentation: "Attach a given element at the end of the span.",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9048,8 +9014,8 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                         ),
                         ("span", type_opt(type_span(type_variable("Origin")))),
                         ("new", type_variable("Element")),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9058,17 +9024,15 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                             ),
                         ),
                         ("span", type_span(type_variable("Origin")))
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-span-add",
-                    documentation: ((
-                        "Attach a given element at the end of the span"
-                    )),
+                    documentation: "Attach a given element at the end of the span",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9078,8 +9042,8 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                         ),
                         ("span", type_span(type_variable("Origin"))),
                         ("new", type_variable("Element")),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9088,17 +9052,15 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                             ),
                         ),
                         ("span", type_span(type_variable("Origin")))
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-opt-span-add-str",
-                    documentation: ((
-                        "Attach a given `str` at the end of the span"
-                    )),
+                    documentation: "Attach a given `str` at the end of the span",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9108,8 +9070,8 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                         ),
                         ("span", type_opt(type_span(type_variable("Origin")))),
                         ("new", type_str),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9118,17 +9080,15 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                             ),
                         ),
                         ("span", type_opt(type_span(type_variable("Origin"))))
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-span-add-str",
-                    documentation: ((
-                        "Attach a given `str` at the end of the span."
-                    )),
+                    documentation: "Attach a given `str` at the end of the span.",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9138,8 +9098,8 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                         ),
                         ("span", type_span(type_variable("Origin"))),
                         ("new", type_str),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                              type_vec(
@@ -9148,67 +9108,61 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                             ),
                         ),
                         ("span", type_span(type_variable("Origin"))),
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-move-opt-span-to-vacant",
-                    documentation: ((
-                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space."
-                    )),
+                    documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_opt(type_span(type_variable("Origin")))),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_opt(type_span(type_variable("Origin")))),
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-move-opt-span-to-vacant",
-                    documentation: ((
-                        "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space."
-                    )),
+                    documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                     type_parameters: vec![],
-                    parameter_type: (type_record([
+                    parameter_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_span(type_variable("Origin"))),
-                    ])),
-                    result_type: (type_record([
+                    ]),
+                    result_type: type_record([
                         (
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_span(type_variable("Origin"))),
-                    ])),
+                    ]),
                 }
             ),
             (
                 CoreFnInfo {
                     name: "vec-rid",
-                    documentation: ((
-                        "Mark the given vec value as \"won't be used anymore\".
+                    documentation: "Mark the given vec value as \"won't be used anymore\".
 Used for temporary vecs at the end of their scope once all of their elements are used up.
 If any slots or spans are still floating around, you will not be able to get rid of them.
-This nicely forces you to handle all remaining elements before you can get rid of the vec."
-                    )),
+This nicely forces you to handle all remaining elements before you can get rid of the vec.",
                     type_parameters: vec![],
-                    parameter_type: (type_vec(type_variable("Origin"), type_variable("Element"))),
-                    result_type: (type_record([])),
+                    parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                    result_type: type_record([]),
                 }
             ),
         ].map(|core_fn_info| {
