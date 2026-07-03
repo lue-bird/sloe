@@ -64,23 +64,42 @@ test "f32 round ties even" {
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
 }
-test "vec add, take, occupiedCount, rid" {
+test "vec add, take, notVacantCount, rid" {
     const allocator = std.testing.allocator;
     const VecOrigin = enum { vec };
     const origin: core.Origin(VecOrigin) = .vec;
     var vec = core.Vec(VecOrigin, u32).empty(origin);
-    try std.testing.expectEqual(0, vec.occupiedCount());
+    try std.testing.expectEqual(0, vec.notVacantCount());
     const slot0 = try vec.add(allocator, 123);
     const slot1 = try vec.add(allocator, 456);
-    try std.testing.expectEqual(2, vec.occupiedCount());
+    try std.testing.expectEqual(2, vec.notVacantCount());
     try std.testing.expectEqual(123, vec.take(allocator, slot0));
-    try std.testing.expectEqual(1, vec.occupiedCount());
+    try std.testing.expectEqual(1, vec.notVacantCount());
     const slot0_reused = try vec.add(allocator, 789);
     try std.testing.expectEqual(0, slot0_reused.index);
     try std.testing.expectEqual(789, vec.take(allocator, slot0_reused));
-    try std.testing.expectEqual(1, vec.occupiedCount());
+    try std.testing.expectEqual(1, vec.notVacantCount());
     try std.testing.expectEqual(456, vec.take(allocator, slot1));
-    try std.testing.expectEqual(0, vec.occupiedCount());
+    try std.testing.expectEqual(0, vec.notVacantCount());
+    vec.rid(allocator);
+}
+test "vec empty slot" {
+    const allocator = std.testing.allocator;
+    const VecOrigin = enum { vec };
+    try std.testing.expect(core.Slot(VecOrigin) != core.Empty_slot(VecOrigin));
+    const origin: core.Origin(VecOrigin) = .vec;
+    var vec = core.Vec(VecOrigin, u32).empty(origin);
+    try std.testing.expectEqual(0, vec.notVacantCount());
+    const slot0 = try vec.add(allocator, 123);
+    const slot1 = try vec.add(allocator, 456);
+    const element0 = vec.element(slot0);
+    try std.testing.expectEqual(123, element0.element);
+    try std.testing.expectEqual(0, element0.slot.index);
+    const slot0_new = vec.set(element0.slot, 321);
+    try std.testing.expectEqual(321, vec.element_ptr(slot0_new).*);
+    try std.testing.expectEqual(0, slot0_new.index);
+    const element1 = vec.element(slot1);
+    try vec.slotRid(allocator, element1.slot);
     vec.rid(allocator);
 }
 test "vec add to span" {
@@ -103,7 +122,7 @@ test "span_start" {
     const ExampleOrigin = enum { vec };
     const origin: core.Origin(ExampleOrigin) = .vec;
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot4_and_span5_to_13 = try core.span_start(ExampleOrigin, span4_to_13);
+    const slot4_and_span5_to_13 = try core.span_start(core.@"|occupied"(void), ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
     try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
     try std.testing.expectEqual(9, slot4_and_span5_to_13.end.present.length.positive);
@@ -113,7 +132,7 @@ test "span_end" {
     const ExampleOrigin = enum { vec };
     const origin: core.Origin(ExampleOrigin) = .vec;
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot13_and_span4_to_12 = try core.span_end(ExampleOrigin, span4_to_13);
+    const slot13_and_span4_to_12 = try core.span_end(core.@"|occupied"(void), ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
     try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
     try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
@@ -122,10 +141,12 @@ test "span_end" {
 test "simple queries" {
     const ExampleOrigin = enum { vec };
     const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    try std.testing.expectEqual(10, core.span_length(ExampleOrigin, span4_to_13).length.positive);
-    try std.testing.expectEqual(10, core.opt_span_length(ExampleOrigin, .{ .present = span4_to_13 }).length);
-    try std.testing.expectEqual(0, core.opt_span_length(ExampleOrigin, .{ .absent = {} }).length);
+    const slot4 = core.Slot(ExampleOrigin){ .origin = origin, .index = 4 };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
+    try std.testing.expectEqual(4, (try core.slot_index(core.@"|occupied"(void), ExampleOrigin, slot4)).index);
+    try std.testing.expectEqual(10, (try core.span_length(core.@"|occupied"(void), ExampleOrigin, span4_to_13)).length.positive);
+    try std.testing.expectEqual(10, (try core.opt_span_length(core.@"|occupied"(void), ExampleOrigin, .{ .present = span4_to_13 })).length);
+    try std.testing.expectEqual(0, (try core.opt_span_length(core.@"|occupied"(void), ExampleOrigin, .{ .absent = {} })).length);
 }
 
 test "anonymous struct" {

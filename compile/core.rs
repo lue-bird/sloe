@@ -55,9 +55,9 @@ pub struct Element·in<Element, In> {
     pub in_: In,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Element·state<Element, State> {
+pub struct Element·slot<Element, Slot> {
     pub element: Element,
-    pub state: State,
+    pub slot: Slot,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Slot·state<Slot, State> {
@@ -157,6 +157,11 @@ pub struct Out·slot·vec<Out, Slot, Vec> {
     pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Out·span<Out, Span> {
+    pub out: Out,
+    pub span: Span,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Grown·shrunk·span<Grown, Shrunk, Span> {
     pub grown: Grown,
     pub shrunk: Shrunk,
@@ -165,6 +170,12 @@ pub struct Grown·shrunk·span<Grown, Shrunk, Span> {
 #[derive(Clone, Copy, Debug)]
 pub struct Element·vec<Element, Vec> {
     pub element: Element,
+    pub vec: Vec,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Element·slot·vec<Element, Slot, Vec> {
+    pub element: Element,
+    pub slot: Slot,
     pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
@@ -198,6 +209,14 @@ pub struct Direction·span·state·step<Direction, Span, State, Step> {
 pub struct Carry·wrapped<Carry, Wrapped> {
     pub carry: Carry,
     pub wrapped: Wrapped,
+}
+#[derive(Clone, Copy, Debug)]
+pub enum Empty··<Empty> {
+    Empty(Empty),
+}
+#[derive(Clone, Copy, Debug)]
+pub enum Occupied··<Occupied> {
+    Occupied(Occupied),
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Absent·Present<Absent, Present> {
@@ -286,27 +305,32 @@ pub struct SpanRaw {
     pub start: u32,
     pub length: std::num::NonZeroU32,
 }
+pub type Slot<LocalOrigin> = Slot_with_occupancy<LocalOrigin, Occupied··<Blank>>;
+pub type Empty_slot<LocalOrigin> = Slot_with_occupancy<LocalOrigin, Empty··<Blank>>;
 #[non_exhaustive]
-pub struct Slot<LocalOrigin> {
+pub struct Slot_with_occupancy<LocalOrigin, Occupancy> {
     pub origin: std::marker::PhantomData<LocalOrigin>,
+    pub occupancy: std::marker::PhantomData<Occupancy>,
     // consider switching to NonZeroU32 to create a niche for use with Option<Slot<>>
     pub index: u32,
 }
+pub type Span<LocalOrigin> = Span_with_occupancy<LocalOrigin, Occupied··<Blank>>;
+pub type Empty_span<LocalOrigin> = Span_with_occupancy<LocalOrigin, Empty··<Blank>>;
 #[non_exhaustive]
-pub struct Span<LocalOrigin> {
-    pub start: Slot<LocalOrigin>,
+pub struct Span_with_occupancy<LocalOrigin, Occupancy> {
+    pub start: Slot_with_occupancy<LocalOrigin, Occupancy>,
     // consider instead: end_index: NonZeroU32.
     // This makes combining 2 opt_spans and converting to ops::Range a bit faster,
     // at the cost of other operations like checking a vec's occupied count
     pub length: std::num::NonZeroU32,
 }
 
-impl<Origin> std::fmt::Debug for Slot<Origin> {
+impl<Origin, Occupancy> std::fmt::Debug for Slot_with_occupancy<Origin, Occupancy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Slot").field("index", &self.index).finish()
     }
 }
-impl<Origin> std::fmt::Debug for Span<Origin> {
+impl<Origin, Occupancy> std::fmt::Debug for Span_with_occupancy<Origin, Occupancy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Span")
             .field("start", &self.start)
@@ -411,63 +435,97 @@ impl<Origin, Element> Vec<Origin, Element> {
     pub fn pre_allocate_at_least(&mut self, min_pre_allocated_length: u32) {
         self.elements.reserve(min_pre_allocated_length as usize);
     }
-    pub fn element<'a>(&'a self, slot: &Slot<Origin>) -> &'a Element {
+    pub fn element_ref<'a>(&'a self, slot: &'a Slot<Origin>) -> &'a Element {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid index
         unsafe { self.elements.get_unchecked(slot.index as usize) }
     }
-    pub fn element_mut<'a>(&'a mut self, slot: &mut Slot<Origin>) -> &'a mut Element {
+    pub fn element_mut<'a>(&'a mut self, slot: &'a mut Slot<Origin>) -> &'a mut Element {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid index
         unsafe { self.elements.get_unchecked_mut(slot.index as usize) }
     }
-    pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&Span<Origin>>) -> &'a [Element] {
+    pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&'a Span<Origin>>) -> &'a [Element] {
         match opt_span {
             Opt::Absent(Blank {}) => &[],
             Opt::Present(span) => self.span_slice(span),
         }
     }
-    pub fn span_slice<'a>(&'a self, span: &Span<Origin>) -> &'a [Element] {
+    pub fn span_slice<'a>(&'a self, span: &'a Span<Origin>) -> &'a [Element] {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid range
         unsafe { self.elements.get_unchecked(span.to_range()) }
     }
     pub fn opt_span_slice_mut<'a>(
         &'a mut self,
-        opt_span: &mut Opt<Span<Origin>>,
+        opt_span: &'a mut Opt<Span<Origin>>,
     ) -> &'a mut [Element] {
         match opt_span {
             Opt::Absent(Blank {}) => &mut [],
             Opt::Present(span) => self.span_slice_mut(span),
         }
     }
-    pub fn span_slice_mut<'a>(&'a mut self, span: &mut Span<Origin>) -> &'a mut [Element] {
+    pub fn span_slice_mut<'a>(&'a mut self, span: &'a mut Span<Origin>) -> &'a mut [Element] {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid range
         unsafe { self.elements.get_unchecked_mut(span.to_range()) }
     }
-    pub fn vacate_and_consume_span_iterator<Out>(
+    // TODO recheck lifetime of the consumed iterator
+    pub fn consume_span_iterator<Out>(
         &mut self,
-        mut shrink_span: Span<Origin>,
+        mut span: Span<Origin>,
+        consume_iterator: impl for<'iterator> std::ops::FnOnce(
+            OwnedSliceIterator<'iterator, Element>,
+        ) -> Out,
+    ) -> Out·span<Out, Empty_span<Origin>> {
+        // elements in the opt_span are consumed and never accessed after. During this whole ordeal
+        // the elements are "locked" behind a mut ref
+        let munched = consume_iterator(unsafe {
+            mut_slice_into_owned_iterator(self.span_slice_mut(&mut span))
+        });
+        Out·span {
+            out: munched,
+            span: Empty_span::<Origin> {
+                start: Empty_slot::<Origin>::from_index(span.start.index),
+                length: span.length,
+            },
+        }
+    }
+    pub fn take_consume_span_iterator<Out>(
+        &mut self,
+        shrink_span: Span<Origin>,
         consume_iterator: impl for<'iterator> std::ops::FnOnce(
             OwnedSliceIterator<'iterator, Element>,
         ) -> Out,
     ) -> Out {
-        // elements in the opt_span are consumed and never accessed after. During this whole ordeal
-        // the elements are "locked" behind a mut ref
-        let munched = consume_iterator(unsafe {
-            mut_slice_into_owned_iterator(self.span_slice_mut(&mut shrink_span))
-        });
-        self.vacate_span(shrink_span);
-        munched
+        let munched = self.consume_span_iterator(shrink_span, consume_iterator);
+        self.span_rid(munched.span);
+        munched.out
     }
-    pub fn take(&mut self, mut slot: Slot<Origin>) -> Element {
+    pub fn take(&mut self, slot: Slot<Origin>) -> Element {
         // vacated opt_span elements are never accessed, not even while vacating them
+        let element = self.element(slot);
+        self.slot_rid(element.slot);
+        element.element
+    }
+    pub fn element(
+        &mut self,
+        mut slot: Slot<Origin>,
+    ) -> Element·slot<Element, Empty_slot<Origin>> {
+        // its unique slot is consumed, so this element cannot be accessed after
         let element = unsafe {
             std::ptr::NonNull::read(std::ptr::NonNull::from_ref(self.element_mut(&mut slot)))
         };
-        // can maybe be optimized
-        self.vacate_span(slot_to_span(slot));
-        element
+        Element·slot {
+            element: element,
+            slot: Empty_slot::<Origin>::from_index(slot.index),
+        }
     }
-    /// only use when the element values are safe to not handle or are handled unsafely immediately after
-    fn vacate_span(&mut self, span_to_vacate: Span<Origin>) {
+    pub fn set(&mut self, slot: Empty_slot<Origin>, element: Element) {
+        // Empty_slot always references valid position
+        *unsafe { self.elements.get_unchecked_mut(slot.index as usize) } = element;
+    }
+    pub fn slot_rid(&mut self, slot_to_vacate: Empty_slot<Origin>) {
+        // can maybe be optimized
+        self.span_rid(slot_to_vacate.to_span());
+    }
+    pub fn span_rid(&mut self, span_to_vacate: Empty_span<Origin>) {
         let maybe_vacant_span_index_connecting_earlier: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
                 std::cmp::PartialEq::<u32>::eq(
@@ -674,7 +732,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         shrink_span: Span<ShrinkOrigin>,
     ) -> Span<Origin> {
         let shrink_span_length = shrink_span.length;
-        shrink.vacate_and_consume_span_iterator(shrink_span, |shrink_elements| {
+        shrink.take_consume_span_iterator(shrink_span, |shrink_elements| {
             self.add_iterator_filled(shrink_elements, shrink_span_length)
         })
     }
@@ -684,7 +742,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         shrink_span: Span<ShrinkOrigin>,
     ) -> Span<Origin> {
         let shrink_span_length = shrink_span.length;
-        shrink.vacate_and_consume_span_iterator(shrink_span, |shrink_elements| {
+        shrink.take_consume_span_iterator(shrink_span, |shrink_elements| {
             self.add_iterator_filled_ignoring_vacant(shrink_elements, shrink_span_length)
         })
     }
@@ -705,7 +763,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         shrink_vec: &mut Vec<ShrinkOrigin, Element>,
         shrink_span: Span<ShrinkOrigin>,
     ) -> Span<Origin> {
-        shrink_vec.vacate_and_consume_span_iterator(shrink_span, |elements| {
+        shrink_vec.take_consume_span_iterator(shrink_span, |elements| {
             self.span_add_iterator(span, elements)
         })
     }
@@ -751,7 +809,10 @@ impl<Origin, Element> Vec<Origin, Element> {
             )
         };
         let moved_span = self.add_iterator_filled_ignoring_vacant(elements_to_move, span.length);
-        self.vacate_span(span);
+        self.span_rid(Empty_span::<Origin> {
+            start: Empty_slot::<Origin>::from_index(span.start.index),
+            length: span.length,
+        });
         moved_span
     }
     pub fn move_span_to_vacant(&mut self, mut span: Span<Origin>) -> Span<Origin> {
@@ -911,18 +972,25 @@ impl<Element> std::iter::Iterator for VecIterRev<Element> {
     }
 }
 
-impl<Origin> Slot<Origin> {
+impl<Origin, Occupancy> Slot_with_occupancy<Origin, Occupancy> {
     /// use with caution. duplicate use or out-of-bounds of the given index can lead to UB.
     /// consider making it unsafe and exposing it
-    fn from_index(index: u32) -> Slot<Origin> {
-        Slot {
+    fn from_index(index: u32) -> Slot_with_occupancy<Origin, Occupancy> {
+        Slot_with_occupancy {
             origin: std::marker::PhantomData::<Origin>,
+            occupancy: std::marker::PhantomData::<Occupancy>,
             index: index,
+        }
+    }
+    fn to_span(self) -> Span_with_occupancy<Origin, Occupancy> {
+        Span_with_occupancy {
+            start: self,
+            length: std::num::NonZeroU32::MIN,
         }
     }
 }
 
-impl<Origin> Span<Origin> {
+impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
     pub fn to_range(&self) -> std::ops::Range<usize> {
         let start_index = self.start.index as usize;
         start_index..(start_index + self.length.get() as usize)
@@ -938,7 +1006,7 @@ impl<Origin> Span<Origin> {
     }
 }
 
-impl<Origin> Opt<&Span<Origin>> {
+impl<Origin, Occupancy> Opt<&Span_with_occupancy<Origin, Occupancy>> {
     pub fn to_range(self) -> std::ops::Range<usize> {
         match self {
             Opt::Absent(Blank {}) => <std::ops::Range<usize> as std::default::Default>::default(),
@@ -1207,55 +1275,67 @@ pub fn opt_present<Present>(present: Present) -> Opt<Present> {
     Opt::Present(present)
 }
 
-pub fn slot_index<Origin>(slot: Slot<Origin>) -> Index·slot<u32, Slot<Origin>> {
+pub fn slot_index<Occupancy, Origin>(
+    slot: Slot_with_occupancy<Origin, Occupancy>,
+) -> Index·slot<u32, Slot_with_occupancy<Origin, Occupancy>> {
     Index·slot {
         index: slot.index,
         slot: slot,
     }
 }
-pub fn slot_to_span<Origin>(slot: Slot<Origin>) -> Span<Origin> {
-    Span {
-        start: slot,
-        length: std::num::NonZeroU32::MIN,
-    }
+pub fn slot_to_span<Origin, Occupancy>(
+    slot: Slot_with_occupancy<Origin, Occupancy>,
+) -> Span_with_occupancy<Origin, Occupancy> {
+    slot.to_span()
 }
 
-pub fn span_start<Origin>(span: Span<Origin>) -> After·start<Opt<Span<Origin>>, Slot<Origin>> {
+pub fn span_start<Occupancy, Origin>(
+    span: Span_with_occupancy<Origin, Occupancy>,
+) -> After·start<Opt<Span_with_occupancy<Origin, Occupancy>>, Slot_with_occupancy<Origin, Occupancy>>
+{
     After·start {
         after: match std::num::NonZeroU32::new(p32_predecessor(span.length)) {
             std::option::Option::None => Opt::Absent(Blank {}),
-            std::option::Option::Some(after_length) => Opt::Present(Span {
-                start: Slot::<Origin>::from_index(span.start.index + 1),
+            std::option::Option::Some(after_length) => Opt::Present(Span_with_occupancy {
+                start: Slot_with_occupancy::<Origin, Occupancy>::from_index(span.start.index + 1),
                 length: after_length,
             }),
         },
         start: span.start,
     }
 }
-pub fn span_end<Origin>(span: Span<Origin>) -> Before·end<Opt<Span<Origin>>, Slot<Origin>> {
+pub fn span_end<Occupancy, Origin>(
+    span: Span_with_occupancy<Origin, Occupancy>,
+) -> Before·end<Opt<Span_with_occupancy<Origin, Occupancy>>, Slot_with_occupancy<Origin, Occupancy>>
+{
     Before·end {
-        end: Slot::<Origin>::from_index(span.end_index()),
+        end: Slot_with_occupancy::<Origin, Occupancy>::from_index(span.end_index()),
         before: match std::num::NonZeroU32::new(p32_predecessor(span.length)) {
             std::option::Option::None => Opt::Absent(Blank {}),
-            std::option::Option::Some(before_length) => Opt::Present(Span {
-                start: Slot::<Origin>::from_index(span.start.index - 1),
+            std::option::Option::Some(before_length) => Opt::Present(Span_with_occupancy {
+                start: Slot_with_occupancy::<Origin, Occupancy>::from_index(span.start.index - 1),
                 length: before_length,
             }),
         },
     }
 }
-pub fn opt_span_length<Origin>(span: Opt<Span<Origin>>) -> Length·span<u32, Opt<Span<Origin>>> {
+pub fn opt_span_length<Occupancy, Origin>(
+    span: Opt<Span_with_occupancy<Origin, Occupancy>>,
+) -> Length·span<u32, Opt<Span_with_occupancy<Origin, Occupancy>>> {
     Length·span {
         length: span.as_ref().length(),
         span: span,
     }
 }
-pub fn opt_span_take_start<Origin>(
+pub fn opt_span_take_start<Occupancy, Origin>(
     Length·span {
         length: length_to_take,
         span,
-    }: Length·span<U32, Opt<Span<Origin>>>,
-) -> After·start<Opt<Span<Origin>>, Opt<Span<Origin>>> {
+    }: Length·span<U32, Opt<Span_with_occupancy<Origin, Occupancy>>>,
+) -> After·start<
+    Opt<Span_with_occupancy<Origin, Occupancy>>,
+    Opt<Span_with_occupancy<Origin, Occupancy>>,
+> {
     match std::num::NonZeroU32::new(length_to_take) {
         std::option::Option::None => After·start {
             start: Opt::Absent(Blank {}),
@@ -1279,30 +1359,33 @@ pub fn opt_span_take_start<Origin>(
         },
     }
 }
-pub fn span_take_start_positive<Origin>(
+pub fn span_take_start_positive<Occupancy, Origin>(
     Length·span {
         length: length_to_take,
         span,
-    }: Length·span<P32, Span<Origin>>,
-) -> After·start<Opt<Span<Origin>>, Span<Origin>> {
+    }: Length·span<P32, Span_with_occupancy<Origin, Occupancy>>,
+) -> After·start<Opt<Span_with_occupancy<Origin, Occupancy>>, Span_with_occupancy<Origin, Occupancy>>
+{
     After·start {
         after: match std::num::NonZeroU32::new(u32::saturating_sub(
             span.length.get(),
             length_to_take.get(),
         )) {
             std::option::Option::None => Opt::Absent(Blank {}),
-            std::option::Option::Some(after_length) => Opt::Present(Span {
-                start: Slot::from_index(span.start.index + length_to_take.get()),
+            std::option::Option::Some(after_length) => Opt::Present(Span_with_occupancy {
+                start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
+                    span.start.index + length_to_take.get(),
+                ),
                 length: after_length,
             }),
         },
-        start: Span {
+        start: Span_with_occupancy {
             start: span.start,
             length: length_to_take,
         },
     }
 }
-pub fn opt_span_fold<Origin, State>(
+pub fn opt_span_fold<Occupancy, Origin, State>(
     Direction·span·state·step {
         direction,
         span,
@@ -1310,15 +1393,15 @@ pub fn opt_span_fold<Origin, State>(
         step,
     }: Direction·span·state·step<
         Down·Up<Blank, Blank>,
-        Opt<Span<Origin>>,
+        Opt<Span_with_occupancy<Origin, Occupancy>>,
         State,
-        Fn<Slot·state<Slot<Origin>, State>, State>,
+        Fn<Slot·state<Slot_with_occupancy<Origin, Occupancy>, State>, State>,
     >,
 ) -> State {
     let reduce = |state, index| {
         step(Slot·state {
             state,
-            slot: Slot::from_index(index),
+            slot: Slot_with_occupancy::<Origin, Occupancy>::from_index(index),
         })
     };
     match direction {
@@ -1332,7 +1415,7 @@ pub fn opt_span_fold<Origin, State>(
         ),
     }
 }
-pub fn opt_span_fold_while<Origin, Exit, GoOn>(
+pub fn opt_span_fold_while<Exit, GoOn, Occupancy, Origin>(
     Direction·span·state·step {
         direction,
         span,
@@ -1340,15 +1423,15 @@ pub fn opt_span_fold_while<Origin, Exit, GoOn>(
         step,
     }: Direction·span·state·step<
         Down·Up<Blank, Blank>,
-        Opt<Span<Origin>>,
+        Opt<Span_with_occupancy<Origin, Occupancy>>,
         GoOn,
-        Fn<Slot·state<Slot<Origin>, GoOn>, Exit·Go_on<Exit, GoOn>>,
+        Fn<Slot·state<Slot_with_occupancy<Origin, Occupancy>, GoOn>, Exit·Go_on<Exit, GoOn>>,
     >,
-) -> Exit·Go_on<Exit·remaining<Exit, Opt<Span<Origin>>>, GoOn> {
+) -> Exit·Go_on<Exit·remaining<Exit, Opt<Span_with_occupancy<Origin, Occupancy>>>, GoOn> {
     let reduce = |state, index| {
         Exit·Go_on::into_control_flow(step(Slot·state {
             state: state,
-            slot: Slot::from_index(index),
+            slot: Slot_with_occupancy::<Origin, Occupancy>::from_index(index),
         }))
         .map_break(|exit| (index, exit))
     };
@@ -1379,13 +1462,16 @@ pub fn opt_span_fold_while<Origin, Exit, GoOn>(
         }
     }
 }
-pub fn span_connect_slot<Origin>(
-    span: Span<Origin>,
-    slot_to_add: Slot<Origin>,
-) -> Apart·connected<Opt<Slot<Origin>>, Span<Origin>> {
+pub fn span_connect_slot<Occupancy, Origin>(
+    span: Span_with_occupancy<Origin, Occupancy>,
+    slot_to_add: Slot_with_occupancy<Origin, Occupancy>,
+) -> Apart·connected<
+    Opt<Slot_with_occupancy<Origin, Occupancy>>,
+    Span_with_occupancy<Origin, Occupancy>,
+> {
     if span.end_index() + 1 == slot_to_add.index {
         Apart·connected {
-            connected: Span {
+            connected: Span_with_occupancy {
                 start: span.start,
                 length: span.length.saturating_add(1),
             },
@@ -1393,7 +1479,7 @@ pub fn span_connect_slot<Origin>(
         }
     } else if slot_to_add.index + 1 == span.start.index {
         Apart·connected {
-            connected: Span {
+            connected: Span_with_occupancy {
                 start: slot_to_add,
                 length: span.length.saturating_add(1),
             },
@@ -1406,13 +1492,16 @@ pub fn span_connect_slot<Origin>(
         }
     }
 }
-pub fn span_connect<Origin>(
-    span: Span<Origin>,
-    span_to_add: Span<Origin>,
-) -> Apart·connected<Opt<Span<Origin>>, Span<Origin>> {
+pub fn span_connect<Occupancy, Origin>(
+    span: Span_with_occupancy<Origin, Occupancy>,
+    span_to_add: Span_with_occupancy<Origin, Occupancy>,
+) -> Apart·connected<
+    Opt<Span_with_occupancy<Origin, Occupancy>>,
+    Span_with_occupancy<Origin, Occupancy>,
+> {
     if span.end_index() + 1 == span_to_add.start.index {
         Apart·connected {
-            connected: Span {
+            connected: Span_with_occupancy {
                 start: span.start,
                 length: span.length.saturating_add(span_to_add.length.get()),
             },
@@ -1420,7 +1509,7 @@ pub fn span_connect<Origin>(
         }
     } else if span_to_add.end_index() + 1 == span.start.index {
         Apart·connected {
-            connected: Span {
+            connected: Span_with_occupancy {
                 start: span_to_add.start,
                 length: span.length.saturating_add(span_to_add.length.get()),
             },
@@ -1463,31 +1552,42 @@ pub fn vec_take<Origin, Element>(
         vec: vec,
     }
 }
-pub fn vec_opt_span_fold<Origin, Element, State>(
-    vec: Vec<Origin, Element>,
-    span: Opt<Span<Origin>>,
-    state: State,
-    step: Fn<Element·state<Element, State>, State>,
-) -> Vec<Origin, Element> {
-    match span {
-        Opt::Absent(Blank {}) => vec,
-        Opt::Present(shrink_span) => vec_span_fold(vec, shrink_span, state, step),
+pub fn vec_element<Origin, Element>(
+    Slot·vec { mut vec, slot }: Slot·vec<Slot<Origin>, Vec<Origin, Element>>,
+) -> Element·slot·vec<Element, Empty_slot<Origin>, Vec<Origin, Element>> {
+    let element = vec.element(slot);
+    Element·slot·vec {
+        element: element.element,
+        slot: element.slot,
+        vec: vec,
     }
 }
-pub fn vec_span_fold<Origin, Element, State>(
-    mut vec: Vec<Origin, Element>,
-    shrink_span: Span<Origin>,
-    state: State,
-    step: Fn<Element·state<Element, State>, State>,
+pub fn vec_set<Origin, Element>(
+    New·slot·vec {
+        mut vec,
+        slot,
+        new: element,
+    }: New·slot·vec<Element, Empty_slot<Origin>, Vec<Origin, Element>>,
 ) -> Vec<Origin, Element> {
-    vec.vacate_and_consume_span_iterator(shrink_span, |mut elements| {
-        std::iter::Iterator::fold(&mut elements, state, |state, element| {
-            step(Element·state {
-                element: element,
-                state,
-            })
-        })
-    });
+    vec.set(slot, element);
+    vec
+}
+pub fn vec_slot_rid<Origin, Element>(
+    Slot·vec {
+        slot: slot_to_vacate,
+        mut vec,
+    }: Slot·vec<Empty_slot<Origin>, Vec<Origin, Element>>,
+) -> Vec<Origin, Element> {
+    vec.slot_rid(slot_to_vacate);
+    vec
+}
+pub fn vec_span_rid<Origin, Element>(
+    Span·vec {
+        span: span_to_vacate,
+        mut vec,
+    }: Span·vec<Empty_span<Origin>, Vec<Origin, Element>>,
+) -> Vec<Origin, Element> {
+    vec.span_rid(span_to_vacate);
     vec
 }
 pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Blank {
@@ -1553,35 +1653,6 @@ pub fn vec_replace<Origin, Element>(
         vec: vec,
         old: old_element,
         slot: slot,
-    }
-}
-pub fn vec_update<Origin, Element, In, Out>(
-    In_·slot·update·vec {
-        mut vec,
-        slot,
-        in_,
-        update: element_update,
-    }: In_·slot·update·vec<
-        In,
-        Slot<Origin>,
-        Fn<Element·in<Element, In>, Element·out<Element, Out>>,
-        Vec<Origin, Element>,
-    >,
-) -> Out·slot·vec<Out, Slot<Origin>, Vec<Origin, Element>> {
-    // this should just be an in-place edit at one index. rust does not yet have a primitive for this
-    let index = slot.index as usize;
-    let last_index = vec.elements.len() - 1;
-    let element = vec.elements.swap_remove(index);
-    let element_updated = element_update(Element·in {
-        element: element,
-        in_: in_,
-    });
-    vec.elements.push(element_updated.element);
-    vec.elements.swap(index, last_index);
-    Out·slot·vec {
-        vec: vec,
-        slot: slot,
-        out: element_updated.out,
     }
 }
 pub fn vec_opt_span_reverse<Origin, Element>(

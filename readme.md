@@ -170,40 +170,14 @@ fn state-to-interfaces-into
 - scattered sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
   For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
   However, this would mean that slots and spans within the AST would not be owning
-- the pattern of removing, then re-inserting an element at a slot just to access it (potentially immutably) is not optimal. This can be mitigated somewhat by using `vec-update` or compiling to/asking for code that uses `? vec-replace .slot slot .new dummy = .old old .slot slot` followed by `vec-replace .slot slot .new old` scrapping the returned dummy element instead. This is much better than rusts swap because you're forced to handle the old element but it's still not ideal as many types do not have a dummy.
-  TODO experiment with an API around a new type
-  ```sloe
-  ty empty-slot Origin
-      # A slot whose referenced element has been read
-      # with the intention of setting it again in the near future.
-      # Couldn't you just `vec-take` followed by `vec-add`?
-      # Yes, but `vec-element` followed by `vec-set` is faster
-      # and guarantees that the underlying position in the vec stays the same.
-      # Storing an `empty-slot` unnecessarily is a memory leak;
-      # close to all reasonable uses consume an empty-slot moments after creation
-      ...
-
-  # potentially empty-span. Is there a common use?
-  
-  fn vec-element
-      .vec _vec Origin, Element .slot
-      :> .vec _vec Origin, Element .element Element .slot _empty-slot Origin
-  
-  fn vec-set
-      .vec _vec Origin, Element .slot _empty-slot Origin
-      :> .vec _vec Origin, Element .slot _slot Origin
-
-  fn vec-slot-empty-rid
-      .vec _vec Origin, Element .slot _empty-slot Origin
-      :> _vec Origin, Element
-  ```
-  I much prefer this to the stinky and loaded `vec-update`.
 - no way to connect slots and spans that are known to be adjacent:
   `span-end` for example splits a span into the last slot and before.
   However, reconnecting these with `span-connect-opt-span .start _slot-to-span ...`
   runs into the need to handle the impossible case of the given parts being disconnected.
   Operations like `vec-opt-span-add` are a resonable compromise on its face
-  but are pretty far from optimal (it will (!) move the whole span to the end and add the span as vacant instead of reusing).
+  but are pretty far from optimal (it will (!) move the whole span to the end and add the span as vacant instead of reusing)
+- by default, most passed arguments are quite fat on the stack (e.g. `vec` is 6 usize-wide and you may pass a bunch of them).
+  Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
 
 # syntax
@@ -531,6 +505,8 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- rename "snatch" to "add-take"
+
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.
   This should make things like `.field-names span Field-names .field-values span Values`
   much more attractive/viable. This pattern can avoid "type parameter spam" for any record
@@ -539,7 +515,7 @@ cargo install --offline --debug --path . sloe
 
 - fix bugs and inline TODOs
 
-- add field spread syntax `..existing-record .other-fields-before-and-or-after` (in patterns, types, expressions). The spreaded syntax must have a known (not-variable) type.
+- add field spread syntax `..existing-record .other-fields-before-and-or-after` (in types and expressions, not patterns). The spreaded syntax must have a known (not-variable) type.
   The benefit is: flat records, flat choices, much less repetition/verbosity, e.g.
   ```sloe
   fn draw-rectangle-centered .x x f32 .y y f32 .width width f32 .height height f32 :> ...

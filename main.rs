@@ -1618,7 +1618,7 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
         sloe::SyntaxPattern::Variant { name, value } => {
             sloe_syntax_optional_variant_name_highlight(state, name);
             if let Some(value) = value {
-                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(value));
+                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element_ref(value));
             }
         }
         sloe::SyntaxPattern::RecordEmpty { dot_start } => {
@@ -1635,7 +1635,7 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
                     state,
                     patterns,
                     types,
-                    patterns.element(field0_value),
+                    patterns.element_ref(field0_value),
                 );
             }
             for field in field1_up {
@@ -1650,7 +1650,7 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(inner));
+                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element_ref(inner));
             }
         }
     }
@@ -1683,7 +1683,7 @@ fn sloe_syntax_type_highlight<Types>(
                 sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Type);
             }
             if let Some(argument0) = argument0 {
-                sloe_syntax_type_highlight(state, types, types.element(argument0));
+                sloe_syntax_type_highlight(state, types, types.element_ref(argument0));
             }
             for argument in argument1_up {
                 if let Some(argument_type) = &argument.type_ {
@@ -1697,7 +1697,7 @@ fn sloe_syntax_type_highlight<Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                sloe_syntax_type_highlight(state, types, types.element(inner));
+                sloe_syntax_type_highlight(state, types, types.element_ref(inner));
             }
         }
         sloe::SyntaxType::RecordEmpty { dot_start: _ } => {}
@@ -1708,7 +1708,7 @@ fn sloe_syntax_type_highlight<Types>(
         } => {
             sloe_syntax_field_name_highlight(state, field0_name);
             if let Some(field0_value) = field0_value {
-                sloe_syntax_type_highlight(state, types, types.element(field0_value));
+                sloe_syntax_type_highlight(state, types, types.element_ref(field0_value));
             }
             for field in field1_up {
                 sloe_syntax_trailing_field_highlight(state, field, |state, value| {
@@ -1724,7 +1724,7 @@ fn sloe_syntax_type_highlight<Types>(
         } => {
             sloe_syntax_variant_name_highlight(state, variant0_name);
             if let Some(variant0_value) = variant0_value {
-                sloe_syntax_type_highlight(state, types, types.element(variant0_value));
+                sloe_syntax_type_highlight(state, types, types.element_ref(variant0_value));
             }
             for variant in variant1_up {
                 sloe_syntax_optional_variant_name_highlight(state, &variant.name);
@@ -1812,7 +1812,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(argument),
+                    expressions.element_ref(argument),
                 );
             }
         }
@@ -1833,7 +1833,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(value),
+                    expressions.element_ref(value),
                 );
             }
         }
@@ -1856,7 +1856,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.element_ref(result),
                 );
             }
         }
@@ -1875,7 +1875,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(field0_value),
+                    expressions.element_ref(field0_value),
                 );
             }
             for field in field1_up {
@@ -1895,7 +1895,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(inner),
+                    expressions.element_ref(inner),
                 );
             }
         }
@@ -1910,7 +1910,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(expression),
+                    expressions.element_ref(expression),
                 );
             }
         }
@@ -1926,7 +1926,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(queried),
+                    expressions.element_ref(queried),
                 );
             }
             for case in cases {
@@ -1957,7 +1957,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.element_ref(result),
                 );
             }
         }

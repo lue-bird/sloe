@@ -380,7 +380,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 argument0
                     .as_ref()
-                    .map(|argument0| type_end(types.element(argument0), types))
+                    .map(|argument0| type_end(types.element_ref(argument0), types))
             })
             .or_else(|| {
                 name.as_ref()
@@ -396,7 +396,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 inner
                     .as_ref()
-                    .map(|inner| type_end(types.element(inner), types))
+                    .map(|inner| type_end(types.element_ref(inner), types))
             })
             .unwrap_or_else(|| symbol_end(*open_paren_start, "(")),
         SyntaxType::RecordEmpty { dot_start } => symbol_end(*dot_start, "."),
@@ -410,7 +410,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 field0_value
                     .as_ref()
-                    .map(|field0_value| type_end(types.element(field0_value), types))
+                    .map(|field0_value| type_end(types.element_ref(field0_value), types))
             })
             .unwrap_or_else(|| field_name_end(with_start_position_as_ref(field0_name))),
         SyntaxType::ChoiceEmpty { bar_start } => symbol_end(*bar_start, "|"),
@@ -424,7 +424,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 variant0_value
                     .as_ref()
-                    .map(|variant0_value| type_end(types.element(variant0_value), types))
+                    .map(|variant0_value| type_end(types.element_ref(variant0_value), types))
             })
             .unwrap_or_else(|| field_name_end(with_start_position_as_ref(variant0_name))),
     }
@@ -482,7 +482,7 @@ pub fn pattern_end<Patterns, Types>(
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxPattern::Variant { name, value } => value
             .as_ref()
-            .map(|value| pattern_end(patterns.element(value), patterns, types))
+            .map(|value| pattern_end(patterns.element_ref(value), patterns, types))
             .unwrap_or_else(|| optional_variant_name_end(name)),
         SyntaxPattern::RecordEmpty { dot_start } => symbol_end(*dot_start, "."),
         SyntaxPattern::Record {
@@ -496,7 +496,7 @@ pub fn pattern_end<Patterns, Types>(
             })
             .or_else(|| {
                 field0_value.as_ref().map(|field0_value| {
-                    pattern_end(patterns.element(field0_value), patterns, types)
+                    pattern_end(patterns.element_ref(field0_value), patterns, types)
                 })
             })
             .unwrap_or_else(|| field_name_end(with_start_position_as_ref(field0_name))),
@@ -509,7 +509,7 @@ pub fn pattern_end<Patterns, Types>(
             .or_else(|| {
                 inner
                     .as_ref()
-                    .map(|inner| pattern_end(patterns.element(inner), patterns, types))
+                    .map(|inner| pattern_end(patterns.element_ref(inner), patterns, types))
             })
             .unwrap_or_else(|| symbol_end(*open_paren_start, "(")),
     }
@@ -695,7 +695,12 @@ pub fn expression_end<Expressions, Patterns, Types>(
         } => argument
             .as_ref()
             .map(|argument| {
-                expression_end(expressions.element(argument), expressions, patterns, types)
+                expression_end(
+                    expressions.element_ref(argument),
+                    expressions,
+                    patterns,
+                    types,
+                )
             })
             .or_else(|| {
                 type_arguments
@@ -709,7 +714,9 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .unwrap_or_else(|| symbol_end(*underscore_start, "_")),
         SyntaxExpression::Variant { name, type_, value } => value
             .as_ref()
-            .map(|value| expression_end(expressions.element(value), expressions, patterns, types))
+            .map(|value| {
+                expression_end(expressions.element_ref(value), expressions, patterns, types)
+            })
             .or_else(|| {
                 type_
                     .as_ref()
@@ -725,7 +732,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .as_ref()
             .map(|result_slot| {
                 expression_end(
-                    expressions.element(result_slot),
+                    expressions.element_ref(result_slot),
                     expressions,
                     patterns,
                     types,
@@ -755,7 +762,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .or_else(|| {
                 field0_value.as_ref().map(|field0_value| {
                     expression_end(
-                        expressions.element(field0_value),
+                        expressions.element_ref(field0_value),
                         expressions,
                         patterns,
                         types,
@@ -771,7 +778,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .map(|closed_paren_start| symbol_end(closed_paren_start, ")"))
             .or_else(|| {
                 inner.as_ref().map(|inner| {
-                    expression_end(expressions.element(inner), expressions, patterns, types)
+                    expression_end(expressions.element_ref(inner), expressions, patterns, types)
                 })
             })
             .unwrap_or_else(|| symbol_end(*open_paren_start, "(")),
@@ -780,7 +787,9 @@ pub fn expression_end<Expressions, Patterns, Types>(
             expression,
         } => expression
             .as_ref()
-            .map(|inner| expression_end(expressions.element(inner), expressions, patterns, types))
+            .map(|inner| {
+                expression_end(expressions.element_ref(inner), expressions, patterns, types)
+            })
             .unwrap_or_else(|| comments_end(comments)),
         SyntaxExpression::Origin {
             origin_keyword_start,
@@ -788,7 +797,14 @@ pub fn expression_end<Expressions, Patterns, Types>(
             result,
         } => result
             .as_ref()
-            .map(|result| expression_end(expressions.element(result), expressions, patterns, types))
+            .map(|result| {
+                expression_end(
+                    expressions.element_ref(result),
+                    expressions,
+                    patterns,
+                    types,
+                )
+            })
             .or_else(|| {
                 name.as_ref()
                     .map(|name| name_end(with_start_position_as_ref(name)))
@@ -803,7 +819,12 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .map(|last_case| expression_query_case_end(last_case, expressions, patterns, types))
             .or_else(|| {
                 queried.as_ref().map(|queried| {
-                    expression_end(expressions.element(queried), expressions, patterns, types)
+                    expression_end(
+                        expressions.element_ref(queried),
+                        expressions,
+                        patterns,
+                        types,
+                    )
                 })
             })
             .unwrap_or_else(|| symbol_end(*question_mark_start, "?")),
@@ -2528,7 +2549,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             }
             for argument in argument0
                 .iter()
-                .map(|argument0| types.element(argument0))
+                .map(|argument0| types.element_ref(argument0))
                 .chain(
                     argument1_up
                         .iter()
@@ -2556,7 +2577,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
-                    types.element(inner),
+                    types.element_ref(inner),
                     type_graph,
                     records_used,
                     choices_used,
@@ -2581,7 +2602,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
-                    types.element(field0_value),
+                    types.element_ref(field0_value),
                     type_graph,
                     records_used,
                     choices_used,
@@ -2619,7 +2640,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
-                    types.element(variant0_value),
+                    types.element_ref(variant0_value),
                     type_graph,
                     records_used,
                     choices_used,
@@ -2658,7 +2679,7 @@ fn syntax_type_used_records_and_choices<Types>(
         } => {
             if let Some(argument0) = argument0 {
                 syntax_type_used_records_and_choices(
-                    types.element(argument0),
+                    types.element_ref(argument0),
                     types,
                     records_used,
                     choices_used,
@@ -2682,7 +2703,7 @@ fn syntax_type_used_records_and_choices<Types>(
         } => {
             if let Some(inner) = inner {
                 syntax_type_used_records_and_choices(
-                    types.element(inner),
+                    types.element_ref(inner),
                     types,
                     records_used,
                     choices_used,
@@ -2704,7 +2725,7 @@ fn syntax_type_used_records_and_choices<Types>(
             ));
             if let Some(field0_value) = field0_value {
                 syntax_type_used_records_and_choices(
-                    types.element(field0_value),
+                    types.element_ref(field0_value),
                     types,
                     records_used,
                     choices_used,
@@ -2736,7 +2757,7 @@ fn syntax_type_used_records_and_choices<Types>(
             ));
             if let Some(variant0_value) = variant0_value {
                 syntax_type_used_records_and_choices(
-                    types.element(variant0_value),
+                    types.element_ref(variant0_value),
                     types,
                     records_used,
                     choices_used,
@@ -2809,7 +2830,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(argument),
+                    expressions.element_ref(argument),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -2834,7 +2855,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(value),
+                    expressions.element_ref(value),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -2863,7 +2884,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.element_ref(result),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -2890,7 +2911,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(field0_value),
+                    expressions.element_ref(field0_value),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -2924,7 +2945,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(inner),
+                    expressions.element_ref(inner),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -2942,7 +2963,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(expression),
+                    expressions.element_ref(expression),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -2961,7 +2982,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(queried),
+                    expressions.element_ref(queried),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -2995,7 +3016,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.element_ref(result),
                     project_fn_graph,
                     records_used,
                     choices_used,
@@ -3025,7 +3046,7 @@ fn syntax_pattern_typed_used_records_and_choices<Patterns, Types>(
             }
             if let Some(value) = value {
                 syntax_pattern_typed_used_records_and_choices(
-                    patterns.element(value),
+                    patterns.element_ref(value),
                     patterns,
                     types,
                     records_used,
@@ -3048,7 +3069,7 @@ fn syntax_pattern_typed_used_records_and_choices<Patterns, Types>(
             ));
             if let Some(field0_value) = field0_value {
                 syntax_pattern_typed_used_records_and_choices(
-                    patterns.element(field0_value),
+                    patterns.element_ref(field0_value),
                     patterns,
                     types,
                     records_used,
@@ -3074,7 +3095,7 @@ fn syntax_pattern_typed_used_records_and_choices<Patterns, Types>(
         } => {
             if let Some(inner) = inner {
                 syntax_pattern_typed_used_records_and_choices(
-                    patterns.element(inner),
+                    patterns.element_ref(inner),
                     patterns,
                     types,
                     records_used,
@@ -3785,7 +3806,9 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
             closed_paren_start: _,
         } => match inner {
             None => None,
-            Some(inner) => syntax_type_to_type(types.element(inner), type_aliases, types, origins),
+            Some(inner) => {
+                syntax_type_to_type(types.element_ref(inner), type_aliases, types, origins)
+            }
         },
         SyntaxType::ConstructWithoutArguments(name) => {
             if origins.contains_key(&name.value) {
@@ -3810,7 +3833,7 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
             } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
                 let argument_types = argument0
                     .iter()
-                    .map(|argument0| types.element(argument0))
+                    .map(|argument0| types.element_ref(argument0))
                     .chain(
                         argument1_up
                             .iter()
@@ -3835,7 +3858,12 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
                 return None;
             };
             let mut field_types: Vec<TypeField> = Vec::with_capacity(1 + field1_up.len());
-            match syntax_type_to_type(types.element(field0_value), type_aliases, types, origins) {
+            match syntax_type_to_type(
+                types.element_ref(field0_value),
+                type_aliases,
+                types,
+                origins,
+            ) {
                 None => {}
                 Some(field0_value_type) => {
                     field_types.push(TypeField {
@@ -3873,7 +3901,12 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
                 return None;
             };
             let mut variant_types: Vec<TypeVariant> = Vec::with_capacity(1 + variant1_up.len());
-            match syntax_type_to_type(types.element(variant0_value), type_aliases, types, origins) {
+            match syntax_type_to_type(
+                types.element_ref(variant0_value),
+                type_aliases,
+                types,
+                origins,
+            ) {
                 None => {}
                 Some(variant_value_type) => {
                     variant_types.push(TypeVariant {
@@ -3929,9 +3962,13 @@ pub fn syntax_type_check<Types>(
                 });
                 None
             }
-            Some(inner) => {
-                syntax_type_check(types.element(inner), errors, type_aliases, types, origins)
-            }
+            Some(inner) => syntax_type_check(
+                types.element_ref(inner),
+                errors,
+                type_aliases,
+                types,
+                origins,
+            ),
         },
         SyntaxType::ConstructWithoutArguments(name) => {
             if origins.contains_key(&name.value) {
@@ -3979,7 +4016,7 @@ pub fn syntax_type_check<Types>(
             } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
                 let argument_types = argument0
                     .iter()
-                    .map(|argument0| types.element(argument0))
+                    .map(|argument0| types.element_ref(argument0))
                     .chain(
                         argument1_up
                             .iter()
@@ -4046,7 +4083,7 @@ pub fn syntax_type_check<Types>(
             let mut field_types: Vec<TypeField> = Vec::with_capacity(1 + field1_up.len());
             let mut any_field_value_has_error: bool = false;
             match syntax_type_check(
-                types.element(field0_value),
+                types.element_ref(field0_value),
                 errors,
                 type_aliases,
                 types,
@@ -4126,7 +4163,7 @@ pub fn syntax_type_check<Types>(
             let mut variant_types: Vec<TypeVariant> = Vec::with_capacity(1 + variant1_up.len());
             let mut any_variant_value_has_error: bool = false;
             match syntax_type_check(
-                types.element(variant0_value),
+                types.element_ref(variant0_value),
                 errors,
                 type_aliases,
                 types,
@@ -4955,7 +4992,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         return None;
                     };
                     let Some(checked_value) = syntax_pattern_check(
-                        patterns.element(value),
+                        patterns.element_ref(value),
                         None,
                         errors,
                         introduced_variables,
@@ -5016,7 +5053,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         });
                         return None;
                     };
-                    let value = patterns.element(value);
+                    let value = patterns.element_ref(value);
                     let Some(checked_value) = syntax_pattern_check(
                         value,
                         Some(expected_value_type),
@@ -5078,7 +5115,9 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     start: field0_name.start,
                     value: Some(&field0_name.value),
                 },
-                field0_value.as_ref().map(|value| patterns.element(value)),
+                field0_value
+                    .as_ref()
+                    .map(|value| patterns.element_ref(value)),
             ))
             .chain(field1_up.iter().map(|field| {
                 (
@@ -5188,7 +5227,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                 None
             }
             Some(inner) => syntax_pattern_check(
-                patterns.element(inner),
+                patterns.element_ref(inner),
                 expected_type,
                 errors,
                 introduced_variables,
@@ -5284,7 +5323,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         return None;
                     };
                     let Some(compiled_value) = syntax_pattern_to_rust(
-                        patterns.element(value),
+                        patterns.element_ref(value),
                         None,
                         introduced_variables,
                         type_aliases,
@@ -5325,7 +5364,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     let Some(value) = value else {
                         return None;
                     };
-                    let value = patterns.element(value);
+                    let value = patterns.element_ref(value);
                     let Some(compiled_value) = syntax_pattern_to_rust(
                         value,
                         Some(expected_value_type),
@@ -5374,7 +5413,9 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     start: field0_name.start,
                     value: Some(&field0_name.value),
                 },
-                field0_value.as_ref().map(|value| patterns.element(value)),
+                field0_value
+                    .as_ref()
+                    .map(|value| patterns.element_ref(value)),
             ))
             .chain(field1_up.iter().map(|field| {
                 (
@@ -5447,7 +5488,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
         } => match inner {
             None => None,
             Some(inner) => syntax_pattern_to_rust(
-                patterns.element(inner),
+                patterns.element_ref(inner),
                 expected_type,
                 introduced_variables,
                 type_aliases,
@@ -5722,7 +5763,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 match syntax_argument {
                     None => Some(variable_type),
                     Some(syntax_argument) => {
-                        let syntax_argument = expressions.element(syntax_argument);
+                        let syntax_argument = expressions.element_ref(syntax_argument);
                         let Some(checked_argument_type) = syntax_expression_check(
                             errors,
                             type_aliases,
@@ -5808,7 +5849,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 if let Some(argument) = syntax_argument {
                     errors.push(ErrorNode {
                         range: expression_range(
-                            expressions.element(argument),
+                            expressions.element_ref(argument),
                             expressions,
                             patterns,
                             types,
@@ -5892,7 +5933,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 match syntax_argument {
                     None => Some(type_fn(fn_parameter_type, fn_result_type)),
                     Some(syntax_argument) => {
-                        let syntax_argument = expressions.element(syntax_argument);
+                        let syntax_argument = expressions.element_ref(syntax_argument);
                         let Some(checked_argument_type) = syntax_expression_check(
                             errors,
                             type_aliases,
@@ -6015,7 +6056,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            let value = expressions.element(value);
+            let value = expressions.element_ref(value);
             let Some(checked_value_type) = syntax_expression_check(
                 errors,
                 type_aliases,
@@ -6093,7 +6134,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 &mut result_used_pattern_variables,
                 origins,
                 &mut result_used_origin_variables,
-                expressions.element(result),
+                expressions.element_ref(result),
                 checked_local_fns,
                 checked_queries,
             ) else {
@@ -6163,7 +6204,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     used_pattern_variables,
                     origins,
                     used_origin_variables,
-                    expressions.element(field_value),
+                    expressions.element_ref(field_value),
                     checked_local_fns,
                     checked_queries,
                 ),
@@ -6253,7 +6294,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 used_pattern_variables,
                 origins,
                 used_origin_variables,
-                expressions.element(inner),
+                expressions.element_ref(inner),
                 checked_local_fns,
                 checked_queries,
             ),
@@ -6285,7 +6326,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 used_pattern_variables,
                 origins,
                 used_origin_variables,
-                expressions.element(expression),
+                expressions.element_ref(expression),
                 checked_local_fns,
                 checked_queries,
             ),
@@ -6302,7 +6343,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            let queried = expressions.element(queried);
+            let queried = expressions.element_ref(queried);
             let Some((case0, case1_up)) = cases.split_first() else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
@@ -6644,7 +6685,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 used_pattern_variables,
                 origins,
                 used_origin_variables,
-                expressions.element(result),
+                expressions.element_ref(result),
                 checked_local_fns,
                 checked_queries,
             );
@@ -6847,7 +6888,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 match syntax_argument {
                     None => rust_reference,
                     Some(syntax_argument) => {
-                        let syntax_argument = expressions.element(syntax_argument);
+                        let syntax_argument = expressions.element_ref(syntax_argument);
                         let compiled_argument: syn::Expr = syntax_expression_to_rust(
                             type_aliases,
                             project_fns,
@@ -6930,7 +6971,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 match syntax_argument {
                     None => rust_reference,
                     Some(syntax_argument) => {
-                        let syntax_argument = expressions.element(syntax_argument);
+                        let syntax_argument = expressions.element_ref(syntax_argument);
                         let compiled_argument: syn::Expr = syntax_expression_to_rust(
                             type_aliases,
                             project_fns,
@@ -6976,7 +7017,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(value) = value else {
                 return syn_expr_todo();
             };
-            let value = expressions.element(value);
+            let value = expressions.element_ref(value);
             let compiled_value_rust = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
@@ -7045,7 +7086,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_queries,
                 &mut parameter_introduced_variables,
                 origins,
-                expressions.element(result),
+                expressions.element_ref(result),
             );
             let mut type_variables = std::collections::BTreeSet::new();
             type_variables_into(&mut type_variables, &checked_local_fn.parameter_type);
@@ -7134,7 +7175,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     checked_queries,
                     pattern_variables,
                     origins,
-                    expressions.element(field_value),
+                    expressions.element_ref(field_value),
                 ),
             };
             rust_fields.push(syn::FieldValue {
@@ -7205,7 +7246,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_queries,
                 pattern_variables,
                 origins,
-                expressions.element(inner),
+                expressions.element_ref(inner),
             ),
         },
         SyntaxExpression::Commented {
@@ -7223,7 +7264,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_queries,
                 pattern_variables,
                 origins,
-                expressions.element(expression),
+                expressions.element_ref(expression),
             ),
         },
         SyntaxExpression::Query {
@@ -7237,7 +7278,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(queried) = queried else {
                 return syn_expr_todo();
             };
-            let queried = expressions.element(queried);
+            let queried = expressions.element_ref(queried);
             let Some((case0, case1_up)) = cases.split_first() else {
                 return syn_expr_todo();
             };
@@ -7447,7 +7488,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_queries,
                 pattern_variables,
                 origins,
-                expressions.element(result),
+                expressions.element_ref(result),
             );
             let Some(origin_name) = name else {
                 return result_compiled;
@@ -7525,7 +7566,7 @@ pub fn syntax_type_variables_into<'a, Types>(
             argument1_up,
         } => {
             if let Some(argument0) = argument0 {
-                syntax_type_variables_into(type_variables, types.element(argument0), types);
+                syntax_type_variables_into(type_variables, types.element_ref(argument0), types);
             }
             for argument in argument1_up {
                 if let Some(argument_type) = &argument.type_ {
@@ -7539,7 +7580,7 @@ pub fn syntax_type_variables_into<'a, Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                syntax_type_variables_into(type_variables, types.element(inner), types);
+                syntax_type_variables_into(type_variables, types.element_ref(inner), types);
             }
         }
         SyntaxType::RecordEmpty { dot_start: _ } => {}
@@ -7549,7 +7590,7 @@ pub fn syntax_type_variables_into<'a, Types>(
             field1_up,
         } => {
             if let Some(field0_value) = field0_value {
-                syntax_type_variables_into(type_variables, types.element(field0_value), types);
+                syntax_type_variables_into(type_variables, types.element_ref(field0_value), types);
             }
             for field in field1_up {
                 if let Some(value) = &field.value {
@@ -7564,7 +7605,11 @@ pub fn syntax_type_variables_into<'a, Types>(
             variant1_up,
         } => {
             if let Some(variant0_value) = variant0_value {
-                syntax_type_variables_into(type_variables, types.element(variant0_value), types);
+                syntax_type_variables_into(
+                    type_variables,
+                    types.element_ref(variant0_value),
+                    types,
+                );
             }
             for variant in variant1_up {
                 if let Some(value) = &variant.value {
@@ -7590,7 +7635,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
             if let Some(value) = value {
                 syntax_pattern_type_variables_into(
                     type_variables,
-                    patterns.element(value),
+                    patterns.element_ref(value),
                     patterns,
                     types,
                 );
@@ -7605,7 +7650,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
             if let Some(field0_value) = field0_value {
                 syntax_pattern_type_variables_into(
                     type_variables,
-                    patterns.element(field0_value),
+                    patterns.element_ref(field0_value),
                     patterns,
                     types,
                 );
@@ -7624,7 +7669,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_type_variables_into(
                     type_variables,
-                    patterns.element(inner),
+                    patterns.element_ref(inner),
                     patterns,
                     types,
                 );
@@ -8635,15 +8680,27 @@ fn type_vec(origin: Type, element: Type) -> Type {
     }
 }
 fn type_slot(origin: Type) -> Type {
+    type_slot_with_occupancy(origin, type_choice([("occupied", type_record([]))]))
+}
+fn type_empty_slot(origin: Type) -> Type {
+    type_slot_with_occupancy(origin, type_choice([("empty", type_record([]))]))
+}
+fn type_slot_with_occupancy(origin: Type, occupancy: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("slot"),
-        arguments: vec![origin],
+        name: Name::const_new("slot-with-occupancy"),
+        arguments: vec![origin, occupancy],
     }
 }
 fn type_span(origin: Type) -> Type {
+    type_span_with_occupancy(origin, type_choice([("occupied", type_record([]))]))
+}
+fn type_empty_span(origin: Type) -> Type {
+    type_span_with_occupancy(origin, type_choice([("empty", type_record([]))]))
+}
+fn type_span_with_occupancy(origin: Type, occupancy: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("span"),
-        arguments: vec![origin],
+        name: Name::const_new("span-with-occupancy"),
+        arguments: vec![origin, occupancy],
     }
 }
 fn type_opt(present: Type) -> Type {
@@ -8911,6 +8968,33 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             ),
             (
                 CoreFnInfo {
+                    name: "opt-span-fold",
+                    documentation: "Step through all slots, updating the given initial state for each taken slot in line",
+                    type_parameters: vec![],
+                    parameter_type:
+                        type_record([
+                            (
+                                "span",
+                                type_span_with_occupancy(type_variable("Origin"), type_variable("Occupancy"))
+                            ),
+                            ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
+                            ("state", type_variable("State")),
+                            (
+                                "step",
+                                type_fn(
+                                    type_record([
+                                        ("slot", type_variable("Origin")),
+                                        ("state", type_slot_with_occupancy(type_variable("State"), type_variable("Occupancy"))),
+                                    ]),
+                                    type_variable("State")
+                                )
+                            )
+                        ]),
+                    result_type: type_variable("State"),
+                }
+            ),
+            (
+                CoreFnInfo {
                     name: "vec-empty",
                     documentation: "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc.",
                     type_parameters: vec![Name::const_new("Element")],
@@ -8995,6 +9079,70 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                             "vec",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
+                        ("element", type_variable("Element")),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-element",
+                    documentation: "Retrieve an element from the vec at a given slot (the inverse of vec-set)
+```sloe
+fn vec-copy-u32-at
+    .vec vec _vec Origin, u32
+    .slot slot _slot Origin
+    :>
+    .vec vec _vec Origin, u32
+    .slot slot _slot Origin
+    .element u32
+    >
+    ? vec-element .vec vec .slot slot
+    = .vec vec .element element .slot empty-slot >
+    ? u32-dup element = .a element .b element-copied >
+    ? vec-set .vec vec .slot empty-slot .new element = .vec vec .slot slot >
+    .vec vec .slot slot .element element-copied
+```
+A little roundabout but it works.
+To remove the element entirely, use `vec-take`",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("element",type_variable("Element") ),
+                        ("slot", type_slot(type_variable("Origin"))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
+                        ("element", type_variable("Element")),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-set",
+                    documentation: "Put an element back into the given `empty-slot` (the inverse of vec-element).
+To instead replace a `slot`, use `slot-replace`",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
+                        ("new", type_slot(type_variable("Origin"))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
                         ("element", type_variable("Element")),
                     ]),
                 }
@@ -9368,11 +9516,32 @@ fn use-a-vec & u32
                 name_range: None,
                 documentation: Some(Box::from(
                     "A valid index into a collection.
-This works because each collection has a unique origin and only gives out one slot for each index.
-"
+This works because each collection has a unique origin and only gives out one slot for each index."
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_slot(type_variable("Origin"))),
+            },
+        ),
+        (
+            Name::const_new("empty-slot"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "Like `slot` but referencing an element that has been removed temporarily"
+                )),
+                parameters: vec![Name::const_new("Origin")],
+                type_: Some(type_empty_slot(type_variable("Origin"))),
+            },
+        ),
+        (
+            Name::const_new("slot-with-occupancy"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "Either `slot` or `empty-slot` depending on the second argument"
+                )),
+                parameters: vec![Name::const_new("Origin"), Name::const_new("Occupancy")],
+                type_: Some(type_slot_with_occupancy(type_variable("Origin"), type_variable("Occupancy"))),
             },
         ),
         (
@@ -9381,11 +9550,32 @@ This works because each collection has a unique origin and only gives out one sl
                 name_range: None,
                 documentation: Some(Box::from(
                     "A range of consecutive valid indexes into a collection with at least one known index.
-This works because each collection has a unique origin and only gives out one span for each range.
-"
+This works because each collection has a unique origin and only gives out one span for each range."
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_span(type_variable("Origin"))),
+            },
+        ),
+        (
+            Name::const_new("empty-span"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "Like `span` but referencing an element that has been removed temporarily"
+                )),
+                parameters: vec![Name::const_new("Origin")],
+                type_: Some(type_empty_span(type_variable("Origin"))),
+            },
+        ),
+        (
+            Name::const_new("span-with-occupancy"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "Either `span` or `empty-span`"
+                )),
+                parameters: vec![Name::const_new("Origin"), Name::const_new("Occupancy")],
+                type_: Some(type_span_with_occupancy(type_variable("Origin"), type_variable("Occupancy"))),
             },
         ),
         (
@@ -9490,7 +9680,7 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
     });
 
 pub struct ErrorNode {
-    // TODO change to more structured output
+    // possible optimization: change to cow
     pub message: Box<str>,
     pub range: lsp_types::Range,
 }
@@ -9822,14 +10012,14 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             type_arguments: _,
             argument,
         } => argument.as_ref().and_then(|argument| {
-            syntax_expression_open_end(expressions.element(argument), expressions, types)
+            syntax_expression_open_end(expressions.element_ref(argument), expressions, types)
         }),
         SyntaxExpression::Variant {
             name: _,
             type_: _,
             value,
         } => value.as_ref().and_then(|value| {
-            syntax_expression_open_end(expressions.element(value), expressions, types)
+            syntax_expression_open_end(expressions.element_ref(value), expressions, types)
         }),
         SyntaxExpression::Fn {
             fn_keyword_start: _,
@@ -9837,7 +10027,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             angle_right_start: _,
             result,
         } => result.as_ref().and_then(|result| {
-            syntax_expression_open_end(expressions.element(result), expressions, types)
+            syntax_expression_open_end(expressions.element_ref(result), expressions, types)
         }),
         SyntaxExpression::RecordEmpty { dot_start: _ } => None,
         SyntaxExpression::Record { .. } => Some(OpenEndKind::Record),
@@ -9846,13 +10036,13 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             inner,
             closed_paren_start: _,
         } => inner.as_ref().and_then(|inner| {
-            syntax_expression_open_end(expressions.element(inner), expressions, types)
+            syntax_expression_open_end(expressions.element_ref(inner), expressions, types)
         }),
         SyntaxExpression::Commented {
             comments: _,
             expression,
         } => expression.as_ref().and_then(|expression| {
-            syntax_expression_open_end(expressions.element(expression), expressions, types)
+            syntax_expression_open_end(expressions.element_ref(expression), expressions, types)
         }),
         SyntaxExpression::Query { .. } => Some(OpenEndKind::ExpressionQuery),
         SyntaxExpression::Origin {
@@ -9860,7 +10050,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             name: _,
             result,
         } => result.as_ref().and_then(|result| {
-            syntax_expression_open_end(expressions.element(result), expressions, types)
+            syntax_expression_open_end(expressions.element_ref(result), expressions, types)
         }),
     }
 }
@@ -9952,7 +10142,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(argument),
+                    expressions.element_ref(argument),
                 );
             }
         }
@@ -9987,7 +10177,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 }
             }
             if let Some(value) = value {
-                let value = expressions.element(value);
+                let value = expressions.element_ref(value);
                 space_or_linebreak_indented_into(
                     formatted,
                     range_line_span(lsp_types::Range {
@@ -10034,7 +10224,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.element_ref(result),
                 );
             }
         }
@@ -10053,7 +10243,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = expressions.element(value);
+                    let value = expressions.element_ref(value);
                     maybe_open_end_whitespace_then_element_format(
                         formatted,
                         indent,
@@ -10125,7 +10315,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(inner),
+                    expressions.element_ref(inner),
                 );
             }
         },
@@ -10141,7 +10331,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(expression),
+                    expressions.element_ref(expression),
                 );
             }
         }
@@ -10156,7 +10346,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     formatted.push(' ');
                 }
                 Some(queried) => {
-                    let queried = expressions.element(queried);
+                    let queried = expressions.element_ref(queried);
                     parenthesize_if_open_ended_whitespace_then_element_format(
                         formatted,
                         indent,
@@ -10256,7 +10446,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
-                        expressions.element(result),
+                        expressions.element_ref(result),
                     );
                 }
             }
@@ -10413,18 +10603,18 @@ fn syntax_pattern_open_end<Patterns, Types>(
         SyntaxPattern::Variable { name: _, type_ } => type_
             .as_ref()
             .and_then(|type_| syntax_type_open_end(type_, types)),
-        SyntaxPattern::Variant { name: _, value } => value
-            .as_ref()
-            .and_then(|value| syntax_pattern_open_end(patterns.element(value), patterns, types)),
+        SyntaxPattern::Variant { name: _, value } => value.as_ref().and_then(|value| {
+            syntax_pattern_open_end(patterns.element_ref(value), patterns, types)
+        }),
         SyntaxPattern::RecordEmpty { dot_start: _ } => None,
         SyntaxPattern::Record { .. } => Some(OpenEndKind::Record),
         SyntaxPattern::Parenthesized {
             open_paren_start: _,
             inner,
             closed_paren_start: _,
-        } => inner
-            .as_ref()
-            .and_then(|inner| syntax_pattern_open_end(patterns.element(inner), patterns, types)),
+        } => inner.as_ref().and_then(|inner| {
+            syntax_pattern_open_end(patterns.element_ref(inner), patterns, types)
+        }),
     }
 }
 fn syntax_pattern_unparenthesized_format<Types, Patterns>(
@@ -10451,7 +10641,7 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                     indent,
                     patterns,
                     types,
-                    patterns.element(value),
+                    patterns.element_ref(value),
                 );
             }
         }
@@ -10470,7 +10660,7 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = patterns.element(value);
+                    let value = patterns.element_ref(value);
                     maybe_open_end_whitespace_then_element_format(
                         formatted,
                         indent,
@@ -10530,7 +10720,7 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                     indent,
                     patterns,
                     types,
-                    patterns.element(inner),
+                    patterns.element_ref(inner),
                 );
             }
         },
@@ -10635,7 +10825,7 @@ fn syntax_type_open_end<Types>(
             closed_paren_start: _,
         } => inner
             .as_ref()
-            .and_then(|inner| syntax_type_open_end(types.element(inner), types)),
+            .and_then(|inner| syntax_type_open_end(types.element_ref(inner), types)),
     }
 }
 fn syntax_type_unparenthesized_format<Types>(
@@ -10673,7 +10863,7 @@ fn syntax_type_unparenthesized_format<Types>(
                     formatted.push(' ');
                 }
                 Some(argument0) => {
-                    let argument0 = types.element(argument0);
+                    let argument0 = types.element_ref(argument0);
                     maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
                         formatted,
                         indent,
@@ -10727,7 +10917,12 @@ fn syntax_type_unparenthesized_format<Types>(
                 formatted.push_str("()");
             }
             Some(inner) => {
-                syntax_type_unparenthesized_format(formatted, indent, types, types.element(inner));
+                syntax_type_unparenthesized_format(
+                    formatted,
+                    indent,
+                    types,
+                    types.element_ref(inner),
+                );
             }
         },
         SyntaxType::RecordEmpty { dot_start: _ } => {
@@ -10745,7 +10940,7 @@ fn syntax_type_unparenthesized_format<Types>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = types.element(value);
+                    let value = types.element_ref(value);
                     maybe_open_end_whitespace_then_element_format(
                         formatted,
                         indent,
@@ -10802,7 +10997,7 @@ fn syntax_type_unparenthesized_format<Types>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = types.element(value);
+                    let value = types.element_ref(value);
                     maybe_open_end_whitespace_then_element_format(
                         formatted,
                         indent,
@@ -11156,7 +11351,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 .or_else(|| {
                     argument.as_ref().and_then(|argument| {
                         expression_symbol_at_position(
-                            expressions.element(argument),
+                            expressions.element_ref(argument),
                             position,
                             type_aliases,
                             checked_queries,
@@ -11186,7 +11381,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 .or_else(|| {
                     value.as_ref().and_then(|value| {
                         expression_symbol_at_position(
-                            expressions.element(value),
+                            expressions.element_ref(value),
                             position,
                             type_aliases,
                             checked_queries,
@@ -11206,7 +11401,9 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             angle_right_start: _,
             result,
         } => {
-            let result = result.as_ref().map(|result| expressions.element(result));
+            let result = result
+                .as_ref()
+                .map(|result| expressions.element_ref(result));
             pattern_variables.clear();
             parameter
                 .as_ref()
@@ -11273,7 +11470,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             with_start_position_as_ref(field0_name),
             field0_value
                 .as_ref()
-                .map(|field0_value| expressions.element(field0_value)),
+                .map(|field0_value| expressions.element_ref(field0_value)),
             field1_up,
             |_, value| {
                 expression_symbol_at_position(
@@ -11296,7 +11493,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             closed_paren_start: _,
         } => inner.as_ref().and_then(|inner| {
             expression_symbol_at_position(
-                expressions.element(inner),
+                expressions.element_ref(inner),
                 position,
                 type_aliases,
                 checked_queries,
@@ -11313,7 +11510,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             expression,
         } => expression.as_ref().and_then(|expression| {
             expression_symbol_at_position(
-                expressions.element(expression),
+                expressions.element_ref(expression),
                 position,
                 type_aliases,
                 checked_queries,
@@ -11333,7 +11530,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             .as_ref()
             .and_then(|queried| {
                 expression_symbol_at_position(
-                    expressions.element(queried),
+                    expressions.element_ref(queried),
                     position,
                     type_aliases,
                     checked_queries,
@@ -11368,7 +11565,9 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             name,
             result,
         } => {
-            let result = result.as_ref().map(|result| expressions.element(result));
+            let result = result
+                .as_ref()
+                .map(|result| expressions.element_ref(result));
             if let Some(name) = name {
                 let origin_info = OriginStartAndScope {
                     start: name.start,
@@ -11490,7 +11689,7 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
         SyntaxPattern::Variant { name: _, value } => match value {
             None => state,
             Some(value) => syntax_pattern_untyped_variables_fold(
-                patterns.element(value),
+                patterns.element_ref(value),
                 state,
                 reduce,
                 patterns,
@@ -11503,7 +11702,7 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
             field1_up,
         } => field0_value
             .iter()
-            .map(|field0_value| patterns.element(field0_value))
+            .map(|field0_value| patterns.element_ref(field0_value))
             .chain(field1_up.iter().filter_map(|field| field.value.as_ref()))
             .fold(state, |state, field_value| {
                 syntax_pattern_untyped_variables_fold(field_value, state, reduce, patterns)
@@ -11515,7 +11714,7 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
         } => match inner {
             None => state,
             Some(inner) => syntax_pattern_untyped_variables_fold(
-                patterns.element(inner),
+                patterns.element_ref(inner),
                 state,
                 reduce,
                 patterns,
@@ -11537,7 +11736,7 @@ fn syntax_pattern_typed_variables_fold<'a, 'expected_type, Patterns, Types, Stat
         SyntaxPattern::Variant { name, value } => match value {
             None => state,
             Some(value) => syntax_pattern_typed_variables_fold(
-                patterns.element(value),
+                patterns.element_ref(value),
                 expected_type
                     .and_then(|expected_type| match expected_type {
                         Type::Choice(expected_variants) => {
@@ -11562,7 +11761,7 @@ fn syntax_pattern_typed_variables_fold<'a, 'expected_type, Patterns, Types, Stat
             field1_up,
         } => field0_value
             .iter()
-            .map(|field0_value| (Some(&field0_name.value), patterns.element(field0_value)))
+            .map(|field0_value| (Some(&field0_name.value), patterns.element_ref(field0_value)))
             .chain(field1_up.iter().filter_map(|field| {
                 field
                     .value
@@ -11596,7 +11795,7 @@ fn syntax_pattern_typed_variables_fold<'a, 'expected_type, Patterns, Types, Stat
         } => match inner {
             None => state,
             Some(inner) => syntax_pattern_typed_variables_fold(
-                patterns.element(inner),
+                patterns.element_ref(inner),
                 expected_type,
                 state,
                 reduce,
@@ -11654,7 +11853,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             }
             value.as_ref().and_then(|value| {
                 pattern_symbol_at_position(
-                    patterns.element(value),
+                    patterns.element_ref(value),
                     expected_type
                         .and_then(|expected_type| match expected_type {
                             Type::Choice(expected_variants) => {
@@ -11684,7 +11883,9 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             field1_up,
         } => fields_find_symbol_at_position(
             with_start_position_as_ref(field0_name),
-            field0_value.as_ref().map(|value| patterns.element(value)),
+            field0_value
+                .as_ref()
+                .map(|value| patterns.element_ref(value)),
             field1_up,
             |field_name, value| {
                 pattern_symbol_at_position(
@@ -11717,7 +11918,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             closed_paren_start: _,
         } => inner.as_ref().and_then(|inner| {
             pattern_symbol_at_position(
-                patterns.element(inner),
+                patterns.element_ref(inner),
                 expected_type,
                 position,
                 type_aliases,
@@ -11788,7 +11989,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             }
             argument0
                 .iter()
-                .map(|argument0| types.element(argument0))
+                .map(|argument0| types.element_ref(argument0))
                 .chain(
                     argument1_up
                         .iter()
@@ -11803,7 +12004,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             inner,
             closed_paren_start: _,
         } => inner.as_ref().and_then(|inner| {
-            type_symbol_at_position(types.element(inner), position, types, scope, origins)
+            type_symbol_at_position(types.element_ref(inner), position, types, scope, origins)
         }),
         SyntaxType::RecordEmpty { dot_start: _ } => None,
         SyntaxType::Record {
@@ -11812,7 +12013,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             field1_up,
         } => fields_find_symbol_at_position(
             with_start_position_as_ref(field0_name),
-            field0_value.as_ref().map(|value| types.element(value)),
+            field0_value.as_ref().map(|value| types.element_ref(value)),
             field1_up,
             |_, value| type_symbol_at_position(value, position, types, scope, origins),
         ),
@@ -11823,7 +12024,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             variant1_up,
         } => variant0_value
             .iter()
-            .map(|value| types.element(value))
+            .map(|value| types.element_ref(value))
             .chain(
                 variant1_up
                     .iter()
@@ -12282,7 +12483,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
         } => {
             for field_value in field0_value
                 .iter()
-                .map(|value| types.element(value))
+                .map(|value| types.element_ref(value))
                 .chain(field1_up.iter().filter_map(|field| field.value.as_ref()))
             {
                 syntax_type_symbol_uses_into(uses, field_value, symbol, types, origins);
@@ -12296,7 +12497,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
         } => {
             for variant_value in variant0_value
                 .iter()
-                .map(|value| types.element(value))
+                .map(|value| types.element_ref(value))
                 .chain(
                     variant1_up
                         .iter()
@@ -12334,7 +12535,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             }
             for argument in argument0
                 .iter()
-                .map(|argument0| types.element(argument0))
+                .map(|argument0| types.element_ref(argument0))
                 .chain(
                     argument1_up
                         .iter()
@@ -12350,7 +12551,13 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                syntax_type_symbol_uses_into(uses, types.element(inner), symbol, types, origins);
+                syntax_type_symbol_uses_into(
+                    uses,
+                    types.element_ref(inner),
+                    symbol,
+                    types,
+                    origins,
+                );
             }
         }
     }
@@ -12379,7 +12586,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(value) = value {
                 syntax_pattern_symbol_uses_into(
                     uses,
-                    patterns.element(value),
+                    patterns.element_ref(value),
                     symbol,
                     patterns,
                     types,
@@ -12396,7 +12603,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(field0_value) = field0_value {
                 syntax_pattern_symbol_uses_into(
                     uses,
-                    patterns.element(field0_value),
+                    patterns.element_ref(field0_value),
                     symbol,
                     patterns,
                     types,
@@ -12424,7 +12631,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_symbol_uses_into(
                     uses,
-                    patterns.element(inner),
+                    patterns.element_ref(inner),
                     symbol,
                     patterns,
                     types,
@@ -12527,7 +12734,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(argument) = argument {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(argument),
+                    expressions.element_ref(argument),
                     symbol,
                     expressions,
                     patterns,
@@ -12556,7 +12763,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(value) = value {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(value),
+                    expressions.element_ref(value),
                     symbol,
                     expressions,
                     patterns,
@@ -12594,7 +12801,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 }
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(result),
+                    expressions.element_ref(result),
                     symbol,
                     expressions,
                     patterns,
@@ -12613,7 +12820,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(field0_value) = field0_value {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(field0_value),
+                    expressions.element_ref(field0_value),
                     symbol,
                     expressions,
                     patterns,
@@ -12645,7 +12852,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(inner),
+                    expressions.element_ref(inner),
                     symbol,
                     expressions,
                     patterns,
@@ -12662,7 +12869,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(expression) = expression {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(expression),
+                    expressions.element_ref(expression),
                     symbol,
                     expressions,
                     patterns,
@@ -12680,7 +12887,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(queried) = queried {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(queried),
+                    expressions.element_ref(queried),
                     symbol,
                     expressions,
                     patterns,
@@ -12746,7 +12953,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 }
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(result),
+                    expressions.element_ref(result),
                     symbol,
                     expressions,
                     patterns,
