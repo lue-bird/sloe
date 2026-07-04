@@ -505,13 +505,13 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- rename "snatch" to "add-take"
+- remove vec iterators and mem::forget its .elements in a custom Drop implementation to prevent double-free of element values
 
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.
   This should make things like `.field-names span Field-names .field-values span Values`
   much more attractive/viable. This pattern can avoid "type parameter spam" for any record
 
-- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-p`, `vec-opt-span-snatch-own-element`, `vec-opt-span-snatch-own-span`, `vec-span-snatch-own-opt-span`
+- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-ppositive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
 
 - fix bugs and inline TODOs
 

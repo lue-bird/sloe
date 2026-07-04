@@ -737,7 +737,7 @@ impl<Origin, Element> Vec<Origin, Element> {
             self.add_iterator_filled(shrink_elements, shrink_span_length)
         })
     }
-    pub fn snatch_vec_span_ignoring_vacant<ShrinkOrigin>(
+    pub fn add_take_vec_span_ignoring_vacant<ShrinkOrigin>(
         &mut self,
         shrink: &mut Vec<ShrinkOrigin, Element>,
         shrink_span: Span<ShrinkOrigin>,
@@ -747,18 +747,18 @@ impl<Origin, Element> Vec<Origin, Element> {
             self.add_iterator_filled_ignoring_vacant(shrink_elements, shrink_span_length)
         })
     }
-    pub fn opt_span_snatch_vec_span<ShrinkOrigin>(
+    pub fn opt_span_add_take_vec_span<ShrinkOrigin>(
         &mut self,
         span: Opt<Span<Origin>>,
         shrink_vec: &mut Vec<ShrinkOrigin, Element>,
         shrink_span: Span<ShrinkOrigin>,
     ) -> Span<Origin> {
         match span {
-            Opt::Absent(()) => self.snatch_vec_span_ignoring_vacant(shrink_vec, shrink_span),
-            Opt::Present(span) => self.span_snatch_vec_span(span, shrink_vec, shrink_span),
+            Opt::Absent(()) => self.add_take_vec_span_ignoring_vacant(shrink_vec, shrink_span),
+            Opt::Present(span) => self.span_add_take_vec_span(span, shrink_vec, shrink_span),
         }
     }
-    pub fn span_snatch_vec_span<ShrinkOrigin>(
+    pub fn span_add_take_vec_span<ShrinkOrigin>(
         &mut self,
         span: Span<Origin>,
         shrink_vec: &mut Vec<ShrinkOrigin, Element>,
@@ -1714,7 +1714,7 @@ pub fn vec_add<Origin, Element>(
         slot: slot,
     }
 }
-pub fn vec_snatch_vec_span<Origin, ShrinkOrigin, Element>(
+pub fn vec_add_take_vec_span<Origin, ShrinkOrigin, Element>(
     mut grow: Vec<Origin, Element>,
     mut shrink: Vec<ShrinkOrigin, Element>,
     shrink_span: Span<ShrinkOrigin>,
@@ -1829,7 +1829,7 @@ pub fn vec_span_add_str<Origin>(
         span: grown_span,
     }
 }
-pub fn vec_opt_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
+pub fn vec_opt_span_add_take_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
     Record·new·shrink·span·vec {
         mut vec,
         span,
@@ -1849,7 +1849,7 @@ pub fn vec_opt_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
     let maybe_grown_span = match shrink_span {
         Choice·Absent·Present::Absent(()) => span,
         Choice·Absent·Present::Present(shrink_span) => {
-            Opt::Present(vec.opt_span_snatch_vec_span(span, &mut shrink_vec, shrink_span))
+            Opt::Present(vec.opt_span_add_take_vec_span(span, &mut shrink_vec, shrink_span))
         }
     };
     Record·grown·shrunk·span {
@@ -1858,7 +1858,7 @@ pub fn vec_opt_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
         span: maybe_grown_span,
     }
 }
-pub fn vec_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
+pub fn vec_span_add_take_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
     Record·new·shrink·span·vec {
         mut vec,
         span,
@@ -1878,7 +1878,7 @@ pub fn vec_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
     let maybe_grown_span = match shrink_span {
         Choice·Absent·Present::Absent(()) => span,
         Choice·Absent·Present::Present(shrink_span) => {
-            vec.span_snatch_vec_span(span, &mut shrink_vec, shrink_span)
+            vec.span_add_take_vec_span(span, &mut shrink_vec, shrink_span)
         }
     };
     Record·grown·shrunk·span {
@@ -1887,7 +1887,7 @@ pub fn vec_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
         span: maybe_grown_span,
     }
 }
-pub fn vec_opt_span_snatch_vec_span<GrowOrigin, ShrinkOrigin, Element>(
+pub fn vec_opt_span_add_take_vec_span<GrowOrigin, ShrinkOrigin, Element>(
     Record·new·shrink·span·vec {
         mut vec,
         span,
@@ -1904,14 +1904,14 @@ pub fn vec_opt_span_snatch_vec_span<GrowOrigin, ShrinkOrigin, Element>(
     Vec<ShrinkOrigin, Element>,
     Span<GrowOrigin>,
 > {
-    let grown_span = vec.opt_span_snatch_vec_span(span, &mut shrink_vec, shrink_span);
+    let grown_span = vec.opt_span_add_take_vec_span(span, &mut shrink_vec, shrink_span);
     Record·grown·shrunk·span {
         grown: vec,
         shrunk: shrink_vec,
         span: grown_span,
     }
 }
-pub fn vec_span_snatch_vec_span<GrowOrigin, ShrinkOrigin, Element>(
+pub fn vec_span_add_take_vec_span<GrowOrigin, ShrinkOrigin, Element>(
     Record·new·shrink·span·vec {
         mut vec,
         span,
@@ -1928,7 +1928,7 @@ pub fn vec_span_snatch_vec_span<GrowOrigin, ShrinkOrigin, Element>(
     Vec<ShrinkOrigin, Element>,
     Span<GrowOrigin>,
 > {
-    let grown_span = vec.span_snatch_vec_span(span, &mut shrink_vec, shrink_span);
+    let grown_span = vec.span_add_take_vec_span(span, &mut shrink_vec, shrink_span);
     Record·grown·shrunk·span {
         grown: vec,
         shrunk: shrink_vec,

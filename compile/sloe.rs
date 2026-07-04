@@ -8725,7 +8725,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
             parameter_type: Type,
             result_type: Type,
         }
-        // TODO add the snatching
+        // TODO add the add-take functions
         std::collections::HashMap::from([
             (
                 CoreFnInfo {
