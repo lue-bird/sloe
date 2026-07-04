@@ -428,6 +428,32 @@ impl SpanRaw {
     }
 }
 
+impl<Origin, Element> std::ops::Drop for Vec<Origin, Element> {
+    fn drop(&mut self) {
+        // At this point, all elements are either
+        // - handled (in sloe code this is always the case or you'll get an error)
+        // - unhandled (only possible from rust code when a `Slot`/`Span` is dropped)
+        // - empty (only possible from rust code when a `Empty_span`/`Empty_span` is dropped)
+        // - occupied (only possible from rust code).
+        //
+        // If we used the regular Drop implementation, elements that were already vacated
+        // or temporarily extracted (where e.g. the resulting `Empty_slot` from `vec.element()` was dropped)
+        // could be freed twice (!).
+        // So the only thing that can realistically be done is to "leak" all remaining elements.
+        //
+        // To recap, if some rust code kept some slots occupied,
+        // we _must_ prevent double-frees by leaking those elements.
+        // This is not as bad as you might think:
+        // - dropping a `Slot`/`Empty_slot` is always a leak
+        //   but it cannot reasonably prevented in rust. It's the cost of doing business
+        // - in a `Vec<Origin, Element>`, the element type will realistically not be a type that
+        //   directly points to the heap. In fact in sloe you cannot even put more than one vec inside of
+        //   another vec as each vec has a different origin!
+        for element in self.elements.drain(..) {
+            std::mem::forget(element);
+        }
+    }
+}
 impl<Origin, Element> Vec<Origin, Element> {
     /// Especially when working with estimates or future insertions, you usually want pre_allocate_at_least
     pub fn pre_allocate(&mut self, pre_allocated_length: u32) {
@@ -863,33 +889,6 @@ impl<Origin, Element> Vec<Origin, Element> {
     pub fn not_vacant_count_usize(&self) -> usize {
         usize::saturating_sub(self.elements.len(), self.vacant_count_usize())
     }
-    pub fn into_occupied_elements(mut self) -> VecIter<Element> {
-        let maybe_occupied_elements =
-            std::iter::Iterator::enumerate(std::iter::IntoIterator::into_iter(self.elements));
-        self.vacant.sort_unstable_by_key(|span| span.start);
-        let mut vacant_ascending = std::iter::IntoIterator::into_iter(self.vacant);
-        let vacant_start = std::iter::Iterator::next(&mut vacant_ascending);
-        VecIter {
-            vacant_start: vacant_start,
-            vacant_after_ascending: vacant_ascending,
-            maybe_occupied_elements: maybe_occupied_elements,
-        }
-    }
-    pub fn into_occupied_elements_rev(mut self) -> VecIterRev<Element> {
-        let maybe_occupied_elements_rev = std::iter::Iterator::rev(std::iter::Iterator::enumerate(
-            std::iter::IntoIterator::into_iter(self.elements),
-        ));
-        self.vacant.sort_unstable_by(|a_span, b_span| {
-            <u32 as std::cmp::Ord>::cmp(&a_span.start, &b_span.start).reverse()
-        });
-        let mut vacant_descending = std::iter::IntoIterator::into_iter(self.vacant);
-        let vacant_end = std::iter::Iterator::next(&mut vacant_descending);
-        VecIterRev {
-            vacant_end: vacant_end,
-            vacant_before_descending: vacant_descending,
-            maybe_occupied_elements_rev: maybe_occupied_elements_rev,
-        }
-    }
 }
 impl<Origin> Vec<Origin, Char> {
     pub fn add_str(&mut self, new_str: Str) -> Opt<Span<Origin>> {
@@ -908,70 +907,6 @@ impl<Origin> Vec<Origin, Char> {
     }
     pub fn span_add_str(&mut self, span: Span<Origin>, new_str: Str) -> Span<Origin> {
         self.span_add_iterator(span, new_str.chars())
-    }
-}
-pub struct VecIter<Element> {
-    pub vacant_start: std::option::Option<SpanRaw>,
-    pub vacant_after_ascending: std::vec::IntoIter<SpanRaw>,
-    maybe_occupied_elements: std::iter::Enumerate<std::vec::IntoIter<Element>>,
-}
-impl<Element> std::iter::Iterator for VecIter<Element> {
-    type Item = Element;
-    fn next(&mut self) -> std::option::Option<Element> {
-        match std::iter::Iterator::next(&mut self.maybe_occupied_elements) {
-            std::option::Option::None => std::option::Option::None,
-            std::option::Option::Some((index, maybe_occupied_element)) => {
-                match &self.vacant_start {
-                    std::option::Option::None => std::option::Option::Some(maybe_occupied_element),
-                    std::option::Option::Some(vacant_start) => {
-                        if index as u32 == vacant_start.start {
-                            let next_after_vacant = std::iter::Iterator::nth(
-                                &mut self.maybe_occupied_elements,
-                                p32_predecessor(vacant_start.length) as usize,
-                            );
-                            self.vacant_start =
-                                std::iter::Iterator::next(&mut self.vacant_after_ascending);
-                            // as vacant SpanRaws are always disconnected, this one is known to be occupied
-                            next_after_vacant.map(|(_, element)| element)
-                        } else {
-                            std::option::Option::Some(maybe_occupied_element)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-pub struct VecIterRev<Element> {
-    pub vacant_end: std::option::Option<SpanRaw>,
-    pub vacant_before_descending: std::vec::IntoIter<SpanRaw>,
-    maybe_occupied_elements_rev: std::iter::Rev<std::iter::Enumerate<std::vec::IntoIter<Element>>>,
-}
-impl<Element> std::iter::Iterator for VecIterRev<Element> {
-    type Item = Element;
-    fn next(&mut self) -> std::option::Option<Element> {
-        match std::iter::Iterator::next(&mut self.maybe_occupied_elements_rev) {
-            std::option::Option::None => std::option::Option::None,
-            std::option::Option::Some((index, maybe_occupied_element)) => {
-                match &self.vacant_end {
-                    std::option::Option::None => std::option::Option::Some(maybe_occupied_element),
-                    std::option::Option::Some(vacant_end) => {
-                        if index as u32 == vacant_end.end_index() {
-                            let next_before_vacant = std::iter::Iterator::nth(
-                                &mut self.maybe_occupied_elements_rev,
-                                p32_predecessor(vacant_end.length) as usize,
-                            );
-                            self.vacant_end =
-                                std::iter::Iterator::next(&mut self.vacant_before_descending);
-                            // as vacant SpanRaws are always disconnected, this one is known to be occupied
-                            next_before_vacant.map(|(_, element)| element)
-                        } else {
-                            std::option::Option::Some(maybe_occupied_element)
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

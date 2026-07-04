@@ -505,8 +505,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- remove vec iterators and mem::forget its .elements in a custom Drop implementation to prevent double-free of element values
-
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.
   This should make things like `.field-names span Field-names .field-values span Values`
   much more attractive/viable. This pattern can avoid "type parameter spam" for any record
