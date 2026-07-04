@@ -510,8 +510,6 @@ cargo install --offline --debug --path . sloe
   Change `Blank` to `Record·` and `Never` to `Choice·`.
   Goal: easier distinction and less weid edge case when single-variant or single field
 
-- generate rust statement; for `? expr = . >` for readability
-
 - rename "snatch" to "add-take"
 
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.

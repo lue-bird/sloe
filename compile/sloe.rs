@@ -7429,17 +7429,30 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     label: None,
                     block: syn::Block {
                         brace_token: syn::token::Brace(syn_span()),
-                        stmts: std::iter::once(syn::Stmt::Local(syn::Local {
-                            attrs: vec![],
-                            let_token: syn::token::Let(syn_span()),
-                            pat: only_match_arm.pat,
-                            init: Some(syn::LocalInit {
-                                eq_token: syn::token::Eq(syn_span()),
-                                expr: Box::new(compiled_queried_rust),
-                                diverge: None,
-                            }),
-                            semi_token: syn::token::Semi(syn_span()),
-                        }))
+                        stmts: std::iter::once(
+                            if let syn::Pat::Tuple(only_match_arm_pattern_tuple) =
+                                &only_match_arm.pat
+                                && only_match_arm_pattern_tuple.elems.is_empty()
+                            {
+                                // omit let () =
+                                syn::Stmt::Expr(
+                                    compiled_queried_rust,
+                                    Some(syn::token::Semi(syn_span())),
+                                )
+                            } else {
+                                syn::Stmt::Local(syn::Local {
+                                    attrs: vec![],
+                                    let_token: syn::token::Let(syn_span()),
+                                    pat: only_match_arm.pat,
+                                    init: Some(syn::LocalInit {
+                                        eq_token: syn::token::Eq(syn_span()),
+                                        expr: Box::new(compiled_queried_rust),
+                                        diverge: None,
+                                    }),
+                                    semi_token: syn::token::Semi(syn_span()),
+                                })
+                            },
+                        )
                         .chain(syn_spread_expr_block_into_stmts(*only_match_arm.body))
                         .collect(),
                     },
