@@ -505,9 +505,12 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- change all _open_end() functions to return the endmost open end
+- change rust identifiers `Field0·field1` to `Record·field0·fiel1`
+  and `·Variant0·Variant1` to `Choice·variant0·variant1`.
+  Change `Blank` to `Record·` and `Never` to `Choice·`.
+  Goal: easier distinction and less weid edge case when single-variant or single field
 
-- change `core::Blank {}` to type alias for `()` to make FFI less annoying
+- generate rust statement; for `? expr = . >` for readability
 
 - rename "snatch" to "add-take"
 

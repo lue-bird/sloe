@@ -260,8 +260,7 @@ pub enum Away_from_0·Down·Nearest_else_away_from_0·Nearest_else_even·Toward_
     Up(Up),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Blank {}
+pub type Blank = ();
 #[derive(Clone, Copy, Debug)]
 pub enum Never {}
 
@@ -347,25 +346,25 @@ impl<Origin, Occupancy> std::fmt::Debug for Span_with_occupancy<Origin, Occupanc
 impl<A> Opt<A> {
     pub fn from_option(option: std::option::Option<A>) -> Self {
         match option {
-            std::option::Option::None => Opt::Absent(Blank {}),
+            std::option::Option::None => Opt::Absent(()),
             std::option::Option::Some(present) => Opt::Present(present),
         }
     }
     pub fn into_option(self) -> std::option::Option<A> {
         match self {
-            Opt::Absent(Blank {}) => std::option::Option::None,
+            Opt::Absent(()) => std::option::Option::None,
             Opt::Present(present) => std::option::Option::Some(present),
         }
     }
     pub fn as_ref(&self) -> Opt<&A> {
         match self {
-            Opt::Absent(Blank {}) => Opt::Absent(Blank {}),
+            Opt::Absent(()) => Opt::Absent(()),
             Opt::Present(present) => Opt::Present(present),
         }
     }
     pub fn as_mut(&mut self) -> Opt<&mut A> {
         match self {
-            Opt::Absent(Blank {}) => Opt::Absent(Blank {}),
+            Opt::Absent(()) => Opt::Absent(()),
             Opt::Present(present) => Opt::Present(present),
         }
     }
@@ -450,7 +449,7 @@ impl<Origin, Element> Vec<Origin, Element> {
     }
     pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&'a Span<Origin>>) -> &'a [Element] {
         match opt_span {
-            Opt::Absent(Blank {}) => &[],
+            Opt::Absent(()) => &[],
             Opt::Present(span) => self.span_slice(span),
         }
     }
@@ -463,7 +462,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         opt_span: &'a mut Opt<Span<Origin>>,
     ) -> &'a mut [Element] {
         match opt_span {
-            Opt::Absent(Blank {}) => &mut [],
+            Opt::Absent(()) => &mut [],
             Opt::Present(span) => self.span_slice_mut(span),
         }
     }
@@ -685,7 +684,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         std::iter::Extend::extend(&mut self.elements, new_elements);
         match std::num::NonZeroU32::new((self.elements.len() - length_without_new_elements) as u32)
         {
-            std::option::Option::None => Opt::Absent(Blank {}),
+            std::option::Option::None => Opt::Absent(()),
             std::option::Option::Some(new_length) => Opt::Present(Span {
                 start: Slot::from_index(length_without_new_elements as u32),
                 length: new_length,
@@ -710,7 +709,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         new_elements: impl std::iter::ExactSizeIterator<Item = Element>,
     ) -> Opt<Span<Origin>> {
         match std::num::NonZeroU32::new(new_elements.len() as u32) {
-            std::option::Option::None => Opt::Absent(Blank {}),
+            std::option::Option::None => Opt::Absent(()),
             std::option::Option::Some(new_element_count) => {
                 Opt::Present(self.add_iterator_filled(new_elements, new_element_count))
             }
@@ -726,7 +725,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         let std::option::Option::Some(grow_length) =
             std::num::NonZeroU32::new(std::iter::Iterator::count(new_elements.clone()) as u32)
         else {
-            return Opt::Absent(Blank {});
+            return Opt::Absent(());
         };
         let grow_span = self.add_iterator_filled(new_elements, grow_length);
         Opt::Present(grow_span)
@@ -758,7 +757,7 @@ impl<Origin, Element> Vec<Origin, Element> {
         shrink_span: Span<ShrinkOrigin>,
     ) -> Span<Origin> {
         match span {
-            Opt::Absent(Blank {}) => self.snatch_vec_span_ignoring_vacant(shrink_vec, shrink_span),
+            Opt::Absent(()) => self.snatch_vec_span_ignoring_vacant(shrink_vec, shrink_span),
             Opt::Present(span) => self.span_snatch_vec_span(span, shrink_vec, shrink_span),
         }
     }
@@ -904,7 +903,7 @@ impl<Origin> Vec<Origin, Char> {
     }
     pub fn opt_span_add_str(&mut self, span: Opt<Span<Origin>>, new_str: Str) -> Opt<Span<Origin>> {
         match span {
-            Absent·Present::Absent(Blank {}) => self.add_str_ignoring_vacant(new_str),
+            Absent·Present::Absent(()) => self.add_str_ignoring_vacant(new_str),
             Absent·Present::Present(span) => Opt::Present(self.span_add_str(span, new_str)),
         }
     }
@@ -1017,7 +1016,7 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
     > {
         After·start {
             after: match std::num::NonZeroU32::new(p32_predecessor(self.length)) {
-                std::option::Option::None => Opt::Absent(Blank {}),
+                std::option::Option::None => Opt::Absent(()),
                 std::option::Option::Some(after_length) => Opt::Present(Span_with_occupancy {
                     start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
                         self.start.index + 1,
@@ -1037,7 +1036,7 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
         Before·end {
             end: Slot_with_occupancy::<Origin, Occupancy>::from_index(self.end_index()),
             before: match std::num::NonZeroU32::new(p32_predecessor(self.length)) {
-                std::option::Option::None => Opt::Absent(Blank {}),
+                std::option::Option::None => Opt::Absent(()),
                 std::option::Option::Some(before_length) => Opt::Present(Span_with_occupancy {
                     start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
                         self.start.index - 1,
@@ -1059,7 +1058,7 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
                 self.length.get(),
                 start_length.get(),
             )) {
-                std::option::Option::None => Opt::Absent(Blank {}),
+                std::option::Option::None => Opt::Absent(()),
                 std::option::Option::Some(after_length) => Opt::Present(Span_with_occupancy {
                     start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
                         self.start.index + start_length.get(),
@@ -1086,7 +1085,7 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
                     start: self.start,
                     length: self.length.saturating_add(1),
                 },
-                apart: Opt::Absent(Blank {}),
+                apart: Opt::Absent(()),
             }
         } else if slot_to_add.index + 1 == self.start.index {
             Apart·connected {
@@ -1094,7 +1093,7 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
                     start: slot_to_add,
                     length: self.length.saturating_add(1),
                 },
-                apart: Opt::Absent(Blank {}),
+                apart: Opt::Absent(()),
             }
         } else {
             Apart·connected {
@@ -1116,7 +1115,7 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
                     start: self.start,
                     length: self.length.saturating_add(span_to_add.length.get()),
                 },
-                apart: Opt::Absent(Blank {}),
+                apart: Opt::Absent(()),
             }
         } else if span_to_add.end_index() + 1 == self.start.index {
             Apart·connected {
@@ -1124,7 +1123,7 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
                     start: span_to_add.start,
                     length: self.length.saturating_add(span_to_add.length.get()),
                 },
-                apart: Opt::Absent(Blank {}),
+                apart: Opt::Absent(()),
             }
         } else {
             Apart·connected {
@@ -1138,19 +1137,19 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
 impl<Origin, Occupancy> Opt<&Span_with_occupancy<Origin, Occupancy>> {
     pub fn to_range(self) -> std::ops::Range<usize> {
         match self {
-            Opt::Absent(Blank {}) => <std::ops::Range<usize> as std::default::Default>::default(),
+            Opt::Absent(()) => <std::ops::Range<usize> as std::default::Default>::default(),
             Opt::Present(span) => span.to_range(),
         }
     }
     pub fn to_range_u32(self) -> std::ops::Range<u32> {
         match self {
-            Opt::Absent(Blank {}) => <std::ops::Range<u32> as std::default::Default>::default(),
+            Opt::Absent(()) => <std::ops::Range<u32> as std::default::Default>::default(),
             Opt::Present(span) => span.to_range_u32(),
         }
     }
     pub fn length(self) -> u32 {
         match self {
-            Opt::Absent(Blank {}) => 0,
+            Opt::Absent(()) => 0,
             Opt::Present(span) => span.length.get(),
         }
     }
@@ -1160,7 +1159,7 @@ pub fn p32_dup(n: P32) -> A·b<P32, P32> {
     A·b { a: n, b: n }
 }
 pub fn p32_rid(_: P32) -> Blank {
-    Blank {}
+    ()
 }
 pub fn p32_predecessor(n: P32) -> U32 {
     n.get() - 1
@@ -1175,7 +1174,7 @@ pub fn u32_to_p32(n: U32) -> Opt<P32> {
     Opt::from_option(P32::new(n))
 }
 pub fn u32_rid(_: U32) -> Blank {
-    Blank {}
+    ()
 }
 pub fn u32_dup(n: U32) -> A·b<U32, U32> {
     A·b { a: n, b: n }
@@ -1193,15 +1192,15 @@ pub fn u32_add_carry(
     let (sum, carry) = a.carrying_add(
         b,
         match carry {
-            Contained·Overflowed::Overflowed(Blank {}) => true,
-            Contained·Overflowed::Contained(Blank {}) => false,
+            Contained·Overflowed::Overflowed(()) => true,
+            Contained·Overflowed::Contained(()) => false,
         },
     );
     Carry·wrapped {
         carry: if carry {
-            Contained·Overflowed::Overflowed(Blank {})
+            Contained·Overflowed::Overflowed(())
         } else {
-            Contained·Overflowed::Contained(Blank {})
+            Contained·Overflowed::Contained(())
         },
         wrapped: sum,
     }
@@ -1210,7 +1209,7 @@ pub fn i32_dup(n: I32) -> A·b<I32, I32> {
     A·b { a: n, b: n }
 }
 pub fn i32_rid(_: I32) -> Blank {
-    Blank {}
+    ()
 }
 #[expect(clippy::cast_precision_loss)]
 pub fn i32_to_f32(n: I32) -> F32 {
@@ -1218,13 +1217,13 @@ pub fn i32_to_f32(n: I32) -> F32 {
 }
 pub fn i32_to_u32(n: I32) -> Opt<U32> {
     match <U32 as std::convert::TryFrom<I32>>::try_from(n) {
-        std::result::Result::Err(_) => Opt::Absent(Blank {}),
+        std::result::Result::Err(_) => Opt::Absent(()),
         std::result::Result::Ok(u) => Opt::Present(u),
     }
 }
 pub fn i32_to_p32(n: I32) -> Opt<P32> {
     match <U32 as std::convert::TryFrom<I32>>::try_from(n) {
-        std::result::Result::Err(_) => Opt::Absent(Blank {}),
+        std::result::Result::Err(_) => Opt::Absent(()),
         std::result::Result::Ok(u) => u32_to_p32(u),
     }
 }
@@ -1243,9 +1242,9 @@ pub fn i32_add_carry(
     let (sum, carry) = a.overflowing_add(b);
     Carry·wrapped {
         carry: if carry {
-            Contained·Overflowed::Overflowed(Blank {})
+            Contained·Overflowed::Overflowed(())
         } else {
-            Contained·Overflowed::Contained(Blank {})
+            Contained·Overflowed::Contained(())
         },
         wrapped: sum,
     }
@@ -1257,7 +1256,7 @@ pub fn f32_dup(n: F32) -> A·b<F32, F32> {
     A·b { a: n, b: n }
 }
 pub fn f32_rid(_: F32) -> Blank {
-    Blank {}
+    ()
 }
 pub fn f32_add_clamp(A·b { a, b }: A·b<F32, F32>) -> F32 {
     (a + b).clamp(f32::MIN, f32::MAX)
@@ -1280,16 +1279,16 @@ pub fn f32_negate(n: F32) -> F32 {
 }
 pub fn f32_round(Mode·n { mode, n }: Mode·n<Round_mode, F32>) -> F32 {
     match mode {
-        Round_mode::Up(Blank {}) => n.ceil(),
-        Round_mode::Down(Blank {}) => n.floor(),
-        Round_mode::Away_from_0(Blank {}) => {
+        Round_mode::Up(()) => n.ceil(),
+        Round_mode::Down(()) => n.floor(),
+        Round_mode::Away_from_0(()) => {
             // I'm not convinced this is the fastest but since this is by far the
             // most common implementation I've seen I'm hoping this gets optimized at least
             n.abs().ceil() * n.signum()
         }
-        Round_mode::Toward_0(Blank {}) => n.trunc(),
-        Round_mode::Nearest_else_away_from_0(Blank {}) => n.round(),
-        Round_mode::Nearest_else_even(Blank {}) => n.round_ties_even(),
+        Round_mode::Toward_0(()) => n.trunc(),
+        Round_mode::Nearest_else_away_from_0(()) => n.round(),
+        Round_mode::Nearest_else_even(()) => n.round_ties_even(),
     }
 }
 pub fn f32_to_i32_clamp(operation: Mode·n<Round_mode, F32>) -> I32 {
@@ -1300,15 +1299,13 @@ pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> A·b<Fn<In, Out>, Fn<In, Out>> {
     A·b { a: fn_, b: fn_ }
 }
 pub fn fn_rid<In, Out>(_: Fn<In, Out>) -> Blank {
-    Blank {}
+    ()
 }
 
 pub fn char_dup(char: Char) -> A·b<Char, Char> {
     A·b { a: char, b: char }
 }
-pub fn char_rid(_: Char) -> Blank {
-    Blank {}
-}
+pub fn char_rid(_: Char) -> Blank {}
 pub fn char_to_code_point(char: Char) -> U32 {
     <u32 as std::convert::From<char>>::from(char)
 }
@@ -1319,9 +1316,7 @@ pub fn u32_code_point_to_char(code_point: U32) -> Opt<Char> {
 pub fn str_dup(str: Str) -> A·b<Str, Str> {
     A·b { a: str, b: str }
 }
-pub fn str_rid(_: Str) -> Blank {
-    Blank {}
-}
+pub fn str_rid(_: Str) -> Blank {}
 pub fn str_byte_count(str: Str) -> u32 {
     str.len() as u32
 }
@@ -1371,8 +1366,8 @@ fn iterator_fold_in_direction<Element, State>(
     step: impl std::ops::Fn(State, Element) -> State,
 ) -> State {
     match direction {
-        Down·Up::Up(Blank {}) => std::iter::Iterator::fold(&mut iterator, state, step),
-        Down·Up::Down(Blank {}) => {
+        Down·Up::Up(()) => std::iter::Iterator::fold(&mut iterator, state, step),
+        Down·Up::Down(()) => {
             std::iter::Iterator::fold(&mut std::iter::Iterator::rev(iterator), state, step)
         }
     }
@@ -1384,8 +1379,8 @@ fn iterator_try_fold_in_direction<Element, B, C>(
     step: impl std::ops::Fn(C, Element) -> std::ops::ControlFlow<B, C>,
 ) -> std::ops::ControlFlow<B, C> {
     match direction {
-        Down·Up::Up(Blank {}) => std::iter::Iterator::try_fold(&mut iterator, state, step),
-        Down·Up::Down(Blank {}) => {
+        Down·Up::Up(()) => std::iter::Iterator::try_fold(&mut iterator, state, step),
+        Down·Up::Down(()) => {
             std::iter::Iterator::try_fold(&mut std::iter::Iterator::rev(iterator), state, step)
         }
     }
@@ -1455,13 +1450,13 @@ pub fn opt_span_take_start<Origin>(
 ) -> After·start<Opt<Span<Origin>>, Opt<Span<Origin>>> {
     match std::num::NonZeroU32::new(length_to_take) {
         std::option::Option::None => After·start {
-            start: Opt::Absent(Blank {}),
+            start: Opt::Absent(()),
             after: span,
         },
         std::option::Option::Some(positive_length_to_take) => match span {
-            Opt::Absent(Blank {}) => After·start {
-                start: Opt::Absent(Blank {}),
-                after: Opt::Absent(Blank {}),
+            Opt::Absent(()) => After·start {
+                start: Opt::Absent(()),
+                after: Opt::Absent(()),
             },
             Opt::Present(span) => {
                 let After·start { start, after } =
@@ -1609,7 +1604,7 @@ pub fn opt_empty_span_fold<Origin, State>(
 }
 
 pub fn origin_rid<LocalOrigin>(_: Origin<LocalOrigin>) -> Blank {
-    Blank {}
+    ()
 }
 
 pub fn vec_empty<LocalOrigin, Element>(origin: Origin<LocalOrigin>) -> Vec<LocalOrigin, Element> {
@@ -1676,7 +1671,7 @@ pub fn vec_span_rid<Origin, Element>(
     vec
 }
 pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Blank {
-    Blank {}
+    ()
 }
 pub fn vec_add_ignoring_vacant<Origin, Element>(
     New·vec {
@@ -1761,7 +1756,7 @@ pub fn vec_opt_span_add<Origin, Element>(
     }: New·span·vec<Element, Opt<Span<Origin>>, Vec<Origin, Element>>,
 ) -> Span·vec<Span<Origin>, Vec<Origin, Element>> {
     match span {
-        Absent·Present::Absent(Blank {}) => {
+        Absent·Present::Absent(()) => {
             let new_slot = vec.add(new_element);
             Span·vec {
                 vec: vec,
@@ -1829,7 +1824,7 @@ pub fn vec_opt_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
 ) -> Grown·shrunk·span<Vec<GrowOrigin, Element>, Vec<ShrinkOrigin, Element>, Opt<Span<GrowOrigin>>>
 {
     let maybe_grown_span = match shrink_span {
-        Absent·Present::Absent(Blank {}) => span,
+        Absent·Present::Absent(()) => span,
         Absent·Present::Present(shrink_span) => {
             Opt::Present(vec.opt_span_snatch_vec_span(span, &mut shrink_vec, shrink_span))
         }
@@ -1854,7 +1849,7 @@ pub fn vec_span_snatch_vec_opt_span<GrowOrigin, ShrinkOrigin, Element>(
     >,
 ) -> Grown·shrunk·span<Vec<GrowOrigin, Element>, Vec<ShrinkOrigin, Element>, Span<GrowOrigin>> {
     let maybe_grown_span = match shrink_span {
-        Absent·Present::Absent(Blank {}) => span,
+        Absent·Present::Absent(()) => span,
         Absent·Present::Present(shrink_span) => {
             vec.span_snatch_vec_span(span, &mut shrink_vec, shrink_span)
         }
@@ -1910,8 +1905,8 @@ pub fn vec_move_opt_span_to_vacant<Origin, Element>(
     Span·vec { span, mut vec }: Span·vec<Opt<Span<Origin>>, Vec<Origin, Element>>,
 ) -> Span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
     match span {
-        Opt::Absent(Blank {}) => Span·vec {
-            span: Opt::Absent(Blank {}),
+        Opt::Absent(()) => Span·vec {
+            span: Opt::Absent(()),
             vec: vec,
         },
         Opt::Present(span) => {

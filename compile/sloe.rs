@@ -5393,13 +5393,10 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 }
             }
         }
-        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(syn::Pat::Struct(syn::PatStruct {
+        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(syn::Pat::Tuple(syn::PatTuple {
             attrs: vec![],
-            qself: None,
-            path: syn_path_reference([record_empty_rust_struct_name]),
-            brace_token: syn::token::Brace(syn_span()),
-            fields: syn::punctuated::Punctuated::new(),
-            rest: None,
+            paren_token: syn::token::Paren(syn_span()),
+            elems: syn::punctuated::Punctuated::new(),
         })),
         SyntaxPattern::Record {
             field0_name,
@@ -7148,14 +7145,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 },
             })
         }
-        SyntaxExpression::RecordEmpty { dot_start: _ } => syn::Expr::Struct(syn::ExprStruct {
+        SyntaxExpression::RecordEmpty { dot_start: _ } => syn::Expr::Tuple(syn::ExprTuple {
             attrs: vec![],
-            qself: None,
-            path: syn_path_reference([record_empty_rust_struct_name]),
-            brace_token: syn::token::Brace(syn_span()),
-            fields: syn::punctuated::Punctuated::new(),
-            dot2_token: None,
-            rest: None,
+            paren_token: syn::token::Paren(syn_span()),
+            elems: syn::punctuated::Punctuated::new(),
         }),
         SyntaxExpression::Record {
             field0_name,
