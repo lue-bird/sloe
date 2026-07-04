@@ -505,11 +505,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- change rust identifiers `Field0·field1` to `Record·field0·fiel1`
-  and `·Variant0·Variant1` to `Choice·variant0·variant1`.
-  Change `Blank` to `Record·` and `Never` to `Choice·`.
-  Goal: easier distinction and less weid edge case when single-variant or single field
-
 - rename "snatch" to "add-take"
 
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.

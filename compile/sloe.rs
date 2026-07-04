@@ -8391,13 +8391,13 @@ fn name_to_uppercase_rust(name: &str) -> String {
         | choice_empty_rust_struct_name
         | "OwnedSliceIterator"
         | "SpanRaw"
-        | "VecIter"
-        | "VecIterRev" => sanitized + "ø_",
+        | "Empty"
+        | "Occupied" => sanitized + "øø",
         _ => sanitized,
     }
 }
-const record_empty_rust_struct_name: &str = "Blank";
-const choice_empty_rust_struct_name: &str = "Never";
+const record_empty_rust_struct_name: &str = "Record";
+const choice_empty_rust_struct_name: &str = "Choice";
 fn name_to_lowercase_rust(name: &str) -> String {
     let mut sanitized: String = name.replace("-", "_");
     if let Some(first) = sanitized.get_mut(0..=0) {
@@ -8501,17 +8501,11 @@ fn field_names_to_rust_record_struct_name<'a>(
     //   if it cannot be typed on your keyboard, please open an issue!)
     // - it looks similar to the field access dot
     // - it is somewhat commonly understood as a separator
-    let mut field_names_joined: String = rust_field_names_vec.join("·");
-    match field_names_joined.get_mut(0..=0) {
-        Some(first) => {
-            first.make_ascii_uppercase();
-            if rust_field_names_vec.len() == 1 {
-                field_names_joined.push('·');
-            }
-            field_names_joined
-        }
-        None => record_empty_rust_struct_name.to_string(),
-    }
+    rust_field_names_vec
+        .into_iter()
+        .fold("Record".to_string(), |so_far, field_name| {
+            so_far + "·" + &field_name
+        })
 }
 fn sorted_variant_names<'a>(variant_names: impl Iterator<Item = &'a Name>) -> Vec<Name> {
     let mut variant_names_vec: Vec<Name> = variant_names.map(Name::clone).collect();
@@ -8525,17 +8519,11 @@ fn variant_names_to_rust_enum_name<'a>(field_names: impl Iterator<Item = &'a Nam
     rust_variant_names_vec.sort_unstable();
     // same separator as field_names_to_rust_record_struct_name
     // but an additional separator appended to single-variant which could otherwise collide with single-field
-    let mut variant_names_joined: String = rust_variant_names_vec.join("·");
-    match variant_names_joined.get_mut(0..=0) {
-        Some(first) => {
-            first.make_ascii_uppercase();
-            if rust_variant_names_vec.len() == 1 {
-                variant_names_joined.push_str("··");
-            }
-            variant_names_joined
-        }
-        None => choice_empty_rust_struct_name.to_string(),
-    }
+    rust_variant_names_vec
+        .into_iter()
+        .fold("Choice".to_string(), |so_far, variant_name| {
+            so_far + "·" + &variant_name
+        })
 }
 fn syn_span() -> proc_macro2::Span {
     proc_macro2::Span::call_site()
