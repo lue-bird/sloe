@@ -8401,7 +8401,12 @@ fn name_to_lowercase_rust(name: &str) -> String {
     }
     let needs_to_be_disambiguated = rust_lowercase_keywords.contains(&sanitized.as_str())
         || match sanitized.as_str() {
-            local_unnamed_function_name | "copy_ref_to_owned" | "origin_new" | "std" => true,
+            local_unnamed_function_name
+            | "copy_ref_to_owned"
+            | "origin_new"
+            | "std"
+            | "iterator_fold_in_direction"
+            | "iterator_try_fold_in_direction" => true,
             _ => false,
         };
     if needs_to_be_disambiguated {
