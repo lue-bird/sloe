@@ -505,6 +505,10 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- change all _open_end() functions to return the endmost open end
+
+- change `core::Blank {}` to type alias for `()` to make FFI less annoying
+
 - rename "snatch" to "add-take"
 
 - add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.

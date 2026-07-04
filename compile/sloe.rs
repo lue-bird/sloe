@@ -3596,7 +3596,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
         errors.push(ErrorNode {
             range: name_range(with_start_position_as_ref(project_fn.name)),
             message: Box::from(
-                "missing expression after the fn result type. An example would be fn my-function & str \":)\", where & is an empty record as the parameter",
+                "missing expression after the fn result type. An example would be fn my-function . str \":)\", where . is an empty record as the parameter",
             ),
         });
         return CheckedProjectFn {
@@ -6094,7 +6094,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some(parameter) = parameter else {
                 errors.push(ErrorNode {
                     range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing parameter after fn. An example of a local fn expression is fn (n u32) u32-add & (a n) (b 1 u32)"),
+                    message: Box::from("missing parameter after fn. An example of a local fn expression is fn n u32 > u32-add .a n .b 1 u32"),
                 });
                 return None;
             };
@@ -8386,9 +8386,7 @@ fn name_to_uppercase_rust(name: &str) -> String {
         | "OwnedSliceIterator"
         | "SpanRaw"
         | "VecIter"
-        | "VecIterRev"
-        | "Element"
-        | "State" => sanitized + "ø_",
+        | "VecIterRev" => sanitized + "ø_",
         _ => sanitized,
     }
 }
@@ -8685,27 +8683,27 @@ fn type_vec(origin: Type, element: Type) -> Type {
     }
 }
 fn type_slot(origin: Type) -> Type {
-    type_slot_with_occupancy(origin, type_choice([("occupied", type_record([]))]))
+    Type::CoreConstruct {
+        name: Name::const_new("slot"),
+        arguments: vec![origin],
+    }
 }
 fn type_empty_slot(origin: Type) -> Type {
-    type_slot_with_occupancy(origin, type_choice([("empty", type_record([]))]))
-}
-fn type_slot_with_occupancy(origin: Type, occupancy: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("slot-with-occupancy"),
-        arguments: vec![origin, occupancy],
+        name: Name::const_new("empty-slot"),
+        arguments: vec![origin],
     }
 }
 fn type_span(origin: Type) -> Type {
-    type_span_with_occupancy(origin, type_choice([("occupied", type_record([]))]))
+    Type::CoreConstruct {
+        name: Name::const_new("span"),
+        arguments: vec![origin],
+    }
 }
 fn type_empty_span(origin: Type) -> Type {
-    type_span_with_occupancy(origin, type_choice([("empty", type_record([]))]))
-}
-fn type_span_with_occupancy(origin: Type, occupancy: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("span-with-occupancy"),
-        arguments: vec![origin, occupancy],
+        name: Name::const_new("empty-span"),
+        arguments: vec![origin],
     }
 }
 fn type_opt(present: Type) -> Type {
@@ -8980,7 +8978,7 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                         type_record([
                             (
                                 "span",
-                                type_span_with_occupancy(type_variable("Origin"), type_variable("Occupancy"))
+                                type_span(type_variable("Origin") )
                             ),
                             ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
                             ("state", type_variable("State")),
@@ -8989,7 +8987,34 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                                 type_fn(
                                     type_record([
                                         ("slot", type_variable("Origin")),
-                                        ("state", type_slot_with_occupancy(type_variable("State"), type_variable("Occupancy"))),
+                                        ("state", type_slot(type_variable("State"))),
+                                    ]),
+                                    type_variable("State")
+                                )
+                            )
+                        ]),
+                    result_type: type_variable("State"),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "opt-empty-span-fold",
+                    documentation: "Step through all empty slots, updating the given initial state for each taken slot in line",
+                    type_parameters: vec![],
+                    parameter_type:
+                        type_record([
+                            (
+                                "span",
+                                type_empty_span(type_variable("Origin") )
+                            ),
+                            ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
+                            ("state", type_variable("State")),
+                            (
+                                "step",
+                                type_fn(
+                                    type_record([
+                                        ("slot", type_variable("Origin")),
+                                        ("state", type_empty_slot(type_variable("State"))),
                                     ]),
                                     type_variable("State")
                                 )
@@ -9501,7 +9526,7 @@ This type argument is also used in slot, span, arena, vec as the first type argu
                 documentation: Some(Box::from(
                     "A grow- and shrinkable array of elements. Arrays have constant time access and update and constant time add.
 ```sloe
-fn use-a-vec & u32
+fn use-a-vec . u32
     origin my-elements-origin
     ? _vec-empty<u32> my-elements-origin = my-elements >
     ? _vec-add .vec my-elements .element 609 u32 = .vec my-elements .slot first-element-slot >
@@ -9539,17 +9564,6 @@ This works because each collection has a unique origin and only gives out one sl
             },
         ),
         (
-            Name::const_new("slot-with-occupancy"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "Either `slot` or `empty-slot` depending on the second argument"
-                )),
-                parameters: vec![Name::const_new("Origin"), Name::const_new("Occupancy")],
-                type_: Some(type_slot_with_occupancy(type_variable("Origin"), type_variable("Occupancy"))),
-            },
-        ),
-        (
             Name::const_new("span"),
             CheckedTypeAlias {
                 name_range: None,
@@ -9570,17 +9584,6 @@ This works because each collection has a unique origin and only gives out one sp
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_empty_span(type_variable("Origin"))),
-            },
-        ),
-        (
-            Name::const_new("span-with-occupancy"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "Either `span` or `empty-span`"
-                )),
-                parameters: vec![Name::const_new("Origin"), Name::const_new("Occupancy")],
-                type_: Some(type_span_with_occupancy(type_variable("Origin"), type_variable("Occupancy"))),
             },
         ),
         (
@@ -10035,7 +10038,32 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             syntax_expression_open_end(expressions.element_ref(result), expressions, types)
         }),
         SyntaxExpression::RecordEmpty { dot_start: _ } => None,
-        SyntaxExpression::Record { .. } => Some(OpenEndKind::Record),
+        SyntaxExpression::Record {
+            field0_name: _,
+            field0_value,
+            field1_up,
+        } => Some(
+            field1_up
+                .last()
+                .map(|last_field| {
+                    last_field
+                        .value
+                        .as_ref()
+                        .and_then(|last_field_value| {
+                            syntax_expression_open_end(last_field_value, expressions, types)
+                        })
+                        .unwrap_or(OpenEndKind::Record)
+                })
+                .unwrap_or_else(|| {
+                    field0_value
+                        .as_ref()
+                        .map(|field0_value| expressions.element_ref(field0_value))
+                        .and_then(|last_field_value| {
+                            syntax_expression_open_end(last_field_value, expressions, types)
+                        })
+                        .unwrap_or(OpenEndKind::Record)
+                }),
+        ),
         SyntaxExpression::Parenthesized {
             open_paren_start: _,
             inner,
@@ -10049,7 +10077,19 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
         } => expression.as_ref().and_then(|expression| {
             syntax_expression_open_end(expressions.element_ref(expression), expressions, types)
         }),
-        SyntaxExpression::Query { .. } => Some(OpenEndKind::ExpressionQuery),
+        SyntaxExpression::Query {
+            question_mark_start: _,
+            queried: _,
+            cases,
+        } => Some(
+            cases
+                .last()
+                .and_then(|last_case| last_case.result.as_ref())
+                .and_then(|last_case_result| {
+                    syntax_expression_open_end(last_case_result, expressions, types)
+                })
+                .unwrap_or(OpenEndKind::ExpressionQuery),
+        ),
         SyntaxExpression::Origin {
             origin_keyword_start: _,
             name: _,
@@ -10612,7 +10652,32 @@ fn syntax_pattern_open_end<Patterns, Types>(
             syntax_pattern_open_end(patterns.element_ref(value), patterns, types)
         }),
         SyntaxPattern::RecordEmpty { dot_start: _ } => None,
-        SyntaxPattern::Record { .. } => Some(OpenEndKind::Record),
+        SyntaxPattern::Record {
+            field0_name: _,
+            field0_value,
+            field1_up,
+        } => Some(
+            field1_up
+                .last()
+                .map(|last_field| {
+                    last_field
+                        .value
+                        .as_ref()
+                        .and_then(|last_field_value| {
+                            syntax_pattern_open_end(last_field_value, patterns, types)
+                        })
+                        .unwrap_or(OpenEndKind::Record)
+                })
+                .unwrap_or_else(|| {
+                    field0_value
+                        .as_ref()
+                        .map(|field0_value| patterns.element_ref(field0_value))
+                        .and_then(|last_field_value| {
+                            syntax_pattern_open_end(last_field_value, patterns, types)
+                        })
+                        .unwrap_or(OpenEndKind::Record)
+                }),
+        ),
         SyntaxPattern::Parenthesized {
             open_paren_start: _,
             inner,
@@ -10819,11 +10884,79 @@ fn syntax_type_open_end<Types>(
     match type_ {
         SyntaxType::Variable(_) => None,
         SyntaxType::RecordEmpty { dot_start: _ } => None,
-        SyntaxType::Record { .. } => Some(OpenEndKind::Record),
+        SyntaxType::Record {
+            field0_name: _,
+            field0_value,
+            field1_up,
+        } => Some(
+            field1_up
+                .last()
+                .map(|last_field| {
+                    last_field
+                        .value
+                        .as_ref()
+                        .and_then(|last_field_value| syntax_type_open_end(last_field_value, types))
+                        .unwrap_or(OpenEndKind::Record)
+                })
+                .unwrap_or_else(|| {
+                    field0_value
+                        .as_ref()
+                        .map(|field0_value| types.element_ref(field0_value))
+                        .and_then(|last_field_value| syntax_type_open_end(last_field_value, types))
+                        .unwrap_or(OpenEndKind::Record)
+                }),
+        ),
         SyntaxType::ChoiceEmpty { bar_start: _ } => None,
-        SyntaxType::Choice { .. } => Some(OpenEndKind::TypeChoice),
+        SyntaxType::Choice {
+            variant0_name: _,
+            variant0_value,
+            variant1_up,
+        } => Some(
+            variant1_up
+                .last()
+                .map(|last_variant| {
+                    last_variant
+                        .value
+                        .as_ref()
+                        .and_then(|last_variant_value| {
+                            syntax_type_open_end(last_variant_value, types)
+                        })
+                        .unwrap_or(OpenEndKind::TypeChoice)
+                })
+                .unwrap_or_else(|| {
+                    variant0_value
+                        .as_ref()
+                        .map(|variant0_value| types.element_ref(variant0_value))
+                        .and_then(|last_variant_value| {
+                            syntax_type_open_end(last_variant_value, types)
+                        })
+                        .unwrap_or(OpenEndKind::TypeChoice)
+                }),
+        ),
         SyntaxType::ConstructWithoutArguments(_) => None,
-        SyntaxType::ConstructWithArguments { .. } => Some(OpenEndKind::TypeConstruct),
+        SyntaxType::ConstructWithArguments {
+            underscore_start: _,
+            name: _,
+            argument0,
+            argument1_up,
+        } => Some(
+            argument1_up
+                .last()
+                .map(|last_argument| {
+                    last_argument
+                        .type_
+                        .as_ref()
+                        .and_then(|last_argument| syntax_type_open_end(last_argument, types))
+                        .unwrap_or(OpenEndKind::TypeConstruct)
+                })
+                .unwrap_or_else(|| {
+                    argument0
+                        .as_ref()
+                        .map(|argument0| types.element_ref(argument0))
+                        .and_then(|last_argument| syntax_type_open_end(last_argument, types))
+                        .unwrap_or(OpenEndKind::TypeConstruct)
+                }),
+        ),
         SyntaxType::Parenthesized {
             open_paren_start: _,
             inner,
