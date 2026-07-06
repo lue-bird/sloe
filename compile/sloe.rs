@@ -10196,108 +10196,137 @@ fn syntax_string_format(formatted: &mut String, content: &str) {
     formatted.push('"');
 }
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum OpenEndKind {
-    TypeConstruct,
-    TypeChoice,
-    Record,
-    ExpressionQuery,
+struct OpenEndKinds {
+    type_construct: bool,
+    type_choice: bool,
+    record: bool,
+    expression_query: bool,
 }
+const no_open_end_kinds: OpenEndKinds = OpenEndKinds {
+    type_construct: false,
+    type_choice: false,
+    record: false,
+    expression_query: false,
+};
 fn syntax_expression_open_end<Expressions, Patterns, Types>(
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-) -> Option<OpenEndKind> {
+) -> OpenEndKinds {
     match expression {
-        SyntaxExpression::Number { value: _, type_ } => type_
-            .as_ref()
-            .and_then(|type_| syntax_type_open_end(type_, types)),
-        SyntaxExpression::Char { .. } => None,
-        SyntaxExpression::Str { .. } => None,
-        SyntaxExpression::Variable(_) => None,
+        SyntaxExpression::Number { value: _, type_ } => match type_ {
+            Some(type_) => syntax_type_open_end(type_, types),
+            None => no_open_end_kinds,
+        },
+        SyntaxExpression::Char { .. } => no_open_end_kinds,
+        SyntaxExpression::Str { .. } => no_open_end_kinds,
+        SyntaxExpression::Variable(_) => no_open_end_kinds,
         SyntaxExpression::Call {
             underscore_start: _,
             name: _,
             type_arguments: _,
             argument,
-        } => argument.as_ref().and_then(|argument| {
-            syntax_expression_open_end(expressions.element_ref(argument), expressions, types)
-        }),
+        } => match argument {
+            Some(argument) => {
+                syntax_expression_open_end(expressions.element_ref(argument), expressions, types)
+            }
+            None => no_open_end_kinds,
+        },
         SyntaxExpression::Variant {
             name: _,
             type_: _,
             value,
-        } => value.as_ref().and_then(|value| {
-            syntax_expression_open_end(expressions.element_ref(value), expressions, types)
-        }),
+        } => match value {
+            Some(value) => {
+                syntax_expression_open_end(expressions.element_ref(value), expressions, types)
+            }
+            None => no_open_end_kinds,
+        },
         SyntaxExpression::Fn {
             fn_keyword_start: _,
             parameter: _,
             angle_right_start: _,
             result,
-        } => result.as_ref().and_then(|result| {
-            syntax_expression_open_end(expressions.element_ref(result), expressions, types)
-        }),
-        SyntaxExpression::RecordEmpty { dot_start: _ } => None,
+        } => match result {
+            Some(result) => {
+                syntax_expression_open_end(expressions.element_ref(result), expressions, types)
+            }
+            None => no_open_end_kinds,
+        },
+        SyntaxExpression::RecordEmpty { dot_start: _ } => no_open_end_kinds,
         SyntaxExpression::Record { part0, part1_up } => {
-            Some(match part1_up.last().unwrap_or(part0) {
-                SyntaxExpressionRecordPart::Field { name: _, value } => value
-                    .as_ref()
-                    .and_then(|last_part_value| {
-                        syntax_expression_open_end(
-                            expressions.element_ref(last_part_value),
-                            expressions,
-                            types,
-                        )
-                    })
-                    .unwrap_or(OpenEndKind::Record),
+            let last_field_open_end = match part1_up.last().unwrap_or(part0) {
+                SyntaxExpressionRecordPart::Field { name: _, value } => match value {
+                    Some(last_part_value) => syntax_expression_open_end(
+                        expressions.element_ref(last_part_value),
+                        expressions,
+                        types,
+                    ),
+                    None => no_open_end_kinds,
+                },
                 SyntaxExpressionRecordPart::Spread {
                     dot_dot_start: _,
                     record,
-                } => record
-                    .as_ref()
-                    .and_then(|last_part_record| {
-                        syntax_expression_open_end(
-                            expressions.element_ref(last_part_record),
-                            expressions,
-                            types,
-                        )
-                    })
-                    .unwrap_or(OpenEndKind::Record),
-            })
+                } => match record {
+                    Some(last_part_record) => syntax_expression_open_end(
+                        expressions.element_ref(last_part_record),
+                        expressions,
+                        types,
+                    ),
+                    None => no_open_end_kinds,
+                },
+            };
+            OpenEndKinds {
+                record: true,
+                ..last_field_open_end
+            }
         }
         SyntaxExpression::Parenthesized {
             open_paren_start: _,
             inner,
             closed_paren_start: _,
-        } => inner.as_ref().and_then(|inner| {
-            syntax_expression_open_end(expressions.element_ref(inner), expressions, types)
-        }),
+        } => match inner {
+            Some(inner) => {
+                syntax_expression_open_end(expressions.element_ref(inner), expressions, types)
+            }
+            None => no_open_end_kinds,
+        },
         SyntaxExpression::Commented {
             comments: _,
             expression,
-        } => expression.as_ref().and_then(|expression| {
-            syntax_expression_open_end(expressions.element_ref(expression), expressions, types)
-        }),
+        } => match expression {
+            Some(expression) => {
+                syntax_expression_open_end(expressions.element_ref(expression), expressions, types)
+            }
+            None => no_open_end_kinds,
+        },
         SyntaxExpression::Query {
             question_mark_start: _,
             queried: _,
             cases,
-        } => Some(
-            cases
+        } => {
+            let last_case_open_end = cases
                 .last()
                 .and_then(|last_case| last_case.result.as_ref())
-                .and_then(|last_case_result| {
+                .map(|last_case_result| {
                     syntax_expression_open_end(last_case_result, expressions, types)
                 })
-                .unwrap_or(OpenEndKind::ExpressionQuery),
-        ),
+                .unwrap_or(no_open_end_kinds);
+            OpenEndKinds {
+                expression_query: true,
+                ..last_case_open_end
+            }
+        }
         SyntaxExpression::Origin {
             origin_keyword_start: _,
             name: _,
             result,
-        } => result.as_ref().and_then(|result| {
-            syntax_expression_open_end(expressions.element_ref(result), expressions, types)
-        }),
+        } => match result {
+            Some(result) => {
+                syntax_expression_open_end(expressions.element_ref(result), expressions, types)
+            }
+            None => no_open_end_kinds,
+        },
     }
 }
 fn optional_variant_name_format(formatted: &mut String, variant_name: Option<&Name>) {
@@ -10566,7 +10595,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                                 queried,
                             );
                         },
-                        OpenEndKind::ExpressionQuery,
+                        |open_end| open_end.expression_query,
                         syntax_expression_open_end(queried, expressions, types),
                         range_line_span(expression_range(queried, expressions, patterns, types)),
                     );
@@ -10692,7 +10721,7 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
                             );
                         },
                         || syntax_expression_open_end(value, expressions, types),
-                        OpenEndKind::Record,
+                        |open_end| open_end.record,
                         record_part_count,
                         record_part_index,
                         name.start,
@@ -10735,7 +10764,7 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
                             );
                         },
                         || syntax_expression_open_end(record, expressions, types),
-                        OpenEndKind::Record,
+                        |open_end| open_end.record,
                         record_part_count,
                         record_part_index,
                         *dot_dot_start,
@@ -10788,7 +10817,7 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
                     );
                 },
                 || syntax_expression_open_end(result, expressions, types),
-                OpenEndKind::ExpressionQuery,
+                |open_end| open_end.expression_query,
                 case_count,
                 case_index,
                 match &case.pattern {
@@ -10804,8 +10833,8 @@ fn maybe_open_end_whitespace_then_element_format(
     formatted: &mut String,
     indent: usize,
     element_unparenthesized_format: impl FnOnce(&mut String, usize),
-    element_open_end: impl FnOnce() -> Option<OpenEndKind>,
-    open_end_kind_to_parenthesize_before_last_element: OpenEndKind,
+    element_open_end: impl FnOnce() -> OpenEndKinds,
+    open_end_kind_to_parenthesize_before_last_element: fn(OpenEndKinds) -> bool,
     element_count: usize,
     element_index: usize,
     syntax_before_element_start: lsp_types::Position,
@@ -10833,8 +10862,8 @@ fn maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
     formatted: &mut String,
     indent: usize,
     element_unparenthesized_format: impl FnOnce(&mut String, usize),
-    element_open_end: impl FnOnce() -> Option<OpenEndKind>,
-    open_end_kind_to_parenthesize_before_last_element: OpenEndKind,
+    element_open_end: impl FnOnce() -> OpenEndKinds,
+    open_end_kind_to_parenthesize_before_last_element: fn(OpenEndKinds) -> bool,
     element_count: usize,
     element_index: usize,
     syntax_before_element_start: lsp_types::Position,
@@ -10862,13 +10891,11 @@ fn parenthesize_if_open_ended_whitespace_then_element_format(
     formatted: &mut String,
     indent: usize,
     element_unparenthesized_format: impl FnOnce(&mut String, usize),
-    open_end_kind_to_parenthesize_before_last_element: OpenEndKind,
-    element_open_end: Option<OpenEndKind>,
+    open_end_kind_to_parenthesize_before_last_element: fn(OpenEndKinds) -> bool,
+    element_open_end: OpenEndKinds,
     line_span: LineSpan,
 ) {
-    if element_open_end
-        .is_some_and(|open_end| open_end == open_end_kind_to_parenthesize_before_last_element)
-    {
+    if open_end_kind_to_parenthesize_before_last_element(element_open_end) {
         formatted.push_str(" (");
         if line_span == LineSpan::Multiple {
             linebreak_indented_into(formatted, next_indent(indent));
@@ -10891,48 +10918,45 @@ fn syntax_pattern_open_end<Patterns, Types>(
     pattern: &SyntaxPattern<Patterns, Types>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-) -> Option<OpenEndKind> {
+) -> OpenEndKinds {
     match pattern {
-        SyntaxPattern::Variable { name: _, type_ } => type_
-            .as_ref()
-            .and_then(|type_| syntax_type_open_end(type_, types)),
-        SyntaxPattern::Variant { name: _, value } => value.as_ref().and_then(|value| {
-            syntax_pattern_open_end(patterns.element_ref(value), patterns, types)
-        }),
-        SyntaxPattern::RecordEmpty { dot_start: _ } => None,
+        SyntaxPattern::Variable { name: _, type_ } => match type_ {
+            Some(type_) => syntax_type_open_end(type_, types),
+            None => no_open_end_kinds,
+        },
+        SyntaxPattern::Variant { name: _, value } => match value {
+            Some(value) => syntax_pattern_open_end(patterns.element_ref(value), patterns, types),
+            None => no_open_end_kinds,
+        },
+        SyntaxPattern::RecordEmpty { dot_start: _ } => no_open_end_kinds,
         SyntaxPattern::Record {
             field0_name: _,
             field0_value,
             field1_up,
-        } => Some(
-            field1_up
+        } => {
+            let last_field_open_end = field1_up
                 .last()
-                .map(|last_field| {
-                    last_field
-                        .value
-                        .as_ref()
-                        .and_then(|last_field_value| {
-                            syntax_pattern_open_end(last_field_value, patterns, types)
-                        })
-                        .unwrap_or(OpenEndKind::Record)
-                })
+                .map(|last_field| last_field.value.as_ref())
                 .unwrap_or_else(|| {
                     field0_value
                         .as_ref()
                         .map(|field0_value| patterns.element_ref(field0_value))
-                        .and_then(|last_field_value| {
-                            syntax_pattern_open_end(last_field_value, patterns, types)
-                        })
-                        .unwrap_or(OpenEndKind::Record)
-                }),
-        ),
+                })
+                .map(|last_field_value| syntax_pattern_open_end(last_field_value, patterns, types))
+                .unwrap_or(no_open_end_kinds);
+            OpenEndKinds {
+                record: true,
+                ..last_field_open_end
+            }
+        }
         SyntaxPattern::Parenthesized {
             open_paren_start: _,
             inner,
             closed_paren_start: _,
-        } => inner.as_ref().and_then(|inner| {
-            syntax_pattern_open_end(patterns.element_ref(inner), patterns, types)
-        }),
+        } => match inner {
+            Some(inner) => syntax_pattern_open_end(patterns.element_ref(inner), patterns, types),
+            None => no_open_end_kinds,
+        },
     }
 }
 fn syntax_pattern_unparenthesized_format<Types, Patterns>(
@@ -10988,7 +11012,7 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                             );
                         },
                         || syntax_pattern_open_end(value, patterns, types),
-                        OpenEndKind::Record,
+                        |open_end| open_end.record,
                         field_count,
                         0,
                         field0_name.start,
@@ -11014,7 +11038,7 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                                 );
                             },
                             || syntax_pattern_open_end(value, patterns, types),
-                            OpenEndKind::Record,
+                            |open_end| open_end.record,
                             field_count,
                             field_index,
                             field.name.start,
@@ -11063,9 +11087,7 @@ fn syntax_angled_type_arguments_format<Types>(
                 syntax_type_unparenthesized_format(formatted, indent, types, argument0);
             } else {
                 let argument0_line_span = range_line_span(type_range(argument0, types));
-                if syntax_type_open_end(argument0, types)
-                    .is_some_and(|open_end| open_end == OpenEndKind::TypeConstruct)
-                {
+                if syntax_type_open_end(argument0, types).type_construct {
                     formatted.push('(');
                     if argument0_line_span == LineSpan::Multiple {
                         linebreak_indented_into(formatted, next_indent(indent));
@@ -11111,7 +11133,7 @@ fn syntax_angled_type_arguments_format<Types>(
                         syntax_type_unparenthesized_format(formatted, indent, types, argument_type);
                     },
                     || syntax_type_open_end(argument_type, types),
-                    OpenEndKind::TypeConstruct,
+                    |open_end| open_end.type_construct,
                     type_argument_count,
                     argument_index,
                     argument.comma_start,
@@ -11128,90 +11150,81 @@ fn syntax_angled_type_arguments_format<Types>(
 fn syntax_type_open_end<Types>(
     type_: &SyntaxType<Types>,
     types: &core::Vec<Types, SyntaxType<Types>>,
-) -> Option<OpenEndKind> {
+) -> OpenEndKinds {
     match type_ {
-        SyntaxType::Variable(_) => None,
-        SyntaxType::RecordEmpty { dot_start: _ } => None,
+        SyntaxType::Variable(_) => no_open_end_kinds,
+        SyntaxType::RecordEmpty { dot_start: _ } => no_open_end_kinds,
         SyntaxType::Record {
             field0_name: _,
             field0_value,
             field1_up,
-        } => Some(
-            field1_up
+        } => {
+            let last_field_open_end = field1_up
                 .last()
-                .map(|last_field| {
-                    last_field
-                        .value
-                        .as_ref()
-                        .and_then(|last_field_value| syntax_type_open_end(last_field_value, types))
-                        .unwrap_or(OpenEndKind::Record)
-                })
+                .map(|last_field| last_field.value.as_ref())
                 .unwrap_or_else(|| {
                     field0_value
                         .as_ref()
                         .map(|field0_value| types.element_ref(field0_value))
-                        .and_then(|last_field_value| syntax_type_open_end(last_field_value, types))
-                        .unwrap_or(OpenEndKind::Record)
-                }),
-        ),
-        SyntaxType::ChoiceEmpty { bar_start: _ } => None,
+                })
+                .map(|last_field_value| syntax_type_open_end(last_field_value, types))
+                .unwrap_or(no_open_end_kinds);
+            OpenEndKinds {
+                record: true,
+                ..last_field_open_end
+            }
+        }
+        SyntaxType::ChoiceEmpty { bar_start: _ } => no_open_end_kinds,
         SyntaxType::Choice {
             variant0_name: _,
             variant0_value,
             variant1_up,
-        } => Some(
-            variant1_up
+        } => {
+            let last_variant_open_end = variant1_up
                 .last()
-                .map(|last_variant| {
-                    last_variant
-                        .value
-                        .as_ref()
-                        .and_then(|last_variant_value| {
-                            syntax_type_open_end(last_variant_value, types)
-                        })
-                        .unwrap_or(OpenEndKind::TypeChoice)
-                })
+                .map(|last_variant| last_variant.value.as_ref())
                 .unwrap_or_else(|| {
                     variant0_value
                         .as_ref()
                         .map(|variant0_value| types.element_ref(variant0_value))
-                        .and_then(|last_variant_value| {
-                            syntax_type_open_end(last_variant_value, types)
-                        })
-                        .unwrap_or(OpenEndKind::TypeChoice)
-                }),
-        ),
-        SyntaxType::ConstructWithoutArguments(_) => None,
+                })
+                .map(|last_variant_value| syntax_type_open_end(last_variant_value, types))
+                .unwrap_or(no_open_end_kinds);
+            OpenEndKinds {
+                type_choice: true,
+                ..last_variant_open_end
+            }
+        }
+        SyntaxType::ConstructWithoutArguments(_) => no_open_end_kinds,
         SyntaxType::ConstructWithArguments {
             underscore_start: _,
             name: _,
             argument0,
             argument1_up,
-        } => Some(
-            argument1_up
+        } => {
+            let last_argument_open_end = argument1_up
                 .last()
-                .map(|last_argument| {
-                    last_argument
-                        .type_
-                        .as_ref()
-                        .and_then(|last_argument| syntax_type_open_end(last_argument, types))
-                        .unwrap_or(OpenEndKind::TypeConstruct)
-                })
+                .map(|last_argument| last_argument.type_.as_ref())
                 .unwrap_or_else(|| {
                     argument0
                         .as_ref()
                         .map(|argument0| types.element_ref(argument0))
-                        .and_then(|last_argument| syntax_type_open_end(last_argument, types))
-                        .unwrap_or(OpenEndKind::TypeConstruct)
-                }),
-        ),
+                })
+                .map(|last_argument| syntax_type_open_end(last_argument, types))
+                .unwrap_or(no_open_end_kinds);
+            OpenEndKinds {
+                type_construct: true,
+                ..last_argument_open_end
+            }
+        }
         SyntaxType::Parenthesized {
             open_paren_start: _,
             inner,
             closed_paren_start: _,
-        } => inner
-            .as_ref()
-            .and_then(|inner| syntax_type_open_end(types.element_ref(inner), types)),
+        } => match inner {
+            Some(inner) => syntax_type_open_end(types.element_ref(inner), types),
+            None => no_open_end_kinds,
+        },
     }
 }
 fn syntax_type_unparenthesized_format<Types>(
@@ -11257,7 +11270,7 @@ fn syntax_type_unparenthesized_format<Types>(
                             syntax_type_unparenthesized_format(formatted, indent, types, argument0);
                         },
                         || syntax_type_open_end(argument0, types),
-                        OpenEndKind::TypeConstruct,
+                        |open_end| open_end.type_construct,
                         argument_count,
                         0,
                         *underscore_start,
@@ -11285,7 +11298,7 @@ fn syntax_type_unparenthesized_format<Types>(
                             );
                         },
                         || syntax_type_open_end(argument_type, types),
-                        OpenEndKind::TypeConstruct,
+                        |open_end| open_end.type_construct,
                         argument_count,
                         argument_index,
                         argument.comma_start,
@@ -11334,7 +11347,7 @@ fn syntax_type_unparenthesized_format<Types>(
                             syntax_type_unparenthesized_format(formatted, indent, types, value);
                         },
                         || syntax_type_open_end(value, types),
-                        OpenEndKind::Record,
+                        |open_end| open_end.record,
                         field_count,
                         0,
                         field0_name.start,
@@ -11358,7 +11371,7 @@ fn syntax_type_unparenthesized_format<Types>(
                                 syntax_type_unparenthesized_format(formatted, indent, types, value);
                             },
                             || syntax_type_open_end(value, types),
-                            OpenEndKind::Record,
+                            |open_end| open_end.record,
                             field_count,
                             field_index,
                             field.name.start,
@@ -11391,7 +11404,7 @@ fn syntax_type_unparenthesized_format<Types>(
                             syntax_type_unparenthesized_format(formatted, indent, types, value);
                         },
                         || syntax_type_open_end(value, types),
-                        OpenEndKind::TypeChoice,
+                        |open_end| open_end.type_choice,
                         variant_count,
                         0,
                         variant0_name.start,
@@ -11416,7 +11429,7 @@ fn syntax_type_unparenthesized_format<Types>(
                                 syntax_type_unparenthesized_format(formatted, indent, types, value);
                             },
                             || syntax_type_open_end(value, types),
-                            OpenEndKind::TypeChoice,
+                            |open_end| open_end.type_choice,
                             variant_count,
                             variant_index,
                             variant.name.start,

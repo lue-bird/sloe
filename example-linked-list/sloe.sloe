@@ -22,10 +22,11 @@ fn stack-pop
     .stack stack _stack Origin, Element
     :>
     .nodes _vec Origin, _stack Origin, Element
-    .element
+    .element (
         _opt
         .head Element
         .tail _stack Origin, Element
+        )
     >
     ? stack
     = |empty . >
@@ -37,7 +38,7 @@ fn stack-pop
                 .tail _stack Origin, Element
                 >
             .
-    = |stacked .head head .tail tail-slot >
+    = |stacked .head head .tail tail-slot > (
         ? _vec-take .vec nodes .slot tail-slot = .vec nodes .element tail >
         .nodes nodes
         .element (
@@ -48,6 +49,7 @@ fn stack-pop
                 >
             .head head .tail tail
             )
+        )
 
 fn stack-fold
     .nodes nodes _vec Origin, _stack Origin, Element
