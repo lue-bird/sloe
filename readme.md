@@ -528,9 +528,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- fix paren bug when open end has multiple kinds simultaneously e.g. record and query.
-  The kind type should be changed to a struct
-
 - find a better symbol for `:>`. It looks unaligned (maybe that's okay?)
 
 - add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-ppositive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
