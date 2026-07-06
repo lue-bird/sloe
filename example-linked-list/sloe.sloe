@@ -8,8 +8,8 @@ ty stack Origin, Element
 
 fn stack-cons
     .nodes nodes _vec Origin, _stack Origin, Element
-    .tail tail _stack Origin, Element
-    .new-head new-head Element
+    .stack tail _stack Origin, Element
+    .new new-head Element
     :>
     .nodes _vec Origin, _stack Origin, Element
     .stack _stack Origin, Element
@@ -37,7 +37,7 @@ fn stack-pop
                 .tail _stack Origin, Element
                 >
             .
-    = |stacked .head head .tail tail-slot > (
+    = |stacked .head head .tail tail-slot >
         ? _vec-take .vec nodes .slot tail-slot = .vec nodes .element tail >
         .nodes nodes
         .element (
@@ -48,7 +48,6 @@ fn stack-pop
                 >
             .head head .tail tail
             )
-        )
 
 fn stack-fold
     .nodes nodes _vec Origin, _stack Origin, Element
@@ -61,41 +60,35 @@ fn stack-fold
     >
     ? stack
     = |empty . > (
-        ? _fn-rid reduce = . >
-        .nodes nodes .state state
+        ? _fn-rid reduce
+        = . > .nodes nodes .state state
         )
-    = |stacked .head head .tail tail-slot > (
-        ? _vec-take .vec nodes .slot tail-slot = .vec nodes .element tail >
-        ? _fn-dup reduce = .a reduce-a .b reduce-b >
-        ? _reduce-a .state state .element head = elements-nodes >
-        _stack-fold
-        .nodes nodes
-        .stack tail
-        .reduce reduce-b
-        .state elements-nodes
-        )
+    = |stacked .head head .tail tail-slot >
+    ? _vec-take .vec nodes .slot tail-slot = .vec nodes .element tail >
+    ? _fn-dup reduce = .a reduce-a .b reduce-b >
+    ? _reduce-a .state state .element head = elements-nodes >
+    _stack-fold
+    .nodes nodes
+    .stack tail
+    .reduce reduce-b
+    .state elements-nodes
 
 fn example . :> u32 >
     origin example-stack-origin
-    ? _vec-empty<_stack example-stack-origin, u32> example-stack-origin = example-stack-nodes >
     ?
-        _stack-cons
-        .nodes example-stack-nodes
-        .tail |empty<_stack example-stack-origin, u32> .
-        .new-head 39 u32
-    = .nodes example-stack-nodes .stack example-stack >
-    ?
-        _stack-cons
-        .nodes example-stack-nodes
-        .tail example-stack
-        .new-head 3 u32
-    = .nodes example-stack-nodes .stack example-stack >
+        .nodes _vec-empty<_stack example-stack-origin, u32> example-stack-origin
+        .stack |empty<_stack example-stack-origin, u32> .
+    = example-stack >
+    ? _stack-cons .. example-stack .new 39 u32 = example-stack >
+    ? _stack-cons .. example-stack .new 3 u32 = example-stack >
     ?
         _stack-fold
-        .nodes example-stack-nodes
-        .stack example-stack
+        .. example-stack
         .state 0 u32
-        .reduce (fn .state state u32 .element element u32 > _u32-add-clamp .a state .b element)
+        .reduce (
+            fn .state state u32 .element element u32 >
+            _u32-add-clamp .a state .b element
+            )
     = .nodes example-stack-nodes .state result >
     ? _vec-rid example-stack-nodes = . >
     result

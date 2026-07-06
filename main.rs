@@ -1863,25 +1863,37 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         sloe::SyntaxExpression::RecordEmpty { dot_start } => {
             keyword_highlight(state, ".", *dot_start);
         }
-        sloe::SyntaxExpression::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => {
-            sloe_syntax_field_name_highlight(state, field0_name);
-            if let Some(field0_value) = field0_value {
-                sloe_syntax_expression_highlight(
-                    state,
-                    expressions,
-                    patterns,
-                    types,
-                    expressions.element_ref(field0_value),
-                );
-            }
-            for field in field1_up {
-                sloe_syntax_trailing_field_highlight(state, field, |state, value| {
-                    sloe_syntax_expression_highlight(state, expressions, patterns, types, value);
-                });
+        sloe::SyntaxExpression::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    sloe_compile::SyntaxExpressionRecordPart::Field { name, value } => {
+                        sloe_syntax_optional_field_name_highlight(state, name);
+                        if let Some(value) = value {
+                            sloe_syntax_expression_highlight(
+                                state,
+                                expressions,
+                                patterns,
+                                types,
+                                expressions.element_ref(value),
+                            );
+                        }
+                    }
+                    sloe_compile::SyntaxExpressionRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        keyword_highlight(state, "..", *dot_dot_start);
+                        if let Some(record) = record {
+                            sloe_syntax_expression_highlight(
+                                state,
+                                expressions,
+                                patterns,
+                                types,
+                                expressions.element_ref(record),
+                            );
+                        }
+                    }
+                }
             }
         }
         sloe::SyntaxExpression::Parenthesized {

@@ -27,7 +27,7 @@ This allows
 - representing things that should be cleaned up in a specific way, like memory that should be freed
 - guaranteeing non-overlapping pointed memory regions can enable some more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently none of the languages sloe compile to make much explicit use of this fact)
 
-This can feel annoying and clunky. Think e.g. `fn vec-occupied-count .vec _vec ... :> .vec _vec ... .count u32` (take a collection, give back its size and the given collection).
+This can feel annoying and clunky. Think e.g. `fn span-length span _span Origin :> .span _span Origin .length p32` (take a span, give back its size and the given span).
 Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't).
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
@@ -37,13 +37,22 @@ Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making th
 
 # concept: flat memory collection `vec`
 A collection which can mark some ranges within itself as vacant.
-This can be used to "return" memory which has become outdated or useless, for example with `vec-take` and `vec-span-snatch-vec-span`.
+This can be used to "return" memory which has become outdated or useless, for example with `vec-take` and `vec-span-add-take-vec-span`.
 Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
 Further reading if interested: This concept is often called slot map, reusing memory.
 In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
 [Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
 There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
+
+# concept: collections cannot access their elements
+Similar to allocators, you cannot access, alter or iterate their contained values.
+Collections are seen as storage into which you can add elements, slices etc.
+Whenever you do so, you'll get `(empty-)slot`s and `(empty-)span`s that assert your right to access and alter the referenced elements as well as your duty to announce their release at some point.
+
+The alternative to this would be to make tiny allocations for each and every slot and small span and to allow recursive types.
+This is not uncommon in languages like rust.
+However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead have a big array of each kind and point into it.
 
 # concept: distinct origin of a collection in your code
 Every created collection has a correlated origin.
@@ -73,15 +82,7 @@ I really like this idea but understand that it cannot be implemented in e.g. rus
 In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
 
 # examples
-## pass in an origin from the outside (rare)
-```sloe
-fn vec-empty<Element> origin _origin Origin :> _vec Origin, Element
-```
-shift the responsibility for cleanup to the caller.
-This is done for most initializer functions, e.g. for the initial persistent application state.
-For most other functions, it's more common to pass in an existing collection
-
-## creating a new origin, slots and spans
+## creating new origins, slots and spans
 `origin some-name` creates a new origin variable and a local unique type for the start offset of its scope.
 An origin type does not have a `-dup` helper and thus can only be used for one collection.
 At the end of the underlying origin of the annotated origin type, the memory of the value with that origin will be deallocated.
@@ -166,6 +167,15 @@ fn state-to-interfaces-into
     interfaces
 ```
 
+## pass in origins or collections from the outside
+
+```sloe
+fn vec-empty<Element> origin _origin Origin :> _vec Origin, Element
+```
+shift the responsibility for cleanup to the caller.
+This is done for most initializer functions, e.g. for the initial persistent application state.
+For most other functions, it's more common to pass in an existing collection
+
 # known limitations & design weaknesses
 - scattered sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
   For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
@@ -176,6 +186,14 @@ fn state-to-interfaces-into
   runs into the need to handle the impossible case of the given parts being disconnected.
   Operations like `vec-opt-span-add` are a resonable compromise on its face
   but are pretty far from optimal (it will (!) move the whole span to the end and add the span as vacant instead of reusing)
+- It seems quite natural to represent a span of structs as e.g. `.field-names _span Field-names .field-values _span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
+  The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
+  Honestly, the current "fold over one span and step through the rest with `span-start`"
+  is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
+  Zig "fixes" this by introducing special syntax and crashing if the length is different,
+  which of course is not an option in sloe
+- sometimes, you really own all the elements of a vec in one place.
+  Splitting it into `opt span`+`vec` is annoying and wastes a bit of space
 - by default, most passed arguments are quite fat on the stack (e.g. `vec` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
@@ -210,9 +228,14 @@ _some-function<Type, Arguments> _inner-call-as-the-argument inner-inner-argument
 # The last field value can end in a record without needing to be parenthesized
 .first-field first-value .second-field second-value
 
-# "empty value", like an empty record/void/unit.
-# commonly used for variants "without a value" or empty state
+# "empty record", like void/unit.
+# commonly used for variants "without a value", empty state
+# or as the result of functions like u32-rid
 .
+
+# ..spread a record into other fields
+# Can be placed anywhere and multiple are allowed
+.field-1st value-1st .. one-existing-record .. another .field-2nd value-2nd
 
 # local fn of type fn.
 # the pattern must add a type to all variables
@@ -505,15 +528,12 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add fold2/3/4/5/?s and or preferably a ways to fold over arbitrarily many spans etc.
-  This should make things like `.field-names span Field-names .field-values span Values`
-  much more attractive/viable. This pattern can avoid "type parameter spam" for any record
+- fix paren bug when open end has multiple kinds simultaneously e.g. record and query.
+  The kind type should be changed to a struct
 
 - add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-ppositive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
 
-- fix bugs and inline TODOs
-
-- add field spread syntax `..existing-record .other-fields-before-and-or-after` (in types and expressions, not patterns). The spreaded syntax must have a known (not-variable) type.
+- add field spread syntax `.. existing-record .other-fields-before-and-or-after` (in types expressions already done, patterns should have this syntax). The spreaded syntax must have a known (not-variable) type.
   The benefit is: flat records, flat choices, much less repetition/verbosity, e.g.
   ```sloe
   fn draw-rectangle-centered .x x f32 .y y f32 .width width f32 .height height f32 :> ...
@@ -521,16 +541,16 @@ cargo install --offline --debug --path . sloe
   fn example-0 . :> ... >
       ? .x 300 f32 .y 400 f32 = dimensions >
       ? .x 500 f32 .y 500 f32 = dimensions >
-      _draw-rectangle-centered ..dimensions ..center
+      _draw-rectangle-centered .. dimensions .. center
   
   fn greet
     .name name str .result-origin result-origin _origin Origin
     :> .vec _vec Origin, char .span _opt _span Origin >
     ? .vec _vec-empty<char> result-origin .span |absent<_opt _span Origin> .
     = build >
-    ? _vec-opt-span-add-str ..build .new "Hello, " = build >
-    ? _vec-opt-span-add-str ..build .new name = build >
-    _vec-opt-span-add-str ..build .new "!\n"
+    ? _vec-opt-span-add-str .. build .new "Hello, " = build >
+    ? _vec-opt-span-add-str .. build .new name = build >
+    _vec-opt-span-add-str .. build .new "!\n"
   ```
   In general, this is wonderful for context and state of which parts are only sometimes changed (so also not quite as explicit).
   A disadvantage of this sugar is that this bloats the language
@@ -543,21 +563,11 @@ cargo install --offline --debug --path . sloe
     - find existing work on pattern matching. I will probably start with a
       ```zig
       if (some_magic(case0_pattern, value)) |case0_value| ...
-      else if (some_magic(case0_pattern, value)) |case0_value| ...
+      else if (some_magic(case1_pattern, value)) |case1_value| ...
       else unreachable
       ```
       and then consider switching to manually generated decision-tree-like code with nested switches
-    - local variables cannot shadow project fn and const names.
-      I think the most reasonable resolution is to change every `local_variable` to `@"%local_variable"` quite like llvm. Same for type arguments but uppercase
-    - (not sure) think of a way to "split an origin". Something like 
-      ```
-      origin-dup origin _origin Local :> .a _origin (.a Local) .b _origin (.b Local)
-      ```
-      As you can see, this is already possible. However notice that annotating
-      an origin like that is very undescriptive.
-      type aliases can alleviate this problem a tiny bit but the default is still meh.
-      
-      Why would an `origin-dup` be useful at all?
+    - think of a way to "split an origin":
         - creating initial state in sloe code, without needing to pass
           an unknown amount of origins in from the outside.
         - type aliases may only need to take a single origin type parameter
@@ -565,28 +575,34 @@ cargo install --offline --debug --path . sloe
           ```sloe
           ty expression Origin
               |int i32
-              |string _opt _span _str-origin Origin
-              |vec _opt _span _expression-origin Origin
+              |string _opt (_span .str Origin)
+              |vec _opt (_span .expression Origin)
               |call
-                  .function _slot _expression-origin Origin
-                  .arguments _span _expression-origin Origin
+                  .function (_slot .expression Origin)
+                  .arguments (_span .expression Origin)
               |lambda
-                  .parameters _span _pattern-origin Origin
-                  .result _slot _expression-origin Origin
-        
+                  .parameters (_span .pattern Origin)
+                  .result (_slot .expression Origin)
+          ```
+          I think baking origin deriving syntax into the language is the easiest solution:
+          ```sloe
+          origin .derived-origin-0 .derived-origin-1 original-origin
+          # derived-origin-0 is of type _origin (.derived-origin-0 original-origin)
+          # derived-origin-1 is of type _origin (.derived-origin-1 original-origin)
+          # the original-origin variable is consumed
+          result-expression
+          ```
+          Syntax to be decided.
+          
+          In theory, the same effect could be achieved without syntax additions:
+          ```sloe
+          origin-dup origin _origin Local :> .a _origin (.a Local) .b _origin (.b Local)
           ty str-origin Origin .a Origin
           ty expression-origin .b .a Origin
           ty pattern-origin .b .b Origin
           ```
+          However, notice that annotating an origin like that is very undescriptive.
           The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
           
-          I think baking `origin-derive` into the language is the easiest solution but I'd prefer to avoid this if at all possible
-          ```sloe
-          origin derived-origin derived-from original-origin
-          # derived-origin is of type _origin (.derived-origin original-origin)
-          # the original-origin variable is not available anymore if it existed
-          # but its type is still available
-          ...
-          result-expression
-          ```
-          This avoids potential overlapping origins with the sme name. However, this seems very confusing.
+
+- fix bugs and TODOs
