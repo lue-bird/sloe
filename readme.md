@@ -340,7 +340,8 @@ ty type-name Potential Type-Parameters
   This is likely the better option anyway (even though it "hops twice")
   as it makes searching for the right span possible (and reasonably fast)
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html), maybe even alongside `in-a-to-z`, `in-0-to-9` and other choice types). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the reverse operations which return `opt`
-- consider introducing variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
+- add field spread syntax for types where overlapping field names is okay as long as their value types are equal
+- add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
 - consider introducing a way to usefully make use of vacant/occupied space in sloe code.
   e.g. consider adding `vec-add-vacant vec _vec Origin, Element :> _vec Origin, ELement` (probably same for vacant length)
   and `vec-fold-including-vacant .vec vec _vec Origin, Element .state State .step fn .state State .element opt Element, State :> State` (and maybe ways to peek for vacant spaces by plain `u32`)
@@ -532,29 +533,6 @@ cargo install --offline --debug --path . sloe
 
 - add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-ppositive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
 
-- add field spread syntax `.. existing-record .other-fields-before-and-or-after` (in typed patterns, in types expressions already done, untyped patterns should have this syntax). The spreaded syntax must have a known (not-variable) type.
-  The benefit is: flat records, flat choices, much less repetition/verbosity, e.g.
-  ```sloe
-  fn draw-rectangle-centered .x x f32 .y y f32 .width width f32 .height height f32 :> ...
-  
-  fn example-0 . :> ... >
-      ? .x 300 f32 .y 400 f32 = dimensions >
-      ? .x 500 f32 .y 500 f32 = dimensions >
-      _draw-rectangle-centered .. dimensions .. center
-  
-  fn greet
-    .name name str .result-origin result-origin _origin Origin
-    :> .vec _vec Origin, char .span _opt _span Origin >
-    ? .vec _vec-empty<char> result-origin .span |absent<_opt _span Origin> .
-    = build >
-    ? _vec-opt-span-add-str .. build .new "Hello, " = build >
-    ? _vec-opt-span-add-str .. build .new name = build >
-    _vec-opt-span-add-str .. build .new "!\n"
-  ```
-  In general, this is wonderful for context and state of which parts are only sometimes changed (so also not quite as explicit).
-  A disadvantage of this sugar is that this bloats the language
-  for a feature that is not relevant for correctness (apart from making relevant things more obvious)
-
 - implement conversion to zig. current semi-blockers:
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
     - zig actually doesn't have concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
@@ -603,10 +581,16 @@ cargo install --offline --debug --path . sloe
           However, notice that annotating an origin like that is very undescriptive.
           The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
 
-- (not fully sure) add pattern syntax `_` (untyped) / `_ value-type` (typed) where `_` takes the name of the parent.
+- (not fully sure) Add explicit field punning syntax:
+  Add pattern syntax `_` (untyped) / `_ value-type` (typed) and expression syntax `_` where `_` behaves like a variable with the name of the parent.
   So e.g. `.field (_ value-type)` would introduce a variable named `field`.
-  and `|variant _` would introduce a variable named `variant`.
-  If no parent name exists (top level or parenthesized top level) an error is thrown.
-  The only goal here is making record patterns more convenient to work with (similar to swifts named parameters). The biggest worry I have is name clashes. Things like rename might also become a little more complex
+  and pattern `|variant _` would introduce a variable named `variant`.
+  Likewise, `linked-list-cons .nodes _ .linked-list numbers .new 3 u32`
+  would work if a variable named `nodes` exists.
+  If no parent name exists, an error is thrown.
+  The only goal here is making record patterns more convenient to work with (similar to swifts named parameters). The biggest worry I have is name clashes. Things like rename might also become a little more complex.
+  
+  I would normally not consider this as a feature, but since sloe is so painfully
+  explicit, I feel users deserve some sugar for their effort.
 
 - fix bugs and TODOs

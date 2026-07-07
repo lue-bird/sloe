@@ -123,9 +123,9 @@ pub enum SyntaxPattern<Patterns, Types> {
         dot_start: lsp_types::Position,
     },
     Record {
-        field0_name: WithStartPosition<Name>,
-        field0_value: Option<core::Slot<Patterns>>,
-        field1_up: Vec<SyntaxTrailingField<SyntaxPattern<Patterns, Types>>>,
+        part0: SyntaxRecordPart<Patterns>,
+        // possible optimization: use SyntaxPattern directly, not slot
+        part1_up: Vec<SyntaxRecordPart<Patterns>>,
     },
     Parenthesized {
         open_paren_start: lsp_types::Position,
@@ -196,9 +196,9 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         dot_start: lsp_types::Position,
     },
     Record {
-        part0: SyntaxExpressionRecordPart<Expressions>,
+        part0: SyntaxRecordPart<Expressions>,
         // possible optimization: use SyntaxExpression directly, not slot
-        part1_up: Vec<SyntaxExpressionRecordPart<Expressions>>,
+        part1_up: Vec<SyntaxRecordPart<Expressions>>,
     },
     Parenthesized {
         open_paren_start: lsp_types::Position,
@@ -228,14 +228,14 @@ pub struct SyntaxExpressionQueryCase<Expressions, Patterns, Types> {
     pub result: Option<SyntaxExpression<Expressions, Patterns, Types>>,
 }
 #[derive(Debug)]
-pub enum SyntaxExpressionRecordPart<Expressions> {
+pub enum SyntaxRecordPart<Sub> {
     Field {
         name: WithStartPosition<Option<Name>>,
-        value: Option<core::Slot<Expressions>>,
+        value: Option<core::Slot<Sub>>,
     },
     Spread {
         dot_dot_start: lsp_types::Position,
-        record: Option<core::Slot<Expressions>>,
+        record: Option<core::Slot<Sub>>,
     },
 }
 
@@ -469,11 +469,13 @@ pub fn pattern_start<Patterns, Types>(
         SyntaxPattern::Variable { name, type_: _ } => name.start,
         SyntaxPattern::Variant { name, value: _ } => name.start,
         SyntaxPattern::RecordEmpty { dot_start } => *dot_start,
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value: _,
-            field1_up: _,
-        } => field0_name.start,
+        SyntaxPattern::Record { part0, part1_up: _ } => match part0 {
+            SyntaxRecordPart::Field { name, value: _ } => name.start,
+            SyntaxRecordPart::Spread {
+                dot_dot_start,
+                record: _,
+            } => *dot_dot_start,
+        },
         SyntaxPattern::Parenthesized {
             open_paren_start,
             inner: _,
@@ -496,21 +498,19 @@ pub fn pattern_end<Patterns, Types>(
             .map(|value| pattern_end(patterns.element_ref(value), patterns, types))
             .unwrap_or_else(|| optional_variant_name_end(name)),
         SyntaxPattern::RecordEmpty { dot_start } => symbol_end(*dot_start, "."),
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => field1_up
-            .last()
-            .map(|last_field| {
-                trailing_field_end(last_field, |value| pattern_end(value, patterns, types))
-            })
-            .or_else(|| {
-                field0_value.as_ref().map(|field0_value| {
-                    pattern_end(patterns.element_ref(field0_value), patterns, types)
-                })
-            })
-            .unwrap_or_else(|| field_name_end(with_start_position_as_ref(field0_name))),
+        SyntaxPattern::Record { part0, part1_up } => match part1_up.last().unwrap_or(part0) {
+            SyntaxRecordPart::Field { name, value } => value
+                .as_ref()
+                .map(|value| pattern_end(patterns.element_ref(value), patterns, types))
+                .unwrap_or_else(|| optional_field_name_end(name)),
+            SyntaxRecordPart::Spread {
+                dot_dot_start,
+                record,
+            } => record
+                .as_ref()
+                .map(|record| pattern_end(patterns.element_ref(record), patterns, types))
+                .unwrap_or_else(|| symbol_end(*dot_dot_start, "..")),
+        },
         SyntaxPattern::Parenthesized {
             open_paren_start,
             inner,
@@ -659,11 +659,11 @@ pub fn expression_start<Expressions, Patterns, Types>(
     }
 }
 fn expression_record_part_start<Expressions>(
-    part: &SyntaxExpressionRecordPart<Expressions>,
+    part: &SyntaxRecordPart<Expressions>,
 ) -> lsp_types::Position {
     match part {
-        SyntaxExpressionRecordPart::Field { name, value: _ } => name.start,
-        SyntaxExpressionRecordPart::Spread {
+        SyntaxRecordPart::Field { name, value: _ } => name.start,
+        SyntaxRecordPart::Spread {
             dot_dot_start,
             record: _,
         } => *dot_dot_start,
@@ -840,19 +840,19 @@ fn comments_end(comments: &SyntaxComments) -> lsp_types::Position {
     )
 }
 pub fn expression_record_part_end<Expressions, Patterns, Types>(
-    part: &SyntaxExpressionRecordPart<Expressions>,
+    part: &SyntaxRecordPart<Expressions>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     match part {
-        SyntaxExpressionRecordPart::Field { name, value } => value
+        SyntaxRecordPart::Field { name, value } => value
             .as_ref()
             .map(|value| {
                 expression_end(expressions.element_ref(value), expressions, patterns, types)
             })
             .unwrap_or_else(|| optional_field_name_end(name)),
-        SyntaxExpressionRecordPart::Spread {
+        SyntaxRecordPart::Spread {
             dot_dot_start,
             record,
         } => record
@@ -1456,45 +1456,64 @@ fn parse_pattern_record_typed<Patterns, Types>(
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
-    let Some(field0_name) = parse_field_name(state) else {
+    let part0 = if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
+        parse_sloe_whitespace(state);
+        let record = parse_pattern_typed(state, patterns, types);
+        SyntaxRecordPart::Spread {
+            dot_dot_start: dot_dot_start,
+            record: record.map(|record| patterns.add(record)),
+        }
+    } else if let Some(name) = parse_field_name(state) {
+        let Some(name_value) = name.value else {
+            return Some(SyntaxPattern::RecordEmpty {
+                dot_start: name.start,
+            });
+        };
+        parse_sloe_whitespace(state);
+        let value = parse_pattern_typed(state, patterns, types);
+        SyntaxRecordPart::Field {
+            name: WithStartPosition {
+                value: Some(name_value),
+                start: name.start,
+            },
+            value: value.map(|record| patterns.add(record)),
+        }
+    } else {
         return None;
     };
-    let Some(field0_name_value) = field0_name.value else {
-        return Some(SyntaxPattern::RecordEmpty {
-            dot_start: field0_name.start,
-        });
-    };
     parse_sloe_whitespace(state);
-    let field0_value = parse_pattern_typed(state, patterns, types);
-    parse_sloe_whitespace(state);
-    let mut field1_up = Vec::new();
-    while let Some(field) = parse_pattern_field_typed(state, patterns, types) {
-        field1_up.push(field);
+    let mut part1_up = Vec::new();
+    while let Some(field) = parse_pattern_record_part_typed(state, patterns, types) {
+        part1_up.push(field);
         parse_sloe_whitespace(state);
     }
     Some(SyntaxPattern::Record {
-        field0_name: WithStartPosition {
-            start: field0_name.start,
-            value: field0_name_value,
-        },
-        field0_value: field0_value.map(|field0_value| patterns.add(field0_value)),
-        field1_up: field1_up,
+        part0: part0,
+        part1_up: part1_up,
     })
 }
-fn parse_pattern_field_typed<Patterns, Types>(
+fn parse_pattern_record_part_typed<Patterns, Types>(
     state: &mut ParseState,
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
-) -> Option<SyntaxTrailingField<SyntaxPattern<Patterns, Types>>> {
-    let Some(name) = parse_field_name(state) else {
+) -> Option<SyntaxRecordPart<Patterns>> {
+    if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
+        parse_sloe_whitespace(state);
+        let record = parse_pattern_typed(state, patterns, types);
+        Some(SyntaxRecordPart::Spread {
+            dot_dot_start: dot_dot_start,
+            record: record.map(|record| patterns.add(record)),
+        })
+    } else if let Some(name) = parse_field_name(state) {
+        parse_sloe_whitespace(state);
+        let value = parse_pattern_typed(state, patterns, types);
+        Some(SyntaxRecordPart::Field {
+            name: name,
+            value: value.map(|record| patterns.add(record)),
+        })
+    } else {
         return None;
-    };
-    parse_sloe_whitespace(state);
-    let value = parse_pattern_typed(state, patterns, types);
-    Some(SyntaxTrailingField {
-        name: name,
-        value: value,
-    })
+    }
 }
 fn parse_pattern_record_untyped<Patterns, Types>(
     state: &mut ParseState,
@@ -1514,16 +1533,21 @@ fn parse_pattern_record_untyped<Patterns, Types>(
     parse_sloe_whitespace(state);
     let mut field1_up = Vec::new();
     while let Some(field) = parse_pattern_field_untyped(state, patterns, types) {
-        field1_up.push(field);
+        field1_up.push(SyntaxRecordPart::Field {
+            name: field.name,
+            value: field.value.map(|field_value| patterns.add(field_value)),
+        });
         parse_sloe_whitespace(state);
     }
     Some(SyntaxPattern::Record {
-        field0_name: WithStartPosition {
-            start: field0_name.start,
-            value: field0_name_value,
+        part0: SyntaxRecordPart::Field {
+            name: WithStartPosition {
+                start: field0_name.start,
+                value: Some(field0_name_value),
+            },
+            value: field0_value.map(|field0_value| patterns.add(field0_value)),
         },
-        field0_value: field0_value.map(|field0_value| patterns.add(field0_value)),
-        field1_up: field1_up,
+        part1_up: field1_up,
     })
 }
 fn parse_pattern_field_untyped<Patterns, Types>(
@@ -1744,7 +1768,7 @@ fn parse_expression_record<Expressions, Patterns, Types>(
     let part0 = if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
         parse_sloe_whitespace(state);
         let record = parse_expression(state, expressions, patterns, types);
-        SyntaxExpressionRecordPart::Spread {
+        SyntaxRecordPart::Spread {
             dot_dot_start: dot_dot_start,
             record: record.map(|record| expressions.add(record)),
         }
@@ -1752,15 +1776,18 @@ fn parse_expression_record<Expressions, Patterns, Types>(
         // there are most likely more elegant ways of parsing and representing this.
         // best is probs make parse_field_name lookahead (so . itself doesn't parse).
         // This would also avoid some of the weird WithStart<Option<Name>> stuff
-        if name.value.is_none() {
+        let Some(name_value) = name.value else {
             return Some(SyntaxExpression::RecordEmpty {
                 dot_start: name.start,
             });
-        }
+        };
         parse_sloe_whitespace(state);
         let value = parse_expression(state, expressions, patterns, types);
-        SyntaxExpressionRecordPart::Field {
-            name: name,
+        SyntaxRecordPart::Field {
+            name: WithStartPosition {
+                value: Some(name_value),
+                start: name.start,
+            },
             value: value.map(|record| expressions.add(record)),
         }
     } else {
@@ -1782,18 +1809,18 @@ fn parse_expression_record_part<Expressions, Patterns, Types>(
     expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
-) -> Option<SyntaxExpressionRecordPart<Expressions>> {
+) -> Option<SyntaxRecordPart<Expressions>> {
     if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
         parse_sloe_whitespace(state);
         let record = parse_expression(state, expressions, patterns, types);
-        Some(SyntaxExpressionRecordPart::Spread {
+        Some(SyntaxRecordPart::Spread {
             dot_dot_start: dot_dot_start,
             record: record.map(|record| expressions.add(record)),
         })
     } else if let Some(name) = parse_field_name(state) {
         parse_sloe_whitespace(state);
         let value = parse_expression(state, expressions, patterns, types);
-        Some(SyntaxExpressionRecordPart::Field {
+        Some(SyntaxRecordPart::Field {
             name: name,
             value: value.map(|record| expressions.add(record)),
         })
@@ -2145,6 +2172,7 @@ pub struct CompiledProject {
     pub fns: std::collections::HashMap<Name, CheckedProjectFn>,
     pub records: std::collections::HashSet<Vec<Name>>,
     pub queries: std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    pub spread_records: std::collections::HashMap<lsp_types::Position, Vec<Name>>,
 }
 #[derive(Clone, Debug)]
 pub struct CheckedTypeAlias {
@@ -2448,6 +2476,7 @@ If you wanted to start a project declaration, try one of:
                     project_fn,
                     &mut records_used,
                     &mut choices_used,
+                    &mut checked_spread_records,
                 ),
             );
         }
@@ -2753,7 +2782,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         SyntaxExpression::Record { part0, part1_up } => {
             for part in std::iter::once(part0).chain(part1_up.iter()) {
                 match part {
-                    SyntaxExpressionRecordPart::Field { name: _, value } => {
+                    SyntaxRecordPart::Field { name: _, value } => {
                         if let Some(value) = value {
                             syntax_expression_connect_variables_in_graph_from(
                                 origin_project_fn_graph_node,
@@ -2766,7 +2795,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                             );
                         }
                     }
-                    SyntaxExpressionRecordPart::Spread {
+                    SyntaxRecordPart::Spread {
                         dot_dot_start: _,
                         record,
                     } => {
@@ -2987,8 +3016,7 @@ fn checked_project_to_rust<Expressions, Patterns, Types>(
         fns: checked_project_fns,
         records: records_used,
         queries: checked_queries,
-        // fn_graph: project_fn_graph,
-        // fn_by_graph_node: project_fn_by_graph_node,
+        spread_records: checked_spread_records,
     }
 }
 fn syntax_choice_to_rust(used_choice_variants: &[Name]) -> syn::Item {
@@ -3234,6 +3262,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
     project_fn: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
+    checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
 ) -> CheckedProjectFn {
     let maybe_parameter_type = project_fn.parameter.as_ref().and_then(|parameter| {
         syntax_pattern_check(
@@ -3245,6 +3274,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
             patterns,
             types,
             &std::collections::HashMap::new(),
+            checked_spread_records,
             records_used,
             choices_used,
         )
@@ -3346,6 +3376,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
                 project_fn,
                 records_used,
                 choices_used,
+                checked_spread_records,
             )
         });
     let documentation = project_fn.documentation.as_ref().map(|documentation| {
@@ -3521,14 +3552,17 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
         where_clause: None,
     };
     let mut parameter_introduced_variables = std::collections::HashMap::new();
+    let mut rust_statements = Vec::new();
     let compiled_parameter = match syntax_pattern_to_rust(
         syntax_parameter,
         None,
         &mut parameter_introduced_variables,
         type_aliases,
+        checked_spread_records,
         patterns,
         types,
         &std::collections::HashMap::new(),
+        &mut rust_statements,
     ) {
         None => syn::Pat::Wild(syn::PatWild {
             attrs: vec![],
@@ -3553,6 +3587,7 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
             syntax_result,
         )
     };
+    rust_statements.extend(syn_spread_expr_block_into_stmts(compiled_result));
     syn::Item::Fn(syn::ItemFn {
         attrs: rust_attrs,
         vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
@@ -3578,7 +3613,10 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
             ),
             variadic: None,
         },
-        block: Box::new(syn_spread_expr_block(compiled_result)),
+        block: Box::new(syn::Block {
+            brace_token: syn::token::Brace(syn_span()),
+            stmts: rust_statements,
+        }),
     })
 }
 /// only use if you know `syntax_type` has already been called on it before
@@ -4746,6 +4784,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
+    checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> Option<CheckedPattern> {
@@ -4835,6 +4874,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
+                        checked_spread_records,
                         records_used,
                         choices_used,
                     ) else {
@@ -4900,6 +4940,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
+                        checked_spread_records,
                         records_used,
                         choices_used,
                     ) else {
@@ -4940,104 +4981,155 @@ fn syntax_pattern_check<'a, Patterns, Types>(
             type_: Type::Record(vec![]),
             catch: PatternCatch::Exhaustive,
         }),
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => {
-            let mut maybe_type_fields: Option<Vec<TypeField>> =
-                Some(Vec::with_capacity(1 + field1_up.len()));
+        SyntaxPattern::Record { part0, part1_up } => {
+            let mut type_fields: Vec<TypeField> = Vec::with_capacity(1 + part1_up.len());
             let mut field_catches: std::collections::BTreeMap<Name, PatternCatch> =
                 std::collections::BTreeMap::new();
-            for (field_name, field_value) in std::iter::once((
-                WithStartPosition {
-                    start: field0_name.start,
-                    value: Some(&field0_name.value),
-                },
-                field0_value
-                    .as_ref()
-                    .map(|value| patterns.element_ref(value)),
-            ))
-            .chain(field1_up.iter().map(|field| {
-                (
-                    WithStartPosition {
-                        start: field.name.start,
-                        value: field.name.value.as_ref(),
-                    },
-                    field.value.as_ref(),
-                )
-            })) {
-                let Some(field_name_value) = field_name.value else {
-                    errors.push(ErrorNode {
-                        range: symbol_range(field_name.start, "."),
-                        message: Box::from("missing field name after this dot ."),
-                    });
-                    return None;
-                };
-                let Some(field_value) = field_value else {
-                    errors.push(ErrorNode {
-                        range: field_name_range(WithStartPosition {
-                            start: field_name.start,
-                            value: field_name_value,
-                        }),
-                        message: Box::from("missing field value after this field name"),
-                    });
-                    return None;
-                };
-                if maybe_type_fields.as_ref().is_some_and(|type_fields| {
-                    type_fields
-                        .iter()
-                        .any(|type_field| type_field.name == field_name_value)
-                }) {
-                    errors.push(ErrorNode {
-                        range: field_name_range(WithStartPosition {
-                            start: field_name.start,
-                            value: field_name_value,
-                        }),
-                        message: Box::from(
-                            "a field with this name already exists in the record pattern",
-                        ),
-                    });
-                    return None;
-                }
-                let maybe_expected_type_record =
-                    expected_type.and_then(|expected_type| match expected_type {
-                        Type::Variable(_)
-                        | Type::Origin(_)
-                        | Type::CoreConstruct { .. }
-                        | Type::Choice { .. } => None,
-                        Type::Record(type_fields) => Some(type_fields),
-                    });
-                let Some(checked_field_value) = syntax_pattern_check(
-                    field_value,
-                    maybe_expected_type_record.and_then(|expected_record_type| {
-                        expected_record_type
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        let Some(field_name_value) = &name.value else {
+                            errors.push(ErrorNode {
+                                range: symbol_range(name.start, "."),
+                                message: Box::from("missing field name after this dot ."),
+                            });
+                            return None;
+                        };
+                        let Some(value) = value else {
+                            errors.push(ErrorNode {
+                                range: field_name_range(WithStartPosition {
+                                    start: name.start,
+                                    value: field_name_value,
+                                }),
+                                message: Box::from("missing field value after this field name"),
+                            });
+                            return None;
+                        };
+                        if type_fields
                             .iter()
-                            .find(|expected_field| expected_field.name == field_name_value)
-                            .map(|expected_field| &expected_field.value)
-                    }),
-                    errors,
-                    introduced_variables,
-                    type_aliases,
-                    patterns,
-                    types,
-                    origins,
-                    records_used,
-                    choices_used,
-                ) else {
-                    return None;
-                };
-                if let Some(type_fields) = &mut maybe_type_fields {
-                    type_fields.push(TypeField {
-                        name: field_name_value.clone(),
-                        value: checked_field_value.type_,
-                    });
+                            .any(|type_field| type_field.name == field_name_value)
+                        {
+                            errors.push(ErrorNode {
+                                range: field_name_range(WithStartPosition {
+                                    start: name.start,
+                                    value: field_name_value,
+                                }),
+                                message: Box::from(
+                                    "a field with this name already exists in the record pattern",
+                                ),
+                            });
+                            return None;
+                        }
+                        let maybe_expected_type_record =
+                            expected_type.and_then(|expected_type| match expected_type {
+                                Type::Record(type_fields) => Some(type_fields),
+                                _ => None,
+                            });
+                        let Some(checked_field_value) = syntax_pattern_check(
+                            patterns.element_ref(value),
+                            maybe_expected_type_record.and_then(|expected_record_type| {
+                                expected_record_type
+                                    .iter()
+                                    .find(|expected_field| expected_field.name == field_name_value)
+                                    .map(|expected_field| &expected_field.value)
+                            }),
+                            errors,
+                            introduced_variables,
+                            type_aliases,
+                            patterns,
+                            types,
+                            origins,
+                            checked_spread_records,
+                            records_used,
+                            choices_used,
+                        ) else {
+                            return None;
+                        };
+                        type_fields.push(TypeField {
+                            name: field_name_value.clone(),
+                            value: checked_field_value.type_,
+                        });
+                        field_catches.insert(field_name_value.clone(), checked_field_value.catch);
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        if expected_type.is_some() {
+                            errors.push(ErrorNode {
+                                range: symbol_range(*dot_dot_start, ".."),
+                                message: Box::from("record spread .. syntax is not allowed in query case patterns as it's not immediately clear which specific fields are contained. Switch to matching all fields explicitly")
+                            });
+                            return None;
+                        }
+                        let Some(record) = record else {
+                            errors.push(ErrorNode {
+                                range: symbol_range(*dot_dot_start, ".."),
+                                message: Box::from("missing pattern to spread into the record after this .. syntax. An example of a record spread pattern is .. variable its-record-type")
+                            });
+                            return None;
+                        };
+                        let Some(checked_record) = syntax_pattern_check(
+                            patterns.element_ref(record),
+                            None,
+                            errors,
+                            introduced_variables,
+                            type_aliases,
+                            patterns,
+                            types,
+                            origins,
+                            checked_spread_records,
+                            records_used,
+                            choices_used,
+                        ) else {
+                            return None;
+                        };
+                        let Type::Record(checked_record_type_fields) = checked_record.type_ else {
+                            let mut error_message =
+                                "the pattern after this record spread .. is not a record but\n"
+                                    .to_string();
+                            type_format(&mut error_message, 0, &checked_record.type_);
+                            errors.push(ErrorNode {
+                                range: symbol_range(*dot_dot_start, ".."),
+                                message: error_message.into_boxed_str(),
+                            });
+                            return None;
+                        };
+                        let PatternCatch::Record(checked_record_catch_fields) =
+                            checked_record.catch
+                        else {
+                            return None;
+                        };
+                        checked_spread_records.insert(
+                            *dot_dot_start,
+                            checked_record_type_fields
+                                .iter()
+                                .map(|checked_record_field| checked_record_field.name.clone())
+                                .collect::<Vec<Name>>(),
+                        );
+                        if let Some(overlapping_field) = type_fields.iter().find(|type_field| {
+                            checked_record_type_fields
+                                .iter()
+                                .any(|checked_record_type_field| {
+                                    type_field.name == checked_record_type_field.name
+                                })
+                        }) {
+                            let mut error_message = format!(
+                                "The type of the record pattern after this .. spread contains a field with the name {}. A field with this name already exists in the record pattern. The type of the record pattern after .. is\n",
+                                overlapping_field.name
+                            );
+                            type_record_format(&mut error_message, 0, &checked_record_type_fields);
+                            errors.push(ErrorNode {
+                                range: symbol_range(*dot_dot_start, ".."),
+                                message: error_message.into_boxed_str(),
+                            });
+                            return None;
+                        }
+                        type_fields.extend(checked_record_type_fields);
+                        field_catches.extend(checked_record_catch_fields);
+                    }
                 }
-                field_catches.insert(field_name_value.clone(), checked_field_value.catch);
             }
-            let Some(type_fields) = maybe_type_fields else {
-                return None;
-            };
             records_used.insert(sorted_field_names(
                 type_fields.iter().map(|type_field| &type_field.name),
             ));
@@ -5079,6 +5171,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                checked_spread_records,
                 records_used,
                 choices_used,
             ),
@@ -5090,9 +5183,11 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
     expected_type: Option<&Type>,
     introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
+    recombine_statements: &mut Vec<syn::Stmt>,
 ) -> Option<syn::Pat> {
     match pattern {
         SyntaxPattern::Variable {
@@ -5173,9 +5268,11 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         None,
                         introduced_variables,
                         type_aliases,
+                        checked_spread_records,
                         patterns,
                         types,
                         origins,
+                        recombine_statements,
                     ) else {
                         return None;
                     };
@@ -5216,9 +5313,11 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         Some(expected_value_type),
                         introduced_variables,
                         type_aliases,
+                        checked_spread_records,
                         patterns,
                         types,
                         origins,
+                        recombine_statements,
                     ) else {
                         return None;
                     };
@@ -5244,80 +5343,158 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
             paren_token: syn::token::Paren(syn_span()),
             elems: syn::punctuated::Punctuated::new(),
         })),
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => {
+        SyntaxPattern::Record { part0, part1_up } => {
             let mut rust_fields: syn::punctuated::Punctuated<syn::FieldPat, syn::token::Comma> =
                 syn::punctuated::Punctuated::new();
-            for (field_name, field_value) in std::iter::once((
-                WithStartPosition {
-                    start: field0_name.start,
-                    value: Some(&field0_name.value),
-                },
-                field0_value
-                    .as_ref()
-                    .map(|value| patterns.element_ref(value)),
-            ))
-            .chain(field1_up.iter().map(|field| {
-                (
-                    WithStartPosition {
-                        start: field.name.start,
-                        value: field.name.value.as_ref(),
-                    },
-                    field.value.as_ref(),
-                )
-            })) {
-                let Some(field_name_value) = field_name.value else {
-                    return None;
-                };
-                let Some(field_value) = field_value else {
-                    return None;
-                };
-                let maybe_expected_type_record =
-                    expected_type.and_then(|expected_type| match expected_type {
-                        Type::Variable(_)
-                        | Type::Origin(_)
-                        | Type::CoreConstruct { .. }
-                        | Type::Choice { .. } => None,
-                        Type::Record(type_fields) => Some(type_fields),
-                    });
-                let compiled_field_value = syntax_pattern_to_rust(
-                    field_value,
-                    maybe_expected_type_record.and_then(|expected_record_type| {
-                        expected_record_type
-                            .iter()
-                            .find(|expected_field| expected_field.name == field_name_value)
-                            .map(|expected_field| &expected_field.value)
-                    }),
-                    introduced_variables,
-                    type_aliases,
-                    patterns,
-                    types,
-                    origins,
-                );
-                let Some(compiled_field_value) = compiled_field_value else {
-                    return None;
-                };
-                rust_fields.push(syn::FieldPat {
-                    attrs: vec![],
-                    member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(
-                        field_name_value,
-                    ))),
-                    colon_token: Some(syn::token::Colon(syn_span())),
-                    pat: Box::new(compiled_field_value),
-                });
+            let mut field_names: Vec<&Name> = Vec::new();
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        let Some(field_name_value) = &name.value else {
+                            return None;
+                        };
+                        let Some(value) = value else {
+                            return None;
+                        };
+                        let maybe_expected_type_record =
+                            expected_type.and_then(|expected_type| match expected_type {
+                                Type::Variable(_)
+                                | Type::Origin(_)
+                                | Type::CoreConstruct { .. }
+                                | Type::Choice { .. } => None,
+                                Type::Record(type_fields) => Some(type_fields),
+                            });
+                        let compiled_field_value = syntax_pattern_to_rust(
+                            patterns.element_ref(value),
+                            maybe_expected_type_record.and_then(|expected_record_type| {
+                                expected_record_type
+                                    .iter()
+                                    .find(|expected_field| expected_field.name == field_name_value)
+                                    .map(|expected_field| &expected_field.value)
+                            }),
+                            introduced_variables,
+                            type_aliases,
+                            checked_spread_records,
+                            patterns,
+                            types,
+                            origins,
+                            recombine_statements,
+                        );
+                        let Some(compiled_field_value) = compiled_field_value else {
+                            return None;
+                        };
+                        field_names.push(field_name_value);
+                        rust_fields.push(syn::FieldPat {
+                            attrs: vec![],
+                            member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(
+                                field_name_value,
+                            ))),
+                            colon_token: Some(syn::token::Colon(syn_span())),
+                            pat: Box::new(compiled_field_value),
+                        });
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        let Some(record) = record else {
+                            return None;
+                        };
+                        let Some(record_spread_field_names) =
+                            checked_spread_records.get(dot_dot_start)
+                        else {
+                            return None;
+                        };
+                        let Some(compiled_record) = syntax_pattern_to_rust(
+                            patterns.element_ref(record),
+                            None,
+                            introduced_variables,
+                            type_aliases,
+                            checked_spread_records,
+                            patterns,
+                            types,
+                            origins,
+                            recombine_statements,
+                        ) else {
+                            return None;
+                        };
+                        let generated_record_field_variable_name = |rust_field_name: &str| {
+                            format!(
+                                "to_spread_{}·{}_{rust_field_name}",
+                                dot_dot_start.line, dot_dot_start.character
+                            )
+                        };
+                        rust_fields.extend(record_spread_field_names.iter().map(
+                            |record_spread_field_name| {
+                                let rust_record_spread_field_name =
+                                    name_to_lowercase_rust(record_spread_field_name);
+                                syn::FieldPat {
+                                    attrs: vec![],
+                                    member: syn::Member::Named(syn_ident(
+                                        &rust_record_spread_field_name,
+                                    )),
+                                    colon_token: Some(syn::token::Colon(syn_span())),
+                                    pat: Box::new(syn::Pat::Ident(syn::PatIdent {
+                                        attrs: vec![],
+                                        by_ref: None,
+                                        mutability: None,
+                                        ident: syn_ident(&generated_record_field_variable_name(
+                                            &rust_record_spread_field_name,
+                                        )),
+                                        subpat: None,
+                                    })),
+                                }
+                            },
+                        ));
+                        let recombined = syn::Expr::Struct(syn::ExprStruct {
+                            attrs: vec![],
+                            qself: None,
+                            path: syn_path_reference([&field_names_to_rust_record_struct_name(
+                                record_spread_field_names.iter(),
+                            )]),
+                            brace_token: syn::token::Brace(syn_span()),
+                            fields: record_spread_field_names
+                                .iter()
+                                .map(|record_spread_field_name| {
+                                    let rust_record_spread_field_name =
+                                        name_to_lowercase_rust(record_spread_field_name);
+                                    syn::FieldValue {
+                                        attrs: vec![],
+                                        member: syn::Member::Named(syn_ident(
+                                            &rust_record_spread_field_name,
+                                        )),
+                                        colon_token: Some(syn::token::Colon(syn_span())),
+                                        expr: syn_expr_reference([
+                                            &generated_record_field_variable_name(
+                                                &rust_record_spread_field_name,
+                                            ),
+                                        ]),
+                                    }
+                                })
+                                .collect(),
+                            dot2_token: None,
+                            rest: None,
+                        });
+                        // typed patterns always succeed, so we can use let destructuring
+                        recombine_statements.push(syn::Stmt::Local(syn::Local {
+                            attrs: vec![],
+                            let_token: syn::token::Let(syn_span()),
+                            pat: compiled_record,
+                            init: Some(syn::LocalInit {
+                                eq_token: syn::token::Eq(syn_span()),
+                                expr: Box::new(recombined),
+                                diverge: None,
+                            }),
+                            semi_token: syn::token::Semi(syn_span()),
+                        }));
+                    }
+                }
             }
             Some(syn::Pat::Struct(syn::PatStruct {
                 attrs: vec![],
                 qself: None,
                 path: syn_path_reference([&field_names_to_rust_record_struct_name(
-                    std::iter::once(&field0_name.value).chain(
-                        field1_up
-                            .iter()
-                            .filter_map(|field| field.name.value.as_ref()),
-                    ),
+                    field_names.into_iter(),
                 )]),
                 brace_token: syn::token::Brace(syn_span()),
                 fields: rust_fields,
@@ -5335,9 +5512,11 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                 expected_type,
                 introduced_variables,
                 type_aliases,
+                checked_spread_records,
                 patterns,
                 types,
                 origins,
+                recombine_statements,
             ),
         },
     }
@@ -5980,6 +6159,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                checked_spread_records,
                 records_used,
                 choices_used,
             ) else {
@@ -6056,7 +6236,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let mut maybe_field_types: Option<Vec<TypeField>> = Some(Vec::new());
             'checking_fields: for part in std::iter::once(part0).chain(part1_up) {
                 match part {
-                    SyntaxExpressionRecordPart::Field { name, value } => {
+                    SyntaxRecordPart::Field { name, value } => {
                         let Some(field_name) = &name.value else {
                             errors.push(ErrorNode {
                                 range: symbol_range(name.start, "."),
@@ -6109,7 +6289,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             }
                         }
                     }
-                    SyntaxExpressionRecordPart::Spread {
+                    SyntaxRecordPart::Spread {
                         dot_dot_start,
                         record,
                     } => {
@@ -6338,6 +6518,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                checked_spread_records,
                 records_used,
                 choices_used,
             ) else {
@@ -6411,6 +6592,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     origins,
+                    checked_spread_records,
                     records_used,
                     choices_used,
                 ) else {
@@ -7028,14 +7210,17 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 &Name,
                 CheckedPatternVariable,
             > = std::collections::HashMap::new();
+            let mut fn_result_statements: Vec<syn::Stmt> = Vec::new();
             let Some(compiled_parameter) = syntax_pattern_to_rust(
                 parameter,
                 None,
                 &mut parameter_introduced_variables,
                 type_aliases,
+                checked_spread_records,
                 patterns,
                 types,
                 origins,
+                &mut fn_result_statements,
             ) else {
                 return syn_expr_todo();
             };
@@ -7055,6 +7240,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let mut type_variables = std::collections::BTreeSet::new();
             type_variables_into(&mut type_variables, &checked_local_fn.parameter_type);
             type_variables_into(&mut type_variables, &checked_local_fn.result_type);
+            fn_result_statements.extend(syn_spread_expr_block_into_stmts(compiled_result));
             syn::Expr::Block(syn::ExprBlock {
                 attrs: vec![],
                 label: None,
@@ -7105,7 +7291,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                     Box::new(type_to_rust(&checked_local_fn.result_type)),
                                 ),
                             },
-                            block: Box::new(syn_spread_expr_block(compiled_result)),
+                            block: Box::new(syn::Block {
+                                brace_token: syn::token::Brace(syn_span()),
+                                stmts: fn_result_statements,
+                            }),
                         })),
                         syn::Stmt::Expr(syn_expr_reference([local_unnamed_function_name]), None),
                     ],
@@ -7123,7 +7312,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let mut rust_fields = syn::punctuated::Punctuated::new();
             'compiling_fields: for part in std::iter::once(part0).chain(part1_up) {
                 match part {
-                    SyntaxExpressionRecordPart::Field { name, value } => {
+                    SyntaxRecordPart::Field { name, value } => {
                         let Some(field_name) = &name.value else {
                             continue 'compiling_fields;
                         };
@@ -7153,7 +7342,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             expr: compiled_field_value,
                         });
                     }
-                    SyntaxExpressionRecordPart::Spread {
+                    SyntaxRecordPart::Spread {
                         dot_dot_start,
                         record,
                     } => {
@@ -7321,14 +7510,17 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 &Name,
                 CheckedPatternVariable,
             > = std::collections::HashMap::new();
+            let mut case0_statements: Vec<syn::Stmt> = Vec::new();
             let Some(case0_pattern_compiled) = syntax_pattern_to_rust(
                 case0_pattern,
                 Some(&checked_query.queried_type),
                 &mut case0_pattern_introduced_variables,
                 type_aliases,
+                checked_spread_records,
                 patterns,
                 types,
                 origins,
+                &mut case0_statements,
             ) else {
                 return syn_expr_todo();
             };
@@ -7337,7 +7529,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     .iter()
                     .map(|(binding, info)| (*binding, info.clone())),
             );
-            let case0_compiled_result_rust = syntax_expression_to_rust(
+            let case0_compiled_result = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
                 expressions,
@@ -7353,18 +7545,26 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             for (case0_pattern_introduced_variable, _) in case0_pattern_introduced_variables {
                 pattern_variables.remove(case0_pattern_introduced_variable);
             }
-            let mut rust_arms: Vec<syn::Arm> = vec![syn::Arm {
-                attrs: vec![],
-                pat: case0_pattern_compiled,
-                guard: None,
-                fat_arrow_token: syn::token::FatArrow(syn_span()),
-                body: Box::new(syn::Expr::Block(syn::ExprBlock {
+            case0_statements.extend(syn_spread_expr_block_into_stmts(case0_compiled_result));
+            fn syn_arm(pattern: syn::Pat, statements: Vec<syn::Stmt>) -> syn::Arm {
+                syn::Arm {
                     attrs: vec![],
-                    label: None,
-                    block: syn_spread_expr_block(case0_compiled_result_rust),
-                })),
-                comma: None,
-            }];
+                    pat: pattern,
+                    guard: None,
+                    fat_arrow_token: syn::token::FatArrow(syn_span()),
+                    body: Box::new(syn::Expr::Block(syn::ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: syn::Block {
+                            brace_token: syn::token::Brace(syn_span()),
+                            stmts: statements,
+                        },
+                    })),
+                    comma: None,
+                }
+            }
+            let mut rust_arms: Vec<syn::Arm> =
+                vec![syn_arm(case0_pattern_compiled, case0_statements)];
             'compiling_case1_up: for (case_index, case) in case1_up
                 .iter()
                 .enumerate()
@@ -7380,14 +7580,17 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     &Name,
                     CheckedPatternVariable,
                 > = std::collections::HashMap::new();
+                let mut case_statements: Vec<syn::Stmt> = Vec::new();
                 let Some(case_pattern_compiled) = syntax_pattern_to_rust(
                     case_pattern,
                     Some(&checked_query.queried_type),
                     &mut case_pattern_introduced_variables,
                     type_aliases,
+                    checked_spread_records,
                     patterns,
                     types,
                     origins,
+                    &mut case_statements,
                 ) else {
                     continue 'compiling_case1_up;
                 };
@@ -7397,7 +7600,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         .map(|(binding, info)| (*binding, info.clone())),
                 );
                 let Some(case_result) = &case.result else {
-                    rust_arms.push(syn_arm(case_pattern_compiled, syn_expr_todo()));
+                    rust_arms.push(syn_arm(
+                        case_pattern_compiled,
+                        vec![syn::Stmt::Expr(syn_expr_todo(), None)],
+                    ));
                     continue 'compiling_case1_up;
                 };
                 let case_compiled_result_rust = syntax_expression_to_rust(
@@ -7416,21 +7622,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 for (case_pattern_introduced_variable, _) in case_pattern_introduced_variables {
                     pattern_variables.remove(case_pattern_introduced_variable);
                 }
-                fn syn_arm(pattern: syn::Pat, result: syn::Expr) -> syn::Arm {
-                    syn::Arm {
-                        attrs: vec![],
-                        pat: pattern,
-                        guard: None,
-                        fat_arrow_token: syn::token::FatArrow(syn_span()),
-                        body: Box::new(syn::Expr::Block(syn::ExprBlock {
-                            attrs: vec![],
-                            label: None,
-                            block: syn_spread_expr_block(result),
-                        })),
-                        comma: None,
-                    }
-                }
-                rust_arms.push(syn_arm(case_pattern_compiled, case_compiled_result_rust));
+                case_statements.extend(syn_spread_expr_block_into_stmts(case_compiled_result_rust));
+                rust_arms.push(syn_arm(case_pattern_compiled, case_statements));
             }
             if !checked_query.is_exhaustive {
                 // _ => todo!() is appended to still make inexhaustive matching compile
@@ -7675,22 +7868,32 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
             }
         }
         SyntaxPattern::RecordEmpty { dot_start: _ } => {}
-        SyntaxPattern::Record {
-            field0_name: _,
-            field0_value,
-            field1_up,
-        } => {
-            if let Some(field0_value) = field0_value {
-                syntax_pattern_type_variables_into(
-                    type_variables,
-                    patterns.element_ref(field0_value),
-                    patterns,
-                    types,
-                );
-            }
-            for field in field1_up {
-                if let Some(value) = &field.value {
-                    syntax_pattern_type_variables_into(type_variables, value, patterns, types);
+        SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name: _, value } => {
+                        if let Some(value) = value {
+                            syntax_pattern_type_variables_into(
+                                type_variables,
+                                patterns.element_ref(value),
+                                patterns,
+                                types,
+                            );
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            syntax_pattern_type_variables_into(
+                                type_variables,
+                                patterns.element_ref(record),
+                                patterns,
+                                types,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -8400,15 +8603,6 @@ fn type_record_length_estimate(fields: &[TypeField]) -> usize {
         .sum()
 }
 
-fn syn_spread_expr_block(syn_expr: syn::Expr) -> syn::Block {
-    match syn_expr {
-        syn::Expr::Block(block) => block.block,
-        _ => syn::Block {
-            brace_token: syn::token::Brace(syn_span()),
-            stmts: vec![syn::Stmt::Expr(syn_expr, None)],
-        },
-    }
-}
 fn syn_spread_expr_block_into_stmts(syn_expr: syn::Expr) -> Vec<syn::Stmt> {
     match syn_expr {
         syn::Expr::Block(block) => block.block.stmts,
@@ -10091,7 +10285,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
         SyntaxExpression::RecordEmpty { dot_start: _ } => no_open_end_kinds,
         SyntaxExpression::Record { part0, part1_up } => {
             let last_field_open_end = match part1_up.last().unwrap_or(part0) {
-                SyntaxExpressionRecordPart::Field { name: _, value } => match value {
+                SyntaxRecordPart::Field { name: _, value } => match value {
                     Some(last_part_value) => syntax_expression_open_end(
                         expressions.element_ref(last_part_value),
                         expressions,
@@ -10099,7 +10293,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
                     ),
                     None => no_open_end_kinds,
                 },
-                SyntaxExpressionRecordPart::Spread {
+                SyntaxRecordPart::Spread {
                     dot_dot_start: _,
                     record,
                 } => match record {
@@ -10530,11 +10724,11 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     record_part_count: usize,
-    record_part: &SyntaxExpressionRecordPart<Expressions>,
+    record_part: &SyntaxRecordPart<Expressions>,
     record_part_index: usize,
 ) {
     match record_part {
-        SyntaxExpressionRecordPart::Field { name, value } => {
+        SyntaxRecordPart::Field { name, value } => {
             optional_field_name_format(formatted, name.value.as_ref());
             match value {
                 None => {
@@ -10565,7 +10759,7 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
                 }
             }
         }
-        SyntaxExpressionRecordPart::Spread {
+        SyntaxRecordPart::Spread {
             dot_dot_start,
             record,
         } => match record {
@@ -10764,21 +10958,24 @@ fn syntax_pattern_open_end<Patterns, Types>(
             None => no_open_end_kinds,
         },
         SyntaxPattern::RecordEmpty { dot_start: _ } => no_open_end_kinds,
-        SyntaxPattern::Record {
-            field0_name: _,
-            field0_value,
-            field1_up,
-        } => {
-            let last_field_open_end = field1_up
-                .last()
-                .map(|last_field| last_field.value.as_ref())
-                .unwrap_or_else(|| {
-                    field0_value
-                        .as_ref()
-                        .map(|field0_value| patterns.element_ref(field0_value))
-                })
-                .map(|last_field_value| syntax_pattern_open_end(last_field_value, patterns, types))
-                .unwrap_or(no_open_end_kinds);
+        SyntaxPattern::Record { part0, part1_up } => {
+            let last_field_open_end = match part1_up.last().unwrap_or_else(|| part0) {
+                SyntaxRecordPart::Field { name: _, value } => match value {
+                    None => no_open_end_kinds,
+                    Some(value) => {
+                        syntax_pattern_open_end(patterns.element_ref(value), patterns, types)
+                    }
+                },
+                SyntaxRecordPart::Spread {
+                    dot_dot_start: _,
+                    record,
+                } => match record {
+                    None => no_open_end_kinds,
+                    Some(record) => {
+                        syntax_pattern_open_end(patterns.element_ref(record), patterns, types)
+                    }
+                },
+            };
             OpenEndKinds {
                 record: true,
                 ..last_field_open_end
@@ -10825,62 +11022,17 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
         SyntaxPattern::RecordEmpty { dot_start: _ } => {
             formatted.push('.');
         }
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => {
-            field_name_format(formatted, &field0_name.value);
-            let field_count = 1 + field1_up.len();
-            match field0_value {
-                None => {
-                    formatted.push(' ');
-                }
-                Some(value) => {
-                    let value = patterns.element_ref(value);
-                    maybe_open_end_whitespace_then_element_format(
-                        formatted,
-                        indent,
-                        |formatted, indent| {
-                            syntax_pattern_unparenthesized_format(
-                                formatted, indent, patterns, types, value,
-                            );
-                        },
-                        || syntax_pattern_open_end(value, patterns, types),
-                        |open_end| open_end.record,
-                        field_count,
-                        0,
-                        field0_name.start,
-                        pattern_range(value, patterns, types),
-                    );
-                }
-            }
+        SyntaxPattern::Record { part0, part1_up } => {
+            let part_count = 1 + part1_up.len();
+            syntax_pattern_record_part_unparenthesized_format(
+                formatted, indent, patterns, types, part_count, part0, 0,
+            );
             let line_span = range_line_span(pattern_range(pattern, patterns, types));
-            for (field_index, field) in field1_up.iter().enumerate().map(|(i, e)| (1 + i, e)) {
+            for (part_index, part) in part1_up.iter().enumerate().map(|(i, e)| (1 + i, e)) {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
-                optional_field_name_format(formatted, field.name.value.as_ref());
-                match &field.value {
-                    None => {
-                        formatted.push(' ');
-                    }
-                    Some(value) => {
-                        maybe_open_end_whitespace_then_element_format(
-                            formatted,
-                            indent,
-                            |formatted, indent| {
-                                syntax_pattern_unparenthesized_format(
-                                    formatted, indent, patterns, types, value,
-                                );
-                            },
-                            || syntax_pattern_open_end(value, patterns, types),
-                            |open_end| open_end.record,
-                            field_count,
-                            field_index,
-                            field.name.start,
-                            pattern_range(value, patterns, types),
-                        );
-                    }
-                }
+                syntax_pattern_record_part_unparenthesized_format(
+                    formatted, indent, patterns, types, part_count, part, part_index,
+                );
             }
         }
         SyntaxPattern::Parenthesized {
@@ -10901,6 +11053,73 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                 );
             }
         },
+    }
+}
+fn syntax_pattern_record_part_unparenthesized_format<Types, Patterns>(
+    formatted: &mut String,
+    indent: usize,
+    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Vec<Types, SyntaxType<Types>>,
+    part_count: usize,
+    part: &SyntaxRecordPart<Patterns>,
+    part_index: usize,
+) {
+    match part {
+        SyntaxRecordPart::Field { name, value } => {
+            optional_field_name_format(formatted, name.value.as_ref());
+            match value {
+                None => {
+                    formatted.push(' ');
+                }
+                Some(value) => {
+                    let value = patterns.element_ref(value);
+                    maybe_open_end_whitespace_then_element_format(
+                        formatted,
+                        indent,
+                        |formatted, indent| {
+                            syntax_pattern_unparenthesized_format(
+                                formatted, indent, patterns, types, value,
+                            );
+                        },
+                        || syntax_pattern_open_end(value, patterns, types),
+                        |open_end| open_end.record,
+                        part_count,
+                        part_index,
+                        name.start,
+                        pattern_range(value, patterns, types),
+                    );
+                }
+            }
+        }
+        SyntaxRecordPart::Spread {
+            dot_dot_start,
+            record,
+        } => {
+            formatted.push_str("..");
+            match record {
+                None => {
+                    formatted.push(' ');
+                }
+                Some(record) => {
+                    let record = patterns.element_ref(record);
+                    maybe_open_end_whitespace_then_element_format(
+                        formatted,
+                        indent,
+                        |formatted, indent| {
+                            syntax_pattern_unparenthesized_format(
+                                formatted, indent, patterns, types, record,
+                            );
+                        },
+                        || syntax_pattern_open_end(record, patterns, types),
+                        |open_end| open_end.record,
+                        part_count,
+                        part_index,
+                        *dot_dot_start,
+                        pattern_range(record, patterns, types),
+                    );
+                }
+            }
+        }
     }
 }
 fn syntax_angled_type_arguments_format<Types>(
@@ -11338,6 +11557,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
     project: &'a SyntaxProject<Expressions, Patterns, Types>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     position: lsp_types::Position,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -11430,6 +11650,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             None,
                             position,
                             type_aliases,
+                            checked_spread_records,
                             patterns,
                             types,
                             element,
@@ -11482,6 +11703,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             position,
                             type_aliases,
                             checked_queries,
+                            checked_spread_records,
                             expressions,
                             patterns,
                             types,
@@ -11501,6 +11723,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
     position: lsp_types::Position,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Vec<Types, SyntaxType<Types>>,
@@ -11589,6 +11812,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                             position,
                             type_aliases,
                             checked_queries,
+                            checked_spread_records,
                             expressions,
                             patterns,
                             types,
@@ -11619,6 +11843,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                             position,
                             type_aliases,
                             checked_queries,
+                            checked_spread_records,
                             expressions,
                             patterns,
                             types,
@@ -11647,6 +11872,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         None,
                         position,
                         type_aliases,
+                        checked_spread_records,
                         patterns,
                         types,
                         scope,
@@ -11685,6 +11911,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                             position,
                             type_aliases,
                             checked_queries,
+                            checked_spread_records,
                             expressions,
                             patterns,
                             types,
@@ -11699,23 +11926,22 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Record { part0, part1_up } => std::iter::once(part0)
             .chain(part1_up)
             .find_map(|part| match part {
-                SyntaxExpressionRecordPart::Field { name: _, value } => {
-                    value.as_ref().and_then(|value| {
-                        expression_symbol_at_position(
-                            expressions.element_ref(value),
-                            position,
-                            type_aliases,
-                            checked_queries,
-                            expressions,
-                            patterns,
-                            types,
-                            scope,
-                            pattern_variables,
-                            origins,
-                        )
-                    })
-                }
-                SyntaxExpressionRecordPart::Spread {
+                SyntaxRecordPart::Field { name: _, value } => value.as_ref().and_then(|value| {
+                    expression_symbol_at_position(
+                        expressions.element_ref(value),
+                        position,
+                        type_aliases,
+                        checked_queries,
+                        checked_spread_records,
+                        expressions,
+                        patterns,
+                        types,
+                        scope,
+                        pattern_variables,
+                        origins,
+                    )
+                }),
+                SyntaxRecordPart::Spread {
                     dot_dot_start: _,
                     record,
                 } => record.as_ref().and_then(|record| {
@@ -11724,6 +11950,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         position,
                         type_aliases,
                         checked_queries,
+                        checked_spread_records,
                         expressions,
                         patterns,
                         types,
@@ -11743,6 +11970,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 position,
                 type_aliases,
                 checked_queries,
+                checked_spread_records,
                 expressions,
                 patterns,
                 types,
@@ -11760,6 +11988,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 position,
                 type_aliases,
                 checked_queries,
+                checked_spread_records,
                 expressions,
                 patterns,
                 types,
@@ -11780,6 +12009,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     position,
                     type_aliases,
                     checked_queries,
+                    checked_spread_records,
                     expressions,
                     patterns,
                     types,
@@ -11797,6 +12027,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         position,
                         type_aliases,
                         checked_queries,
+                        checked_spread_records,
                         expressions,
                         patterns,
                         types,
@@ -11834,6 +12065,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     position,
                     type_aliases,
                     checked_queries,
+                    checked_spread_records,
                     expressions,
                     patterns,
                     types,
@@ -11851,6 +12083,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
     position: lsp_types::Position,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Vec<Types, SyntaxType<Types>>,
@@ -11872,6 +12105,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
                 expected_pattern_type,
                 position,
                 type_aliases,
+                checked_spread_records,
                 patterns,
                 types,
                 scope,
@@ -11901,10 +12135,11 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
                             PatternVariableSymbolOrigin {
                                 start: name.start,
                                 scope: Some(result),
-                                type_: type_.cloned(),
+                                type_: type_,
                             },
                         );
                     },
+                    checked_spread_records,
                     patterns,
                 );
             }
@@ -11913,6 +12148,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
                 position,
                 type_aliases,
                 checked_queries,
+                checked_spread_records,
                 expressions,
                 patterns,
                 types,
@@ -11942,17 +12178,33 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
             ),
         },
         SyntaxPattern::RecordEmpty { dot_start: _ } => state,
-        SyntaxPattern::Record {
-            field0_name: _,
-            field0_value,
-            field1_up,
-        } => field0_value
-            .iter()
-            .map(|field0_value| patterns.element_ref(field0_value))
-            .chain(field1_up.iter().filter_map(|field| field.value.as_ref()))
-            .fold(state, |state, field_value| {
-                syntax_pattern_untyped_variables_fold(field_value, state, reduce, patterns)
-            }),
+        SyntaxPattern::Record { part0, part1_up } => {
+            std::iter::once(part0)
+                .chain(part1_up)
+                .fold(state, |state, part| match part {
+                    SyntaxRecordPart::Field { name: _, value } => match value {
+                        None => state,
+                        Some(value) => syntax_pattern_untyped_variables_fold(
+                            patterns.element_ref(value),
+                            state,
+                            reduce,
+                            patterns,
+                        ),
+                    },
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => match record {
+                        None => state,
+                        Some(record) => syntax_pattern_untyped_variables_fold(
+                            patterns.element_ref(record),
+                            state,
+                            reduce,
+                            patterns,
+                        ),
+                    },
+                })
+        }
         SyntaxPattern::Parenthesized {
             open_paren_start: _,
             inner,
@@ -11968,17 +12220,20 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
         },
     }
 }
-fn syntax_pattern_typed_variables_fold<'a, 'expected_type, Patterns, Types, State>(
+fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
-    expected_type: Option<&'expected_type Type>,
+    expected_type: Option<&Type>,
     state: State,
-    reduce: &mut impl FnMut(State, WithStartPosition<&'a Name>, Option<&'expected_type Type>) -> State,
+    reduce: &mut impl FnMut(State, WithStartPosition<&'a Name>, Option<Type>) -> State,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
 ) -> State {
     match pattern {
-        SyntaxPattern::Variable { name, type_: _ } => {
-            reduce(state, with_start_position_as_ref(name), expected_type)
-        }
+        SyntaxPattern::Variable { name, type_: _ } => reduce(
+            state,
+            with_start_position_as_ref(name),
+            expected_type.cloned(),
+        ),
         SyntaxPattern::Variant { name, value } => match value {
             None => state,
             Some(value) => syntax_pattern_typed_variables_fold(
@@ -11997,43 +12252,71 @@ fn syntax_pattern_typed_variables_fold<'a, 'expected_type, Patterns, Types, Stat
                     .map(|variant| &variant.value),
                 state,
                 reduce,
+                checked_spread_records,
                 patterns,
             ),
         },
         SyntaxPattern::RecordEmpty { dot_start: _ } => state,
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => field0_value
-            .iter()
-            .map(|field0_value| (Some(&field0_name.value), patterns.element_ref(field0_value)))
-            .chain(field1_up.iter().filter_map(|field| {
-                field
-                    .value
-                    .as_ref()
-                    .map(|value| (field.name.value.as_ref(), value))
-            }))
-            .fold(state, |state, (field_name, field_value)| {
-                syntax_pattern_typed_variables_fold(
-                    field_value,
-                    expected_type
-                        .and_then(|expected_type| match expected_type {
-                            Type::Record(expected_fields) => {
-                                expected_fields.iter().find(|expected_field| {
-                                    field_name.is_some_and(|field_name_value| {
-                                        field_name_value == expected_field.name
-                                    })
+        SyntaxPattern::Record { part0, part1_up } => {
+            std::iter::once(part0)
+                .chain(part1_up)
+                .fold(state, |state, part| match part {
+                    SyntaxRecordPart::Field { name, value } => match value {
+                        None => state,
+                        Some(value) => syntax_pattern_typed_variables_fold(
+                            patterns.element_ref(value),
+                            expected_type
+                                .and_then(|expected_type| match expected_type {
+                                    Type::Record(expected_fields) => {
+                                        expected_fields.iter().find(|expected_field| {
+                                            name.value.as_ref().is_some_and(|field_name_value| {
+                                                field_name_value == expected_field.name
+                                            })
+                                        })
+                                    }
+                                    _ => None,
                                 })
-                            }
-                            _ => None,
-                        })
-                        .map(|variant| &variant.value),
-                    state,
-                    reduce,
-                    patterns,
-                )
-            }),
+                                .map(|field| &field.value),
+                            state,
+                            reduce,
+                            checked_spread_records,
+                            patterns,
+                        ),
+                    },
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => match record {
+                        None => state,
+                        Some(record) => syntax_pattern_typed_variables_fold(
+                            patterns.element_ref(record),
+                            expected_type
+                                .and_then(|expected_type| match expected_type {
+                                    Type::Record(expected_fields) => checked_spread_records
+                                        .get(dot_dot_start)
+                                        .map(|checked_spread_record_fields| {
+                                            Type::Record(
+                                                expected_fields
+                                                    .iter()
+                                                    .filter(|expected_field| {
+                                                        checked_spread_record_fields
+                                                            .contains(&expected_field.name)
+                                                    })
+                                                    .cloned()
+                                                    .collect::<Vec<TypeField>>(),
+                                            )
+                                        }),
+                                    _ => None,
+                                })
+                                .as_ref(),
+                            state,
+                            reduce,
+                            checked_spread_records,
+                            patterns,
+                        ),
+                    },
+                })
+        }
         SyntaxPattern::Parenthesized {
             open_paren_start: _,
             inner,
@@ -12045,6 +12328,7 @@ fn syntax_pattern_typed_variables_fold<'a, 'expected_type, Patterns, Types, Stat
                 expected_type,
                 state,
                 reduce,
+                checked_spread_records,
                 patterns,
             ),
         },
@@ -12055,6 +12339,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
     expected_type: Option<&Type>,
     position: lsp_types::Position,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Vec<Types, SyntaxType<Types>>,
     project_element_scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
@@ -12114,6 +12399,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                         .map(|variant| &variant.value),
                     position,
                     type_aliases,
+                    checked_spread_records,
                     patterns,
                     types,
                     project_element_scope,
@@ -12123,41 +12409,70 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             })
         }
         SyntaxPattern::RecordEmpty { dot_start: _ } => None,
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => fields_find_symbol_at_position(
-            with_start_position_as_ref(field0_name),
-            field0_value
-                .as_ref()
-                .map(|value| patterns.element_ref(value)),
-            field1_up,
-            |field_name, value| {
-                pattern_symbol_at_position(
-                    value,
-                    expected_type
-                        .and_then(|expected_type| match expected_type {
-                            Type::Record(expected_fields) => {
-                                expected_fields.iter().find(|expected_field| {
-                                    field_name.is_some_and(|field_name_value| {
-                                        field_name_value == expected_field.name
+        SyntaxPattern::Record { part0, part1_up } => std::iter::once(part0)
+            .chain(part1_up)
+            .find_map(|part| match part {
+                SyntaxRecordPart::Field { name, value } => value.as_ref().and_then(|value| {
+                    pattern_symbol_at_position(
+                        patterns.element_ref(value),
+                        expected_type
+                            .and_then(|expected_type| match expected_type {
+                                Type::Record(expected_fields) => {
+                                    expected_fields.iter().find(|expected_field| {
+                                        name.value.as_ref().is_some_and(|field_name_value| {
+                                            field_name_value == expected_field.name
+                                        })
                                     })
-                                })
-                            }
-                            _ => None,
-                        })
-                        .map(|variant| &variant.value),
-                    position,
-                    type_aliases,
-                    patterns,
-                    types,
-                    project_element_scope,
-                    expression_scope,
-                    origins,
-                )
-            },
-        ),
+                                }
+                                _ => None,
+                            })
+                            .map(|field| &field.value),
+                        position,
+                        type_aliases,
+                        checked_spread_records,
+                        patterns,
+                        types,
+                        project_element_scope,
+                        expression_scope,
+                        origins,
+                    )
+                }),
+                SyntaxRecordPart::Spread {
+                    dot_dot_start,
+                    record,
+                } => record.as_ref().and_then(|record| {
+                    pattern_symbol_at_position(
+                        patterns.element_ref(record),
+                        expected_type
+                            .and_then(|expected_type| match expected_type {
+                                Type::Record(expected_fields) => checked_spread_records
+                                    .get(dot_dot_start)
+                                    .map(|checked_spread_record_fields| {
+                                        Type::Record(
+                                            expected_fields
+                                                .iter()
+                                                .filter(|expected_field| {
+                                                    checked_spread_record_fields
+                                                        .contains(&expected_field.name)
+                                                })
+                                                .cloned()
+                                                .collect::<Vec<TypeField>>(),
+                                        )
+                                    }),
+                                _ => None,
+                            })
+                            .as_ref(),
+                        position,
+                        type_aliases,
+                        checked_spread_records,
+                        patterns,
+                        types,
+                        project_element_scope,
+                        expression_scope,
+                        origins,
+                    )
+                }),
+            }),
         SyntaxPattern::Parenthesized {
             open_paren_start: _,
             inner,
@@ -12168,6 +12483,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                 expected_type,
                 position,
                 type_aliases,
+                checked_spread_records,
                 patterns,
                 types,
                 project_element_scope,
@@ -12841,31 +13157,36 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxPattern::RecordEmpty { dot_start: _ } => {}
-        SyntaxPattern::Record {
-            field0_name: _,
-            field0_value,
-            field1_up,
-        } => {
-            if let Some(field0_value) = field0_value {
-                syntax_pattern_symbol_uses_into(
-                    uses,
-                    patterns.element_ref(field0_value),
-                    symbol,
-                    patterns,
-                    types,
-                    origins,
-                );
-            }
-            for field in field1_up {
-                if let Some(field_value) = &field.value {
-                    syntax_pattern_symbol_uses_into(
-                        uses,
-                        field_value,
-                        symbol,
-                        patterns,
-                        types,
-                        origins,
-                    );
+        SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name: _, value } => {
+                        if let Some(value) = value {
+                            syntax_pattern_symbol_uses_into(
+                                uses,
+                                patterns.element_ref(value),
+                                symbol,
+                                patterns,
+                                types,
+                                origins,
+                            );
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            syntax_pattern_symbol_uses_into(
+                                uses,
+                                patterns.element_ref(record),
+                                symbol,
+                                patterns,
+                                types,
+                                origins,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -13195,7 +13516,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
 }
 fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
     uses: &mut Vec<lsp_types::Range>,
-    part: &SyntaxExpressionRecordPart<Expressions>,
+    part: &SyntaxRecordPart<Expressions>,
     symbol: &SyntaxSymbol<Expressions, Patterns, Types>,
     expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -13204,7 +13525,7 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
     origins: &std::collections::HashSet<&Name>,
 ) {
     match part {
-        SyntaxExpressionRecordPart::Field { name: _, value } => {
+        SyntaxRecordPart::Field { name: _, value } => {
             if let Some(field_value) = value {
                 syntax_expression_symbol_uses_into(
                     uses,
@@ -13218,7 +13539,7 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
                 );
             }
         }
-        SyntaxExpressionRecordPart::Spread {
+        SyntaxRecordPart::Spread {
             dot_dot_start: _,
             record,
         } => {

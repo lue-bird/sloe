@@ -15,6 +15,7 @@ struct ProjectState<Expressions, Patterns, Types> {
     type_aliases: std::collections::HashMap<sloe::Name, sloe::CheckedTypeAlias>,
     fns: std::collections::HashMap<sloe::Name, sloe::CheckedProjectFn>,
     queries: std::collections::HashMap<lsp_types::Position, sloe::CheckedQuery>,
+    spread_records: std::collections::HashMap<lsp_types::Position, Vec<sloe::Name>>,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut full_command = std::env::args().skip(1);
@@ -909,6 +910,7 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
         fns: compiled_project.fns,
         syntax: parsed_project,
         queries: compiled_project.queries,
+        spread_records: compiled_project.spread_records,
     }
 }
 fn sloe_error_node_to_diagnostic(problem: &sloe::ErrorNode) -> lsp_types::Diagnostic {
@@ -943,6 +945,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
+        &project_state.spread_records,
         hover_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -1056,6 +1059,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
+        &project_state.spread_records,
         goto_definition_arguments
             .text_document_position_params
             .position,
@@ -1147,6 +1151,7 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
+        &project_state.spread_records,
         prepare_rename_arguments
             .text_document_position_params
             .position,
@@ -1157,10 +1162,8 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
         return None;
     };
     let symbol_range = match symbol {
-        sloe_compile::SyntaxSymbol::ProjectTypeOrUnknown { name, origins: _ } => {
-            sloe::name_range(name)
-        }
-        sloe_compile::SyntaxSymbol::Origin {
+        sloe::SyntaxSymbol::ProjectTypeOrUnknown { name, origins: _ } => sloe::name_range(name),
+        sloe::SyntaxSymbol::Origin {
             name,
             use_start,
             origin: _,
@@ -1168,7 +1171,7 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
             value: name,
             start: use_start,
         }),
-        sloe_compile::SyntaxSymbol::TypeVariable {
+        sloe::SyntaxSymbol::TypeVariable {
             name,
             use_start,
             scope: _,
@@ -1176,13 +1179,13 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
             value: name,
             start: use_start,
         }),
-        sloe_compile::SyntaxSymbol::VariantOrUnknown(name) => sloe::name_range(name),
-        sloe_compile::SyntaxSymbol::ProjectFnOrUnknown {
+        sloe::SyntaxSymbol::VariantOrUnknown(name) => sloe::name_range(name),
+        sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name,
             pattern_variables: _,
             origins: _,
         } => sloe::name_range(name),
-        sloe_compile::SyntaxSymbol::PatternVariable {
+        sloe::SyntaxSymbol::PatternVariable {
             name,
             use_start,
             origin: _,
@@ -1210,6 +1213,7 @@ fn respond_to_rename<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
+        &project_state.spread_records,
         rename_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -1269,6 +1273,7 @@ fn respond_to_references<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
+        &project_state.spread_records,
         references_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -1624,24 +1629,35 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
         sloe::SyntaxPattern::RecordEmpty { dot_start } => {
             keyword_highlight(state, ".", *dot_start);
         }
-        sloe::SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => {
-            sloe_syntax_field_name_highlight(state, field0_name);
-            if let Some(field0_value) = field0_value {
-                sloe_syntax_pattern_highlight(
-                    state,
-                    patterns,
-                    types,
-                    patterns.element_ref(field0_value),
-                );
-            }
-            for field in field1_up {
-                sloe_syntax_trailing_field_highlight(state, field, |state, value| {
-                    sloe_syntax_pattern_highlight(state, patterns, types, value);
-                });
+        sloe::SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    sloe::SyntaxRecordPart::Field { name, value } => {
+                        sloe_syntax_optional_field_name_highlight(state, name);
+                        if let Some(value) = value {
+                            sloe_syntax_pattern_highlight(
+                                state,
+                                patterns,
+                                types,
+                                patterns.element_ref(value),
+                            );
+                        }
+                    }
+                    sloe::SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        keyword_highlight(state, "..", *dot_dot_start);
+                        if let Some(record) = record {
+                            sloe_syntax_pattern_highlight(
+                                state,
+                                patterns,
+                                types,
+                                patterns.element_ref(record),
+                            );
+                        }
+                    }
+                }
             }
         }
         sloe::SyntaxPattern::Parenthesized {
@@ -1866,7 +1882,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         sloe::SyntaxExpression::Record { part0, part1_up } => {
             for part in std::iter::once(part0).chain(part1_up) {
                 match part {
-                    sloe_compile::SyntaxExpressionRecordPart::Field { name, value } => {
+                    sloe::SyntaxRecordPart::Field { name, value } => {
                         sloe_syntax_optional_field_name_highlight(state, name);
                         if let Some(value) = value {
                             sloe_syntax_expression_highlight(
@@ -1878,7 +1894,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                             );
                         }
                     }
-                    sloe_compile::SyntaxExpressionRecordPart::Spread {
+                    sloe::SyntaxRecordPart::Spread {
                         dot_dot_start,
                         record,
                     } => {
@@ -2058,6 +2074,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         &project_state.syntax,
         &project_state.type_aliases,
         &project_state.queries,
+        &project_state.spread_records,
         completion_arguments.text_document_position_params.position,
         &state.syntax_expressions,
         &state.syntax_patterns,
@@ -2233,13 +2250,13 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         inserted_text.push_str(&field.name);
                                     }
                                 }
-                                sloe_compile::Type::Variable(_) => {
+                                sloe::Type::Variable(_) => {
                                     inserted_text.push(' ');
                                 }
-                                sloe_compile::Type::Origin(_) => {
+                                sloe::Type::Origin(_) => {
                                     inserted_text.push(' ');
                                 }
-                                sloe_compile::Type::Choice(variants) => {
+                                sloe::Type::Choice(variants) => {
                                     inserted_text.push(' ');
                                     if let [variant] = variants.as_slice() {
                                         inserted_text.push_str("(|");
@@ -2247,7 +2264,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         inserted_text.push_str("<> )");
                                     }
                                 }
-                                sloe_compile::Type::CoreConstruct { .. } => {
+                                sloe::Type::CoreConstruct { .. } => {
                                     inserted_text.push(' ');
                                 }
                             }
