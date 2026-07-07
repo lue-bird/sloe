@@ -532,7 +532,7 @@ cargo install --offline --debug --path . sloe
 
 - add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-ppositive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
 
-- add field spread syntax `.. existing-record .other-fields-before-and-or-after` (in types expressions already done, patterns should have this syntax). The spreaded syntax must have a known (not-variable) type.
+- add field spread syntax `.. existing-record .other-fields-before-and-or-after` (in typed patterns, in types expressions already done, untyped patterns should have this syntax). The spreaded syntax must have a known (not-variable) type.
   The benefit is: flat records, flat choices, much less repetition/verbosity, e.g.
   ```sloe
   fn draw-rectangle-centered .x x f32 .y y f32 .width width f32 .height height f32 :> ...
@@ -602,6 +602,11 @@ cargo install --offline --debug --path . sloe
           ```
           However, notice that annotating an origin like that is very undescriptive.
           The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
-          
+
+- (not fully sure) add pattern syntax `_` (untyped) / `_ value-type` (typed) where `_` takes the name of the parent.
+  So e.g. `.field (_ value-type)` would introduce a variable named `field`.
+  and `|variant _` would introduce a variable named `variant`.
+  If no parent name exists (top level or parenthesized top level) an error is thrown.
+  The only goal here is making record patterns more convenient to work with (similar to swifts named parameters). The biggest worry I have is name clashes. Things like rename might also become a little more complex
 
 - fix bugs and TODOs

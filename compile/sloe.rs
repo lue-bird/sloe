@@ -2377,8 +2377,6 @@ If you wanted to start a project declaration, try one of:
             types,
             type_declaration_info,
             &mut type_graph,
-            &mut records_used,
-            &mut choices_used,
         );
     }
     for (&project_fn_graph_node, project_fn_info) in project_fn_by_graph_node.iter() {
@@ -2390,8 +2388,6 @@ If you wanted to start a project declaration, try one of:
             types,
             project_fn_info,
             &mut project_fn_graph,
-            &mut records_used,
-            &mut choices_used,
         );
     }
 
@@ -2409,7 +2405,14 @@ If you wanted to start a project declaration, try one of:
         {
             checked_type_aliases.insert(
                 project_type.name.value.clone(),
-                project_type_alias_check(errors, &checked_type_aliases, types, project_type),
+                project_type_alias_check(
+                    errors,
+                    &checked_type_aliases,
+                    types,
+                    project_type,
+                    &mut records_used,
+                    &mut choices_used,
+                ),
             );
         }
     }
@@ -2443,6 +2446,8 @@ If you wanted to start a project declaration, try one of:
                     patterns,
                     types,
                     project_fn,
+                    &mut records_used,
+                    &mut choices_used,
                 ),
             );
         }
@@ -2460,6 +2465,8 @@ If you wanted to start a project declaration, try one of:
                     &mut checked_local_fns,
                     &mut checked_queries,
                     &mut checked_spread_records,
+                    &mut records_used,
+                    &mut choices_used,
                 ),
             );
         }
@@ -2506,8 +2513,6 @@ fn syntax_project_type_connect_type_names_in_graph_from<Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
     project_type_info: SyntaxProjectTypeInfo<Types>,
     type_graph: &mut strongly_connected_components::Graph,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
     if let Some(aliased_type) = &project_type_info.type_ {
         syntax_type_connect_type_names_in_graph_from(
@@ -2516,8 +2521,6 @@ fn syntax_project_type_connect_type_names_in_graph_from<Types>(
             types,
             aliased_type,
             type_graph,
-            records_used,
-            choices_used,
         );
     }
 }
@@ -2532,21 +2535,7 @@ fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Typ
     types: &core::Vec<Types, SyntaxType<Types>>,
     project_fn: &SyntaxProjectFnInfo<'_, Expressions, Patterns, Types>,
     project_fn_graph: &mut strongly_connected_components::Graph,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
-    if let Some(result_type) = project_fn.result_type {
-        syntax_type_used_records_and_choices(result_type, types, records_used, choices_used);
-    }
-    if let Some(parameter) = project_fn.parameter {
-        syntax_pattern_typed_used_records_and_choices(
-            parameter,
-            patterns,
-            types,
-            records_used,
-            choices_used,
-        );
-    }
     if let Some(result_node) = project_fn.result {
         syntax_expression_connect_variables_in_graph_from(
             project_fn_graph_node,
@@ -2556,8 +2545,6 @@ fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Typ
             types,
             result_node,
             project_fn_graph,
-            records_used,
-            choices_used,
         );
     }
 }
@@ -2567,8 +2554,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
     type_: &SyntaxType<Types>,
     type_graph: &mut strongly_connected_components::Graph,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
     match type_ {
         SyntaxType::Variable(_) => {}
@@ -2612,8 +2597,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     types,
                     argument,
                     type_graph,
-                    records_used,
-                    choices_used,
                 );
             }
         }
@@ -2629,24 +2612,15 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     types,
                     types.element_ref(inner),
                     type_graph,
-                    records_used,
-                    choices_used,
                 );
             }
         }
         SyntaxType::RecordEmpty { dot_start: _ } => {}
         SyntaxType::Record {
-            field0_name,
+            field0_name: _,
             field0_value,
             field1_up,
         } => {
-            records_used.insert(sorted_field_names(
-                std::iter::once(&field0_name.value).chain(
-                    field1_up
-                        .iter()
-                        .filter_map(|field| field.name.value.as_ref()),
-                ),
-            ));
             if let Some(field0_value) = field0_value {
                 syntax_type_connect_type_names_in_graph_from(
                     origin_type_declaration_graph_node,
@@ -2654,8 +2628,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     types,
                     types.element_ref(field0_value),
                     type_graph,
-                    records_used,
-                    choices_used,
                 );
             }
             for field in field1_up {
@@ -2666,25 +2638,16 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                         types,
                         value,
                         type_graph,
-                        records_used,
-                        choices_used,
                     );
                 }
             }
         }
         SyntaxType::ChoiceEmpty { bar_start: _ } => {}
         SyntaxType::Choice {
-            variant0_name,
+            variant0_name: _,
             variant0_value,
             variant1_up,
         } => {
-            choices_used.insert(sorted_variant_names(
-                std::iter::once(&variant0_name.value).chain(
-                    variant1_up
-                        .iter()
-                        .filter_map(|variant| variant.name.value.as_ref()),
-                ),
-            ));
             if let Some(variant0_value) = variant0_value {
                 syntax_type_connect_type_names_in_graph_from(
                     origin_type_declaration_graph_node,
@@ -2692,8 +2655,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     types,
                     types.element_ref(variant0_value),
                     type_graph,
-                    records_used,
-                    choices_used,
                 );
             }
             for variant in variant1_up {
@@ -2704,129 +2665,14 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                         types,
                         value,
                         type_graph,
-                        records_used,
-                        choices_used,
                     );
                 }
             }
         }
     }
 }
-fn syntax_type_used_records_and_choices<Types>(
-    type_: &SyntaxType<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
-) {
-    match type_ {
-        SyntaxType::Variable(_) => {}
-        SyntaxType::ConstructWithoutArguments(_) => {}
-        SyntaxType::ConstructWithArguments {
-            underscore_start: _,
-            name: _,
-            argument0,
-            argument1_up,
-        } => {
-            if let Some(argument0) = argument0 {
-                syntax_type_used_records_and_choices(
-                    types.element_ref(argument0),
-                    types,
-                    records_used,
-                    choices_used,
-                );
-            }
-            for argument in argument1_up {
-                if let Some(argument_type) = &argument.type_ {
-                    syntax_type_used_records_and_choices(
-                        argument_type,
-                        types,
-                        records_used,
-                        choices_used,
-                    );
-                }
-            }
-        }
-        SyntaxType::Parenthesized {
-            open_paren_start: _,
-            inner,
-            closed_paren_start: _,
-        } => {
-            if let Some(inner) = inner {
-                syntax_type_used_records_and_choices(
-                    types.element_ref(inner),
-                    types,
-                    records_used,
-                    choices_used,
-                );
-            }
-        }
-        SyntaxType::RecordEmpty { dot_start: _ } => {}
-        SyntaxType::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => {
-            records_used.insert(sorted_field_names(
-                std::iter::once(&field0_name.value).chain(
-                    field1_up
-                        .iter()
-                        .filter_map(|field| field.name.value.as_ref()),
-                ),
-            ));
-            if let Some(field0_value) = field0_value {
-                syntax_type_used_records_and_choices(
-                    types.element_ref(field0_value),
-                    types,
-                    records_used,
-                    choices_used,
-                );
-            }
-            for field in field1_up {
-                if let Some(field_value) = &field.value {
-                    syntax_type_used_records_and_choices(
-                        field_value,
-                        types,
-                        records_used,
-                        choices_used,
-                    );
-                }
-            }
-        }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
-        SyntaxType::Choice {
-            variant0_name,
-            variant0_value,
-            variant1_up,
-        } => {
-            choices_used.insert(sorted_variant_names(
-                std::iter::once(&variant0_name.value).chain(
-                    variant1_up
-                        .iter()
-                        .filter_map(|variant| variant.name.value.as_ref()),
-                ),
-            ));
-            if let Some(variant0_value) = variant0_value {
-                syntax_type_used_records_and_choices(
-                    types.element_ref(variant0_value),
-                    types,
-                    records_used,
-                    choices_used,
-                );
-            }
-            for variant in variant1_up {
-                if let Some(variant_value) = &variant.value {
-                    syntax_type_used_records_and_choices(
-                        variant_value,
-                        types,
-                        records_used,
-                        choices_used,
-                    );
-                }
-            }
-        }
-    }
-}
-// TODO(important) track pattern variables and origins to avoid accidental misconnection
+// TODO check if currently pattern and origin variables can shadow project names.
+// If yes, track pattern variables and origins to avoid accidental misconnection
 fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Types>(
     origin_project_fn_graph_node: strongly_connected_components::Node,
     project_fn_graph_node_by_name: &std::collections::HashMap<
@@ -2838,8 +2684,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
     types: &core::Vec<Types, SyntaxType<Types>>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
     project_fn_graph: &mut strongly_connected_components::Graph,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
     match expression {
         SyntaxExpression::Number { .. } => {}
@@ -2849,7 +2693,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         SyntaxExpression::Call {
             underscore_start: _,
             name,
-            type_arguments,
+            type_arguments: _,
             argument,
         } => {
             if let Some(name) = name
@@ -2857,21 +2701,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     project_fn_graph_node_by_name.get(&name.value).copied()
             {
                 project_fn_graph.new_edge(origin_project_fn_graph_node, referenced_fn_graph_node);
-            }
-            if let Some(type_arguments) = type_arguments {
-                for type_argument in type_arguments.argument0.iter().chain(
-                    type_arguments
-                        .argument1_up
-                        .iter()
-                        .filter_map(|type_argument| type_argument.type_.as_ref()),
-                ) {
-                    syntax_type_used_records_and_choices(
-                        type_argument,
-                        types,
-                        records_used,
-                        choices_used,
-                    );
-                }
             }
             if let Some(argument) = argument {
                 syntax_expression_connect_variables_in_graph_from(
@@ -2882,22 +2711,14 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     types,
                     expressions.element_ref(argument),
                     project_fn_graph,
-                    records_used,
-                    choices_used,
                 );
             }
         }
         SyntaxExpression::Variant {
             name: _,
-            type_,
+            type_: _,
             value,
         } => {
-            if let Some(type_) = type_
-                .as_ref()
-                .and_then(|type_argument| type_argument.type_.as_ref())
-            {
-                syntax_type_used_records_and_choices(type_, types, records_used, choices_used);
-            }
             if let Some(value) = value {
                 syntax_expression_connect_variables_in_graph_from(
                     origin_project_fn_graph_node,
@@ -2907,26 +2728,15 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     types,
                     expressions.element_ref(value),
                     project_fn_graph,
-                    records_used,
-                    choices_used,
                 );
             }
         }
         SyntaxExpression::Fn {
             fn_keyword_start: _,
-            parameter,
+            parameter: _,
             angle_right_start: _,
             result,
         } => {
-            if let Some(parameter) = parameter {
-                syntax_pattern_typed_used_records_and_choices(
-                    parameter,
-                    patterns,
-                    types,
-                    records_used,
-                    choices_used,
-                );
-            }
             if let Some(result) = result {
                 syntax_expression_connect_variables_in_graph_from(
                     origin_project_fn_graph_node,
@@ -2936,18 +2746,11 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     types,
                     expressions.element_ref(result),
                     project_fn_graph,
-                    records_used,
-                    choices_used,
                 );
             }
         }
         SyntaxExpression::RecordEmpty { dot_start: _ } => {}
         SyntaxExpression::Record { part0, part1_up } => {
-            // the only way to use a record expression is through
-            // a pattern or type. Nothing to add here
-            // TODO this still signifies a problem of records only being known
-            // at type-level. Should probably only collect records and choice types
-            // at check time!
             for part in std::iter::once(part0).chain(part1_up.iter()) {
                 match part {
                     SyntaxExpressionRecordPart::Field { name: _, value } => {
@@ -2960,8 +2763,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                                 types,
                                 expressions.element_ref(value),
                                 project_fn_graph,
-                                records_used,
-                                choices_used,
                             );
                         }
                     }
@@ -2978,8 +2779,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                                 types,
                                 expressions.element_ref(record),
                                 project_fn_graph,
-                                records_used,
-                                choices_used,
                             );
                         }
                     }
@@ -3000,8 +2799,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     types,
                     expressions.element_ref(inner),
                     project_fn_graph,
-                    records_used,
-                    choices_used,
                 );
             }
         }
@@ -3018,8 +2815,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     types,
                     expressions.element_ref(expression),
                     project_fn_graph,
-                    records_used,
-                    choices_used,
                 );
             }
         }
@@ -3037,8 +2832,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     types,
                     expressions.element_ref(queried),
                     project_fn_graph,
-                    records_used,
-                    choices_used,
                 );
             }
             for case in cases {
@@ -3051,8 +2844,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                         types,
                         result,
                         project_fn_graph,
-                        records_used,
-                        choices_used,
                     );
                 }
             }
@@ -3071,88 +2862,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     types,
                     expressions.element_ref(result),
                     project_fn_graph,
-                    records_used,
-                    choices_used,
-                );
-            }
-        }
-    }
-}
-// Note that a similar function does not exist for untyped patterns
-// as these match on expressions whose type is known (and therefore all possible records and choices)
-fn syntax_pattern_typed_used_records_and_choices<Patterns, Types>(
-    pattern: &SyntaxPattern<Patterns, Types>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
-) {
-    match pattern {
-        SyntaxPattern::Variable { name: _, type_ } => {
-            if let Some(type_) = type_ {
-                syntax_type_used_records_and_choices(type_, types, records_used, choices_used);
-            }
-        }
-        SyntaxPattern::Variant { name, value } => {
-            if let Some(name) = &name.value {
-                choices_used.insert(vec![name.clone()]);
-            }
-            if let Some(value) = value {
-                syntax_pattern_typed_used_records_and_choices(
-                    patterns.element_ref(value),
-                    patterns,
-                    types,
-                    records_used,
-                    choices_used,
-                );
-            }
-        }
-        SyntaxPattern::RecordEmpty { dot_start: _ } => {}
-        SyntaxPattern::Record {
-            field0_name,
-            field0_value,
-            field1_up,
-        } => {
-            records_used.insert(sorted_field_names(
-                std::iter::once(&field0_name.value).chain(
-                    field1_up
-                        .iter()
-                        .filter_map(|field| field.name.value.as_ref()),
-                ),
-            ));
-            if let Some(field0_value) = field0_value {
-                syntax_pattern_typed_used_records_and_choices(
-                    patterns.element_ref(field0_value),
-                    patterns,
-                    types,
-                    records_used,
-                    choices_used,
-                );
-            }
-            for field in field1_up {
-                if let Some(field_value) = &field.value {
-                    syntax_pattern_typed_used_records_and_choices(
-                        field_value,
-                        patterns,
-                        types,
-                        records_used,
-                        choices_used,
-                    );
-                }
-            }
-        }
-        SyntaxPattern::Parenthesized {
-            open_paren_start: _,
-            inner,
-            closed_paren_start: _,
-        } => {
-            if let Some(inner) = inner {
-                syntax_pattern_typed_used_records_and_choices(
-                    patterns.element_ref(inner),
-                    patterns,
-                    types,
-                    records_used,
-                    choices_used,
                 );
             }
         }
@@ -3387,6 +3096,8 @@ fn project_type_alias_check<Types>(
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     project_type: SyntaxProjectTypeInfo<Types>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> CheckedTypeAlias {
     let documentation = project_type.documentation.as_ref().map(|documentation| {
         documentation
@@ -3429,6 +3140,8 @@ fn project_type_alias_check<Types>(
                 type_aliases,
                 types,
                 &std::collections::HashMap::new(),
+                records_used,
+                choices_used,
             ) {
                 None => CheckedTypeAlias {
                     name_range: Some(name_range(with_start_position_as_ref(project_type.name))),
@@ -3519,6 +3232,8 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
     patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     project_fn: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> CheckedProjectFn {
     let maybe_parameter_type = project_fn.parameter.as_ref().and_then(|parameter| {
         syntax_pattern_check(
@@ -3530,6 +3245,8 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
             patterns,
             types,
             &std::collections::HashMap::new(),
+            records_used,
+            choices_used,
         )
         .map(|checked_parameter| checked_parameter.type_)
     });
@@ -3544,6 +3261,8 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
                     type_aliases,
                     types,
                     &std::collections::HashMap::new(),
+                    records_used,
+                    choices_used,
                 )
             });
     match result_type {
@@ -3612,12 +3331,22 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
     checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &mut std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> CheckedProjectFn {
     let checked_header = project_fns
         .get(&project_fn.name.value)
         .cloned()
         .unwrap_or_else(|| {
-            syntax_project_fn_header_check(errors, type_aliases, patterns, types, project_fn)
+            syntax_project_fn_header_check(
+                errors,
+                type_aliases,
+                patterns,
+                types,
+                project_fn,
+                records_used,
+                choices_used,
+            )
         });
     let documentation = project_fn.documentation.as_ref().map(|documentation| {
         documentation
@@ -3703,6 +3432,8 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
         checked_local_fns,
         checked_queries,
         checked_spread_records,
+        records_used,
+        choices_used,
     ) else {
         return CheckedProjectFn {
             documentation: documentation,
@@ -3850,7 +3581,7 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
         block: Box::new(syn_spread_expr_block(compiled_result)),
     })
 }
-// only use if you know `syntax_type` has already been called on it before
+/// only use if you know `syntax_type` has already been called on it before
 pub fn syntax_type_to_type<Types, OriginInfo>(
     type_: &SyntaxType<Types>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
@@ -4001,6 +3732,8 @@ pub fn syntax_type_check<Types>(
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> Option<Type> {
     match type_ {
         SyntaxType::Variable(name) => Some(Type::Variable(name.value.clone())),
@@ -4027,6 +3760,8 @@ pub fn syntax_type_check<Types>(
                 type_aliases,
                 types,
                 origins,
+                records_used,
+                choices_used,
             ),
         },
         SyntaxType::ConstructWithoutArguments(name) => {
@@ -4082,7 +3817,15 @@ pub fn syntax_type_check<Types>(
                             .filter_map(|argument| argument.type_.as_ref()),
                     )
                     .map(|argument_type| {
-                        syntax_type_check(argument_type, errors, type_aliases, types, origins)
+                        syntax_type_check(
+                            argument_type,
+                            errors,
+                            type_aliases,
+                            types,
+                            origins,
+                            records_used,
+                            choices_used,
+                        )
                     })
                     .collect::<Option<Vec<Type>>>()?;
                 let argument_count = 1 + argument1_up.len();
@@ -4147,6 +3890,8 @@ pub fn syntax_type_check<Types>(
                 type_aliases,
                 types,
                 origins,
+                records_used,
+                choices_used,
             ) {
                 None => {
                     any_field_value_has_error = true;
@@ -4187,7 +3932,15 @@ pub fn syntax_type_check<Types>(
                     });
                     return None;
                 };
-                match syntax_type_check(field_value, errors, type_aliases, types, origins) {
+                match syntax_type_check(
+                    field_value,
+                    errors,
+                    type_aliases,
+                    types,
+                    origins,
+                    records_used,
+                    choices_used,
+                ) {
                     None => {
                         any_field_value_has_error = true;
                     }
@@ -4199,6 +3952,9 @@ pub fn syntax_type_check<Types>(
                     }
                 }
             }
+            records_used.insert(sorted_field_names(
+                field_types.iter().map(|field_type| &field_type.name),
+            ));
             if any_field_value_has_error {
                 return None;
             }
@@ -4227,6 +3983,8 @@ pub fn syntax_type_check<Types>(
                 type_aliases,
                 types,
                 origins,
+                records_used,
+                choices_used,
             ) {
                 None => {
                     any_variant_value_has_error = true;
@@ -4267,8 +4025,15 @@ pub fn syntax_type_check<Types>(
                     });
                     return None;
                 };
-                match syntax_type_check(syntax_variant_value, errors, type_aliases, types, origins)
-                {
+                match syntax_type_check(
+                    syntax_variant_value,
+                    errors,
+                    type_aliases,
+                    types,
+                    origins,
+                    records_used,
+                    choices_used,
+                ) {
                     None => {
                         any_variant_value_has_error = true;
                     }
@@ -4280,6 +4045,9 @@ pub fn syntax_type_check<Types>(
                     }
                 }
             }
+            choices_used.insert(sorted_variant_names(
+                variant_types.iter().map(|variant_type| &variant_type.name),
+            ));
             if any_variant_value_has_error {
                 return None;
             }
@@ -4978,6 +4746,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Vec<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> Option<CheckedPattern> {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
@@ -4996,9 +4766,15 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     }),
                 },
                 Some(actual_type) => {
-                    let Some(actual_type) =
-                        syntax_type_to_type(actual_type, type_aliases, types, origins)
-                    else {
+                    let Some(actual_type) = syntax_type_check(
+                        actual_type,
+                        errors,
+                        type_aliases,
+                        types,
+                        origins,
+                        records_used,
+                        choices_used,
+                    ) else {
                         return None;
                     };
                     Some(CheckedPattern {
@@ -5059,6 +4835,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
+                        records_used,
+                        choices_used,
                     ) else {
                         return None;
                     };
@@ -5122,6 +4900,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
+                        records_used,
+                        choices_used,
                     ) else {
                         return None;
                     };
@@ -5242,6 +5022,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     patterns,
                     types,
                     origins,
+                    records_used,
+                    choices_used,
                 ) else {
                     return None;
                 };
@@ -5256,6 +5038,9 @@ fn syntax_pattern_check<'a, Patterns, Types>(
             let Some(type_fields) = maybe_type_fields else {
                 return None;
             };
+            records_used.insert(sorted_field_names(
+                type_fields.iter().map(|type_field| &type_field.name),
+            ));
             Some(CheckedPattern {
                 type_: Type::Record(type_fields),
                 catch: if field_catches
@@ -5294,6 +5079,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                records_used,
+                choices_used,
             ),
         },
     }
@@ -5586,6 +5373,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &mut std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> Option<Type> {
     match expression {
         SyntaxExpression::Number {
@@ -5603,9 +5392,15 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 None
             }
             Some(syntax_type) => {
-                let Some(type_) =
-                    syntax_type_check(syntax_type, errors, type_aliases, types, origins)
-                else {
+                let Some(type_) = syntax_type_check(
+                    syntax_type,
+                    errors,
+                    type_aliases,
+                    types,
+                    origins,
+                    records_used,
+                    choices_used,
+                ) else {
                     return None;
                 };
                 match &type_ {
@@ -5836,6 +5631,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             checked_local_fns,
                             checked_queries,
                             checked_spread_records,
+                            records_used,
+                            choices_used,
                         ) else {
                             return None;
                         };
@@ -5968,6 +5765,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         type_aliases,
                         types,
                         origins,
+                        records_used,
+                        choices_used,
                     ) else {
                         return None;
                     };
@@ -6007,6 +5806,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             checked_local_fns,
                             checked_queries,
                             checked_spread_records,
+                            records_used,
+                            choices_used,
                         ) else {
                             return None;
                         };
@@ -6071,9 +5872,15 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            let Some(checked_type) =
-                syntax_type_check(syntax_type, errors, type_aliases, types, origins)
-            else {
+            let Some(checked_type) = syntax_type_check(
+                syntax_type,
+                errors,
+                type_aliases,
+                types,
+                origins,
+                records_used,
+                choices_used,
+            ) else {
                 return None;
             };
             let Type::Choice(origin_choice_type) = &checked_type else {
@@ -6131,6 +5938,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
+                records_used,
+                choices_used,
             ) else {
                 return None;
             };
@@ -6171,6 +5980,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                records_used,
+                choices_used,
             ) else {
                 return None;
             };
@@ -6198,6 +6009,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
+                records_used,
+                choices_used,
             ) else {
                 return None;
             };
@@ -6278,6 +6091,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
+                                records_used,
+                                choices_used,
                             ),
                         };
                         if let Some(field_types) = &mut maybe_field_types {
@@ -6322,6 +6137,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             checked_local_fns,
                             checked_queries,
                             checked_spread_records,
+                            records_used,
+                            choices_used,
                         );
                         if let Some(field_types) = &mut maybe_field_types {
                             match checked_record_type {
@@ -6379,6 +6196,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     }
                 }
             }
+            // the only way to use a record expression is through
+            // a pattern or type. Nothing to add to used_records here
             maybe_field_types.map(Type::Record)
         }
         SyntaxExpression::Parenthesized {
@@ -6413,6 +6232,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
+                records_used,
+                choices_used,
             ),
         },
         SyntaxExpression::Commented {
@@ -6446,6 +6267,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
+                records_used,
+                choices_used,
             ),
         },
         SyntaxExpression::Query {
@@ -6483,6 +6306,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
+                records_used,
+                choices_used,
             ) else {
                 return None;
             };
@@ -6513,6 +6338,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                records_used,
+                choices_used,
             ) else {
                 return None;
             };
@@ -6538,6 +6365,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
+                records_used,
+                choices_used,
             ) else {
                 pattern_variables.retain(|variable, _| {
                     !case0_pattern_introduced_variables.contains_key(variable)
@@ -6582,6 +6411,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     origins,
+                    records_used,
+                    choices_used,
                 ) else {
                     invalid_case_indexes.push(case_index);
                     continue 'compiling_case1_up;
@@ -6633,6 +6464,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
+                    records_used,
+                    choices_used,
                 ) else {
                     invalid_case_indexes.push(case_index);
                     continue 'compiling_case1_up;
@@ -6809,6 +6642,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
+                records_used,
+                choices_used,
             );
             let Some(origin_name) = name else {
                 return checked_result_type;
