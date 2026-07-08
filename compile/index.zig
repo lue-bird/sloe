@@ -189,6 +189,26 @@ test "empty_span_end" {
     try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
     try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
 }
+test "compiles" {
+    try expect_fn(core.vec_add_ignoring_vacant);
+    try expect_fn(core.vec_add_empty);
+    try expect_fn(core.vec_add_empty_ignoring_vacant);
+    try expect_fn(core.vec_span_add);
+    try expect_fn(core.vec_span_add_str);
+    try expect_fn(core.vec_span_add_vec_span);
+    try expect_fn(core.vec_span_add_vec_opt_span);
+    try expect_fn(core.vec_opt_span_add_str);
+    try expect_fn(core.vec_opt_span_add);
+    try expect_fn(core.vec_opt_span_add_str);
+    try expect_fn(core.vec_opt_span_add_vec_span);
+    try expect_fn(core.vec_opt_span_add_vec_opt_span);
+}
+fn expect_fn(thing: anytype) !void {
+    return switch (@typeInfo(@TypeOf(thing))) {
+        .@"fn" => {},
+        else => std.testing.expect(false),
+    };
+}
 
 test "anonymous struct" {
     // This is very annoying: Zig just recently used to have real anonymous structs

@@ -9300,6 +9300,24 @@ If you can estimate a lower bound of how many elements are ultimately added, thi
             ),
             (
                 CoreFnInfo {
+                    name: "vec-add-empty",
+                    documentation: "Like `vec-add` but without assigning a value just yet.
+This like initializing an element with `undefined` memory,
+with the difference that you can't possibly access it :)
+Assign an empty-slot with `vec-set` or vacate it with `vec-vacate`",
+                    type_parameters: vec![],
+                    parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
                     name: "vec-add-ignoring-vacant",
                     documentation: "Add a new element into the vec and keep a slot to it without trying to reuse already vacant slots.
 Can potentially be faster than vec-add for temporary vecs where all the storage gets scrapped anyway.",
@@ -9317,6 +9335,22 @@ Can potentially be faster than vec-add for temporary vecs where all the storage 
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_slot(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-add-empty-ignoring-vacant",
+                    documentation: "Like `vec-add-ignoring-vacant` but without assigning a value just yet.
+Assign an empty-slot with `vec-set` or vacate it with `vec-vacate`",
+                    type_parameters: vec![],
+                    parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
                     ]),
                 }
             ),

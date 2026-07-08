@@ -288,7 +288,37 @@ pub struct Vec<LocalOrigin, Element> {
     // - any index contained in any vacant SpanRaw is an index in elements that should
     //   not be accessed again
     pub origin: Origin<LocalOrigin>,
-    elements: std::vec::Vec<Element>,
+    // std::mem::MaybeUninit because
+    // - functions like `vec.add_empty` explicitly require uninitialized memory.
+    //   creating uninitialized memory of type `Element` out of thin air is UB
+    // - it matches well semantically: access is inherently unsafe.
+    //   vec::Vec<Element> makes it appear safe
+    // - drawbacks (like the removal of niches) do not have an impact here
+    // - it prevents drop from being called
+    //   which could double-free on already vacated elements.
+    //   Vec<_,_> originally implemented a custom Drop as
+    //   `for e in self.elements.drain(..) { std::mem::forget(e); }`
+    //   with the following documentation:
+    //     At this point, all elements are either
+    //     - handled (in sloe code this is always the case or you'll get an error)
+    //     - unhandled (only possible from rust code when a `Slot`/`Span` is dropped)
+    //     - empty (only possible from rust code when a `Empty_span`/`Empty_span` is dropped)
+    //     - occupied (only possible from rust code).
+    //
+    //     If we used the regular Drop implementation, elements that were already vacated
+    //     or temporarily extracted (where e.g. the resulting `Empty_slot` from `vec.element()` was dropped)
+    //     could be freed twice (!).
+    //     So the only thing that can realistically be done is to "leak" all remaining elements.
+    //
+    //     To recap, if some rust code kept some slots occupied,
+    //     we _must_ prevent double-frees by leaking those elements.
+    //     This is not as bad as you might think:
+    //     - dropping a `Slot`/`Empty_slot` is always a leak
+    //       but it cannot reasonably prevented in rust. It's the cost of doing business
+    //     - in a `Vec<Origin, Element>`, the element type will realistically not be a type that
+    //       directly points to the heap. In fact in sloe you cannot even put more than one vec inside of
+    //       another vec as each vec has a different origin!
+    elements: std::vec::Vec<std::mem::MaybeUninit<Element>>,
     // Performance assumption:
     // Neighboring elements are way more likely to be vacated together.
     // Think e.g. vec_span_add_vec_span but also
@@ -297,6 +327,8 @@ pub struct Vec<LocalOrigin, Element> {
     // It is also assumed that there won't be a large amount of these vacant spans
     // so e.g. HashSet loses despite having a faster "find out if this index is vacant".
     // If usage ends up suggesting otherwise, we should change accordingly
+    //
+    // TODO store as Empty_span instead to consolidate unsafe {}
     pub vacant: std::vec::Vec<SpanRaw>,
 }
 #[derive(Debug, Clone, Copy)]
@@ -428,32 +460,6 @@ impl SpanRaw {
     }
 }
 
-impl<Origin, Element> std::ops::Drop for Vec<Origin, Element> {
-    fn drop(&mut self) {
-        // At this point, all elements are either
-        // - handled (in sloe code this is always the case or you'll get an error)
-        // - unhandled (only possible from rust code when a `Slot`/`Span` is dropped)
-        // - empty (only possible from rust code when a `Empty_span`/`Empty_span` is dropped)
-        // - occupied (only possible from rust code).
-        //
-        // If we used the regular Drop implementation, elements that were already vacated
-        // or temporarily extracted (where e.g. the resulting `Empty_slot` from `vec.element()` was dropped)
-        // could be freed twice (!).
-        // So the only thing that can realistically be done is to "leak" all remaining elements.
-        //
-        // To recap, if some rust code kept some slots occupied,
-        // we _must_ prevent double-frees by leaking those elements.
-        // This is not as bad as you might think:
-        // - dropping a `Slot`/`Empty_slot` is always a leak
-        //   but it cannot reasonably prevented in rust. It's the cost of doing business
-        // - in a `Vec<Origin, Element>`, the element type will realistically not be a type that
-        //   directly points to the heap. In fact in sloe you cannot even put more than one vec inside of
-        //   another vec as each vec has a different origin!
-        for element in self.elements.drain(..) {
-            std::mem::forget(element);
-        }
-    }
-}
 impl<Origin, Element> Vec<Origin, Element> {
     /// Especially when working with estimates or future insertions, you usually want pre_allocate_at_least
     pub fn pre_allocate(&mut self, pre_allocated_length: u32) {
@@ -464,11 +470,19 @@ impl<Origin, Element> Vec<Origin, Element> {
     }
     pub fn element_ref<'a>(&'a self, slot: &'a Slot<Origin>) -> &'a Element {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid index
-        unsafe { self.elements.get_unchecked(slot.index as usize) }
+        unsafe {
+            self.elements
+                .get_unchecked(slot.index as usize)
+                .assume_init_ref()
+        }
     }
     pub fn element_mut<'a>(&'a mut self, slot: &'a mut Slot<Origin>) -> &'a mut Element {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid index
-        unsafe { self.elements.get_unchecked_mut(slot.index as usize) }
+        unsafe {
+            self.elements
+                .get_unchecked_mut(slot.index as usize)
+                .assume_init_mut()
+        }
     }
     pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&'a Span<Origin>>) -> &'a [Element] {
         match opt_span {
@@ -478,7 +492,11 @@ impl<Origin, Element> Vec<Origin, Element> {
     }
     pub fn span_slice<'a>(&'a self, span: &'a Span<Origin>) -> &'a [Element] {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid range
-        unsafe { self.elements.get_unchecked(span.to_range()) }
+        unsafe {
+            self.elements
+                .get_unchecked(span.to_range())
+                .assume_init_ref()
+        }
     }
     pub fn opt_span_slice_mut<'a>(
         &'a mut self,
@@ -491,7 +509,11 @@ impl<Origin, Element> Vec<Origin, Element> {
     }
     pub fn span_slice_mut<'a>(&'a mut self, span: &'a mut Span<Origin>) -> &'a mut [Element] {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid range
-        unsafe { self.elements.get_unchecked_mut(span.to_range()) }
+        unsafe {
+            self.elements
+                .get_unchecked_mut(span.to_range())
+                .assume_init_mut()
+        }
     }
     // TODO recheck lifetime of the consumed iterator
     pub fn consume_span_iterator<Out>(
@@ -544,9 +566,10 @@ impl<Origin, Element> Vec<Origin, Element> {
             slot: Empty_slot::<Origin>::from_index(slot.index),
         }
     }
-    pub fn set(&mut self, slot: Empty_slot<Origin>, element: Element) {
-        // Empty_slot always references valid position
-        *unsafe { self.elements.get_unchecked_mut(slot.index as usize) } = element;
+    pub fn set(&mut self, slot: Empty_slot<Origin>, element: Element) -> Slot<Origin> {
+        // Empty_slot always references valid position and is inaccessible after this operation
+        unsafe { self.elements.get_unchecked_mut(slot.index as usize) }.write(element);
+        Slot::<Origin>::from_index(slot.index)
     }
     pub fn slot_rid(&mut self, slot_to_vacate: Empty_slot<Origin>) {
         // can maybe be optimized
@@ -624,21 +647,22 @@ impl<Origin, Element> Vec<Origin, Element> {
     }
     pub fn add_ignoring_vacant(&mut self, new_element: Element) -> Slot<Origin> {
         let added_index = self.elements.len();
-        self.elements.push(new_element);
+        self.elements.push(std::mem::MaybeUninit::new(new_element));
         Slot::from_index(added_index as u32)
     }
+    pub fn add_empty_ignoring_vacant(&mut self) -> Empty_slot<Origin> {
+        let added_index = self.elements.len();
+        self.elements.push(std::mem::MaybeUninit::uninit());
+        Empty_slot::from_index(added_index as u32)
+    }
     pub fn add(&mut self, new_element: Element) -> Slot<Origin> {
+        let empty_slot = self.add_empty();
+        self.set(empty_slot, new_element)
+    }
+    pub fn add_empty(&mut self) -> Empty_slot<Origin> {
         match self.vacant.pop() {
-            std::option::Option::None => self.add_ignoring_vacant(new_element),
+            std::option::Option::None => self.add_empty_ignoring_vacant(),
             std::option::Option::Some(vacant_opt_span_to_occupy) => {
-                // each vacant span only contains indexes present in .elements.
-                // This is still true when the vec's capacity has been shrunk as vacant spans
-                // for memory after the last element index are never created
-                unsafe {
-                    *self
-                        .elements
-                        .get_unchecked_mut(vacant_opt_span_to_occupy.start as usize) = new_element;
-                }
                 if let std::option::Option::Some(remaining_length) =
                     std::num::NonZeroU32::new(p32_predecessor(vacant_opt_span_to_occupy.length))
                 {
@@ -647,7 +671,7 @@ impl<Origin, Element> Vec<Origin, Element> {
                         length: remaining_length,
                     });
                 }
-                Slot::from_index(vacant_opt_span_to_occupy.start)
+                Empty_slot::<Origin>::from_index(vacant_opt_span_to_occupy.start)
             }
         }
     }
@@ -694,7 +718,10 @@ impl<Origin, Element> Vec<Origin, Element> {
                     start: Slot::from_index(index_to_populate_from),
                     length: new_element_count,
                 };
-                self.elements.splice(grow_span.to_range(), new_elements);
+                self.elements.splice(
+                    grow_span.to_range(),
+                    new_elements.map(std::mem::MaybeUninit::new),
+                );
                 grow_span
             }
         }
@@ -704,7 +731,10 @@ impl<Origin, Element> Vec<Origin, Element> {
         new_elements: impl std::iter::Iterator<Item = Element>,
     ) -> Opt<Span<Origin>> {
         let length_without_new_elements = self.elements.len();
-        std::iter::Extend::extend(&mut self.elements, new_elements);
+        std::iter::Extend::extend(
+            &mut self.elements,
+            new_elements.map(std::mem::MaybeUninit::new),
+        );
         match std::num::NonZeroU32::new((self.elements.len() - length_without_new_elements) as u32)
         {
             std::option::Option::None => Opt::Absent(()),
@@ -721,7 +751,10 @@ impl<Origin, Element> Vec<Origin, Element> {
         new_element_count: std::num::NonZeroU32,
     ) -> Span<Origin> {
         let length_without_new_elements = self.elements.len() as u32;
-        std::iter::Extend::extend(&mut self.elements, new_elements);
+        std::iter::Extend::extend(
+            &mut self.elements,
+            new_elements.map(std::mem::MaybeUninit::new),
+        );
         Span {
             start: Slot::from_index(length_without_new_elements),
             length: new_element_count,
@@ -802,7 +835,10 @@ impl<Origin, Element> Vec<Origin, Element> {
         // does not check for vacant space after because that will be rare
         let moved_span = self.move_span_to_end(span);
         let length_before_extend = self.elements.len();
-        std::iter::Extend::extend(&mut self.elements, new_elements);
+        std::iter::Extend::extend(
+            &mut self.elements,
+            new_elements.map(std::mem::MaybeUninit::new),
+        );
         Span {
             start: moved_span.start,
             length: moved_span
@@ -813,7 +849,7 @@ impl<Origin, Element> Vec<Origin, Element> {
     pub fn span_add(&mut self, span: Span<Origin>, new_element: Element) -> Span<Origin> {
         // does not check for vacant space after because that will be rare
         let moved_span = self.move_span_to_end(span);
-        self.elements.push(new_element);
+        self.elements.push(std::mem::MaybeUninit::new(new_element));
         Span {
             start: moved_span.start,
             length: moved_span.length.saturating_add(1),
@@ -863,7 +899,7 @@ impl<Origin, Element> Vec<Origin, Element> {
                 self.elements.splice(
                     (earlier_start_to_occupy_from as usize)
                         ..(earlier_start_to_occupy_from as usize + span.length.get() as usize),
-                    elements_to_move,
+                    std::iter::Iterator::map(elements_to_move, std::mem::MaybeUninit::new),
                 );
                 // we could alternatively have swapped the non-overlapping slices. Not sure what is faster
                 self.elements
@@ -1625,6 +1661,18 @@ pub fn vec_span_rid<Origin, Element>(
 pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Record {
     ()
 }
+pub fn vec_add<Origin, Element>(
+    Record·new·vec {
+        mut vec,
+        new: new_element,
+    }: Record·new·vec<Element, Vec<Origin, Element>>,
+) -> Record·slot·vec<Slot<Origin>, Vec<Origin, Element>> {
+    let slot = vec.add(new_element);
+    Record·slot·vec {
+        vec: vec,
+        slot: slot,
+    }
+}
 pub fn vec_add_ignoring_vacant<Origin, Element>(
     Record·new·vec {
         mut vec,
@@ -1637,13 +1685,19 @@ pub fn vec_add_ignoring_vacant<Origin, Element>(
         slot: slot,
     }
 }
-pub fn vec_add<Origin, Element>(
-    Record·new·vec {
-        mut vec,
-        new: new_element,
-    }: Record·new·vec<Element, Vec<Origin, Element>>,
-) -> Record·slot·vec<Slot<Origin>, Vec<Origin, Element>> {
-    let slot = vec.add(new_element);
+pub fn vec_add_empty<Origin, Element>(
+    mut vec: Vec<Origin, Element>,
+) -> Record·slot·vec<Empty_slot<Origin>, Vec<Origin, Element>> {
+    let slot = vec.add_empty();
+    Record·slot·vec {
+        vec: vec,
+        slot: slot,
+    }
+}
+pub fn vec_add_empty_ignoring_vacant<Origin, Element>(
+    mut vec: Vec<Origin, Element>,
+) -> Record·slot·vec<Empty_slot<Origin>, Vec<Origin, Element>> {
+    let slot = vec.add_empty_ignoring_vacant();
     Record·slot·vec {
         vec: vec,
         slot: slot,

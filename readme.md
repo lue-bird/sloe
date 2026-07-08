@@ -32,7 +32,7 @@ Not ony is it clunky, it is also often conceptually less constrained than taking
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
-Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types).
+Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
 Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
 
 # concept: flat memory collection `vec`
@@ -85,7 +85,6 @@ In my opinion this isn't quite a solved problem and if you have other ideas, I w
 ## creating new origins, slots and spans
 `origin some-name` creates a new origin variable and a local unique type for the start offset of its scope.
 An origin type does not have a `-dup` helper and thus can only be used for one collection.
-At the end of the underlying origin of the annotated origin type, the memory of the value with that origin will be deallocated.
 ```sloe
 # use a temporary value within a scope
 fn use-vec . :> u32 >
@@ -287,12 +286,12 @@ ty type-name Potential Type-Parameters
 ```
 (This list might be incomplete, examples show more)
 
-# potential improvements in the (far) future
+# potential improvements in the future
 - add field and variant rename and references
+- add "add remaining query cases" code action
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
 - add `set Origin, Element` along with add something like `map Origin, Key, Value` (or just `map Origin, Element` where key is derived from element) which still gives out `slot Origin`s for each entry but can be queried by key or similar. `map-empty` will require providing a `fn .a Key .b Key, .a Key .b Key .order order` or similar.
   Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `vec` is fast enough
-- consider adding record update syntax
 - consider adding `vec-counting` and `slot` which can reference a slot that is already in use:
   ```sloe
   fn vec-counting-slot-dup
@@ -342,9 +341,6 @@ ty type-name Potential Type-Parameters
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html), maybe even alongside `in-a-to-z`, `in-0-to-9` and other choice types). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the reverse operations which return `opt`
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
-- consider introducing a way to usefully make use of vacant/occupied space in sloe code.
-  e.g. consider adding `vec-add-vacant vec _vec Origin, Element :> _vec Origin, ELement` (probably same for vacant length)
-  and `vec-fold-including-vacant .vec vec _vec Origin, Element .state State .step fn .state State .element opt Element, State :> State` (and maybe ways to peek for vacant spaces by plain `u32`)
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```sloe
@@ -529,9 +525,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- find a better symbol for `:>`. It looks unaligned (maybe that's okay?)
-
-- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-ppositive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
+- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-positive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
 
 - implement conversion to zig. current semi-blockers:
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
@@ -543,7 +537,23 @@ cargo install --offline --debug --path . sloe
       else if (some_magic(case1_pattern, value)) |case1_value| ...
       else unreachable
       ```
-      and then consider switching to manually generated decision-tree-like code with nested switches
+      where `some_magic(pattern, value)` is some expression like
+      ```zig
+      const @"%matched_01022013:023130" = ..value..;
+      switch @"%matched_01022013:023130".field0 {
+          .variant => |@"intermediate_03020:2340"|
+              switch @"%matched_01022013:023130".field0 {
+                  .variant => |@"intermediate_03020:2345"|
+                      .{ .pattern_variable0 = @"%intermediate_03020:2340",
+                         .pattern_variable1 = @"%intermediate_03020:2345"
+                      },
+                  else => null
+              },
+          else => null
+      }
+      ```
+      (basically nested switches on the original value as a variable and temporaries, both field-accessed if necessary. Finally returning all pattern variables in an anonymous struct)
+      and then consider switching to manually generated decision-tree-like code with nested switches if the former doesn't optimize well (it kinda should, though)
     - think of a way to "split an origin":
         - creating initial state in sloe code, without needing to pass
           an unknown amount of origins in from the outside.
@@ -594,3 +604,5 @@ cargo install --offline --debug --path . sloe
   explicit, I feel users deserve some sugar for their effort.
 
 - fix bugs and TODOs
+
+- find a better symbol for `:>`. It looks unaligned (maybe that's okay?)

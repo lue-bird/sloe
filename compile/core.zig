@@ -132,6 +132,12 @@ pub fn @".new.span.vec"(@"%New": type, @"%Span": type, @"%Vec": type) type {
 pub fn @"record.new.span.vec"(@"%new": anytype, @"%span": anytype, @"%vec": anytype) @".new.span.vec"(@TypeOf(@"%new"), @TypeOf(@"%span"), @TypeOf(@"%vec")) {
     return .{ .new = @"%new", .span = @"%span", .vec = @"%vec" };
 }
+pub fn @".source.source_span.span.vec"(@"%Source": type, @"%Source_span": type, @"%Span": type, @"%Vec": type) type {
+    return struct { source: @"%Source", source_span: @"%Source_span", span: @"%Span", vec: @"%Vec" };
+}
+pub fn @"record.source.source_span.span.vec"(@"%source": anytype, @"%source_span": anytype, @"%span": anytype, @"%vec": anytype) @".source.source_span.span.vec"(@TypeOf(@"%source"), @TypeOf(@"%source_span"), @TypeOf(@"%span"), @TypeOf(@"%vec")) {
+    return .{ .source = @"%source", .source_span = @"%source_span", .span = @"%span", .vec = @"%vec" };
+}
 pub fn @".new.slot.vec"(@"%New": type, @"%Slot": type, @"%Vec": type) type {
     return struct { new: @"%New", slot: @"%Slot", vec: @"%Vec" };
 }
@@ -363,14 +369,31 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             try @"%vec".elements.append(@"%allocator", @"%new_element");
             return @"%new_slot";
         }
+        pub fn addEmptyIgnoringVacant(
+            @"%vec": *@This(),
+            @"%allocator": std.mem.Allocator,
+        ) error{OutOfMemory}!Empty_slot(@"%Origin") {
+            const @"%new_slot" = Empty_slot(@"%Origin"){
+                .origin = @"%vec".origin,
+                .index = std.math.lossyCast(u32, @"%vec".elements.items.len),
+            };
+            try @"%vec".elements.append(@"%allocator", undefined);
+            return @"%new_slot";
+        }
         pub fn add(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%new_element": @"%Element",
         ) error{OutOfMemory}!Slot(@"%Origin") {
+            const @"%empty_slot" = try @"%vec".addEmpty(@"%allocator");
+            return @"%vec".set(@"%empty_slot", @"%new_element");
+        }
+        pub fn addEmpty(
+            @"%vec": *@This(),
+            @"%allocator": std.mem.Allocator,
+        ) error{OutOfMemory}!Empty_slot(@"%Origin") {
             if (@"%vec".vacant.last()) |@"%vacant_span_ref"| {
-                const @"%new_slot" = Slot(@"%Origin"){ .origin = @"%vec".origin, .index = @"%vacant_span_ref".start };
-                @"%vec".elements.items[@"%vacant_span_ref".start] = @"%new_element";
+                const @"%new_slot" = Empty_slot(@"%Origin"){ .origin = @"%vec".origin, .index = @"%vacant_span_ref".start };
                 if (@"%vacant_span_ref".length.positive >= 2) {
                     @"%vacant_span_ref".length.positive -= 1;
                 } else {
@@ -378,7 +401,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 }
                 return @"%new_slot";
             } else {
-                return @"%vec".addIgnoringVacant(@"%allocator", @"%new_element");
+                return @"%vec".addEmptyIgnoringVacant(@"%allocator");
             }
         }
         /// slot is invalid while resulting ptr is live
@@ -409,7 +432,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
         pub fn spanSlice(@"%vec": *@This(), @"%span": Span(@"%Origin")) []@"%Element" {
             return @"%vec".elements.items[@"%span".start.index..(@"%span".endIndexUsize() + 1)];
         }
-        /// span is invalid after
+        /// span is invalid after.
+        /// The returned slice is only valid while vec.elements.items is live
         pub fn spanElements(
             @"%vec": *@This(),
             @"%span": Span(@"%Origin"),
@@ -425,6 +449,19 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                     .length = @"%span".length,
                 },
             };
+        }
+        /// span is invalid after
+        /// The returned slice is only valid while vec.elements.items is live
+        pub fn optSpanElements(
+            @"%vec": *@This(),
+            @"%opt_span": Opt(Span(@"%Origin")),
+        ) @".slice.span"([]@"%Element", Opt(Empty_span(@"%Origin"))) {
+            switch (@"%opt_span") {
+                .absent => return .{ .slice = []@"%Element", .span = .{ .absent = void } },
+                .present => |@"%span"| {
+                    return @"%vec".spanElements(@"%span");
+                },
+            }
         }
         pub fn slotRid(
             @"%vec": *@This(),
@@ -875,6 +912,24 @@ pub fn vec_add_ignoring_vacant(
     const @"%slot" = try @"%".vec.addIgnoringVacant(@"%allocator", @"%".new);
     return .{ .vec = @"%".vec, .slot = @"%slot" };
 }
+pub fn vec_add_empty(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%vec": Vec(@"%Origin", @"%Element"),
+) error{OutOfMemory}!@".slot.vec"(Empty_slot(@"%Origin"), Vec(@"%Origin", @"%Element")) {
+    const @"%slot" = try @"%vec".addEmpty(@"%allocator");
+    return .{ .vec = @"%vec", .slot = @"%slot" };
+}
+pub fn vec_add_empty_ignoring_vacant(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%vec": Vec(@"%Origin", @"%Element"),
+) error{OutOfMemory}!@".slot.vec"(Slot(@"%Origin"), Vec(@"%Origin", @"%Element")) {
+    const @"%slot" = try @"%vec".addEmptyIgnoringVacant(@"%allocator");
+    return .{ .vec = @"%vec", .slot = @"%slot" };
+}
 pub fn vec_take(
     @"%Element": type,
     @"%Origin": type,
@@ -927,6 +982,108 @@ pub fn vec_opt_span_add_str(
 pub fn vec_span_add_str(@"%Element": type, @"%Origin": type, allocator: std.mem.Allocator, @"%": @".new.span.vec"(Str, Span(@"%Origin"), Vec(@"%Origin", @"%Element"))) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", @"%Element")) {
     const @"%combined_span" = @"%".vec.spanAddSlice(allocator, @"%".span, @"%".new);
     return .{ .span = @"%combined_span", .vec = @"%".vec };
+}
+pub fn vec_span_add_vec_opt_span(
+    @"%Element": type,
+    @"%Origin": type,
+    allocator: std.mem.Allocator,
+    @"%": @".source.source_span.span.vec"(
+        Vec(@"%Origin", @"%Element"),
+        Opt(Span(@"%Origin")),
+        Span(@"%Origin"),
+        Vec(@"%Origin", @"%Element"),
+    ),
+) error{OutOfMemory}!@".source.source_span.span.vec"(
+    Vec(@"%Origin", @"%Element"),
+    Opt(Empty_span(@"%Origin")),
+    Span(@"%Origin"),
+    Vec(@"%Origin", @"%Element"),
+) {
+    const @"%sourced" = @"%".source.optSpanElements(@"%".source_span);
+    const @"%combined_span" = try @"%".vec.spanAddSlice(allocator, @"%".span, @"%sourced".slice);
+    return .{
+        .source = @"%".source,
+        .source_span = @"%sourced".span,
+        .span = @"%combined_span",
+        .vec = @"%".vec,
+    };
+}
+pub fn vec_span_add_vec_span(
+    @"%Element": type,
+    @"%Origin": type,
+    allocator: std.mem.Allocator,
+    @"%": @".source.source_span.span.vec"(
+        Vec(@"%Origin", @"%Element"),
+        Span(@"%Origin"),
+        Span(@"%Origin"),
+        Vec(@"%Origin", @"%Element"),
+    ),
+) error{OutOfMemory}!@".source.source_span.span.vec"(
+    Vec(@"%Origin", @"%Element"),
+    Empty_span(@"%Origin"),
+    Span(@"%Origin"),
+    Vec(@"%Origin", @"%Element"),
+) {
+    const @"%sourced" = @"%".source.spanElements(@"%".source_span);
+    const @"%combined_span" = try @"%".vec.spanAddSlice(allocator, @"%".span, @"%sourced".slice);
+    return .{
+        .source = @"%".source,
+        .source_span = @"%sourced".span,
+        .span = @"%combined_span",
+        .vec = @"%".vec,
+    };
+}
+pub fn vec_opt_span_add_vec_opt_span(
+    @"%Element": type,
+    @"%Origin": type,
+    allocator: std.mem.Allocator,
+    @"%": @".source.source_span.span.vec"(
+        Vec(@"%Origin", @"%Element"),
+        Opt(Span(@"%Origin")),
+        Span(@"%Origin"),
+        Vec(@"%Origin", @"%Element"),
+    ),
+) error{OutOfMemory}!@".source.source_span.span.vec"(
+    Vec(@"%Origin", @"%Element"),
+    Opt(Empty_span(@"%Origin")),
+    Opt(Span(@"%Origin")),
+    Vec(@"%Origin", @"%Element"),
+) {
+    const @"%sourced" = @"%".source.spanElements(@"%".source_span);
+    const @"%combined_span" = try @"%".vec.optSpanAddSlice(allocator, @"%".span, @"%sourced".slice);
+    return .{
+        .source = @"%".source,
+        .source_span = @"%sourced".span,
+        .span = @"%combined_span",
+        .vec = @"%".vec,
+    };
+}
+pub fn vec_opt_span_add_vec_span(
+    @"%Element": type,
+    @"%Origin": type,
+    allocator: std.mem.Allocator,
+    @"%": @".source.source_span.span.vec"(
+        Vec(@"%Origin", @"%Element"),
+        Span(@"%Origin"),
+        Opt(Span(@"%Origin")),
+        Vec(@"%Origin", @"%Element"),
+    ),
+) error{OutOfMemory}!@".source.source_span.span.vec"(
+    Vec(@"%Origin", @"%Element"),
+    Empty_span(@"%Origin"),
+    Span(@"%Origin"),
+    Vec(@"%Origin", @"%Element"),
+) {
+    // TODO there must be a better way
+    const @"%sourced" = @"%".source.spanElements(@"%".source_span);
+    const @"%span_combined_with_start" = try @"%".vec.optSpanAdd(allocator, @"%".span, @"%sourced".slice[0]);
+    const @"%combined_span" = try @"%".vec.optSpanAddSlice(allocator, @"%span_combined_with_start", @"%sourced".slice);
+    return .{
+        .source = @"%".source,
+        .source_span = @"%sourced".span,
+        .span = @"%combined_span",
+        .vec = @"%".vec,
+    };
 }
 pub fn vec_span_move_to_vacant(
     @"%Element": type,
