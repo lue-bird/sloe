@@ -9435,7 +9435,6 @@ To instead replace a `slot`, use `slot-replace`",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("slot", type_empty_slot(type_variable("Origin"))),
-                        ("element", type_variable("Element")),
                     ]),
                 }
             ),

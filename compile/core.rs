@@ -1625,9 +1625,12 @@ pub fn vec_set<Origin, Element>(
         slot,
         new: element,
     }: Record·new·slot·vec<Element, Empty_slot<Origin>, Vec<Origin, Element>>,
-) -> Vec<Origin, Element> {
-    vec.set(slot, element);
-    vec
+) -> Record·slot·vec<Slot<Origin>, Vec<Origin, Element>> {
+    let empty_slot = vec.set(slot, element);
+    Record·slot·vec {
+        vec: vec,
+        slot: empty_slot,
+    }
 }
 pub fn vec_slot_rid<Origin, Element>(
     Record·slot·vec {
