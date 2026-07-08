@@ -280,15 +280,15 @@ pub type Round_mode =
 pub struct Origin<LocalOrigin>(LocalOrigin);
 #[derive(Debug)]
 pub struct Vec<LocalOrigin, Element> {
-    // invariants:
-    // - no SpanRaws in vacant are connected
-    //   (and thus could be combined into one larger consecutive SpanRaw)
-    // - any index contained in any vacant SpanRaw is less than elements.len()
-    //   (and therefore no index within a vacant SpanRaw indexes uninitialized memory)
-    // - any index contained in any vacant SpanRaw is an index in elements that should
-    //   not be accessed again
-    pub origin: Origin<LocalOrigin>,
-    // std::mem::MaybeUninit because
+    // invariants (in addition to the invariants of (Empty_)Slot/Span):
+    // - no `Empty_span`s in `.vacant` are connected
+    //   (and thus could be combined into one larger consecutive span)
+    // - any index contained in any vacant `Empty_span` is less than elements.len()
+    // - any index contained in any vacant `Empty_span` should be assumed uninitialized
+    //   in `.elements`
+    //
+    // -------
+    // `.elements` contains `std::mem::MaybeUninit<Element>` because
     // - functions like `vec.add_empty` explicitly require uninitialized memory.
     //   creating uninitialized memory of type `Element` out of thin air is UB
     // - it matches well semantically: access is inherently unsafe.
@@ -327,14 +327,7 @@ pub struct Vec<LocalOrigin, Element> {
     // It is also assumed that there won't be a large amount of these vacant spans
     // so e.g. HashSet loses despite having a faster "find out if this index is vacant".
     // If usage ends up suggesting otherwise, we should change accordingly
-    //
-    // TODO store as Empty_span instead to consolidate unsafe {}
-    pub vacant: std::vec::Vec<SpanRaw>,
-}
-#[derive(Debug, Clone, Copy)]
-pub struct SpanRaw {
-    pub start: u32,
-    pub length: std::num::NonZeroU32,
+    vacant: std::vec::Vec<Empty_span<LocalOrigin>>,
 }
 pub type Slot<LocalOrigin> = Slot_with_occupancy<LocalOrigin, Occupied>;
 pub type Empty_slot<LocalOrigin> = Slot_with_occupancy<LocalOrigin, Empty>;
@@ -453,12 +446,6 @@ macro_rules! origin_new {
     };
 }
 pub use origin_new;
-
-impl SpanRaw {
-    fn end_index(self) -> u32 {
-        self.start + p32_predecessor(self.length)
-    }
-}
 
 impl<Origin, Element> Vec<Origin, Element> {
     /// Especially when working with estimates or future insertions, you usually want pre_allocate_at_least
@@ -583,16 +570,16 @@ impl<Origin, Element> Vec<Origin, Element> {
                     &span_to_vacate.start.index,
                 )
             });
-        let maybe_vacant_span_inde_connecting_later: std::option::Option<usize> =
+        let maybe_vacant_span_index_connecting_later: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
                 std::cmp::PartialEq::<u32>::eq(
                     &(span_to_vacate.end_index() + 1),
-                    &vacant_span.start,
+                    &vacant_span.start.index,
                 )
             });
         match (
             maybe_vacant_span_index_connecting_earlier,
-            maybe_vacant_span_inde_connecting_later,
+            maybe_vacant_span_index_connecting_later,
         ) {
             (std::option::Option::None, std::option::Option::None) => {
                 if (span_to_vacate.start.index + span_to_vacate.length.get() + 1) as usize
@@ -601,10 +588,7 @@ impl<Origin, Element> Vec<Origin, Element> {
                     self.elements
                         .truncate(self.elements.len() - span_to_vacate.length.get() as usize);
                 } else {
-                    self.vacant.push(SpanRaw {
-                        start: span_to_vacate.start.index,
-                        length: span_to_vacate.length,
-                    });
+                    self.vacant.push(span_to_vacate);
                 }
             }
             (
@@ -612,13 +596,16 @@ impl<Origin, Element> Vec<Origin, Element> {
                 std::option::Option::Some(index_connecting_later),
             ) => {
                 // if both spans start connecting now, combine them
-                let earlier_span = self.vacant[index_connecting_earlier];
+                let (earlier_span_start, earlier_span_length) = {
+                    let earlier_span = &self.vacant[index_connecting_earlier];
+                    (earlier_span.start.index, earlier_span.length)
+                };
                 let later_span_to_extend = &mut self.vacant[index_connecting_later];
-                *later_span_to_extend = SpanRaw {
-                    start: earlier_span.start,
+                *later_span_to_extend = Empty_span {
+                    start: Empty_slot::<Origin>::from_index(earlier_span_start),
                     length: std::num::NonZeroU32::saturating_add(
                         std::num::NonZeroU32::saturating_add(
-                            earlier_span.length,
+                            earlier_span_length,
                             later_span_to_extend.length.get(),
                         ),
                         span_to_vacate.length.get(),
@@ -635,8 +622,8 @@ impl<Origin, Element> Vec<Origin, Element> {
             }
             (std::option::Option::None, std::option::Option::Some(index_connecting_after)) => {
                 let later_opt_span_to_extend = &mut self.vacant[index_connecting_after];
-                *later_opt_span_to_extend = SpanRaw {
-                    start: span_to_vacate.start.index,
+                *later_opt_span_to_extend = Empty_span {
+                    start: span_to_vacate.start,
                     length: std::num::NonZeroU32::saturating_add(
                         span_to_vacate.length,
                         later_opt_span_to_extend.length.get(),
@@ -666,15 +653,18 @@ impl<Origin, Element> Vec<Origin, Element> {
                 if let std::option::Option::Some(remaining_length) =
                     std::num::NonZeroU32::new(p32_predecessor(vacant_opt_span_to_occupy.length))
                 {
-                    self.vacant.push(SpanRaw {
-                        start: vacant_opt_span_to_occupy.start + 1,
+                    self.vacant.push(Empty_span {
+                        start: Empty_slot::<Origin>::from_index(
+                            vacant_opt_span_to_occupy.start.index + 1,
+                        ),
                         length: remaining_length,
                     });
                 }
-                Empty_slot::<Origin>::from_index(vacant_opt_span_to_occupy.start)
+                vacant_opt_span_to_occupy.start
             }
         }
     }
+    // potential improvement: return Empty_span
     fn mark_length_positive_as_occupied(
         &mut self,
         length_to_occupy: std::num::NonZeroU32,
@@ -687,7 +677,7 @@ impl<Origin, Element> Vec<Origin, Element> {
             std::option::Option::None => std::option::Option::None,
             std::option::Option::Some(vacant_opt_span_to_reuse_index) => {
                 let vacant_opt_span_to_occupy = &mut self.vacant[vacant_opt_span_to_reuse_index];
-                let start_to_occupy_from = vacant_opt_span_to_occupy.start;
+                let start_to_occupy_from = vacant_opt_span_to_occupy.start.index;
                 match std::num::NonZeroU32::new(
                     vacant_opt_span_to_occupy.length.get() - length_to_occupy.get(),
                 ) {
@@ -1595,9 +1585,8 @@ pub fn origin_rid<LocalOrigin>(_: Origin<LocalOrigin>) -> Record {
     ()
 }
 
-pub fn vec_empty<LocalOrigin, Element>(origin: Origin<LocalOrigin>) -> Vec<LocalOrigin, Element> {
-    Vec {
-        origin: origin,
+pub fn vec_empty<LocalOrigin, Element>(_: Origin<LocalOrigin>) -> Vec<LocalOrigin, Element> {
+    Vec::<LocalOrigin, Element> {
         elements: std::vec::Vec::new(),
         vacant: std::vec::Vec::new(),
     }

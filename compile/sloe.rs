@@ -8624,7 +8624,6 @@ fn name_to_uppercase_rust(name: &str) -> String {
         | record_empty_rust_struct_name
         | choice_empty_rust_struct_name
         | "OwnedSliceIterator"
-        | "SpanRaw"
         | "Empty"
         | "Occupied" => sanitized + "øø",
         _ => sanitized,
