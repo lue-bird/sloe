@@ -332,6 +332,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
     return struct {
         origin: @"%Origin",
         elements: std.ArrayList(@"%Element"),
+        // TODO switch to Empty_span(Origin)
         vacant: std.ArrayList(SpanRaw),
         pub fn empty(@"%origin": Origin(@"%Origin")) @This() {
             return .{
@@ -495,10 +496,11 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             if (@"%maybe_vacant_span_index_connecting_earlier") |@"%vacant_span_index_connecting_earlier"| {
                 var @"%vacantSpanConnectingEarlier" = &@"%vec".vacant.items[@"%vacant_span_index_connecting_earlier"];
                 if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
-                    const @"%vacant_span_connecting_later" = @"%vec".vacant.swapRemove(@"%vacant_span_index_connecting_later");
+                    const @"%vacant_span_connecting_later" = @"%vec".vacant.items[@"%vacant_span_index_connecting_later"];
                     @"%vacantSpanConnectingEarlier".length = try @"%vacantSpanConnectingEarlier".length.addOrOutOfMem(
                         (try @"%span_to_vacate".length.addOrOutOfMem(@"%vacant_span_connecting_later".length.positive)).positive,
                     );
+                    _ = @"%vec".vacant.swapRemove(@"%vacant_span_index_connecting_later");
                 } else {
                     // maybeVacantSpanIndexConnectingLater == null
                     @"%vacantSpanConnectingEarlier".length = try @"%vacantSpanConnectingEarlier".length.addOrOutOfMem(@"%span_to_vacate".length.positive);
