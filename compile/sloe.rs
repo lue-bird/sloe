@@ -9440,6 +9440,51 @@ To instead replace a `slot`, use `slot-replace`",
             ),
             (
                 CoreFnInfo {
+                    name: "vec-slot-rid",
+                    documentation: "Return an `empty-slot` back to the vec for potential future reuse",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
+                    ]),
+                    result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-span-rid",
+                    documentation: "Return an `empty-span` back to the vec for potential future reuse",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_empty_span(type_variable("Origin"))),
+                    ]),
+                    result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-opt-span-rid",
+                    documentation: "Return an `opt empty-span` back to the vec for potential future reuse",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_opt(type_empty_span(type_variable("Origin")))),
+                    ]),
+                    result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                }
+            ),
+            (
+                CoreFnInfo {
                     name: "vec-opt-span-add",
                     documentation: "Attach a given element at the end of the span.",
                     type_parameters: vec![],

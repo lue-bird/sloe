@@ -562,6 +562,11 @@ impl<Origin, Element> Vec<Origin, Element> {
         // can maybe be optimized
         self.span_rid(slot_to_vacate.to_span());
     }
+    pub fn opt_span_rid(&mut self, span_to_vacate: Opt<Empty_span<Origin>>) {
+        if let Opt::Present(span_to_vacate) = span_to_vacate {
+            self.span_rid(span_to_vacate);
+        }
+    }
     pub fn span_rid(&mut self, span_to_vacate: Empty_span<Origin>) {
         let maybe_vacant_span_index_connecting_earlier: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
@@ -1648,6 +1653,15 @@ pub fn vec_span_rid<Origin, Element>(
     }: Record·span·vec<Empty_span<Origin>, Vec<Origin, Element>>,
 ) -> Vec<Origin, Element> {
     vec.span_rid(span_to_vacate);
+    vec
+}
+pub fn vec_opt_span_rid<Origin, Element>(
+    Record·span·vec {
+        span: span_to_vacate,
+        mut vec,
+    }: Record·span·vec<Opt<Empty_span<Origin>>, Vec<Origin, Element>>,
+) -> Vec<Origin, Element> {
+    vec.opt_span_rid(span_to_vacate);
     vec
 }
 pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Record {

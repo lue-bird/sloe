@@ -73,9 +73,14 @@ fn add-some-values<Origin> vec _vec Origin, u32 :> _vec Origin, u32 >
     vec
 ```
 
-Further reading if interested: The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
+Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been described similarly in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04).
+With the small difference that in sloe's case the unique origin types
+only exist at compile-time and can thus mark spans, slots, empty spans, empty slots, vecs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
+
+The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
 The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
 (apart from security I'm not sure this is ever worth it for regular users, considering it is also slower).
+
 I find it interesting that "storage" and "ownership over said storage" are decoupled.
 I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
 I really like this idea but understand that it cannot be implemented in e.g. rust which needs to store its allocator in it's value body to guarantee its content isn't splattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
@@ -525,7 +530,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-positive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
+- add `vec-swap` (suggesting use with `vec-add-ignoring-vacant`), `vec-swap-empty`, `vec-swap-with-empty`, `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-positive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
 
 - implement conversion to zig. current semi-blockers:
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
