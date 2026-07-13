@@ -854,6 +854,14 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
                 }
             }
         }
+        for syntax_project_element in project_state.syntax.elements.drain(..) {
+            sloe::syntax_project_element_rid(
+                syntax_project_element,
+                &mut state.syntax_expressions,
+                &mut state.syntax_patterns,
+                &mut state.syntax_types,
+            );
+        }
         *project_state = initialize_project_state_from_source(
             connection,
             did_change_text_document

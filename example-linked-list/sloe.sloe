@@ -14,7 +14,7 @@ fn stack-cons
     .nodes _vec Origin, _stack Origin, Element
     .stack _stack Origin, Element
     >
-    ? _vec-add .vec nodes .new tail = .vec nodes .slot tail-slot >
+    ? _vec-insert .vec nodes .new tail = .vec nodes .slot tail-slot >
     .nodes nodes .stack (|stacked<_stack Origin, Element> .head new-head .tail tail-slot)
 
 fn stack-pop
@@ -39,7 +39,7 @@ fn stack-pop
                 >
             .
     = |stacked .head head .tail tail-slot > (
-        ? _vec-take .vec nodes .slot tail-slot = .vec nodes .element tail >
+        ? _vec-remove .vec nodes .slot tail-slot = .vec nodes .element tail >
         .nodes nodes
         .element (
             |present<
@@ -66,7 +66,7 @@ fn stack-fold
         = . > .nodes nodes .state state
         )
     = |stacked .head head .tail tail-slot >
-    ? _vec-take .vec nodes .slot tail-slot = .vec nodes .element tail >
+    ? _vec-remove .vec nodes .slot tail-slot = .vec nodes .element tail >
     ? _fn-dup reduce = .a reduce-a .b reduce-b >
     ? _reduce-a .state state .element head = elements-nodes >
     _stack-fold

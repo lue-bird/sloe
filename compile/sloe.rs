@@ -1354,7 +1354,7 @@ fn parse_pattern_parenthesized_typed<Patterns, Types>(
     let closed_paren_start = parse_symbol_as_start(state, ")");
     Some(SyntaxPattern::Parenthesized {
         open_paren_start: open_paren_start,
-        inner: inner.map(|inner| patterns.add(inner)),
+        inner: inner.map(|inner| patterns.insert(inner)),
         closed_paren_start: closed_paren_start,
     })
 }
@@ -1372,7 +1372,7 @@ fn parse_pattern_parenthesized_untyped<Patterns, Types>(
     let closed_paren_start = parse_symbol_as_start(state, ")");
     Some(SyntaxPattern::Parenthesized {
         open_paren_start: open_paren_start,
-        inner: inner.map(|inner| patterns.add(inner)),
+        inner: inner.map(|inner| patterns.insert(inner)),
         closed_paren_start: closed_paren_start,
     })
 }
@@ -1388,7 +1388,7 @@ fn parse_pattern_variant_typed<Patterns, Types>(
     let value = parse_pattern_typed(state, patterns, types);
     Some(SyntaxPattern::Variant {
         name: name,
-        value: value.map(|value| patterns.add(value)),
+        value: value.map(|value| patterns.insert(value)),
     })
 }
 fn parse_pattern_variant_untyped<Patterns, Types>(
@@ -1403,7 +1403,7 @@ fn parse_pattern_variant_untyped<Patterns, Types>(
     let value = parse_pattern_untyped(state, patterns, types);
     Some(SyntaxPattern::Variant {
         name: name,
-        value: value.map(|value| patterns.add(value)),
+        value: value.map(|value| patterns.insert(value)),
     })
 }
 fn parse_type_argument<Types>(
@@ -1461,7 +1461,7 @@ fn parse_pattern_record_typed<Patterns, Types>(
         let record = parse_pattern_typed(state, patterns, types);
         SyntaxRecordPart::Spread {
             dot_dot_start: dot_dot_start,
-            record: record.map(|record| patterns.add(record)),
+            record: record.map(|record| patterns.insert(record)),
         }
     } else if let Some(name) = parse_field_name(state) {
         let Some(name_value) = name.value else {
@@ -1476,7 +1476,7 @@ fn parse_pattern_record_typed<Patterns, Types>(
                 value: Some(name_value),
                 start: name.start,
             },
-            value: value.map(|record| patterns.add(record)),
+            value: value.map(|record| patterns.insert(record)),
         }
     } else {
         return None;
@@ -1502,14 +1502,14 @@ fn parse_pattern_record_part_typed<Patterns, Types>(
         let record = parse_pattern_typed(state, patterns, types);
         Some(SyntaxRecordPart::Spread {
             dot_dot_start: dot_dot_start,
-            record: record.map(|record| patterns.add(record)),
+            record: record.map(|record| patterns.insert(record)),
         })
     } else if let Some(name) = parse_field_name(state) {
         parse_sloe_whitespace(state);
         let value = parse_pattern_typed(state, patterns, types);
         Some(SyntaxRecordPart::Field {
             name: name,
-            value: value.map(|record| patterns.add(record)),
+            value: value.map(|record| patterns.insert(record)),
         })
     } else {
         return None;
@@ -1535,7 +1535,7 @@ fn parse_pattern_record_untyped<Patterns, Types>(
     while let Some(field) = parse_pattern_field_untyped(state, patterns, types) {
         field1_up.push(SyntaxRecordPart::Field {
             name: field.name,
-            value: field.value.map(|field_value| patterns.add(field_value)),
+            value: field.value.map(|field_value| patterns.insert(field_value)),
         });
         parse_sloe_whitespace(state);
     }
@@ -1545,7 +1545,7 @@ fn parse_pattern_record_untyped<Patterns, Types>(
                 start: field0_name.start,
                 value: Some(field0_name_value),
             },
-            value: field0_value.map(|field0_value| patterns.add(field0_value)),
+            value: field0_value.map(|field0_value| patterns.insert(field0_value)),
         },
         part1_up: field1_up,
     })
@@ -1603,7 +1603,7 @@ fn parse_type_parenthesized<Types>(
     let closed_paren_start = parse_symbol_as_start(state, ")");
     Some(SyntaxType::Parenthesized {
         open_paren_start: open_paren_start,
-        inner: inner.map(|inner| types.add(inner)),
+        inner: inner.map(|inner| types.insert(inner)),
         closed_paren_start: closed_paren_start,
     })
 }
@@ -1637,7 +1637,7 @@ fn parse_type_record<Types>(
             start: field0_name.start,
             value: field0_name_value,
         },
-        field0_value: field0_value.map(|field0_value| types.add(field0_value)),
+        field0_value: field0_value.map(|field0_value| types.insert(field0_value)),
         field1_up: field1_up,
     })
 }
@@ -1685,7 +1685,7 @@ fn parse_type_choice<Types>(
             value: variant0_name_value,
             start: variant0_name.start,
         },
-        variant0_value: variant0_value.map(|value| types.add(value)),
+        variant0_value: variant0_value.map(|value| types.insert(value)),
         variant1_up: variant1_up,
     })
 }
@@ -1727,7 +1727,7 @@ fn parse_type_construct_with_arguments<Types>(
     Some(SyntaxType::ConstructWithArguments {
         underscore_start: underscore_start,
         name: name,
-        argument0: argument0.map(|argument0| types.add(argument0)),
+        argument0: argument0.map(|argument0| types.insert(argument0)),
         argument1_up: argument1_up,
     })
 }
@@ -1770,7 +1770,7 @@ fn parse_expression_record<Expressions, Patterns, Types>(
         let record = parse_expression(state, expressions, patterns, types);
         SyntaxRecordPart::Spread {
             dot_dot_start: dot_dot_start,
-            record: record.map(|record| expressions.add(record)),
+            record: record.map(|record| expressions.insert(record)),
         }
     } else if let Some(name) = parse_field_name(state) {
         // there are most likely more elegant ways of parsing and representing this.
@@ -1788,7 +1788,7 @@ fn parse_expression_record<Expressions, Patterns, Types>(
                 value: Some(name_value),
                 start: name.start,
             },
-            value: value.map(|record| expressions.add(record)),
+            value: value.map(|record| expressions.insert(record)),
         }
     } else {
         return None;
@@ -1815,14 +1815,14 @@ fn parse_expression_record_part<Expressions, Patterns, Types>(
         let record = parse_expression(state, expressions, patterns, types);
         Some(SyntaxRecordPart::Spread {
             dot_dot_start: dot_dot_start,
-            record: record.map(|record| expressions.add(record)),
+            record: record.map(|record| expressions.insert(record)),
         })
     } else if let Some(name) = parse_field_name(state) {
         parse_sloe_whitespace(state);
         let value = parse_expression(state, expressions, patterns, types);
         Some(SyntaxRecordPart::Field {
             name: name,
-            value: value.map(|record| expressions.add(record)),
+            value: value.map(|record| expressions.insert(record)),
         })
     } else {
         None
@@ -2006,7 +2006,7 @@ fn parse_expression_parenthesized<Expressions, Patterns, Types>(
     let closed_paren_start = parse_symbol_as_start(state, ")");
     Some(SyntaxExpression::Parenthesized {
         open_paren_start: open_paren_start,
-        inner: inner.map(|inner| expressions.add(inner)),
+        inner: inner.map(|inner| expressions.insert(inner)),
         closed_paren_start: closed_paren_start,
     })
 }
@@ -2023,7 +2023,7 @@ fn parse_expression_commented<Expressions, Patterns, Types>(
     let expression = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Commented {
         comments: comments,
-        expression: expression.map(|expression| expressions.add(expression)),
+        expression: expression.map(|expression| expressions.insert(expression)),
     })
 }
 fn parse_expression_variable<Expressions, Patterns, Types>(
@@ -2053,7 +2053,7 @@ fn parse_expression_call<Expressions, Patterns, Types>(
         underscore_start: underscore_start,
         name: name,
         type_arguments: type_arguments,
-        argument: argument.map(|argument| expressions.add(argument)),
+        argument: argument.map(|argument| expressions.insert(argument)),
     })
 }
 fn parse_expression_variant<Expressions, Patterns, Types>(
@@ -2072,7 +2072,7 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
     Some(SyntaxExpression::Variant {
         name: name,
         type_: type_argument,
-        value: value.map(|argument| expressions.add(argument)),
+        value: value.map(|argument| expressions.insert(argument)),
     })
 }
 fn parse_expression_fn<Expressions, Patterns, Types>(
@@ -2097,7 +2097,7 @@ fn parse_expression_fn<Expressions, Patterns, Types>(
         fn_keyword_start: fn_keyword_start,
         parameter: parameter,
         angle_right_start: angle_right_start,
-        result: result.map(|result| expressions.add(result)),
+        result: result.map(|result| expressions.insert(result)),
     })
 }
 fn parse_expression_origin<Expressions, Patterns, Types>(
@@ -2116,7 +2116,7 @@ fn parse_expression_origin<Expressions, Patterns, Types>(
     Some(SyntaxExpression::Origin {
         origin_keyword_start: origin_keyword_start,
         name: name,
-        result: result.map(|result| expressions.add(result)),
+        result: result.map(|result| expressions.insert(result)),
     })
 }
 fn parse_expression_query<Expressions, Patterns, Types>(
@@ -2139,7 +2139,7 @@ fn parse_expression_query<Expressions, Patterns, Types>(
     parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Query {
         question_mark_start: question_mark_start,
-        queried: queried.map(|queried| expressions.add(queried)),
+        queried: queried.map(|queried| expressions.insert(queried)),
         cases: cases,
     })
 }
@@ -5765,6 +5765,34 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
+            let Some(syntax_argument) = syntax_argument else {
+                errors.push(ErrorNode {
+                        message: Box::from("missing function call argument after this function name. Some functions like vec-empty just take . (the empty record) as an argument, so try putting . after the name and then check for potential type errors"),
+                        range: name_range(with_start_position_as_ref(name)),
+                    });
+                return None;
+            };
+            let syntax_argument = expressions.element_ref(syntax_argument);
+            let Some(checked_argument_type) = syntax_expression_check(
+                errors,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                pattern_variables,
+                used_pattern_variables,
+                origins,
+                used_origin_variables,
+                syntax_argument,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                records_used,
+                choices_used,
+            ) else {
+                return None;
+            };
             if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
                     used_pattern_variables.insert(&name.value, name.start);
@@ -5791,112 +5819,45 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 let Some(variable_type) = variable_info.type_.clone() else {
                     return None;
                 };
-                match syntax_argument {
-                    None => Some(variable_type),
-                    Some(syntax_argument) => {
-                        let syntax_argument = expressions.element_ref(syntax_argument);
-                        let Some(checked_argument_type) = syntax_expression_check(
-                            errors,
-                            type_aliases,
-                            project_fns,
-                            expressions,
-                            patterns,
-                            types,
-                            pattern_variables,
-                            used_pattern_variables,
-                            origins,
-                            used_origin_variables,
-                            syntax_argument,
-                            checked_local_fns,
-                            checked_queries,
-                            checked_spread_records,
-                            records_used,
-                            choices_used,
-                        ) else {
-                            return None;
-                        };
-                        let variable_type_arguments = match variable_type {
-                            Type::CoreConstruct {
-                                name: variable_type_name,
-                                arguments: variable_type_arguments,
-                            } if variable_type_name == "fn" => variable_type_arguments,
-                            variable_type => {
-                                let mut error_message = String::from(
-                                    "calling a variable whose type is not a function. Maybe you forgot some parens or similar? Its full type is\n",
-                                );
-                                type_format(&mut error_message, 4, &variable_type);
-                                errors.push(ErrorNode {
-                                    range: name_range(with_start_position_as_ref(name)),
-                                    message: error_message.into_boxed_str(),
-                                });
-                                return None;
-                            }
-                        };
-                        let [variable_type_input, variable_type_output] =
-                            variable_type_arguments.as_slice()
-                        else {
-                            return None;
-                        };
-                        if let Some(argument_variable_input_type_diff) =
-                            type_diff(variable_type_input, &checked_argument_type)
-                        {
-                            errors.push(ErrorNode {
-                                range: expression_range(
-                                    syntax_argument,
-                                    expressions,
-                                    patterns,
-                                    types,
-                                ),
-                                message: type_diff_error_message(
-                                    &argument_variable_input_type_diff,
-                                )
-                                .into_boxed_str(),
-                            });
-                            return None;
-                        }
-                        Some(variable_type_output.clone())
+                let variable_type_arguments = match variable_type {
+                    Type::CoreConstruct {
+                        name: variable_type_name,
+                        arguments: variable_type_arguments,
+                    } if variable_type_name == "fn" => variable_type_arguments,
+                    variable_type => {
+                        let mut error_message = String::from(
+                            "calling a variable whose type is not a function. Maybe you forgot some parens or similar? Its full type is\n",
+                        );
+                        type_format(&mut error_message, 4, &variable_type);
+                        errors.push(ErrorNode {
+                            range: name_range(with_start_position_as_ref(name)),
+                            message: error_message.into_boxed_str(),
+                        });
+                        return None;
                     }
-                }
-            } else if let Some(_origin_info) = origins.get(&name.value) {
-                let maybe_existing_origin_variable_use_start =
-                    used_origin_variables.insert(&name.value, name.start);
-                if let Some(existing_origin_variable_use_start) =
-                    maybe_existing_origin_variable_use_start
+                };
+                let [variable_type_input, variable_type_output] =
+                    variable_type_arguments.as_slice()
+                else {
+                    return None;
+                };
+                if let Some(argument_variable_input_type_diff) =
+                    type_diff(variable_type_input, &checked_argument_type)
                 {
                     errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!("this origin variable is already used earlier starting at {}. Each value can only be used once, that includes origins. Each collection needs its own origin", position_to_string(existing_origin_variable_use_start)).into_boxed_str(),
+                        range: expression_range(syntax_argument, expressions, patterns, types),
+                        message: type_diff_error_message(&argument_variable_input_type_diff)
+                            .into_boxed_str(),
                     });
                     return None;
                 }
-                if let Some(type_arguments) = syntax_type_arguments {
-                    errors.push(ErrorNode {
-                        range: lsp_types::Range {
-                            start: type_arguments.open_angle_start,
-                            end: angled_type_arguments_end(type_arguments, types),
-                        },
-                        message: Box::from(
-                            "type arguments on an origin make no sense. Remove them",
-                        ),
-                    });
-                }
-                if let Some(argument) = syntax_argument {
-                    errors.push(ErrorNode {
-                        range: expression_range(
-                            expressions.element_ref(argument),
-                            expressions,
-                            patterns,
-                            types,
-                        ),
-                        message: Box::from(
-                            "calling an origin with an argument makes no sense. Remove this argument",
-                        ),
-                    });
-                }
-                Some(type_origin(Type::Origin(name.value.clone())))
+                Some(variable_type_output.clone())
             } else {
                 let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
-                    errors.push(ErrorNode { range: name_range(with_start_position_as_ref(name)), message: Box::from("unknown name. No project fn or local variable has this name. Note that a local fn can not refer to any variable from the outside. Otherwise check for typos.") });
+                    errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name)),
+                        message: Box::from("unknown function name. No project fn or local variable has this name. Note that a local fn expression can not refer to any variable from the outside. Otherwise check for typos.")
+                    });
                     return None;
                 };
                 let Some((project_fn_parameter_type, project_fn_result_type)) = project_fn_info
@@ -5966,67 +5927,30 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 let mut fn_result_type = project_fn_result_type.clone();
                 type_replace_variables(&type_parameter_replacements, &mut fn_parameter_type);
                 type_replace_variables(&type_parameter_replacements, &mut fn_result_type);
-                match syntax_argument {
-                    None => Some(type_fn(fn_parameter_type, fn_result_type)),
-                    Some(syntax_argument) => {
-                        let syntax_argument = expressions.element_ref(syntax_argument);
-                        let Some(checked_argument_type) = syntax_expression_check(
-                            errors,
-                            type_aliases,
-                            project_fns,
-                            expressions,
-                            patterns,
-                            types,
-                            pattern_variables,
-                            used_pattern_variables,
-                            origins,
-                            used_origin_variables,
-                            syntax_argument,
-                            checked_local_fns,
-                            checked_queries,
-                            checked_spread_records,
-                            records_used,
-                            choices_used,
-                        ) else {
-                            return None;
-                        };
-                        let mut argument_type_variable_replacements =
-                            std::collections::BTreeMap::new();
-                        type_collect_variables_that_are_concrete_into(
-                            &mut argument_type_variable_replacements,
-                            &fn_parameter_type,
-                            &checked_argument_type,
-                        );
-                        let mut expected_argument_type = fn_parameter_type.clone();
-                        type_replace_variables(
-                            &argument_type_variable_replacements,
-                            &mut expected_argument_type,
-                        );
-                        let mut result_type = fn_result_type.clone();
-                        type_replace_variables(
-                            &argument_type_variable_replacements,
-                            &mut result_type,
-                        );
-                        if let Some(argument_variable_input_type_diff) =
-                            type_diff(&expected_argument_type, &checked_argument_type)
-                        {
-                            errors.push(ErrorNode {
-                                range: expression_range(
-                                    syntax_argument,
-                                    expressions,
-                                    patterns,
-                                    types,
-                                ),
-                                message: type_diff_error_message(
-                                    &argument_variable_input_type_diff,
-                                )
-                                .into_boxed_str(),
-                            });
-                            return None;
-                        }
-                        Some(result_type)
-                    }
+                let mut argument_type_variable_replacements = std::collections::BTreeMap::new();
+                type_collect_variables_that_are_concrete_into(
+                    &mut argument_type_variable_replacements,
+                    &fn_parameter_type,
+                    &checked_argument_type,
+                );
+                let mut expected_argument_type = fn_parameter_type.clone();
+                type_replace_variables(
+                    &argument_type_variable_replacements,
+                    &mut expected_argument_type,
+                );
+                let mut result_type = fn_result_type.clone();
+                type_replace_variables(&argument_type_variable_replacements, &mut result_type);
+                if let Some(argument_variable_input_type_diff) =
+                    type_diff(&expected_argument_type, &checked_argument_type)
+                {
+                    errors.push(ErrorNode {
+                        range: expression_range(syntax_argument, expressions, patterns, types),
+                        message: type_diff_error_message(&argument_variable_input_type_diff)
+                            .into_boxed_str(),
+                    });
+                    return None;
                 }
+                Some(result_type)
             }
         }
         SyntaxExpression::Variant { name, type_, value } => {
@@ -6567,7 +6491,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             }
             let mut catch = pattern_catch_to_case_patterns_catch(checked_case0_pattern.catch);
             let mut invalid_case_indexes = Vec::new();
-            'compiling_case1_up: for (case_index, case) in case1_up
+            'checking_case1_up: for (case_index, case) in case1_up
                 .iter()
                 .enumerate()
                 .map(|(i_in_1up, case)| (i_in_1up + 1, case))
@@ -6577,7 +6501,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         range:  symbol_range(case.equals_start, "="),
                         message: Box::from("missing query case pattern after this equals = . Cases consist of = pattern > result-expression. A full query could look like :option = |present n > n = |absent > 0 u32")
                     });
-                    continue 'compiling_case1_up;
+                    continue 'checking_case1_up;
                 };
                 let mut case_pattern_introduced_variables: std::collections::HashMap<
                     &Name,
@@ -6597,13 +6521,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     choices_used,
                 ) else {
                     invalid_case_indexes.push(case_index);
-                    continue 'compiling_case1_up;
+                    continue 'checking_case1_up;
                 };
-                pattern_variables.extend(
-                    case_pattern_introduced_variables
-                        .iter()
-                        .map(|(binding, info)| (*binding, info.clone())),
-                );
                 if let Some(queried_pattern_type_diff) =
                     type_diff(&checked_queried_type, &checked_case_pattern.type_)
                 {
@@ -6614,7 +6533,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                                 .into_boxed_str(),
                     });
                     invalid_case_indexes.push(case_index);
-                    continue 'compiling_case1_up;
+                    continue 'checking_case1_up;
                 }
                 pattern_catch_merge_with(
                     errors,
@@ -6627,8 +6546,13 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         range: case.right_angle_start.map(|right_angle_start| symbol_range(right_angle_start, "<")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
                         message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. An example of a query is : option = |present n > n = |absent > 0 u32")
                     });
-                    continue 'compiling_case1_up;
+                    continue 'checking_case1_up;
                 };
+                pattern_variables.extend(
+                    case_pattern_introduced_variables
+                        .iter()
+                        .map(|(binding, info)| (*binding, info.clone())),
+                );
                 let mut case_result_used_pattern_variables = std::collections::HashMap::new();
                 let mut case_result_used_origin_variables = std::collections::HashMap::new();
                 let Some(checked_case_result_type) = syntax_expression_check(
@@ -6649,8 +6573,11 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     records_used,
                     choices_used,
                 ) else {
+                    pattern_variables.retain(|variable, _| {
+                        !case_pattern_introduced_variables.contains_key(variable)
+                    });
                     invalid_case_indexes.push(case_index);
-                    continue 'compiling_case1_up;
+                    continue 'checking_case1_up;
                 };
                 for (case_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
                     case_pattern_introduced_variables
@@ -8445,7 +8372,9 @@ fn type_diff_variant_format(
         &type_diff_variant.value,
     );
 }
-const type_info_line_length_estimate_maximum: usize = 56;
+/// this is set to a low-seeming number because hover windows and similar
+/// are often small and sometimes unresizable
+const type_info_line_length_estimate_maximum: usize = 48;
 fn type_diff_line_span(type_diff: &TypeDiff) -> LineSpan {
     if type_diff_length_estimate(type_diff) <= type_info_line_length_estimate_maximum {
         LineSpan::Single
@@ -8958,7 +8887,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
             parameter_type: Type,
             result_type: Type,
         }
-        // TODO add the add-take functions
+        // TODO add the add-vec-span functions
         std::collections::HashMap::from([
             (
                 CoreFnInfo {
@@ -9253,7 +9182,7 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             (
                 CoreFnInfo {
                     name: "vec-empty",
-                    documentation: "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add` etc.",
+                    documentation: "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add`, `vec-add-empty` etc.",
                     type_parameters: vec![Name::const_new("Element")],
                     parameter_type: type_origin(type_variable("Origin")),
                     result_type: type_vec(type_variable("Origin"), type_variable("Element")),
@@ -9278,8 +9207,50 @@ If you can estimate a lower bound of how many elements are ultimately added, thi
             ),
             (
                 CoreFnInfo {
+                    name: "vec-insert",
+                    documentation: "Add a new element into the vec and keep a slot to it,
+reusing vacant space earlier in the vec when available.
+Use `vec-add` if you don't care about reuse.",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("new", type_variable("Element")),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_slot(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-insert-empty",
+                    documentation: "Like `vec-insert` but without assigning a value just yet.
+This like initializing an element with `undefined` memory,
+with the difference that you can't possibly access it :)
+Assign an empty-slot with `vec-set` or vacate it with `vec-vacate`",
+                    type_parameters: vec![],
+                    parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
                     name: "vec-add",
-                    documentation: "Add a new element into the vec and keep a slot to it.",
+                    documentation: "Add a new element to the end of the vec and keep a slot to it without trying to reuse already vacant slots.
+Can be faster than `vec-insert` when you expect no vacant elements or when all the storage gets scrapped soon anyway.",
                     type_parameters: vec![],
                     parameter_type: type_record([
                         (
@@ -9301,8 +9272,6 @@ If you can estimate a lower bound of how many elements are ultimately added, thi
                 CoreFnInfo {
                     name: "vec-add-empty",
                     documentation: "Like `vec-add` but without assigning a value just yet.
-This like initializing an element with `undefined` memory,
-with the difference that you can't possibly access it :)
 Assign an empty-slot with `vec-set` or vacate it with `vec-vacate`",
                     type_parameters: vec![],
                     parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
@@ -9317,47 +9286,9 @@ Assign an empty-slot with `vec-set` or vacate it with `vec-vacate`",
             ),
             (
                 CoreFnInfo {
-                    name: "vec-add-ignoring-vacant",
-                    documentation: "Add a new element into the vec and keep a slot to it without trying to reuse already vacant slots.
-Can potentially be faster than vec-add for temporary vecs where all the storage gets scrapped anyway.",
-                    type_parameters: vec![],
-                    parameter_type: type_record([
-                        (
-                            "vec",
-                            type_vec(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("new", type_variable("Element")),
-                    ]),
-                    result_type: type_record([
-                        (
-                            "vec",
-                            type_vec(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("slot", type_slot(type_variable("Origin"))),
-                    ]),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "vec-add-empty-ignoring-vacant",
-                    documentation: "Like `vec-add-ignoring-vacant` but without assigning a value just yet.
-Assign an empty-slot with `vec-set` or vacate it with `vec-vacate`",
-                    type_parameters: vec![],
-                    parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
-                    result_type: type_record([
-                        (
-                            "vec",
-                            type_vec(type_variable("Origin"), type_variable("Element")),
-                        ),
-                        ("slot", type_empty_slot(type_variable("Origin"))),
-                    ]),
-                }
-            ),
-            (
-                CoreFnInfo {
-                    name: "vec-take",
-                    documentation: "Remove and retrieve an element from the vec at a given slot (the inverse of vec-add).
-Equivalent to `vec-element` followed by `vec-slot-rid`",
+                    name: "vec-remove",
+                    documentation: "Remove and retrieve an element from the vec at a given slot (the inverse of vec-insert/vec-add).
+Short for `vec-element` followed by `vec-slot-rid`",
                     type_parameters: vec![],
                     parameter_type: type_record([
                         (
@@ -9412,6 +9343,29 @@ To remove the element entirely, use `vec-take`",
                         ),
                         ("slot", type_empty_slot(type_variable("Origin"))),
                         ("element", type_variable("Element")),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-set",
+                    documentation: "Put an element back into the given `empty-slot` (the inverse of vec-element).
+To instead replace a `slot`, use `slot-replace`",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
+                        ("new", type_slot(type_variable("Origin"))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("slot", type_empty_slot(type_variable("Origin"))),
                     ]),
                 }
             ),
@@ -9618,7 +9572,7 @@ To instead replace a `slot`, use `slot-replace`",
             ),
             (
                 CoreFnInfo {
-                    name: "vec-move-opt-span-to-vacant",
+                    name: "vec-move-span-to-vacant",
                     documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                     type_parameters: vec![],
                     parameter_type: type_record([
@@ -9634,6 +9588,161 @@ To instead replace a `slot`, use `slot-replace`",
                             type_vec(type_variable("Origin"), type_variable("Element")),
                         ),
                         ("span", type_span(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-move-span-to-end",
+                    documentation: "Move the given span to after all existing elements if necessary.",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-move-opt-span-to-end",
+                    documentation: "Move the given span to after all existing elements if necessary.",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_opt(type_span(type_variable("Origin")))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_opt(type_span(type_variable("Origin")))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-span-add-own-span",
+                    documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
+As an example, you could implement `vec-span-add` in sloe itself as
+```sloe
+fn vec-span-add
+    .vec vec _vec Origin, Element
+    .span span _span Origin
+    .new new Element
+    :>
+        .vec _vec Origin, Element
+        .span _span Origin
+    >
+    # the first line is optional: it ensures that the new slot will actually be connected,
+    # meaning the new element can stay at its position
+    ? _vec-span-move-to-end .vec vec .span span = .vec vec .span .span >
+    ? _vec-add .vec vec .new new = .vec vec .slot new-slot >
+    _vec-span-add-own-span
+    .vec vec
+    .start span
+    .end _slot-to-span new-slot
+```",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("start", type_span(type_variable("Origin"))),
+                        ("end", type_span(type_variable("Origin"))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-span-add-own-opt-span",
+                    documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
+The most common use case is re-combining spans that have been split up with e.g. `span-start` (see also `slot-to-span`)",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("start", type_opt(type_span(type_variable("Origin")))),
+                        ("end", type_span(type_variable("Origin"))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-opt-span-add-own-span",
+                    documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
+The most common use case is re-combining spans that have been split up with e.g. `span-end` (see also `slot-to-span`)",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("start", type_opt(type_span(type_variable("Origin")))),
+                        ("end", type_span(type_variable("Origin"))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_span(type_variable("Origin"))),
+                    ]),
+                }
+            ),
+            (
+                CoreFnInfo {
+                    name: "vec-opt-span-add-own-opt-span",
+                    documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+If start and end spans are not already connected, both are appended at the end and their original spans are vacated",
+                    type_parameters: vec![],
+                    parameter_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("start", type_opt(type_span(type_variable("Origin")))),
+                        ("end", type_opt(type_span(type_variable("Origin")))),
+                    ]),
+                    result_type: type_record([
+                        (
+                            "vec",
+                            type_vec(type_variable("Origin"), type_variable("Element")),
+                        ),
+                        ("span", type_opt(type_span(type_variable("Origin")))),
                     ]),
                 }
             ),
@@ -9836,7 +9945,7 @@ fn use-a-vec . u32
     origin my-elements-origin
     ? _vec-empty<u32> my-elements-origin = my-elements >
     ? _vec-add .vec my-elements .element 609 u32 = .vec my-elements .slot first-element-slot >
-    ? _vec-take .vec my-elements .slot first-element-slot = .vec my-elements .element first-element >
+    ? _vec-remove .vec my-elements .slot first-element-slot = .vec my-elements .element first-element >
     ? vec-rid my-elements = . >
     first-element # = 609 u32
 ```
@@ -9851,22 +9960,12 @@ fn use-a-vec . u32
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A valid index into a collection.
-This works because each collection has a unique origin and only gives out one slot for each index."
+                    "A valid position of an element in a collection.
+This works because each collection has a unique origin and only gives out one slot for each position.
+For consecutive `slot`s, check out `span`."
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_slot(type_variable("Origin"))),
-            },
-        ),
-        (
-            Name::const_new("empty-slot"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "Like `slot` but referencing an element that has been removed temporarily"
-                )),
-                parameters: vec![Name::const_new("Origin")],
-                type_: Some(type_empty_slot(type_variable("Origin"))),
             },
         ),
         (
@@ -9874,11 +9973,25 @@ This works because each collection has a unique origin and only gives out one sl
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A range of consecutive valid indexes into a collection with at least one known index.
-This works because each collection has a unique origin and only gives out one span for each range."
+                    "A range of ≥1 consecutive valid positions in a collection.
+This works because each collection has a unique origin and only gives out one span for each range.
+For potentially 0-length spans, use `_opt _span Origin`"
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_span(type_variable("Origin"))),
+            },
+        ),
+        (
+            Name::const_new("empty-slot"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "Like `slot` but referencing an unoccupied position.
+It's similar to what languages use uninitialized memory/undefined for.
+As this prevents another element from filling this position, you shouldn't keep it around for too long."
+                )),
+                parameters: vec![Name::const_new("Origin")],
+                type_: Some(type_empty_slot(type_variable("Origin"))),
             },
         ),
         (
@@ -9886,7 +9999,9 @@ This works because each collection has a unique origin and only gives out one sp
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Like `span` but referencing an element that has been removed temporarily"
+                    "Like `span` but referencing an unoccupied range.
+It's similar to what languages use uninitialized memory/undefined for.
+As this prevents other elements from filling these positions, you shouldn't keep it around for too long."
                 )),
                 parameters: vec![Name::const_new("Origin")],
                 type_: Some(type_empty_span(type_variable("Origin"))),
@@ -13635,6 +13750,337 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
         }
     }
 }
+pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
+    element: SyntaxProjectElement<Expressions, Patterns, Types>,
+    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Vec<Types, SyntaxType<Types>>,
+) {
+    match element {
+        SyntaxProjectElement::TypeAlias {
+            ty_keyword_start: _,
+            name: _,
+            parameters: _,
+            documentation: _,
+            type_,
+        } => {
+            if let Some(type_) = type_ {
+                syntax_type_rid(type_, types);
+            }
+        }
+        SyntaxProjectElement::Fn {
+            fn_keyword_start: _,
+            name: _,
+            type_parameters: _,
+            parameter,
+            arrow_start: _,
+            result_type,
+            angle_right_start: _,
+            documentation: _,
+            result,
+        } => {
+            if let Some(result_type) = result_type {
+                syntax_type_rid(result_type, types);
+            }
+            if let Some(parameter) = parameter {
+                syntax_pattern_rid(parameter, patterns, types);
+            }
+            if let Some(result) = result {
+                syntax_expression_rid(result, expressions, patterns, types);
+            }
+        }
+        SyntaxProjectElement::Comments(_) => {}
+        SyntaxProjectElement::Unrecognized {
+            range: _,
+            source: _,
+        } => {}
+    }
+}
+fn syntax_type_rid<Types>(
+    type_: SyntaxType<Types>,
+    types: &mut core::Vec<Types, SyntaxType<Types>>,
+) {
+    match type_ {
+        SyntaxType::Variable(_) => {}
+        SyntaxType::ConstructWithoutArguments(_) => {}
+        SyntaxType::ConstructWithArguments {
+            underscore_start: _,
+            name: _,
+            argument0,
+            argument1_up,
+        } => {
+            if let Some(argument0) = argument0 {
+                syntax_type_rid(types.remove(argument0), types);
+            }
+            for SyntaxTypeConstructTrailingArgument {
+                comma_start: _,
+                type_: argument_type,
+            } in argument1_up
+            {
+                if let Some(argument_type) = argument_type {
+                    syntax_type_rid(argument_type, types);
+                }
+            }
+        }
+        SyntaxType::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_type_rid(types.remove(inner), types);
+            }
+        }
+        SyntaxType::RecordEmpty { dot_start: _ } => {}
+        SyntaxType::Record {
+            field0_name: _,
+            field0_value,
+            field1_up,
+        } => {
+            if let Some(field0_value) = field0_value {
+                syntax_type_rid(types.remove(field0_value), types);
+            }
+            for SyntaxTrailingField { name: _, value } in field1_up {
+                if let Some(value) = value {
+                    syntax_type_rid(value, types);
+                }
+            }
+        }
+        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::Choice {
+            variant0_name: _,
+            variant0_value,
+            variant1_up,
+        } => {
+            if let Some(variant0_value) = variant0_value {
+                syntax_type_rid(types.remove(variant0_value), types);
+            }
+            for SyntaxTypeTrailingVariant { name: _, value } in variant1_up {
+                if let Some(value) = value {
+                    syntax_type_rid(value, types);
+                }
+            }
+        }
+    }
+}
+fn syntax_pattern_rid<Patterns, Types>(
+    pattern: SyntaxPattern<Patterns, Types>,
+    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Vec<Types, SyntaxType<Types>>,
+) {
+    match pattern {
+        SyntaxPattern::Variable { name: _, type_ } => {
+            if let Some(type_) = type_ {
+                syntax_type_rid(type_, types);
+            }
+        }
+        SyntaxPattern::Variant { name: _, value } => {
+            if let Some(value) = value {
+                syntax_pattern_rid(patterns.remove(value), patterns, types);
+            }
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {}
+        SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name: _, value } => {
+                        if let Some(value) = value {
+                            syntax_pattern_rid(patterns.remove(value), patterns, types);
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            syntax_pattern_rid(patterns.remove(record), patterns, types);
+                        }
+                    }
+                }
+            }
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_pattern_rid(patterns.remove(inner), patterns, types);
+            }
+        }
+    }
+}
+fn syntax_expression_rid<Expressions, Patterns, Types>(
+    expression: SyntaxExpression<Expressions, Patterns, Types>,
+    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Vec<Types, SyntaxType<Types>>,
+) {
+    match expression {
+        SyntaxExpression::Number { value: _, type_ } => {
+            if let Some(type_) = type_ {
+                syntax_type_rid(type_, types);
+            }
+        }
+        SyntaxExpression::Char {
+            open_quote_start: _,
+            content: _,
+            content_end: _,
+            closed_quote_exists: _,
+        } => {}
+        SyntaxExpression::Str {
+            open_quote_start: _,
+            content: _,
+            content_end: _,
+            closed_quote_exists: _,
+        } => {}
+        SyntaxExpression::Variable(_) => {}
+        SyntaxExpression::Call {
+            underscore_start: _,
+            name: _,
+            type_arguments,
+            argument,
+        } => {
+            if let Some(SyntaxAngledTypeArguments {
+                open_angle_start: _,
+                argument0,
+                argument1_up,
+                closed_angle_start: _,
+            }) = type_arguments
+            {
+                if let Some(argument0) = argument0 {
+                    syntax_type_rid(argument0, types);
+                }
+                for SyntaxTrailingTypeArgument {
+                    comma_start: _,
+                    type_: argument_type,
+                } in argument1_up
+                {
+                    if let Some(argument_type) = argument_type {
+                        syntax_type_rid(argument_type, types);
+                    }
+                }
+            }
+            if let Some(argument) = argument {
+                syntax_expression_rid(expressions.remove(argument), expressions, patterns, types);
+            }
+        }
+        SyntaxExpression::Variant {
+            name: _,
+            type_,
+            value,
+        } => {
+            if let Some(SyntaxAngledTypeArgument {
+                open_angle_start: _,
+                type_: Some(type_),
+                closed_angle_start: _,
+            }) = type_
+            {
+                syntax_type_rid(type_, types);
+            }
+            if let Some(value) = value {
+                syntax_expression_rid(expressions.remove(value), expressions, patterns, types);
+            }
+        }
+        SyntaxExpression::Fn {
+            fn_keyword_start: _,
+            parameter,
+            angle_right_start: _,
+            result,
+        } => {
+            if let Some(paramter) = parameter {
+                syntax_pattern_rid(paramter, patterns, types);
+            }
+            if let Some(result) = result {
+                syntax_expression_rid(expressions.remove(result), expressions, patterns, types);
+            }
+        }
+        SyntaxExpression::RecordEmpty { dot_start: _ } => {}
+        SyntaxExpression::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name: _, value } => {
+                        if let Some(value) = value {
+                            syntax_expression_rid(
+                                expressions.remove(value),
+                                expressions,
+                                patterns,
+                                types,
+                            );
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            syntax_expression_rid(
+                                expressions.remove(record),
+                                expressions,
+                                patterns,
+                                types,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        SyntaxExpression::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_expression_rid(expressions.remove(inner), expressions, patterns, types);
+            }
+        }
+        SyntaxExpression::Commented {
+            comments: _,
+            expression: after_comments,
+        } => {
+            if let Some(after_comments) = after_comments {
+                syntax_expression_rid(
+                    expressions.remove(after_comments),
+                    expressions,
+                    patterns,
+                    types,
+                );
+            }
+        }
+        SyntaxExpression::Query {
+            question_mark_start: _,
+            queried,
+            cases,
+        } => {
+            if let Some(queried) = queried {
+                syntax_expression_rid(expressions.remove(queried), expressions, patterns, types);
+            }
+            for SyntaxExpressionQueryCase {
+                equals_start: _,
+                pattern,
+                right_angle_start: _,
+                result,
+            } in cases
+            {
+                if let Some(pattern) = pattern {
+                    syntax_pattern_rid(pattern, patterns, types);
+                }
+                if let Some(result) = result {
+                    syntax_expression_rid(result, expressions, patterns, types);
+                }
+            }
+        }
+        SyntaxExpression::Origin {
+            origin_keyword_start: _,
+            name: _,
+            result,
+        } => {
+            if let Some(result) = result {
+                syntax_expression_rid(expressions.remove(result), expressions, patterns, types);
+            }
+        }
+    }
+}
 
 fn symbol_range(start: lsp_types::Position, symbol: &'static str) -> lsp_types::Range {
     lsp_types::Range {
@@ -13666,7 +14112,7 @@ fn position_add_characters(
     }
 }
 fn position_to_string(lsp_position: lsp_types::Position) -> String {
-    format!("{}:{}", lsp_position.line, lsp_position.character)
+    format!("{}:{}", lsp_position.line + 1, lsp_position.character + 1)
 }
 fn index_to_th(index: usize) -> String {
     let n = index + 1;

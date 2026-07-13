@@ -64,7 +64,7 @@ test "f32 round ties even" {
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
 }
-test "vec add, take, notVacantCount, rid" {
+test "vec insert, add, take, notVacantCount, rid" {
     const allocator = std.testing.allocator;
     const VecOrigin = enum { vec };
     const origin: core.Origin(VecOrigin) = .vec;
@@ -73,13 +73,13 @@ test "vec add, take, notVacantCount, rid" {
     const slot0 = try vec.add(allocator, 123);
     const slot1 = try vec.add(allocator, 456);
     try std.testing.expectEqual(2, vec.notVacantCount());
-    try std.testing.expectEqual(123, vec.take(allocator, slot0));
+    try std.testing.expectEqual(123, vec.remove(allocator, slot0));
     try std.testing.expectEqual(1, vec.notVacantCount());
-    const slot0_reused = try vec.add(allocator, 789);
+    const slot0_reused = try vec.insert(allocator, 789);
     try std.testing.expectEqual(0, slot0_reused.index);
-    try std.testing.expectEqual(789, vec.take(allocator, slot0_reused));
+    try std.testing.expectEqual(789, vec.remove(allocator, slot0_reused));
     try std.testing.expectEqual(1, vec.notVacantCount());
-    try std.testing.expectEqual(456, vec.take(allocator, slot1));
+    try std.testing.expectEqual(456, vec.remove(allocator, slot1));
     try std.testing.expectEqual(0, vec.notVacantCount());
     vec.rid(allocator);
 }
@@ -110,10 +110,10 @@ test "vec add to span" {
     const span0 = try vec.optSpanAdd(allocator, core.Opt(core.Span(VecOrigin)){ .absent = {} }, 123);
     const slot_causing_span_move_to_end = try vec.add(allocator, 4);
     const span1 = try vec.spanAdd(allocator, span0, 567);
-    try std.testing.expectEqual(4, try vec.take(allocator, slot_causing_span_move_to_end));
+    try std.testing.expectEqual(4, try vec.remove(allocator, slot_causing_span_move_to_end));
     try std.testing.expectEqual(2, span1.start.index);
     try std.testing.expectEqual(2, span1.length.positive);
-    const span1_moved = vec.moveSpanToVacant(span1);
+    const span1_moved = vec.spanMoveToVacant(span1);
     try std.testing.expectEqual(0, span1_moved.start.index);
     try std.testing.expectEqual(2, span1_moved.length.positive);
     vec.rid(allocator);
@@ -190,9 +190,10 @@ test "empty_span_end" {
     try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
 }
 test "compiles" {
-    try expect_fn(core.vec_add_ignoring_vacant);
+    try expect_fn(core.vec_add);
+    try expect_fn(core.vec_insert);
+    try expect_fn(core.vec_insert_empty);
     try expect_fn(core.vec_add_empty);
-    try expect_fn(core.vec_add_empty_ignoring_vacant);
     try expect_fn(core.vec_span_add);
     try expect_fn(core.vec_span_add_str);
     try expect_fn(core.vec_span_add_vec_span);
@@ -202,6 +203,14 @@ test "compiles" {
     try expect_fn(core.vec_opt_span_add_str);
     try expect_fn(core.vec_opt_span_add_vec_span);
     try expect_fn(core.vec_opt_span_add_vec_opt_span);
+    try expect_fn(core.vec_span_add_own_span);
+    try expect_fn(core.vec_span_add_own_opt_span);
+    try expect_fn(core.vec_opt_span_add_own_span);
+    try expect_fn(core.vec_opt_span_add_own_opt_span);
+    try expect_fn(core.vec_empty_span_add_own_span);
+    try expect_fn(core.vec_empty_span_add_own_opt_span);
+    try expect_fn(core.vec_opt_empty_span_add_own_span);
+    try expect_fn(core.vec_opt_empty_span_add_own_opt_span);
 }
 fn expect_fn(thing: anytype) !void {
     return switch (@typeInfo(@TypeOf(thing))) {

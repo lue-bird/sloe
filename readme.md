@@ -37,7 +37,7 @@ Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making th
 
 # concept: flat memory collection `vec`
 A collection which can mark some ranges within itself as vacant.
-This can be used to "return" memory which has become outdated or useless, for example with `vec-take` and `vec-span-add-take-vec-span`.
+This can be used to "return" memory which has become outdated or useless, for example with `vec-remove` and `vec-span-add-remove-vec-span`.
 Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
 Further reading if interested: This concept is often called slot map, reusing memory.
@@ -96,7 +96,7 @@ fn use-vec . :> u32 >
     origin vec-origin
   	? _vec-empty<u32> vec-origin = vec >
   	? _vec-add .vec vec .new 123 u32 = .vec vec .slot first-slot >
-  	? _vec-take .vec vec .slot first-slot = .vec vec .element first >
+  	? _vec-remove .vec vec .slot first-slot = .vec vec .element first >
   	? |absent<_opt vec-origin> . = after-first >
   	? _vec-opt-span-add .vec vec .span after-first .new 456 u32 = .vec vec .span after-first >
   	? _vec-span-add .vec vec .span after-first .new 789 u32 = .vec vec .span after-first >
@@ -181,26 +181,32 @@ This is done for most initializer functions, e.g. for the initial persistent app
 For most other functions, it's more common to pass in an existing collection
 
 # known limitations & design weaknesses
-- scattered sub-spans/slots in a persistent vec cannot be easily de-allocated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
-  For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
-  However, this would mean that slots and spans within the AST would not be owning
-- no way to connect slots and spans that are known to be adjacent:
-  `span-end` for example splits a span into the last slot and before.
-  However, reconnecting these with `span-connect-opt-span .start _slot-to-span ...`
-  runs into the need to handle the impossible case of the given parts being disconnected.
-  Operations like `vec-opt-span-add` are a resonable compromise on its face
-  but are pretty far from optimal (it will (!) move the whole span to the end and add the span as vacant instead of reusing)
-- It seems quite natural to represent a span of structs as e.g. `.field-names _span Field-names .field-values _span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
+What I'm unhappy with in the current design.
+Writing these down has already helped a lot in coming up with fixes (e.g. `empty-slot`, `vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items)
+
+- it seems quite natural to represent a span of structs as e.g. `.field-names _span Field-names .field-values _span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
   The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
   Honestly, the current "fold over one span and step through the rest with `span-start`"
   is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
   Zig "fixes" this by introducing special syntax and crashing if the length is different,
   which of course is not an option in sloe
-- sometimes, you really own all the elements of a vec in one place.
-  Splitting it into `opt span`+`vec` is annoying and wastes a bit of space
+- scattered sub-spans/slots in a persistent vec cannot be easily de-allocated/iterated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
+  For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
+  However, this would mean that slots and spans within the AST would not be owning.
+  (For temporary vecs, a possible solution could be `vec-slot-rid-without-vacating`, `vec-span-rid-without-vacating` and `vec-opt-span-rid-without-vacating` which would temporarily leak these slots and spans. This can be misused for persistent vecs but more importantly it does not solve the issue for persistent vecs)
+- sometimes, you really own all the elements of a vec in one place (especially when the vec elements can be trivially copied).
+  Splitting it into `opt span`+`vec` is annoying and wastes a bit of space (length is carried twice and start is always 0).
+  Due to "can't easily recombine spans" it is also really annoying to access any elements in the owning vec.
 - by default, most passed arguments are quite fat on the stack (e.g. `vec` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
+- I don't like `:>` but `<` would probably be more confusing
+- the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
+  Sloe is most likely not the right vehicle to explore this space,
+  still it seems like a warning sign for a supposed "general-purpose language"
+- number types, vector/array types etc. are very underbaked in sloe.
+  I need more real-world experience for their uses.
+  Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
 
 # syntax
 Syntax is secondary but I tried to make it coherent and practical, avoiding parens and indentation when possible, especially for trailing syntax.
@@ -530,11 +536,15 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `vec-swap` (suggesting use with `vec-add-ignoring-vacant`), `vec-swap-empty`, `vec-swap-with-empty`, `vec-opt-span-add-repeating`, `vec-span-add-repeating`, `vec-opt-span-add-repeating-positive`, `vec-opt-span-add-take-own-span`, `vec-span-add-take-own-opt-span`
+- (not fully sure) add `vec-opt-empty-span-add`, `vec-opt-empty-span-add-positive`, `vec-empty-span-add`
+
+- (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-positive`, maybe even unfold
+
+- make sure the span split operations are exposed for empty and occupied spans
 
 - implement conversion to zig. current semi-blockers:
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
-    - zig actually doesn't have concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
+    - zig actually doesn't have the concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
       Let it be said that I'm legit sad that zig removed support like most other languages.
     - find existing work on pattern matching. I will probably start with a
       ```zig
@@ -544,17 +554,20 @@ cargo install --offline --debug --path . sloe
       ```
       where `some_magic(pattern, value)` is some expression like
       ```zig
-      const @"%matched_01022013:023130" = ..value..;
-      switch @"%matched_01022013:023130".field0 {
-          .variant => |@"intermediate_03020:2340"|
-              switch @"%matched_01022013:023130".field0 {
-                  .variant => |@"intermediate_03020:2345"|
-                      .{ .pattern_variable0 = @"%intermediate_03020:2340",
-                         .pattern_variable1 = @"%intermediate_03020:2345"
-                      },
-                  else => null
-              },
-          else => null
+      block_012000120012: {
+          const @"%matched_01022013:023130" = ..value..;
+          const @"intermediate_03020:2340" = switch @"%matched_01022013:023130".field0 {
+              .variant => |@"intermediate_03020:2340"| @"intermediate_03020:2340",
+              else => break :block_012000120012 null
+          };
+          const @"intermediate_03020:2345" = switch @"%matched_01022013:023130".field0 {
+              .variant => |@"intermediate_03020:2345"| @"intermediate_03020:2345",
+              else => break :block_012000120012 null
+          }
+          break :block_012000120012 .{
+              .pattern_variable0 = @"%intermediate_03020:2340",
+              .pattern_variable1 = @"%intermediate_03020:2345"
+          };
       }
       ```
       (basically nested switches on the original value as a variable and temporaries, both field-accessed if necessary. Finally returning all pattern variables in an anonymous struct)
@@ -608,6 +621,6 @@ cargo install --offline --debug --path . sloe
   I would normally not consider this as a feature, but since sloe is so painfully
   explicit, I feel users deserve some sugar for their effort.
 
-- fix bugs and TODOs
+- when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found.
 
-- find a better symbol for `:>`. It looks unaligned (maybe that's okay?)
+- fix bugs and TODOs
