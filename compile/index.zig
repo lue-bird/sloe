@@ -64,6 +64,115 @@ test "f32 round ties even" {
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
     try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
 }
+test "simple slot and span queries" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const slot4 = core.Slot(ExampleOrigin){ .origin = origin, .index = 4 };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
+    try std.testing.expectEqual(4, (try core.slot_index(ExampleOrigin, slot4)).index);
+    try std.testing.expectEqual(10, (try core.span_length(ExampleOrigin, span4_to_13)).length.positive);
+    try std.testing.expectEqual(10, (try core.opt_span_length(ExampleOrigin, .{ .present = span4_to_13 })).length);
+    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, .{ .absent = {} })).length);
+    const empty_slot4 = core.Empty_slot(ExampleOrigin){ .origin = origin, .index = 4 };
+    const empty_span4_to_13 = core.Empty_span(ExampleOrigin){ .start = empty_slot4, .length = core.P32.fromComptime(10) };
+    try std.testing.expectEqual(4, (try core.empty_slot_index(ExampleOrigin, empty_slot4)).index);
+    try std.testing.expectEqual(10, (try core.empty_span_length(ExampleOrigin, empty_span4_to_13)).length.positive);
+    try std.testing.expectEqual(10, (try core.opt_empty_span_length(ExampleOrigin, .{ .present = empty_span4_to_13 })).length);
+    try std.testing.expectEqual(0, (try core.opt_empty_span_length(ExampleOrigin, .{ .absent = {} })).length);
+}
+test "span_start" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const slot4_and_span5_to_13 = try core.span_start(ExampleOrigin, span4_to_13);
+    try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
+    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
+    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.present.length.positive);
+    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.present.endIndex());
+}
+test "span_end" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const slot13_and_span4_to_12 = try core.span_end(ExampleOrigin, span4_to_13);
+    try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
+    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
+    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
+    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
+}
+test "span_start_of_length_positive, normal inputs" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_10_and_11_to_13 = try core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 7 } });
+    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.present.start.index);
+    try std.testing.expectEqual(13, try span4_to_10_and_11_to_13.after.present.endIndex());
+    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.start.start.index);
+    try std.testing.expectEqual(10, try span4_to_10_and_11_to_13.start.endIndex());
+}
+test "span_start_of_length_positive, given length > given span length" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13_and_empty = try core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
+    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.after)).length);
+    try std.testing.expectEqual(4, span4_to_13_and_empty.start.start.index);
+    try std.testing.expectEqual(13, try span4_to_13_and_empty.start.endIndex());
+}
+test "span_end_of_length_positive, normal inputs" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_10_and_11_to_13 = try core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 3 } });
+    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.end.start.index);
+    try std.testing.expectEqual(13, try span4_to_10_and_11_to_13.end.endIndex());
+    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.before.present.start.index);
+    try std.testing.expectEqual(10, try span4_to_10_and_11_to_13.before.present.endIndex());
+}
+test "span_end_of_length_positive, given length > given span length" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13_and_empty = try core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
+    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.before)).length);
+    try std.testing.expectEqual(4, span4_to_13_and_empty.end.start.index);
+    try std.testing.expectEqual(13, try span4_to_13_and_empty.end.endIndex());
+}
+test "span_fold" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const index_sum = try core.opt_span_fold(ExampleOrigin, u32, .{
+        .span = core.Opt(core.Span(ExampleOrigin)){ .present = span4_to_13 },
+        .state = 0,
+        .step = struct {
+            pub fn step(current: core.@".slot.state"(core.Slot(ExampleOrigin), u32)) error{OutOfMemory}!u32 {
+                return current.state +| current.slot.index;
+            }
+        }.step,
+    });
+    try std.testing.expectEqual(85, index_sum);
+}
+test "empty_span_start" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Empty_span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const slot4_and_span5_to_13 = try core.empty_span_start(ExampleOrigin, span4_to_13);
+    try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
+    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
+    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.present.length.positive);
+    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.present.endIndex());
+}
+test "empty_span_end" {
+    const ExampleOrigin = enum { vec };
+    const origin: core.Origin(ExampleOrigin) = .vec;
+    const span4_to_13 = core.Empty_span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const slot13_and_span4_to_12 = try core.empty_span_end(ExampleOrigin, span4_to_13);
+    try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
+    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
+    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
+    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
+}
 test "vec insert, add, take, notVacantCount, rid" {
     const allocator = std.testing.allocator;
     const VecOrigin = enum { vec };
@@ -118,76 +227,35 @@ test "vec add to span" {
     try std.testing.expectEqual(2, span1_moved.length.positive);
     vec.rid(allocator);
 }
-test "simple slot and span queries" {
-    const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const slot4 = core.Slot(ExampleOrigin){ .origin = origin, .index = 4 };
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
-    try std.testing.expectEqual(4, (try core.slot_index(ExampleOrigin, slot4)).index);
-    try std.testing.expectEqual(10, (try core.span_length(ExampleOrigin, span4_to_13)).length.positive);
-    try std.testing.expectEqual(10, (try core.opt_span_length(ExampleOrigin, .{ .present = span4_to_13 })).length);
-    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, .{ .absent = {} })).length);
-    const empty_slot4 = core.Empty_slot(ExampleOrigin){ .origin = origin, .index = 4 };
-    const empty_span4_to_13 = core.Empty_span(ExampleOrigin){ .start = empty_slot4, .length = core.P32.fromComptime(10) };
-    try std.testing.expectEqual(4, (try core.empty_slot_index(ExampleOrigin, empty_slot4)).index);
-    try std.testing.expectEqual(10, (try core.empty_span_length(ExampleOrigin, empty_span4_to_13)).length.positive);
-    try std.testing.expectEqual(10, (try core.opt_empty_span_length(ExampleOrigin, .{ .present = empty_span4_to_13 })).length);
-    try std.testing.expectEqual(0, (try core.opt_empty_span_length(ExampleOrigin, .{ .absent = {} })).length);
+test "origin with enums containing the same member name" {
+    const AOrigin = enum { origin };
+    const a_origin: core.Origin(AOrigin) = .origin;
+    const BOrigin = enum { origin };
+    const b_origin: core.Origin(BOrigin) = .origin;
+    try std.testing.expect(@TypeOf(a_origin) != @TypeOf(b_origin));
+    try core.origin_rid(AOrigin, a_origin);
+    try core.origin_rid(BOrigin, b_origin);
 }
-test "span_start" {
-    const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot4_and_span5_to_13 = try core.span_start(ExampleOrigin, span4_to_13);
-    try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
-    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
-    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.present.length.positive);
-    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.present.endIndex());
+test "origin can be @src()" {
+    const AOrigin = SourceLocationUniqueEnum(@src());
+    const a_origin: core.Origin(AOrigin) = undefined; // this is not great
+    const BOrigin = SourceLocationUniqueEnum(@src());
+    const b_origin: core.Origin(BOrigin) = undefined; // this is not great
+    try std.testing.expect(@TypeOf(a_origin) != @TypeOf(b_origin));
+    try core.origin_rid(AOrigin, a_origin);
+    try core.origin_rid(BOrigin, b_origin);
 }
-test "span_end" {
-    const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot13_and_span4_to_12 = try core.span_end(ExampleOrigin, span4_to_13);
-    try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
-    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
-    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
-    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
-}
-test "span_fold" {
-    const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    const index_sum = try core.opt_span_fold(ExampleOrigin, u32, .{
-        .span = core.Opt(core.Span(ExampleOrigin)){ .present = span4_to_13 },
-        .state = 0,
-        .step = struct {
-            pub fn step(current: core.@".slot.state"(core.Slot(ExampleOrigin), u32)) error{OutOfMemory}!u32 {
-                return current.state +| current.slot.index;
-            }
-        }.step,
-    });
-    try std.testing.expectEqual(85, index_sum);
-}
-test "empty_span_start" {
-    const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Empty_span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot4_and_span5_to_13 = try core.empty_span_start(ExampleOrigin, span4_to_13);
-    try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
-    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
-    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.present.length.positive);
-    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.present.endIndex());
-}
-test "empty_span_end" {
-    const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Empty_span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot13_and_span4_to_12 = try core.empty_span_end(ExampleOrigin, span4_to_13);
-    try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
-    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
-    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
-    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
+/// No real benefit over using explicitly named `enum { ... }`s.
+/// This would be necessary if enum/struct/union(enum) were structural, not nominal.
+/// You may like this more, though because you need to type less.
+/// I don't like it because it basically forces `undefined`
+fn SourceLocationUniqueEnum(src_loc: std.lang.SourceLocation) type {
+    return @Enum(
+        u0,
+        .exhaustive,
+        &.{std.fmt.comptimePrint("{}", .{src_loc.line})},
+        &.{0},
+    );
 }
 test "compiles" {
     try expect_fn(core.vec_add);

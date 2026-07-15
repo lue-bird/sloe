@@ -431,7 +431,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   ...
   ```
   This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
-- allowing field and variant names to start with numbers, like `fn char-dup char char :> .0 char .1 char`.
+- (not planned but not rejected) allowing field and variant names to start with numbers and -, like `fn char-dup char char :> .0 char .1 char`.
   The nice thing is that this matches what most language use as field names for tuples.
   Overall though, this is also a little bit confusing.
   If you have a use-case for this, I will probably reconsider (e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`; something in that ballpark)
@@ -539,8 +539,6 @@ cargo install --offline --debug --path . sloe
 - (not fully sure) add `vec-opt-empty-span-add`, `vec-opt-empty-span-add-positive`, `vec-empty-span-add`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-positive`, maybe even unfold
-
-- make sure the span split operations are exposed for empty and occupied spans
 
 - implement conversion to zig. current semi-blockers:
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements

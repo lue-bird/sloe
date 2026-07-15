@@ -36,6 +36,18 @@ pub fn @".end.start"(@"%End": type, @"%Start": type) type {
 pub fn @"record.end.start"(@"%end": anytype, @"%start": anytype) @".end.start"(@TypeOf(@"%end"), @TypeOf(@"%start")) {
     return .{ .end = @"%end", .start = @"%start" };
 }
+pub fn @".after.start"(@"%After": type, @"%Start": type) type {
+    return struct { after: @"%After", start: @"%Start" };
+}
+pub fn @"record.after.start"(@"%after": anytype, @"%start": anytype) @".after.start"(@TypeOf(@"%after"), @TypeOf(@"%start")) {
+    return .{ .after = @"%after", .start = @"%start" };
+}
+pub fn @".before.end"(@"%Before": type, @"%End": type) type {
+    return struct { before: @"%Before", end: @"%End" };
+}
+pub fn @"record.before.end"(@"%before": anytype, @"%end": anytype) @".before.end"(@TypeOf(@"%before"), @TypeOf(@"%end")) {
+    return .{ .before = @"%before", .end = @"%end" };
+}
 pub fn @".index.slot"(@"%Index": type, @"%Slot": type) type {
     return struct { index: @"%Index", slot: @"%Slot" };
 }
@@ -184,7 +196,7 @@ pub const P32 = struct {
     // The one tiny performance benefit is that .predecessor() never underflows on valid P32s
     positive: u32,
     pub const one = P32{ .positive = 1 };
-    pub const max = P32{ .positive = std.math.maxInt(u32) };
+    pub const maxValue = P32{ .positive = std.math.maxInt(u32) };
     pub fn fromComptime(comptime @"%u32": u32) @This() {
         return if (@"%u32" == 0) @compileError("given unsigned integer is not positive") else .{ .positive = @"%u32" };
     }
@@ -203,6 +215,12 @@ pub const P32 = struct {
     }
     pub fn mulClamp(@"%p": @This(), @"%increase": P32) P32 {
         return .{ .positive = @"%p".positive *| @"%increase".positive };
+    }
+    pub fn min(@"%a": @This(), @"%b": P32) P32 {
+        return .{ .positive = @min(@"%a".positive, @"%b".positive) };
+    }
+    pub fn max(@"%a": @This(), @"%b": P32) P32 {
+        return .{ .positive = @max(@"%a".positive, @"%b".positive) };
     }
 };
 pub const U32 = u32;
@@ -236,7 +254,7 @@ pub fn Origin(@"%Origin": type) type {
         else => false,
     };
     if (!@"%is_valid") @compileError(std.fmt.comptimePrint(
-        "Only zero-sized enum values should be used as origins, as they are stored within slots, spans, vecs etc. and should be safe to copy and free (found bit size {} for origin type {}). Try using e.g. `enum {{ myExampleVec }}`",
+        "Only zero-sized enum values should be used as origins, as they are stored within slots, spans, vecs etc. and should be safe to copy and free (found bit size {} for origin type {}). Easiest is to just put `enum {{ origin }}`",
         .{ @bitSizeOf(@"%Origin"), @"%Origin" },
     ));
     return @"%Origin";
@@ -301,6 +319,52 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                     } }
                 else
                     .{ .absent = {} },
+            };
+        }
+        pub fn splitAfterLengthPositive(
+            @"%span": @This(),
+            @"%start_length_or_greater": P32,
+        ) @".after.start"(
+            Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
+            Span_with_occupancy(@"%Origin", @"%Occupancy"),
+        ) {
+            const @"%start_length" = P32.min(@"%start_length_or_greater", @"%span".length);
+            return .{
+                .start = .{ .start = @"%span".start, .length = @"%start_length" },
+                .after = if (P32.fromU32(@"%span".length.positive - @"%start_length".positive)) |@"%after_length_positive"| .{
+                    .present = .{
+                        .start = .{
+                            .origin = @"%span".start.origin,
+                            .index = @"%span".start.index + @"%start_length".positive,
+                        },
+                        .length = @"%after_length_positive",
+                    },
+                } else .{ .absent = {} },
+            };
+        }
+        pub fn splitBeforeEndLengthPositive(
+            @"%span": @This(),
+            @"%end_length_or_greater": P32,
+        ) @".before.end"(
+            Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
+            Span_with_occupancy(@"%Origin", @"%Occupancy"),
+        ) {
+            const @"%end_length" = P32.min(@"%end_length_or_greater", @"%span".length);
+            const @"%before_length" = @"%span".length.positive - @"%end_length".positive;
+            return .{
+                .end = .{
+                    .start = .{
+                        .origin = @"%span".start.origin,
+                        .index = @"%span".start.index + @"%before_length",
+                    },
+                    .length = @"%end_length",
+                },
+                .before = if (P32.fromU32(@"%before_length")) |@"%before_length_positive"| .{
+                    .present = .{
+                        .start = @"%span".start,
+                        .length = @"%before_length_positive",
+                    },
+                } else .{ .absent = {} },
             };
         }
         pub fn fold(
@@ -902,6 +966,24 @@ pub fn span_end(@"%Origin": type, @"%span": Span(@"%Origin")) error{OutOfMemory}
 ) {
     return @"%span".splitEnd();
 }
+pub fn span_start_of_length_positive(
+    @"%Origin": type,
+    @"%": @".length.span"(P32, Span(@"%Origin")),
+) error{OutOfMemory}!@".after.start"(
+    Opt(Span(@"%Origin")),
+    Span(@"%Origin"),
+) {
+    return @"%".span.splitAfterLengthPositive(@"%".length);
+}
+pub fn span_end_of_length_positive(
+    @"%Origin": type,
+    @"%": @".length.span"(P32, Span(@"%Origin")),
+) error{OutOfMemory}!@".before.end"(
+    Opt(Span(@"%Origin")),
+    Span(@"%Origin"),
+) {
+    return @"%".span.splitBeforeEndLengthPositive(@"%".length);
+}
 pub fn opt_span_fold(
     @"%Origin": type,
     @"%State": type,
@@ -957,6 +1039,24 @@ pub fn empty_span_end(@"%Origin": type, @"%span": Empty_span(@"%Origin")) error{
     Opt(Empty_span(@"%Origin")),
 ) {
     return @"%span".splitEnd();
+}
+pub fn empty_span_start_of_length_positive(
+    @"%Origin": type,
+    @"%": @".length.span"(P32, Empty_span(@"%Origin")),
+) error{OutOfMemory}!@".after.start"(
+    Opt(Empty_span(@"%Origin")),
+    Empty_span(@"%Origin"),
+) {
+    return @"%".span.splitAfterLengthPositive(@"%".length);
+}
+pub fn empty_span_end_of_length_positive(
+    @"%Origin": type,
+    @"%": @".length.span"(P32, Empty_span(@"%Origin")),
+) error{OutOfMemory}!@".before.end"(
+    Opt(Empty_span(@"%Origin")),
+    Empty_span(@"%Origin"),
+) {
+    return @"%".span.splitBeforeEndLengthPositive(@"%".length);
 }
 pub fn opt_empty_span_fold(
     @"%Origin": type,
