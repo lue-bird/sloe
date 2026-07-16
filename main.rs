@@ -42,7 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "doc" | "docs" | "documentation" | "core" | "stdlib" | "core-doc" | "core-docs"
             | "core-documentation" | "core-types" | "d" => {
                 println!("Here are all core declarations:\n");
-                // TODO instead print core_fns and core_choice_types
                 print_core_docs();
                 Ok(())
             }

@@ -79,7 +79,7 @@ only exist at compile-time and can thus mark spans, slots, empty spans, empty sl
 
 The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
 The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
-(apart from security I'm not sure this is ever worth it for regular users, considering it is also slower).
+(apart from security this is hardly ever worth it for regular users, considering it is also slower).
 
 I find it interesting that "storage" and "ownership over said storage" are decoupled.
 I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
@@ -180,34 +180,6 @@ shift the responsibility for cleanup to the caller.
 This is done for most initializer functions, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection
 
-# known limitations & design weaknesses
-What I'm unhappy with in the current design.
-Writing these down has already helped a lot in coming up with fixes (e.g. `empty-slot`, `vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items)
-
-- it seems quite natural to represent a span of structs as e.g. `.field-names _span Field-names .field-values _span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
-  The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
-  Honestly, the current "fold over one span and step through the rest with `span-start`"
-  is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
-  Zig "fixes" this by introducing special syntax and crashing if the length is different,
-  which of course is not an option in sloe
-- scattered sub-spans/slots in a persistent vec cannot be easily de-allocated/iterated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
-  For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
-  However, this would mean that slots and spans within the AST would not be owning.
-  (For temporary vecs, a possible solution could be `vec-slot-rid-without-vacating`, `vec-span-rid-without-vacating` and `vec-opt-span-rid-without-vacating` which would temporarily leak these slots and spans. This can be misused for persistent vecs but more importantly it does not solve the issue for persistent vecs)
-- sometimes, you really own all the elements of a vec in one place (especially when the vec elements can be trivially copied).
-  Splitting it into `opt span`+`vec` is annoying and wastes a bit of space (length is carried twice and start is always 0).
-  Due to "can't easily recombine spans" it is also really annoying to access any elements in the owning vec.
-- by default, most passed arguments are quite fat on the stack (e.g. `vec` is 6 usize-wide and you may pass a bunch of them).
-  Pointers are much thinner. This can in some parts be optimized by the target language compiler
-- currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
-- I don't like `:>` but `<` would probably be more confusing
-- the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
-  Sloe is most likely not the right vehicle to explore this space,
-  still it seems like a warning sign for a supposed "general-purpose language"
-- number types, vector/array types etc. are very underbaked in sloe.
-  I need more real-world experience for their uses.
-  Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
-
 # syntax
 Syntax is secondary but I tried to make it coherent and practical, avoiding parens and indentation when possible, especially for trailing syntax.
 Sloe is a very explicit language, so any extra verbosity is not tolerable.
@@ -297,6 +269,37 @@ ty type-name Potential Type-Parameters
 ```
 (This list might be incomplete, examples show more)
 
+> As a user of sloe you can stop reading here. The rest is mostly for developers and those interested in language design.
+
+# known limitations & design weaknesses
+What I'm unhappy with in the current design.
+Writing these down has already helped a lot in coming up with fixes (e.g. `empty-slot`, `vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items).
+And even if I'm unable to fix them, other people/teams might (in other projects)!
+
+- it seems quite natural to represent a span of structs as e.g. `.field-names _span Field-names .field-values _span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
+  The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
+  Honestly, the current "fold over one span and step through the rest with `span-start`"
+  is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
+  Zig "fixes" this by introducing special syntax and crashing if the length is different,
+  which of course is not an option in sloe
+- scattered sub-spans/slots in a persistent vec cannot be easily de-allocated/iterated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
+  For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
+  However, this would mean that slots and spans within the AST would not be owning.
+  (For temporary vecs, a possible solution could be `vec-slot-rid-without-vacating`, `vec-span-rid-without-vacating` and `vec-opt-span-rid-without-vacating` which would temporarily leak these slots and spans. This can be misused for persistent vecs but more importantly it does not solve the issue for persistent vecs)
+- sometimes, you really own all the elements of a vec in one place (especially when the vec elements can be trivially copied).
+  Splitting it into `opt span`+`vec` is annoying and wastes a bit of space (length is carried twice and start is always 0).
+  Due to "can't easily recombine spans" it is also really annoying to access any elements in the owning vec.
+- by default, most passed arguments are quite fat on the stack (e.g. `vec` is 6 usize-wide and you may pass a bunch of them).
+  Pointers are much thinner. This can in some parts be optimized by the target language compiler
+- currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
+- I don't like `:>` but `<` would probably be more confusing
+- the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
+  Sloe is most likely not the right vehicle to explore this space,
+  still it seems like a warning sign for a supposed "general-purpose language"
+- number types, vector/array types etc. are very underbaked in sloe.
+  I need more real-world experience for their uses.
+  Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
+
 # potential improvements in the future
 - add field and variant rename and references
 - add "add remaining query cases" code action
@@ -350,8 +353,19 @@ ty type-name Potential Type-Parameters
   This is likely the better option anyway (even though it "hops twice")
   as it makes searching for the right span possible (and reasonably fast)
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html), maybe even alongside `in-a-to-z`, `in-0-to-9` and other choice types). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the reverse operations which return `opt`
+- (not fully sure) Add explicit field punning syntax:
+  Add pattern syntax `_` (untyped) / `_ value-type` (typed) (and maybe expression syntax `_`) where `_` behaves like a variable with the name of the parent.
+  So e.g. `.field (_ value-type)` would introduce a variable named `field`.
+  and pattern `|variant _` would introduce a variable named `variant`.
+  Likewise, `linked-list-cons .nodes _ .linked-list numbers .new 3 u32`
+  would work if a variable named `nodes` exists.
+  If no parent name exists, an error is thrown.
+  The only goal here is making record patterns more convenient to work with (similar to swifts named parameters). The biggest worry I have is name clashes. Things like rename might also become a little more complex.
+  I would normally not consider this as a feature, but since sloe is so painfully
+  explicit, I feel users deserve some sugar for their effort.
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
+- when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```sloe
@@ -369,29 +383,20 @@ ty type-name Potential Type-Parameters
   If we find a problem, creating a new `origin` should be disallowed in (mutually) recursive calls.
   This is a bit restrictive but alright I believe.
   If feeling motived, look into proof languages and make sure this is rock solid
-- improve memory efficiency of string operations (currently vec of char)
-- allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`. This preferably builds on a stabilized allocator feature
+- improve memory efficiency of string operations (currently vec of char).
+  This is probably inefficient because:
+    - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
+    - most bytes are 3/4th 0s because ascii is so common. wasted space is bad for the cache and memory usage
+  If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `vec _ char` is a much nicer API to work with
+- (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
     - `vec Origin, .a A .b B` to `A·B<Vec<A>, Vec<B>>`
     - for `vec Origin, |a A |b B` to either 
         - `Tag·ValueIndex·A·B<Vec<A_or_B_Tag>, Vec<u32>, Vec<A>, Vec<B>>` (which also has ~2 hops but makes sense when sizes of A and B are different enough)
         - `A·B<Vec<A>, Vec<B>>` (which requires the index to hold both the tag and the value index, aka 64 bit instead of 32, which somewhat defeats the point of reducing padding of the variant when values get bigger. Potentially there could however be struct-of-arrays for individual variant values making this worth it: https://github.com/dist1ll/osmium & https://alic.dev/blog/dense-enums)
         - `A·B<Vec<A>, Map<u32, B>>` (which is inefficient, and wasteful if `B` is common, and also doesn't scale with more than 2 variants)
-- look into soa_derive for rust, maybe this already does most of the useful work
-- imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
-
-# not coherently formulated thoughts
-in rust, collections tend to own their element data, so safely keeping references to inside is tough.
-This relationship is flipped on it's head in sloe: All elements of collections are divided into slots and spans
-which are owned by the code that parked values there i the first place.
-
-Honestly this idea seems to overwhelmingly useful that I'm surprised I can't find other languages that lean into it (I only know of rust which at least enables it in userland).
-
-One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `_vec ... _span str-origin` + `_str str-origin`
-(in rust there are I think crates like oroborus for this)
-
-## on shadowing
-since each variable can be used at most once, most introduced names that would traditionally be considered "shadowed" are aready out of scope in sloe. When their scopes actually overlap though, you'll get an error
+- look into `soa_derive` for rust, maybe this already does most of the useful work
+- (very out of scope but thinking never hurts) imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
 
 # rejected ideas
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas
@@ -467,7 +472,7 @@ rusts immutable references `&` have some similar trade-offs but seem kind of una
 - no clear unified interface. There could be multiple functions, there could be an output that additionally returns the captured values (allowing it to be called again), there could be an output that only sometimes returns the captured variables, etc.
 - I personally never had a need for this. Usually you can just make the environment a type variable and you're golden
 
-I'm strangely really convinced that this is the obvious, correct design decision (for most programming languages at that!) which really surprises me.
+I'm strangely really convinced that this is the obvious, correct design decision (for most programming languages at that!).
 Note that the current design does not natively have a `dyn Fn`; it needs to be manually emulated via an explicit `|` choice type.
 
 ## why no traits / type classes / (duck) (static) dispatch 
@@ -536,15 +541,15 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- (not fully sure) add `vec-opt-empty-span-add`, `vec-opt-empty-span-add-positive`, `vec-empty-span-add`
+- (not fully sure) add `vec-opt-empty-span-add-length-positive`, `vec-opt-empty-span-add-length`, `vec-empty-span-add-length`, `vec-empty-span-add-own-opt-span`
 
-- (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-positive`, maybe even unfold
+- (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- implement conversion to zig. current semi-blockers:
+- implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
     - zig actually doesn't have the concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
       Let it be said that I'm legit sad that zig removed support like most other languages.
-    - find existing work on pattern matching. I will probably start with a
+    - pattern matching. Probably easiest to start with
       ```zig
       if (some_magic(case0_pattern, value)) |case0_value| ...
       else if (some_magic(case1_pattern, value)) |case1_value| ...
@@ -570,55 +575,57 @@ cargo install --offline --debug --path . sloe
       ```
       (basically nested switches on the original value as a variable and temporaries, both field-accessed if necessary. Finally returning all pattern variables in an anonymous struct)
       and then consider switching to manually generated decision-tree-like code with nested switches if the former doesn't optimize well (it kinda should, though)
-    - think of a way to "split an origin":
-        - creating initial state in sloe code, without needing to pass
-          an unknown amount of origins in from the outside.
-        - type aliases may only need to take a single origin type parameter
-          for spans/slots with connected lifetimes, e.g.
-          ```sloe
-          ty expression Origin
-              |int i32
-              |string _opt (_span .str Origin)
-              |vec _opt (_span .expression Origin)
-              |call
-                  .function (_slot .expression Origin)
-                  .arguments (_span .expression Origin)
-              |lambda
-                  .parameters (_span .pattern Origin)
-                  .result (_slot .expression Origin)
-          ```
-          I think baking origin deriving syntax into the language is the easiest solution:
-          ```sloe
-          origin .derived-origin-0 .derived-origin-1 original-origin
-          # derived-origin-0 is of type _origin (.derived-origin-0 original-origin)
-          # derived-origin-1 is of type _origin (.derived-origin-1 original-origin)
-          # the original-origin variable is consumed
-          result-expression
-          ```
-          Syntax to be decided.
-          
-          In theory, the same effect could be achieved without syntax additions:
-          ```sloe
-          origin-dup origin _origin Local :> .a _origin (.a Local) .b _origin (.b Local)
-          ty str-origin Origin .a Origin
-          ty expression-origin .b .a Origin
-          ty pattern-origin .b .b Origin
-          ```
-          However, notice that annotating an origin like that is very undescriptive.
-          The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
 
-- (not fully sure) Add explicit field punning syntax:
-  Add pattern syntax `_` (untyped) / `_ value-type` (typed) and expression syntax `_` where `_` behaves like a variable with the name of the parent.
-  So e.g. `.field (_ value-type)` would introduce a variable named `field`.
-  and pattern `|variant _` would introduce a variable named `variant`.
-  Likewise, `linked-list-cons .nodes _ .linked-list numbers .new 3 u32`
-  would work if a variable named `nodes` exists.
-  If no parent name exists, an error is thrown.
-  The only goal here is making record patterns more convenient to work with (similar to swifts named parameters). The biggest worry I have is name clashes. Things like rename might also become a little more complex.
-  
-  I would normally not consider this as a feature, but since sloe is so painfully
-  explicit, I feel users deserve some sugar for their effort.
-
-- when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found.
+- think of a way to "split an origin":
+    - creating initial state in sloe code, without needing to pass
+      an unknown amount of origins in from the outside.
+    - type aliases may only need to take a single origin type parameter
+      for spans/slots with connected lifetimes, e.g.
+      ```sloe
+      ty expression Origin
+          |int i32
+          |string _opt (_span .str Origin)
+          |vec _opt (_span .expression Origin)
+          |call
+              .function (_slot .expression Origin)
+              .arguments (_span .expression Origin)
+          |lambda
+              .parameters (_span .pattern Origin)
+              .result (_slot .expression Origin)
+      ```
+      I think baking origin deriving syntax into the language is the easiest solution:
+      ```sloe
+      origin .derived-origin-0 .derived-origin-1 original-origin
+      # derived-origin-0 is of type _origin (.derived-origin-0 original-origin)
+      # derived-origin-1 is of type _origin (.derived-origin-1 original-origin)
+      # the original-origin variable is consumed
+      result-expression
+      ```
+      Syntax to be decided.
+      
+      In theory, the same effect could be achieved without syntax additions:
+      ```sloe
+      origin-dup origin _origin Local :> .a _origin (.a Local) .b _origin (.b Local)
+      ty str-origin Origin .a Origin
+      ty expression-origin .b .a Origin
+      ty pattern-origin .b .b Origin
+      ```
+      However, notice that annotating an origin like that is very undescriptive.
+      The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
 
 - fix bugs and TODOs
+
+
+# not coherently formulated thoughts
+In rust, collections tend to own their element data, so safely keeping references reaching inside is tough.
+Alternatively, we could reach for `Range<usize>` and `usize` but we've lost ties to the origin structure and rust does not (yet?) have a mechanism for temporarily assuming actual ownership over some part of a parent structure.
+This relationship is flipped on it's head in sloe: All elements of collections are divided into slots and spans which are owned by the code that parked values there in the first place.
+
+Honestly this idea seems "obviously" useful and it's surprising I can't find other languages that lean into it (there is rust which at least enables it in userland).
+I assume one reason is that linear types are required in some part to avoid leaks all over the place.
+
+One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `_vec ... _span str-origin` + `_str str-origin`
+(in rust there are I think crates like oroborus for this)
+
+## on shadowing
+since each variable can be used at most once, most introduced names that would traditionally be considered "shadowed" are aready out of scope in sloe. When their scopes actually overlap though, you'll get an error
