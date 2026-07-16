@@ -8388,19 +8388,19 @@ fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
         TypeDiff::Variable(variable_name) => variable_name.len(),
         TypeDiff::Origin(name) => name.len(),
         TypeDiff::CoreConstruct { name, arguments } => {
-            name.len()
+            1 + name.len()
                 + arguments
                     .iter()
-                    .map(type_diff_length_estimate)
+                    .map(|argument| 2 + type_diff_length_estimate(argument))
                     .sum::<usize>()
         }
         TypeDiff::Record(fields) => fields
             .iter()
-            .map(|field| field.name.len() + type_diff_length_estimate(&field.value))
+            .map(|field| 3 + field.name.len() + type_diff_length_estimate(&field.value))
             .sum(),
         TypeDiff::Choice(variants) => variants
             .iter()
-            .map(|variant| variant.name.len() + type_diff_length_estimate(&variant.value))
+            .map(|variant| 3 + variant.name.len() + type_diff_length_estimate(&variant.value))
             .sum(),
     }
 }

@@ -530,7 +530,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
         // The given span is invalid while the returned slice is live.
         // Prefer `.spanElements` (followed by `.spanRid` usually)
         pub fn spanSlice(@"%vec": *@This(), @"%span": Span(@"%Origin")) []@"%Element" {
-            return @"%vec".elements.items[@"%span".start.index..(@"%span".endIndexUsize() + 1)];
+            return @"%vec".elements.items[@"%span".start.index..][0..@"%span".length.positive];
         }
         /// span is invalid after.
         /// The returned slice is only valid while vec.elements.items is live
@@ -591,12 +591,12 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             var @"%maybe_vacant_span_index_connecting_earlier": ?usize = null;
             var @"%maybe_vacant_span_index_connecting_later": ?usize = null;
             looking_for_connections: for (@"%vec".vacant.items, 0..) |@"%vacant_span", @"%vacant_span_index"| {
-                if (@"%maybe_vacant_span_index_connecting_earlier" == null and @"%span_to_vacate".start.index == @"%vacant_span".endIndexUsize() + 1) {
+                if (@"%maybe_vacant_span_index_connecting_earlier" == null and @"%span_to_vacate".start.index == (@as(usize, @"%vacant_span".start.index) + @as(usize, @"%vacant_span".length.positive))) {
                     @"%maybe_vacant_span_index_connecting_earlier" = @"%vacant_span_index";
                     if (@"%maybe_vacant_span_index_connecting_later") |_| {
                         break :looking_for_connections;
                     }
-                } else if (@"%maybe_vacant_span_index_connecting_later" == null and @"%span_to_vacate".endIndexUsize() + 1 == @"%vacant_span".start.index) {
+                } else if (@"%maybe_vacant_span_index_connecting_later" == null and (@as(usize, @"%span_to_vacate".start.index) + @as(usize, @"%span_to_vacate".length.positive)) == @"%vacant_span".start.index) {
                     @"%maybe_vacant_span_index_connecting_later" = @"%vacant_span_index";
                     if (@"%maybe_vacant_span_index_connecting_earlier") |_| {
                         break :looking_for_connections;
@@ -604,26 +604,36 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 }
             }
             if (@"%maybe_vacant_span_index_connecting_earlier") |@"%vacant_span_index_connecting_earlier"| {
-                var @"%vacantSpanConnectingEarlier" = &@"%vec".vacant.items[@"%vacant_span_index_connecting_earlier"];
+                var @"%vacant_span_connecting_earlier" = &@"%vec".vacant.items[@"%vacant_span_index_connecting_earlier"];
                 if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
                     const @"%vacant_span_connecting_later" = @"%vec".vacant.items[@"%vacant_span_index_connecting_later"];
-                    @"%vacantSpanConnectingEarlier".length = try @"%vacantSpanConnectingEarlier".length.addOrOutOfMem(
+                    @"%vacant_span_connecting_earlier".length = try @"%vacant_span_connecting_earlier".length.addOrOutOfMem(
                         (try @"%span_to_vacate".length.addOrOutOfMem(@"%vacant_span_connecting_later".length.positive)).positive,
                     );
                     _ = @"%vec".vacant.swapRemove(@"%vacant_span_index_connecting_later");
                 } else {
                     // maybeVacantSpanIndexConnectingLater == null
-                    @"%vacantSpanConnectingEarlier".length = try @"%vacantSpanConnectingEarlier".length.addOrOutOfMem(@"%span_to_vacate".length.positive);
+                    if (@as(usize, @"%span_to_vacate".start.index) + @as(usize, @"%span_to_vacate".length.positive) == @"%vec".elements.items.len) {
+                        @"%vec".elements.shrinkRetainingCapacity(
+                            @"%vec".elements.items.len - @as(usize, @"%vacant_span_connecting_earlier".length.positive) - @as(usize, @"%span_to_vacate".length.positive),
+                        );
+                        _ = @"%vec".vacant.swapRemove(@"%vacant_span_index_connecting_earlier");
+                    } else {
+                        @"%vacant_span_connecting_earlier".length = try @"%vacant_span_connecting_earlier".length.addOrOutOfMem(@"%span_to_vacate".length.positive);
+                    }
                 }
             } else if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
                 // maybeVacantSpanIndexConnectingEarlier == null
                 var @"%vacant_span_connecting_later" = &@"%vec".vacant.items[@"%vacant_span_index_connecting_later"];
-                @"%vacant_span_connecting_later".* = Empty_span(@"%Origin"){ .start = @"%span_to_vacate".start, .length = try @"%vacant_span_connecting_later".length.addOrOutOfMem(
-                    @"%span_to_vacate".length.positive,
-                ) };
+                @"%vacant_span_connecting_later".* = Empty_span(@"%Origin"){
+                    .start = @"%span_to_vacate".start,
+                    .length = try @"%vacant_span_connecting_later".length.addOrOutOfMem(
+                        @"%span_to_vacate".length.positive,
+                    ),
+                };
             } else {
                 // maybeVacantSpanIndexConnectingEarlier == null and maybeVacantSpanIndexConnectingLater == null
-                if (@"%span_to_vacate".endIndexUsize() + 1 == @"%vec".elements.items.len) {
+                if (@as(usize, @"%span_to_vacate".start.index) + @as(usize, @"%span_to_vacate".length.positive) == @"%vec".elements.items.len) {
                     @"%vec".elements.shrinkRetainingCapacity(
                         std.math.sub(usize, @"%vec".elements.items.len, @"%span_to_vacate".length.positive) catch 0,
                     );

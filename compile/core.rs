@@ -289,7 +289,7 @@ pub struct Vec<LocalOrigin, Element> {
     // - it matches well semantically: access is inherently unsafe.
     //   vec::Vec<Element> makes it appear safe
     // - drawbacks (like the removal of niches) do not have an impact here
-    // - it prevents drop from being called
+    // - it prevents drop from being called on elements
     //   which could double-free on already vacated elements.
     //   Vec<_,_> originally implemented a custom Drop as
     //   `for e in self.elements.drain(..) { std::mem::forget(e); }`
@@ -313,6 +313,10 @@ pub struct Vec<LocalOrigin, Element> {
     //     - in a `Vec<Origin, Element>`, the element type will realistically not be a type that
     //       directly points to the heap. In fact in sloe you cannot even put more than one vec inside of
     //       another vec as each vec has a different origin!
+    //
+    //   However, just overwriting the Drop implementation is far from enough
+    //   as many Vec functions somewhat willy-nilly drop elements if you're not careful.
+    //   An example is `truncate` which is used in `span_rid`.
     elements: std::vec::Vec<std::mem::MaybeUninit<Element>>,
     // Performance assumption:
     // Neighboring elements are way more likely to be vacated together.
@@ -556,16 +560,16 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     pub fn span_rid(&mut self, span_to_vacate: Empty_span<LocalOrigin>) {
         let maybe_vacant_span_index_connecting_earlier: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
-                std::cmp::PartialEq::<u32>::eq(
-                    &(vacant_span.end_index() + 1),
-                    &span_to_vacate.start.index,
+                std::cmp::PartialEq::<usize>::eq(
+                    &(vacant_span.start.index as usize + vacant_span.length.get() as usize),
+                    &(span_to_vacate.start.index as usize),
                 )
             });
         let maybe_vacant_span_index_connecting_later: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
-                std::cmp::PartialEq::<u32>::eq(
-                    &(span_to_vacate.end_index() + 1),
-                    &vacant_span.start.index,
+                std::cmp::PartialEq::<usize>::eq(
+                    &(span_to_vacate.start.index as usize + span_to_vacate.length.get() as usize),
+                    &(vacant_span.start.index as usize),
                 )
             });
         match (
@@ -573,7 +577,7 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             maybe_vacant_span_index_connecting_later,
         ) {
             (std::option::Option::None, std::option::Option::None) => {
-                if (span_to_vacate.start.index + span_to_vacate.length.get() + 1) as usize
+                if span_to_vacate.start.index as usize + span_to_vacate.length.get() as usize
                     == self.elements.len()
                 {
                     self.elements
@@ -606,10 +610,21 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             }
             (std::option::Option::Some(index_connecting_earlier), std::option::Option::None) => {
                 let earlier_opt_span_to_extend = &mut self.vacant[index_connecting_earlier];
-                earlier_opt_span_to_extend.length = std::num::NonZeroU32::saturating_add(
-                    span_to_vacate.length,
-                    earlier_opt_span_to_extend.length.get(),
-                );
+                if span_to_vacate.start.index as usize + span_to_vacate.length.get() as usize
+                    == self.elements.len()
+                {
+                    self.elements.truncate(
+                        self.elements.len()
+                            - span_to_vacate.length.get() as usize
+                            - earlier_opt_span_to_extend.length.get() as usize,
+                    );
+                    let _ = self.vacant.swap_remove(index_connecting_earlier);
+                } else {
+                    earlier_opt_span_to_extend.length = std::num::NonZeroU32::saturating_add(
+                        span_to_vacate.length,
+                        earlier_opt_span_to_extend.length.get(),
+                    );
+                }
             }
             (std::option::Option::None, std::option::Option::Some(index_connecting_after)) => {
                 let later_opt_span_to_extend = &mut self.vacant[index_connecting_after];
@@ -901,7 +916,7 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         }
     }
     pub fn span_move_to_end(&mut self, span: Span<LocalOrigin>) -> Span<LocalOrigin> {
-        if span.end_index_usize() + 1 == self.elements.len() {
+        if span.start.index as usize + span.length.get() as usize == self.elements.len() {
             return span;
         }
         // span is not at the end already
@@ -1062,6 +1077,9 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             Opt::Present(start) => Opt::Present(self.empty_span_add_own_opt_span(start, end)),
         }
     }
+    pub fn length_vacated_or_not(&self) -> usize {
+        self.elements.len()
+    }
     pub fn vacant_count_usize(&self) -> usize {
         std::iter::Iterator::sum(std::iter::Iterator::map(self.vacant.iter(), |r| {
             r.length.get() as usize
@@ -1074,7 +1092,7 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     }
     /// counts both occupied positions and temporarily empty ones referenced by `empty-slot`s
     pub fn not_vacant_count_usize(&self) -> usize {
-        usize::saturating_sub(self.elements.len(), self.vacant_count_usize())
+        usize::saturating_sub(self.length_vacated_or_not(), self.vacant_count_usize())
     }
 }
 impl<Origin> Vec<Origin, Char> {

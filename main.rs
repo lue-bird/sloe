@@ -821,6 +821,7 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
     connection: &lsp_server::Connection,
     did_change_text_document: lsp_types::DidChangeTextDocumentParams,
 ) {
+    let project_count = state.projects.len();
     if let Some(project_state) = state.projects.get_mut(
         &did_change_text_document
             .text_document
@@ -860,6 +861,11 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
                 &mut state.syntax_patterns,
                 &mut state.syntax_types,
             );
+        }
+        if project_count == 1 {
+            assert_eq!(state.syntax_expressions.length_vacated_or_not(), 0);
+            assert_eq!(state.syntax_patterns.length_vacated_or_not(), 0);
+            assert_eq!(state.syntax_types.length_vacated_or_not(), 0);
         }
         *project_state = initialize_project_state_from_source(
             connection,
