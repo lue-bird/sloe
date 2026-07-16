@@ -220,10 +220,10 @@ fn present_project_fn_with_complete_type_markdown(
     let mut parameter_type_string: String = String::new();
     let mut result_type_string: String = String::new();
     if let Some(fn_parameter_type) = &fn_info.parameter_type {
-        sloe::type_format(&mut parameter_type_string, 8, fn_parameter_type);
+        sloe::type_format(&mut parameter_type_string, 4, fn_parameter_type);
     }
     if let Some(fn_result_type) = &fn_info.result_type {
-        sloe::type_format(&mut result_type_string, 8, fn_result_type);
+        sloe::type_format(&mut result_type_string, 4, fn_result_type);
     }
     format!(
         "```sloe
@@ -267,7 +267,7 @@ fn present_pattern_variable_markdown(type_: Option<&sloe::Type>) -> String {
         None => "pattern variable".to_string(),
         Some(type_) => {
             let mut type_string = "pattern variable of type\n```sloe\n".to_string();
-            sloe::type_format(&mut type_string, 4, type_);
+            sloe::type_format(&mut type_string, 0, type_);
             type_string + "\n```\n"
         }
     }
@@ -2212,7 +2212,9 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     .map(|available_existing_variable| lsp_types::CompletionItem {
                         label: available_existing_variable.to_string(),
                         kind: Some(lsp_types::CompletionItemKind::TypeParameter),
-                        detail: Some("type variable".to_string()),
+                        documentation: Some(lsp_documentation_markdown(
+                            "type variable".to_string(),
+                        )),
                         ..lsp_types::CompletionItem::default()
                     })
                     .collect(),
@@ -2292,8 +2294,10 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     |(pattern_variable, pattern_variable_origin)| lsp_types::CompletionItem {
                         label: pattern_variable.to_string(),
                         kind: Some(lsp_types::CompletionItemKind::Variable),
-                        detail: Some(present_pattern_variable_markdown(
-                            pattern_variable_origin.type_.as_ref(),
+                        documentation: Some(lsp_documentation_markdown(
+                            present_pattern_variable_markdown(
+                                pattern_variable_origin.type_.as_ref(),
+                            ),
                         )),
                         ..lsp_types::CompletionItem::default()
                     },
@@ -2304,7 +2308,9 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .map(|origin_name| lsp_types::CompletionItem {
                             label: origin_name.to_string(),
                             kind: Some(lsp_types::CompletionItemKind::Variable),
-                            detail: Some("origin variable".to_string()),
+                            documentation: Some(lsp_documentation_markdown(
+                                "origin variable".to_string(),
+                            )),
                             ..lsp_types::CompletionItem::default()
                         }),
                 )

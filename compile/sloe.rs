@@ -8374,7 +8374,7 @@ fn type_diff_variant_format(
 }
 /// this is set to a low-seeming number because hover windows and similar
 /// are often small and sometimes unresizable
-const type_info_line_length_estimate_maximum: usize = 48;
+const type_info_line_length_estimate_maximum: usize = 50;
 fn type_diff_line_span(type_diff: &TypeDiff) -> LineSpan {
     if type_diff_length_estimate(type_diff) <= type_info_line_length_estimate_maximum {
         LineSpan::Single
@@ -8516,19 +8516,23 @@ fn type_length_estimate(type_: &Type) -> usize {
         Type::Variable(variable_name) => variable_name.len(),
         Type::Origin(name) => name.len(),
         Type::CoreConstruct { name, arguments } => {
-            1 + name.len() + arguments.iter().map(type_length_estimate).sum::<usize>()
+            1 + name.len()
+                + arguments
+                    .iter()
+                    .map(|argument| 2 + type_length_estimate(argument))
+                    .sum::<usize>()
         }
         Type::Record(fields) => type_record_length_estimate(fields),
         Type::Choice(variants) => variants
             .iter()
-            .map(|variant| 1 + variant.name.len() + type_length_estimate(&variant.value))
+            .map(|variant| 3 + variant.name.len() + type_length_estimate(&variant.value))
             .sum(),
     }
 }
 fn type_record_length_estimate(fields: &[TypeField]) -> usize {
     fields
         .iter()
-        .map(|field| 1 + field.name.len() + type_length_estimate(&field.value))
+        .map(|field| 3 + field.name.len() + type_length_estimate(&field.value))
         .sum()
 }
 
