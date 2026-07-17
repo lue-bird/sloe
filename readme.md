@@ -1,6 +1,6 @@
 Small, fast programming language where indexes are valid and values can't be shared.
 
-The goal is representing tree-like data structures without segmented memory or plain index integers (along with the need to handle failure and generations),
+The goal is representing tree-like data structures without segmented, non-pre-allocatable memory or plain index integers (along with the need to handle failure and generations),
 instead offering a safe, infallible way to refer to elements and slices stored in flat memory structures.
 
 [skip to examples](#examples)
