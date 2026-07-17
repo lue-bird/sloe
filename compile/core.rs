@@ -457,8 +457,11 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     pub fn pre_allocate(&mut self, pre_allocated_length: u32) {
         self.elements.reserve_exact(pre_allocated_length as usize);
     }
+    pub fn pre_allocate_at_least_usize(&mut self, min_pre_allocated_length: usize) {
+        self.elements.reserve(min_pre_allocated_length);
+    }
     pub fn pre_allocate_at_least(&mut self, min_pre_allocated_length: u32) {
-        self.elements.reserve(min_pre_allocated_length as usize);
+        self.pre_allocate_at_least_usize(min_pre_allocated_length as usize);
     }
     pub fn element_ref<'a>(&'a self, slot: &'a Slot<LocalOrigin>) -> &'a Element {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid index
@@ -1077,11 +1080,13 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             Opt::Present(start) => Opt::Present(self.empty_span_add_own_opt_span(start, end)),
         }
     }
-    pub fn vacant_spans<'a>(&'a self) -> &'a [Empty_span<LocalOrigin>] {
-        self.vacant.as_slice()
+    pub fn vacant_spans<'a>(&'a self) -> &'a std::vec::Vec<Empty_span<LocalOrigin>> {
+        &self.vacant
     }
-    pub fn maybe_uninit_elements<'a>(&'a self) -> &'a [std::mem::MaybeUninit<Element>] {
-        self.elements.as_slice()
+    pub fn maybe_uninit_elements<'a>(
+        &'a self,
+    ) -> &'a std::vec::Vec<std::mem::MaybeUninit<Element>> {
+        &self.elements
     }
     pub fn length_vacated_or_not(&self) -> usize {
         self.elements.len()
@@ -1103,19 +1108,23 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
 }
 impl<Origin> Vec<Origin, Char> {
     /// try to avoid using
-    pub fn insert_str(&mut self, new_str: Str) -> Opt<Span<Origin>> {
+    pub fn insert_str(&mut self, new_str: &str) -> Opt<Span<Origin>> {
         self.insert_iterator_without_known_size(new_str.chars())
     }
-    pub fn add_str(&mut self, new_str: Str) -> Opt<Span<Origin>> {
+    pub fn add_str(&mut self, new_str: &str) -> Opt<Span<Origin>> {
         self.add_iterator(new_str.chars())
     }
-    pub fn opt_span_add_str(&mut self, span: Opt<Span<Origin>>, new_str: Str) -> Opt<Span<Origin>> {
+    pub fn opt_span_add_str(
+        &mut self,
+        span: Opt<Span<Origin>>,
+        new_str: &str,
+    ) -> Opt<Span<Origin>> {
         match span {
             Opt::Absent(()) => self.add_str(new_str),
             Opt::Present(span) => Opt::Present(self.span_add_str(span, new_str)),
         }
     }
-    pub fn span_add_str(&mut self, span: Span<Origin>, new_str: Str) -> Span<Origin> {
+    pub fn span_add_str(&mut self, span: Span<Origin>, new_str: &str) -> Span<Origin> {
         self.span_add_iterator(span, new_str.chars())
     }
 }
@@ -1988,6 +1997,105 @@ pub fn vec_span_add_str<Origin>(
     Record·span·vec {
         vec: vec,
         span: combined_span,
+    }
+}
+pub fn vec_char_span_add_u32<Origin>(
+    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+        U32,
+        Span<Origin>,
+        Vec<Origin, Char>,
+    >,
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    let new_as_string = std::format!("{}", new);
+    let combined_span = vec.span_add_str(span, &new_as_string);
+    Record·span·vec {
+        vec: vec,
+        span: combined_span,
+    }
+}
+pub fn vec_char_op_span_add_u32<Origin>(
+    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+        U32,
+        Opt<Span<Origin>>,
+        Vec<Origin, Char>,
+    >,
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    let new_as_string = std::format!("{}", new);
+    let combined_span = vec.opt_span_add_str(span, &new_as_string);
+    Record·span·vec {
+        vec: vec,
+        span: {
+            // new_as_string has .len() >= 1 because a formatted number is never ""
+            unsafe { combined_span.into_option().unwrap_unchecked() }
+        },
+    }
+}
+pub fn vec_char_span_add_i32<Origin>(
+    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+        I32,
+        Span<Origin>,
+        Vec<Origin, Char>,
+    >,
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    let new_as_string = std::format!("{}", new);
+    let combined_span = vec.span_add_str(span, &new_as_string);
+    Record·span·vec {
+        vec: vec,
+        span: combined_span,
+    }
+}
+pub fn vec_char_op_span_add_i32<Origin>(
+    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+        I32,
+        Opt<Span<Origin>>,
+        Vec<Origin, Char>,
+    >,
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    let new_as_string = std::format!("{}", new);
+    let combined_span = vec.opt_span_add_str(span, &new_as_string);
+    Record·span·vec {
+        vec: vec,
+        span: {
+            // new_as_string has .len() >= 1 because a formatted number is never ""
+            unsafe { combined_span.into_option().unwrap_unchecked() }
+        },
+    }
+}
+pub fn vec_char_span_add_f32<Origin>(
+    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+        F32,
+        Span<Origin>,
+        Vec<Origin, Char>,
+    >,
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    let new_as_string = std::format!("{:.}", new);
+    let combined_span = vec.span_add_str(span, &new_as_string);
+    Record·span·vec {
+        vec: vec,
+        span: combined_span,
+    }
+}
+pub fn vec_char_opt_span_add_f32<Origin>(
+    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+        F32,
+        Opt<Span<Origin>>,
+        Vec<Origin, Char>,
+    >,
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    let new_as_string = std::format!("{:.}", new);
+    let combined_span = vec.opt_span_add_str(span, &new_as_string);
+    Record·span·vec {
+        vec: vec,
+        span: {
+            // new_as_string has .len() >= 1 because a formatted number is never ""
+            unsafe { combined_span.into_option().unwrap_unchecked() }
+        },
     }
 }
 pub fn vec_opt_span_add_vec_opt_span<Origin, SourceOrigin, Element>(

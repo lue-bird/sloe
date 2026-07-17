@@ -539,8 +539,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `vec-char-span-add-u32`, `vec-char-span-add-i32`, `vec-char-span-add-f32` (same for opt span)
-
 - rename `vec-(span-)add-str` to `vec-char-(span-)add-str`
 
 - consider renaming `char` to `rune` for correctness

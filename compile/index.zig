@@ -251,6 +251,35 @@ test "vec add strs" {
     try std.testing.expectEqual(7, with_wrenches.span.present.length.positive);
     with_wrenches.vec.rid(allocator);
 }
+test "vec char add numbers" {
+    const allocator = std.testing.allocator;
+    const VecOrigin = enum { vec };
+    const origin: core.Origin(VecOrigin) = .vec;
+    const vec = core.Vec(VecOrigin, core.Char).empty(origin);
+    const with_u32 = try core.vec_char_opt_span_add_u32(
+        VecOrigin,
+        allocator,
+        .{ .vec = vec, .span = .{ .absent = {} }, .new = 1234 },
+    );
+    try std.testing.expectEqual(4, with_u32.span.length.positive);
+    const with_i32 = try core.vec_char_span_add_i32(
+        VecOrigin,
+        allocator,
+        .{ .vec = with_u32.vec, .span = with_u32.span, .new = -2 },
+    );
+    try std.testing.expectEqual(6, with_i32.span.length.positive);
+    const with_f32 = try core.vec_char_span_add_f32(
+        VecOrigin,
+        allocator,
+        .{ .vec = with_i32.vec, .span = with_i32.span, .new = -0.1 },
+    );
+    try std.testing.expectEqualSlices(
+        core.Char,
+        &.{ '1', '2', '3', '4', '-', '2', '-', '0', '.', '1' },
+        with_f32.vec.spanSlice(with_f32.span),
+    );
+    with_f32.vec.rid(allocator);
+}
 test "vec reverse" {
     const allocator = std.testing.allocator;
     const VecOrigin = enum { vec };

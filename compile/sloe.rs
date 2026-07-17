@@ -9637,10 +9637,7 @@ To instead replace a `slot`, use `slot-replace`",
                 parameter_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
                     ("span", type_opt(type_span(type_variable("Origin")))),
                     ("new", type_variable("Element")),
@@ -9648,10 +9645,7 @@ To instead replace a `slot`, use `slot-replace`",
                 result_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
                     ("span", type_span(type_variable("Origin")))
                 ]),
@@ -9663,10 +9657,7 @@ To instead replace a `slot`, use `slot-replace`",
                 parameter_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
                     ("span", type_span(type_variable("Origin"))),
                     ("new", type_variable("Element")),
@@ -9674,10 +9665,7 @@ To instead replace a `slot`, use `slot-replace`",
                 result_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
                     ("span", type_span(type_variable("Origin")))
                 ]),
@@ -9689,10 +9677,7 @@ To instead replace a `slot`, use `slot-replace`",
                 parameter_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_char),
                     ),
                     ("span", type_opt(type_span(type_variable("Origin")))),
                     ("new", type_str),
@@ -9700,25 +9685,19 @@ To instead replace a `slot`, use `slot-replace`",
                 result_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_char),
                     ),
                     ("span", type_opt(type_span(type_variable("Origin"))))
                 ]),
             },
             CoreFnInfo {
                 name: "vec-span-add-str",
-                documentation: "Attach a given `str` at the end of the span.",
+                documentation: "Attach a given `str` to the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_char),
                     ),
                     ("span", type_span(type_variable("Origin"))),
                     ("new", type_str),
@@ -9726,10 +9705,127 @@ To instead replace a `slot`, use `slot-replace`",
                 result_type: type_record([
                     (
                         "vec",
-                            type_vec(
-                            type_variable("Origin"),
-                            type_variable("Element"),
-                        ),
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-char-span-add-u32",
+                documentation: "Print a given `u32` after the end of the span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                    ("new", type_u32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-char-opt-span-add-u32",
+                documentation: "Print a given `u32` after the end of the span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("new", type_u32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-char-span-add-i32",
+                documentation: "Print a given `i32` after the end of the span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                    ("new", type_i32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-char-opt-span-add-i32",
+                documentation: "Print a given `i32` after the end of the span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("new", type_i32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-char-span-add-f32",
+                documentation: "Print a given `f32` after the end of the span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                    ("new", type_f32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-char-opt-span-add-f32",
+                documentation: "Print a given `f32` after the end of the span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
+                    ),
+                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("new", type_f32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_char),
                     ),
                     ("span", type_span(type_variable("Origin"))),
                 ]),
