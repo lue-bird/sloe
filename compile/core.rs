@@ -1271,9 +1271,7 @@ impl<Origin, Occupancy> Opt<&Span_with_occupancy<Origin, Occupancy>> {
 pub fn p32_dup(n: P32) -> Record·a·b<P32, P32> {
     Record·a·b { a: n, b: n }
 }
-pub fn p32_rid(_: P32) -> Record {
-    ()
-}
+pub fn p32_rid(_: P32) -> Record {}
 pub fn p32_predecessor(n: P32) -> U32 {
     n.get() - 1
 }
@@ -1286,9 +1284,7 @@ pub fn p32_to_u32(n: P32) -> U32 {
 pub fn u32_to_p32(n: U32) -> Opt<P32> {
     Opt::from_option(P32::new(n))
 }
-pub fn u32_rid(_: U32) -> Record {
-    ()
-}
+pub fn u32_rid(_: U32) -> Record {}
 pub fn u32_dup(n: U32) -> Record·a·b<U32, U32> {
     Record·a·b { a: n, b: n }
 }
@@ -1325,9 +1321,7 @@ pub fn u32_add_carry(
 pub fn i32_dup(n: I32) -> Record·a·b<I32, I32> {
     Record·a·b { a: n, b: n }
 }
-pub fn i32_rid(_: I32) -> Record {
-    ()
-}
+pub fn i32_rid(_: I32) -> Record {}
 #[expect(clippy::cast_precision_loss)]
 pub fn i32_to_f32(n: I32) -> F32 {
     n as F32
@@ -1372,9 +1366,7 @@ pub fn i32_mul_clamp(Record·a·b { a, b }: Record·a·b<I32, I32>) -> I32 {
 pub fn f32_dup(n: F32) -> Record·a·b<F32, F32> {
     Record·a·b { a: n, b: n }
 }
-pub fn f32_rid(_: F32) -> Record {
-    ()
-}
+pub fn f32_rid(_: F32) -> Record {}
 pub fn f32_add_clamp(Record·a·b { a, b }: Record·a·b<F32, F32>) -> F32 {
     (a + b).clamp(f32::MIN, f32::MAX)
 }
@@ -1415,9 +1407,7 @@ pub fn f32_to_i32_clamp(operation: Record·mode·n<Round_mode, F32>) -> I32 {
 pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> Record·a·b<Fn<In, Out>, Fn<In, Out>> {
     Record·a·b { a: fn_, b: fn_ }
 }
-pub fn fn_rid<In, Out>(_: Fn<In, Out>) -> Record {
-    ()
-}
+pub fn fn_rid<In, Out>(_: Fn<In, Out>) -> Record {}
 
 pub fn char_dup(char: Char) -> Record·a·b<Char, Char> {
     Record·a·b { a: char, b: char }
@@ -1824,9 +1814,7 @@ pub fn vec_opt_span_rid<Origin, Element>(
     vec.opt_span_rid(span_to_vacate);
     vec
 }
-pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Record {
-    ()
-}
+pub fn vec_rid<Origin, Element>(_: Vec<Origin, Element>) -> Record {}
 pub fn vec_insert<Origin, Element>(
     Record·new·vec {
         mut vec,
@@ -2275,5 +2263,32 @@ pub fn vec_opt_span_move_to_end<Origin, Element>(
                 vec: vec,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod core_test {
+    extern crate std;
+    use std::prelude;
+    #[test]
+    fn add_remove_stress_test() {
+        origin_new!(origin, Origin);
+        let mut vec = crate::core::Vec::new(origin);
+        let mut slots = std::iter::Iterator::collect::<std::vec::Vec<_>>(std::iter::Iterator::map(
+            0..100,
+            |i| vec.add(i),
+        ));
+        // a bit of fake dumb noise.
+        // once rust gains std:: fuzzing/randomness we should use that
+        slots.as_mut_slice()[25..50].reverse();
+        slots.swap(2, 94);
+        slots.swap(12, 88);
+        slots.swap(34, 39);
+        for slot in slots {
+            vec.remove(slot);
+        }
+        std::assert_eq!(vec.vacant_spans().len(), 0);
+        std::assert_eq!(vec.maybe_uninit_elements().len(), 0);
+        crate::core::vec_rid(vec);
     }
 }

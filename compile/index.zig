@@ -238,6 +238,26 @@ test "vec reverse" {
     try std.testing.expectEqualSlices(u32, &.{ 6, 5, 4, 3, 2, 1 }, vec.optSpanSlice(span_reversed));
     vec.rid(allocator);
 }
+test "vec add remove stress test" {
+    const allocator = std.testing.allocator;
+    const VecOrigin = enum { vec };
+    const origin: core.Origin(VecOrigin) = .vec;
+    var vec = core.Vec(VecOrigin, usize).empty(origin);
+    var slots = std.ArrayList(core.Slot(VecOrigin)).empty;
+    for (0..100) |i| {
+        try slots.append(allocator, try vec.add(allocator, i));
+    }
+    var rng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    var random = rng.random();
+    random.shuffle(core.Slot(VecOrigin), slots.items);
+    for (slots.items) |slot| {
+        _ = try vec.remove(allocator, slot);
+    }
+    slots.deinit(allocator);
+    try std.testing.expectEqual(0, vec.vacant.items.len);
+    try std.testing.expectEqual(0, vec.elements.items.len);
+    vec.rid(allocator);
+}
 test "origin with enums containing the same member name" {
     const AOrigin = enum { origin };
     const a_origin: core.Origin(AOrigin) = .origin;

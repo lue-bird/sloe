@@ -2181,7 +2181,7 @@ pub struct CheckedTypeAlias {
     pub documentation: Option<Box<str>>,
     pub type_: Option<Type>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
     Variable(Name),
     Origin(Name),
@@ -2189,12 +2189,12 @@ pub enum Type {
     Choice(Vec<TypeVariant>),
     CoreConstruct { name: Name, arguments: Vec<Type> },
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeField {
     pub name: Name,
     pub value: Type,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeVariant {
     pub name: Name,
     pub value: Type,
@@ -7889,21 +7889,21 @@ mod test_type_collect_variables_that_are_concrete_into {
             type_variables: [(&'static str, Type); N],
         ) -> std::collections::BTreeMap<&'static str, std::borrow::Cow<'static, Type>> {
             std::collections::BTreeMap::from_iter(
-                [("A", type_unt)]
+                type_variables
                     .into_iter()
                     .map(|(name, type_)| (name, std::borrow::Cow::Owned(type_))),
             )
         }
         assert_eq!(
-            concrete_type_variables(&type_variable("A"), &type_unt,),
-            type_variables_from([("A", type_unt)])
+            concrete_type_variables(&type_variable("A"), &type_u32,),
+            type_variables_from([("A", type_u32)])
         );
         assert_eq!(
             concrete_type_variables(
-                &type_function([type_variable("A")], type_variable("A")),
-                &type_function([type_variable("A")], type_unt),
+                &type_fn(type_variable("A"), type_variable("A")),
+                &type_fn(type_variable("A"), type_u32),
             ),
-            type_variables_from([("A", type_unt)])
+            type_variables_from([("A", type_u32)])
         );
     }
 }
