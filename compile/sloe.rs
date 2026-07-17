@@ -1133,7 +1133,12 @@ pub fn parse_project<Expressions, Patterns, Types>(
     types: &mut core::Vec<Types, SyntaxType<Types>>,
     project_source: &str,
 ) -> SyntaxProject<Expressions, Patterns, Types> {
-    let mut elements = Vec::with_capacity(8);
+    // entirely unscientific lower estimates c:
+    let mut elements = Vec::with_capacity(project_source.len() / 24);
+    expressions.pre_allocate_at_least_usize(project_source.len() / 4);
+    patterns.pre_allocate_at_least_usize(project_source.len() / 6);
+    types.pre_allocate_at_least_usize(project_source.len() / 5);
+
     let mut state = ParseState {
         source: project_source,
         offset_utf8: 0,
