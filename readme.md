@@ -14,8 +14,6 @@ Install with
 cargo install --git https://github.com/lue-bird/sloe sloe
 ```
 
-> ⚠️ do not use, yet
-
 # concept: each value must be used used/consumed exctly once
 Matching a value? Consumes it. Passing a value as an argument? Consumes it.
 Even e.g. variables holding plain numbers have to be explicitly duplicated to use them in multiple places.
@@ -540,6 +538,12 @@ cargo install --offline --debug --path . sloe
 ```
 
 # TODO
+
+- add `vec-char-add-u32`, `vec-char-add-i32`, `vec-char-add-f32`, `vec-span-reverse`, `vec-opt-span-reverse`
+
+- add tests for vacating: 0..100.shuffle(), add thse as slots, then remove them, then check if both Vecs are empty
+
+- rename `empty-slot`/`empty-span` to `unset-slot`/`unset-span` to make it more obvious that they expect to be set soon and to avoid language ambiguity (e.g. vec-empty is 0-length but empty-span is positive length). Don't forget all the function names and phantom types
 
 - (not fully sure) add `vec-opt-empty-span-add-length-positive`, `vec-opt-empty-span-add-length`, `vec-empty-span-add-length`, `vec-empty-span-add-own-opt-span`
 

@@ -1077,6 +1077,12 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             Opt::Present(start) => Opt::Present(self.empty_span_add_own_opt_span(start, end)),
         }
     }
+    pub fn vacant_spans<'a>(&'a self) -> &'a [Empty_span<LocalOrigin>] {
+        self.vacant.as_slice()
+    }
+    pub fn maybe_uninit_elements<'a>(&'a self) -> &'a [std::mem::MaybeUninit<Element>] {
+        self.elements.as_slice()
+    }
     pub fn length_vacated_or_not(&self) -> usize {
         self.elements.len()
     }

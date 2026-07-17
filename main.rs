@@ -863,9 +863,26 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
             );
         }
         if project_count == 1 {
-            assert_eq!(state.syntax_expressions.length_vacated_or_not(), 0);
-            assert_eq!(state.syntax_patterns.length_vacated_or_not(), 0);
-            assert_eq!(state.syntax_types.length_vacated_or_not(), 0);
+            fn vec_should_be_empty<Origin, Element>(vec: &sloe::core::Vec<Origin, Element>) {
+                if !vec.maybe_uninit_elements().is_empty() || !vec.vacant_spans().is_empty() {
+                    eprintln!(
+                        "vec not empty after rid step. remaining vacant spans: {:?}, remaining elements ({} including vacant) maybe uninit: {:?}",
+                        vec.vacant_spans(),
+                        vec.maybe_uninit_elements().len(),
+                        vec.maybe_uninit_elements()
+                            .iter()
+                            .enumerate()
+                            .filter(|(i, _)| {
+                                !vec.vacant_spans()
+                                    .iter()
+                                    .any(|vacant_span| vacant_span.to_range().contains(i))
+                            })
+                    );
+                }
+            }
+            vec_should_be_empty(&state.syntax_expressions);
+            vec_should_be_empty(&state.syntax_patterns);
+            vec_should_be_empty(&state.syntax_types);
         }
         *project_state = initialize_project_state_from_source(
             connection,
