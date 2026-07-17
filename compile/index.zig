@@ -227,6 +227,17 @@ test "vec add to span" {
     try std.testing.expectEqual(2, span1_moved.length.positive);
     vec.rid(allocator);
 }
+test "vec reverse" {
+    const allocator = std.testing.allocator;
+    const VecOrigin = enum { vec };
+    const origin: core.Origin(VecOrigin) = .vec;
+    var vec = core.Vec(VecOrigin, u32).empty(origin);
+    const span = try vec.addSlice(allocator, &.{ 1, 2, 3, 4, 5, 6 });
+    const span_reversed = vec.optSpanReverse(span);
+    try std.testing.expectEqual(span, span_reversed);
+    try std.testing.expectEqualSlices(u32, &.{ 6, 5, 4, 3, 2, 1 }, vec.optSpanSlice(span_reversed));
+    vec.rid(allocator);
+}
 test "origin with enums containing the same member name" {
     const AOrigin = enum { origin };
     const a_origin: core.Origin(AOrigin) = .origin;

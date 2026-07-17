@@ -422,7 +422,11 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 .vacant = std.ArrayList(Empty_span(@"%Origin")).empty,
             };
         }
-        pub fn preAllocateAtLeast(@"%vec": @This(), @"%allocator": std.mem.Allocator, min_pre_allocated_length: u32) error{OutOfMemory}!@This() {
+        pub fn preAllocateAtLeast(
+            @"%vec": @This(),
+            @"%allocator": std.mem.Allocator,
+            min_pre_allocated_length: u32,
+        ) error{OutOfMemory}!@This() {
             try @"%vec".elements.ensureUnusedCapacity(@"%allocator", min_pre_allocated_length);
         }
         /// vec is invalid after
@@ -508,36 +512,50 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
         pub fn element_ptr(@"%vec": *@This(), @"%slot": Slot(@"%Origin")) *@"%Element" {
             return &@"%vec".elements.items[@"%slot".index];
         }
-        /// slot is invalid after
-        pub fn remove(@"%vec": *@This(), @"%allocator": std.mem.Allocator, @"%slot": Slot(@"%Origin")) error{OutOfMemory}!@"%Element" {
+        pub fn remove(
+            @"%vec": *@This(),
+            @"%allocator": std.mem.Allocator,
+            @"%slot": Slot(@"%Origin"),
+        ) error{OutOfMemory}!@"%Element" {
             const @"%accessed" = @"%vec".element(@"%slot");
             try @"%vec".slotRid(@"%allocator", @"%accessed".slot);
             return @"%accessed".element;
         }
-        /// slot is invalid after
-        pub fn element(@"%vec": *@This(), @"%slot": Slot(@"%Origin")) @".element.slot"(@"%Element", Empty_slot(@"%Origin")) {
+        pub fn element(
+            @"%vec": *@This(),
+            @"%slot": Slot(@"%Origin"),
+        ) struct { element: @"%Element", slot: Empty_slot(@"%Origin") } {
             const @"%accessed_element" = @"%vec".element_ptr(@"%slot").*;
             return .{
                 .element = @"%accessed_element",
                 .slot = .{ .origin = @"%slot".origin, .index = @"%slot".index },
             };
         }
-        /// empty slot is invalid after
-        pub fn set(@"%vec": *@This(), @"%slot": Empty_slot(@"%Origin"), @"%new": @"%Element") Slot(@"%Origin") {
+        pub fn set(
+            @"%vec": *@This(),
+            @"%slot": Empty_slot(@"%Origin"),
+            @"%new": @"%Element",
+        ) Slot(@"%Origin") {
             @"%vec".elements.items[@"%slot".index] = @"%new";
             return .{ .origin = @"%slot".origin, .index = @"%slot".index };
         }
         // The given span is invalid while the returned slice is live.
-        // Prefer `.spanElements` (followed by `.spanRid` usually)
-        pub fn spanSlice(@"%vec": *@This(), @"%span": Span(@"%Origin")) []@"%Element" {
+        pub fn spanSlice(@"%vec": @This(), @"%span": Span(@"%Origin")) []@"%Element" {
             return @"%vec".elements.items[@"%span".start.index..][0..@"%span".length.positive];
         }
-        /// span is invalid after.
-        /// The returned slice is only valid while vec.elements.items is live
-        pub fn spanElements(
+        // The given span is invalid while the returned slice is live.
+        pub fn optSpanSlice(@"%vec": @This(), @"%opt_span": Opt(Span(@"%Origin"))) []@"%Element" {
+            return switch (@"%opt_span") {
+                .absent => &.{},
+                .present => |@"%span"| @"%vec".spanSlice(@"%span"),
+            };
+        }
+        /// The returned slice is only valid while vec.elements.items is live.
+        /// The returned empty span is only valid once all elements in the slice have been used
+        fn spanElements(
             @"%vec": *@This(),
             @"%span": Span(@"%Origin"),
-        ) @".slice.span"([]@"%Element", Empty_span(@"%Origin")) {
+        ) struct { slice: []@"%Element", span: Empty_span(@"%Origin") } {
             const @"%slice" = @"%vec".spanSlice(@"%span");
             return .{
                 .slice = @"%slice",
@@ -550,14 +568,13 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 },
             };
         }
-        /// span is invalid after
         /// The returned slice is only valid while vec.elements.items is live
         pub fn optSpanElements(
             @"%vec": *@This(),
             @"%opt_span": Opt(Span(@"%Origin")),
-        ) @".slice.span"([]@"%Element", Opt(Empty_span(@"%Origin"))) {
+        ) struct { slice: []@"%Element", span: Opt(Empty_span(@"%Origin")) } {
             switch (@"%opt_span") {
-                .absent => return .{ .slice = []@"%Element", .span = .{ .absent = void } },
+                .absent => return .{ .slice = []@"%Element", .span = .{ .absent = {} } },
                 .present => |@"%span"| {
                     return @"%vec".spanElements(@"%span");
                 },
@@ -642,7 +659,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 }
             }
         }
-        /// given span is invalid after
         pub fn spanMoveToEnd(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
@@ -664,7 +680,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 .length = @"%span".length,
             };
         }
-        /// given span is invalid after
         pub fn spanMoveToVacant(@"%vec": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
             if (@as(usize, @"%span".start.index) + @as(usize, @"%span".length.positive) < @"%vec".elements.items.len) {
                 return @"%span";
@@ -755,7 +770,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 .length = P32{ .positive = try (std.math.cast(u32, @"%vec".elements.items.len - @"%length_before_add") orelse error.OutOfMemory) },
             } };
         }
-        /// given span is invalid after
         pub fn optSpanAdd(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
@@ -767,7 +781,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 .present => |@"%span"| @"%vec".spanAdd(@"%allocator", @"%span", @"%new_element"),
             };
         }
-        /// given span is invalid after
         pub fn spanAdd(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
@@ -778,7 +791,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             try @"%vec".elements.append(@"%allocator", @"%new_element");
             return Span(@"%Origin"){ .start = @"%moved_span".start, .length = try @"%moved_span".length.addOrOutOfMem(1) };
         }
-        /// given span is invalid after
         pub fn optSpanAddSlice(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
@@ -790,14 +802,26 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 .present => |@"%span"| .{ .present = try @"%vec".spanAddSlice(@"%allocator", @"%span", @"%new_elements") },
             };
         }
-        /// given span is invalid after
-        pub fn spanAddSlice(@"%vec": *@This(), @"%allocator": std.mem.Allocator, @"%span": Span(@"%Origin"), @"%new_elements": []const @"%Element") error{OutOfMemory}!Span(@"%Origin") {
+        pub fn spanAddSlice(
+            @"%vec": *@This(),
+            @"%allocator": std.mem.Allocator,
+            @"%span": Span(@"%Origin"),
+            @"%new_elements": []const @"%Element",
+        ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%vec".spanMoveToEnd(@"%allocator", @"%span");
             try @"%vec".elements.appendSlice(@"%allocator", @"%new_elements");
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = try @"%moved_span".length.addOrOutOfMem(@"%new_elements".len),
             };
+        }
+        pub fn spanReverse(@"%vec": @This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
+            std.mem.reverse(@"%Element", @"%vec".spanSlice(@"%span"));
+            return @"%span";
+        }
+        pub fn optSpanReverse(@"%vec": @This(), @"%opt_span": Opt(Span(@"%Origin"))) Opt(Span(@"%Origin")) {
+            std.mem.reverse(@"%Element", @"%vec".optSpanSlice(@"%opt_span"));
+            return @"%opt_span";
         }
     };
 }
@@ -1513,7 +1537,7 @@ pub fn vec_opt_span_move_to_vacant(
     @"%": @".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")),
 ) error{OutOfMemory}!@".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")) {
     switch (@"%".span) {
-        .absent => return .{ .vec = @"%".vec, .span = .{ .absent = void } },
+        .absent => return .{ .vec = @"%".vec, .span = .{ .absent = {} } },
         .present => |@"%span"| {
             const @"%moved_span" = @"%".vec.spanMoveToVacant(@"%allocator", @"%span");
             return .{ .vec = @"%".vec, .span = .{ .present = @"%moved_span" } };
@@ -1536,12 +1560,28 @@ pub fn vec_opt_span_move_to_end(
     @"%": @".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")),
 ) error{OutOfMemory}!@".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")) {
     switch (@"%".span) {
-        .absent => return .{ .vec = @"%".vec, .span = .{ .absent = void } },
+        .absent => return .{ .vec = @"%".vec, .span = .{ .absent = {} } },
         .present => |@"%span"| {
             const @"%moved_span" = @"%".vec.spanMoveToEnd(@"%allocator", @"%span");
             return .{ .vec = @"%".vec, .span = .{ .preent = @"%moved_span" } };
         },
     }
+}
+pub fn vec_span_reverse(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%": @".span.vec"(Span(@"%Origin"), Vec(@"%Origin", @"%Element")),
+) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", @"%Element")) {
+    const @"%reversed_span" = @"%".vec.spanReverse(@"%".span);
+    return .{ .vec = @"%".vec, .span = @"%reversed_span" };
+}
+pub fn vec_opt_span_reverse(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%": @".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")),
+) error{OutOfMemory}!@".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")) {
+    const @"%reversed_span" = @"%".vec.optSpanReverse(@"%".span);
+    return .{ .vec = @"%".vec, .span = @"%reversed_span" };
 }
 pub fn vec_slot_rid(
     @"%Element": type,

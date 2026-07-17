@@ -9588,6 +9588,44 @@ To instead replace a `slot`, use `slot-replace`",
                 result_type: type_vec(type_variable("Origin"), type_variable("Element")),
             },
             CoreFnInfo {
+                name: "vec-span-reverse",
+                documentation: "Order the referenced elements such that the previously last is now first, second last is second etc.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-opt-span-reverse",
+                documentation: "Order the referenced elements such that the previously last is now first, second last is second etc.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_opt(type_span(type_variable("Origin")))),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_opt(type_span(type_variable("Origin")))),
+                ]),
+            },
+            CoreFnInfo {
                 name: "vec-opt-span-add",
                 documentation: "Attach a given element at the end of the span.",
                 type_parameters: vec![],
