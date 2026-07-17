@@ -46,7 +46,7 @@ There are even fast general purpose allocators based on this concept, for exampl
 # concept: collections cannot access their elements
 Similar to allocators, you cannot access, alter or iterate their contained values.
 Collections are seen as storage into which you can add elements, slices etc.
-Whenever you do so, you'll get `(empty-)slot`s and `(empty-)span`s that assert your right to access and alter the referenced elements as well as your duty to announce their release at some point.
+Whenever you do so, you'll get `(unset-)slot`s and `(unset-)span`s that assert your right to access and alter the referenced elements as well as your duty to announce their release at some point.
 
 The alternative to this would be to make tiny allocations for each and every slot and small span and to allow recursive types.
 This is not uncommon in languages like rust.
@@ -73,7 +73,7 @@ fn add-some-values<Origin> vec _vec Origin, u32 :> _vec Origin, u32 >
 
 Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been described similarly in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04).
 With the small difference that in sloe's case the unique origin types
-only exist at compile-time and can thus mark spans, slots, empty spans, empty slots, vecs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
+only exist at compile-time and can thus mark spans, slots, unset spans, unset slots, vecs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
 
 The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
 The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
@@ -271,7 +271,7 @@ ty type-name Potential Type-Parameters
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
-Writing these down has already helped a lot in coming up with fixes (e.g. `empty-slot`, `vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items).
+Writing these down has already helped a lot in coming up with fixes (e.g. `unset-slot`, `vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
 
 - it seems quite natural to represent a span of structs as e.g. `.field-names _span Field-names .field-values _span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
@@ -318,7 +318,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   ```
   In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `set-counting`) etc.
   Things I dislike with this design:
-    - access via `vec-counting-element` which does not guarantee seems maybe too difficult (first un-occupy all known slots and even then there is no guarantee). `vec-counting-update` should work nicely, especially for copiable types at the cost of: cannot access the vec at the same time and spooky action at a distance
+    - access via `vec-counting-unset` which does not guarantee seems maybe too difficult (first un-occupy all known slots and even then there is no guarantee). `vec-counting-update` should work nicely, especially for copiable types at the cost of: cannot access the vec at the same time and spooky action at a distance
     - _every_ element is reference-counted. A slot to a known single-reference element cannot be represented. This is not a biggie because I don't know if there is a use for this
     - TODO maybe also -counting versions of map/set etc.
   
@@ -543,9 +543,7 @@ cargo install --offline --debug --path . sloe
 
 - consider renaming `char` to `rune` for correctness
 
-- rename `empty-slot`/`empty-span` to `unset-slot`/`unset-span` to make it more obvious that they expect to be set soon and to avoid language ambiguity (e.g. vec-empty is 0-length but empty-span is positive length). Don't forget all the function names and phantom types. rename `vec-element` to `vec-unset`
-
-- (not fully sure) add `vec-opt-empty-span-add-length-positive`, `vec-opt-empty-span-add-length`, `vec-empty-span-add-length`, `vec-empty-span-add-own-opt-span`
+- (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
