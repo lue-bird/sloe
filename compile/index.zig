@@ -227,6 +227,30 @@ test "vec add to span" {
     try std.testing.expectEqual(2, span1_moved.length.positive);
     vec.rid(allocator);
 }
+test "vec add strs" {
+    const allocator = std.testing.allocator;
+    const VecOrigin = enum { vec };
+    const origin: core.Origin(VecOrigin) = .vec;
+    const vec = core.Vec(VecOrigin, core.Char).empty(origin);
+    const with_abcd = try core.vec_opt_span_add_str(
+        VecOrigin,
+        allocator,
+        .{ .vec = vec, .span = .{ .absent = {} }, .new = "abcd" },
+    );
+    try std.testing.expectEqual(4, with_abcd.span.present.length.positive);
+    const with_wrenches = try core.vec_opt_span_add_str(
+        VecOrigin,
+        allocator,
+        .{ .vec = with_abcd.vec, .span = with_abcd.span, .new = "🔧🔧🔧" },
+    );
+    try std.testing.expectEqualSlices(
+        core.Char,
+        &.{ 'a', 'b', 'c', 'd', '🔧', '🔧', '🔧' },
+        with_wrenches.vec.optSpanSlice(with_wrenches.span),
+    );
+    try std.testing.expectEqual(7, with_wrenches.span.present.length.positive);
+    with_wrenches.vec.rid(allocator);
+}
 test "vec reverse" {
     const allocator = std.testing.allocator;
     const VecOrigin = enum { vec };

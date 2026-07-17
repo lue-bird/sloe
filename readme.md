@@ -539,7 +539,11 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `vec-char-add-u32`, `vec-char-add-i32`, `vec-char-add-f32`
+- add `vec-char-span-add-u32`, `vec-char-span-add-i32`, `vec-char-span-add-f32` (same for opt span)
+
+- rename `vec-(span-)add-str` to `vec-char-(span-)add-str`
+
+- consider renaming `char` to `rune` for correctness
 
 - rename `empty-slot`/`empty-span` to `unset-slot`/`unset-span` to make it more obvious that they expect to be set soon and to avoid language ambiguity (e.g. vec-empty is 0-length but empty-span is positive length). Don't forget all the function names and phantom types. rename `vec-element` to `vec-unset`
 
