@@ -1896,7 +1896,7 @@ pub fn vec_insert_str<Origin>(
         span: new_span,
     }
 }
-pub fn vec_add_str<Origin>(
+pub fn vec_char_add_str<Origin>(
     Record·new·vec {
         mut vec,
         new: new_str,
@@ -1973,7 +1973,7 @@ pub fn vec_span_add<Origin, Element>(
         span: combined_span,
     }
 }
-pub fn vec_opt_span_add_str<Origin>(
+pub fn vec_char_opt_span_add_str<Origin>(
     Record·new·span·vec {
         mut vec,
         span,
@@ -1986,7 +1986,7 @@ pub fn vec_opt_span_add_str<Origin>(
         span: combined_span,
     }
 }
-pub fn vec_span_add_str<Origin>(
+pub fn vec_char_span_add_str<Origin>(
     Record·new·span·vec {
         mut vec,
         span,
@@ -2014,7 +2014,7 @@ pub fn vec_char_span_add_u32<Origin>(
         span: combined_span,
     }
 }
-pub fn vec_char_op_span_add_u32<Origin>(
+pub fn vec_char_opt_span_add_u32<Origin>(
     Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
         U32,
         Opt<Span<Origin>>,
@@ -2047,7 +2047,7 @@ pub fn vec_char_span_add_i32<Origin>(
         span: combined_span,
     }
 }
-pub fn vec_char_op_span_add_i32<Origin>(
+pub fn vec_char_opt_span_add_i32<Origin>(
     Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
         I32,
         Opt<Span<Origin>>,

@@ -8238,6 +8238,7 @@ fn type_diff_into(formatted: &mut String, indent: usize, type_diff: &TypeDiff) {
             formatted.push_str(name);
         }
         TypeDiff::CoreConstruct { name, arguments } => {
+            formatted.push('_');
             formatted.push_str(name);
             let line_span: LineSpan = type_diff_line_span(type_diff);
             for argument in arguments {
@@ -9630,7 +9631,7 @@ To instead replace a `slot`, use `slot-replace`",
                 ]),
             },
             CoreFnInfo {
-                name: "vec-opt-span-add-str",
+                name: "vec-char-opt-span-add-str",
                 documentation: "Attach a given `str` at the end of the span",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -9650,7 +9651,7 @@ To instead replace a `slot`, use `slot-replace`",
                 ]),
             },
             CoreFnInfo {
-                name: "vec-span-add-str",
+                name: "vec-char-span-add-str",
                 documentation: "Attach a given `str` to the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -10006,8 +10007,7 @@ pub static core_type_aliases: std::sync::LazyLock<
 ```sloe
 fn answer . :> p32 >
     _p32-add .p 2 p32 .u 40 u32
-```
-",
+```",
                 )),
                 parameters: vec![],
                 type_: Some(type_p32),
@@ -10022,8 +10022,7 @@ fn answer . :> p32 >
 ```sloe
 fn answer . :> u32 >
     _u32-add .a 2 u32 .b 40 u32
-```
-",
+```",
                 )),
                 parameters: vec![],
                 type_: Some(type_u32),
@@ -10038,8 +10037,7 @@ fn answer . :> u32 >
 ```sloe
 fn answer . :> i32 >
     _i32-add .a -8 i32 .b 50 i32
-```
-",
+```",
                 )),
                 parameters: vec![],
                 type_: Some(type_i32),
@@ -10055,8 +10053,7 @@ Does not allow infinities or NaN. If you need these error states, explicitly mod
 ```sloe
 fn answer . :> f32 >
     _f32-add .a -8.5 f32 .b 50.5 f32
-```
-",
+```",
                 )),
                 parameters: vec![],
                 type_: Some(type_f32),
@@ -10074,8 +10071,7 @@ _str-start "🇺🇸"
 # = |present .start '\u{1F1FA}' .after "\u{1F1F8}"
 #                   Indicator U        Indicator S
 ```
-Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters)
-"#,
+Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters)"#,
                 )),
                 parameters: vec![],
                 type_: Some(type_char),
@@ -10088,8 +10084,7 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
                 documentation: Some(Box::from(
                     r#"Text valid for the entire program like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""` (`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
-When building strings, use functions like `arena-add-str`.
-"#,
+When building strings, use functions like `vec-char-opt-span-add-str`."#,
                 )),
                 parameters: vec![],
                 type_: Some(type_str),
@@ -10149,8 +10144,7 @@ Heavily inspired by [swift's FloatingPointRoundingRule](https://developer.apple.
 Origins can not be arbitrary values because values like `u32` could be duplicated leading to different collections with the same origin type.
 This is not possible for values of type `origin`.
 The type argument to an `origin` is the type that also gets created with `origin some-origin expression`.
-This type argument is also used in slot, span, arena, vec as the first type argument.
-"
+This type argument is also used in slot, span, arena, vec as the first type argument."
                 )),
                 parameters: vec![Name::const_new("LocalOrigin")],
                 type_: Some(type_origin(type_variable("LocalOrigin"))),
@@ -10170,8 +10164,7 @@ fn use-a-vec . u32
     ? _vec-remove .vec my-elements .slot first-element-slot = .vec my-elements .element first-element >
     ? vec-rid my-elements = . >
     first-element # = 609 u32
-```
-"
+```"
                 )),
                 parameters: vec![Name::const_new("Origin"), Name::const_new("Element")],
                 type_: Some(type_vec(type_variable("Origin"), type_variable("Element"))),

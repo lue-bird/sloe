@@ -539,9 +539,25 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- rename `vec-(span-)add-str` to `vec-char-(span-)add-str`
-
-- consider renaming `char` to `rune` for correctness
+- add
+  ```sloe
+  fn vec-to-unset _vec Origin, Element :> _unset-slice Element
+  fn vec-reuse .slice _unset-slice Element .origin Origin :> _vec Origin, Element
+  fn unset-slice-allocate-length<Element> u32 :> _unset-slice Element
+  fn unset-slice-rid-end
+      .slice _unset-slice Element .length u32 :> _unset-slice Element
+  fn unset-slice-rid-start
+      .slice _unset-slice Element .length u32 :> _unset-slice Element
+  fn unset-slice-start
+      .slice _unset-slice Element .length u32
+      :> .start _unset-slice Element .after _unset-slice Element
+  fn unset-slice-length _unset-slice Element :> .slice _unset-slice Element .length u32
+  fn unset-slice-rid _unset-slice Element :> .
+  fn unset-slice-transmute-or-reallocate<NewElement>
+       _unset-slice Element :> _unset-slice NewElement
+  ```
+  That last one is a bit worse than safe transmute as it doesn't catch mistakes in size+alignment at compile-time (a fair tradeoff in my opinion. I'm glad transmute is feasable at all in sloe).
+  Note that vacant memory cannot be reused with this API. This is fine, as vec reuse usually coincides with append-only vec usage
 
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
@@ -578,7 +594,7 @@ cargo install --offline --debug --path . sloe
       (basically nested switches on the original value as a variable and temporaries, both field-accessed if necessary. Finally returning all pattern variables in an anonymous struct)
       and then consider switching to manually generated decision-tree-like code with nested switches if the former doesn't optimize well (it kinda should, though)
 
-- think of a way to "split an origin":
+- (hmm...) think of a way to "split an origin":
     - creating initial state in sloe code, without needing to pass
       an unknown amount of origins in from the outside.
     - type aliases may only need to take a single origin type parameter

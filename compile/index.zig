@@ -232,13 +232,13 @@ test "vec add strs" {
     const VecOrigin = enum { vec };
     const origin: core.Origin(VecOrigin) = .vec;
     const vec = core.Vec(VecOrigin, core.Char).empty(origin);
-    const with_abcd = try core.vec_opt_span_add_str(
+    const with_abcd = try core.vec_char_opt_span_add_str(
         VecOrigin,
         allocator,
         .{ .vec = vec, .span = .{ .absent = {} }, .new = "abcd" },
     );
     try std.testing.expectEqual(4, with_abcd.span.present.length.positive);
-    const with_wrenches = try core.vec_opt_span_add_str(
+    const with_wrenches = try core.vec_char_opt_span_add_str(
         VecOrigin,
         allocator,
         .{ .vec = with_abcd.vec, .span = with_abcd.span, .new = "🔧🔧🔧" },
@@ -361,12 +361,11 @@ test "compiles" {
     try expect_fn(core.vec_insert_unset);
     try expect_fn(core.vec_add_unset);
     try expect_fn(core.vec_span_add);
-    try expect_fn(core.vec_span_add_str);
     try expect_fn(core.vec_span_add_vec_span);
     try expect_fn(core.vec_span_add_vec_opt_span);
-    try expect_fn(core.vec_opt_span_add_str);
+    try expect_fn(core.vec_char_opt_span_add_str);
+    try expect_fn(core.vec_char_span_add_str);
     try expect_fn(core.vec_opt_span_add);
-    try expect_fn(core.vec_opt_span_add_str);
     try expect_fn(core.vec_opt_span_add_vec_span);
     try expect_fn(core.vec_opt_span_add_vec_opt_span);
     try expect_fn(core.vec_span_add_own_span);

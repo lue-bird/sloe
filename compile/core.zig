@@ -1276,7 +1276,7 @@ pub fn vec_span_add(
     const @"%combined_span" = @"%vec".spanAdd(@"%allocator", @"%".span, @"%".new);
     return .{ .span = @"%combined_span", .vec = @"%vec" };
 }
-pub fn vec_opt_span_add_str(
+pub fn vec_char_opt_span_add_str(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": @".new.span.vec"(Str, Opt(Span(@"%Origin")), Vec(@"%Origin", Char)),
@@ -1290,7 +1290,7 @@ pub fn vec_opt_span_add_str(
     );
     return .{ .span = @"%combined_span", .vec = @"%vec" };
 }
-pub fn vec_span_add_str(
+pub fn vec_char_span_add_str(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": @".new.span.vec"(Str, Span(@"%Origin"), Vec(@"%Origin", Char)),
@@ -1313,7 +1313,7 @@ pub fn vec_char_span_add_u32(
 ) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", Char)) {
     var @"%buffer": [u32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    return vec_span_add_str(@"%Origin", @"%allocator", .{
+    return vec_char_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
         .new = @"%buffer"[0..@"%buffer_exclusive_end"],
@@ -1326,7 +1326,7 @@ pub fn vec_char_opt_span_add_u32(
 ) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", Char)) {
     var @"%buffer": [u32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    const @"%combined" = try vec_opt_span_add_str(@"%Origin", @"%allocator", .{
+    const @"%combined" = try vec_char_opt_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
         .new = @"%buffer"[0..@"%buffer_exclusive_end"],
@@ -1345,7 +1345,7 @@ pub fn vec_char_span_add_i32(
 ) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", Char)) {
     var @"%buffer": [i32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    return vec_span_add_str(@"%Origin", @"%allocator", .{
+    return vec_char_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
         .new = @"%buffer"[0..@"%buffer_exclusive_end"],
@@ -1358,7 +1358,7 @@ pub fn vec_char_opt_span_add_i32(
 ) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", Char)) {
     var @"%buffer": [i32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    const @"%combined" = try vec_opt_span_add_str(Char, @"%Origin", @"%allocator", .{
+    const @"%combined" = try vec_char_opt_span_add_str(Char, @"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
         .new = @"%buffer"[0..@"%buffer_exclusive_end"],
@@ -1378,7 +1378,7 @@ pub fn vec_char_span_add_f32(
         @"%".new,
         .{ .mode = .decimal, .precision = null },
     ) catch unreachable;
-    return vec_span_add_str(@"%Origin", @"%allocator", .{
+    return vec_char_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
         .new = @"%used_buffer_slice",
@@ -1395,7 +1395,7 @@ pub fn vec_char_opt_span_add_f32(
         @"%".new,
         .{ .mode = .decimal, .precision = null },
     ) catch unreachable;
-    const @"%combined" = try vec_opt_span_add_str(@"%Origin", @"%allocator", .{
+    const @"%combined" = try vec_char_opt_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
         .new = @"%used_buffer_slice",
