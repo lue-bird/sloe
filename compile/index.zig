@@ -360,6 +360,8 @@ test "compiles" {
     try expect_fn(core.vec_insert);
     try expect_fn(core.vec_insert_unset);
     try expect_fn(core.vec_add_unset);
+    try expect_fn(core.vec_add_unset_length);
+    try expect_fn(core.vec_add_unset_length_positive);
     try expect_fn(core.vec_span_add);
     try expect_fn(core.vec_span_add_vec_span);
     try expect_fn(core.vec_span_add_vec_opt_span);

@@ -446,7 +446,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             }
             return @"%combined_length";
         }
-        /// counts both occupied positions and temporarily empty ones referenced by `empty-slot`s
+        /// counts both occupied positions and unset ones referenced by `unset-slot` and `unset-span`s
         pub fn notVacantCount(@"%vec": @This()) usize {
             return @"%vec".elements.items.len - @"%vec".vacantSlotCount();
         }
@@ -473,16 +473,28 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             try @"%vec".elements.append(@"%allocator", undefined);
             return @"%new_slot";
         }
-        pub fn addUnsetSpan(
+        pub fn addUnsetLength(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
-            length: P32,
+            @"%length": U32,
+        ) error{OutOfMemory}!Opt(Unset_span(@"%Origin")) {
+            if (P32.fromU32(@"%length")) |@"%length_positive"| {
+                const @"%span" = @"%vec".addUnsetLengthPositive(@"%allocator", @"%length_positive");
+                return .{ .present = @"%span" };
+            } else {
+                return .{ .absent = {} };
+            }
+        }
+        pub fn addUnsetLengthPositive(
+            @"%vec": *@This(),
+            @"%allocator": std.mem.Allocator,
+            @"%length": P32,
         ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            const start = @"%vec".elements.items.len;
-            try @"%vec".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%vec".elements.items.len, length.positive));
+            const @"%start" = @"%vec".elements.items.len;
+            try @"%vec".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%vec".elements.items.len, @"%length".positive));
             return Unset_span(@"%Origin"){
-                .start = .{ .origin = @"%vec".origin, .index = try (std.math.cast(u32, start) orelse error.OutOfMemory) },
-                .length = length,
+                .start = .{ .origin = @"%vec".origin, .index = try (std.math.cast(u32, @"%start") orelse error.OutOfMemory) },
+                .length = @"%length",
             };
         }
         pub fn insert(
@@ -719,7 +731,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 return Span(@"%Origin"){ .start = @"%moved_start".start, .length = @"%combined_length" };
             }
         }
-        pub fn emptySpanAddOwnSpan(
+        pub fn unsetSpanAddOwnSpan(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%start": Unset_span(@"%Origin"),
@@ -729,10 +741,10 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             if (u32AddOrOutOfMem(@"%start".start.index, @"%start".length.positive) == @"%end".start.index) {
                 return Unset_span(@"%Origin"){ .start = @"%start".start, .length = @"%combined_length" };
             } else {
-                return @"%vec".addUnsetSpan(@"%allocator", @"%combined_length");
+                return @"%vec".addUnsetLengthPositive(@"%allocator", @"%combined_length");
             }
         }
-        pub fn emptySpanAdd(
+        pub fn unsetSpanAdd(
             @"%vec": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%span": Unset_span(@"%Origin"),
@@ -741,7 +753,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             const @"%combined_length" = @"%span".length.addOrOutOfMem(@"%length_increase");
             if (@as(usize, @"%span".start.index) + @as(usize, @"%span".length.positive) < @"%vec".elements.items.len) {
                 try @"%vec".spanRid(@"%span");
-                return @"%vec".addUnsetSpan(@"%allocator", @"%combined_length");
+                return @"%vec".addUnsetLengthPositive(@"%allocator", @"%combined_length");
             }
             // span is at the end of elements
             try @"%vec".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%vec".elements.items.len, @"%span".length.positive));
@@ -1225,13 +1237,22 @@ pub fn vec_add_unset(
     const @"%slot" = try @"%vec".addUnset(@"%allocator");
     return .{ .vec = @"%vec", .slot = @"%slot" };
 }
-pub fn vec_add_unset_span(
+pub fn vec_add_unset_length(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": @".length.vec"(U32, Vec(@"%Origin", @"%Element")),
+) error{OutOfMemory}!@".span.vec"(Opt(Unset_span(@"%Origin")), Vec(@"%Origin", @"%Element")) {
+    const @"%unset_span" = try @"%".vec.addUnsetLength(@"%allocator", @"%".length);
+    return .{ .vec = @"%".vec, .span = @"%unset_span" };
+}
+pub fn vec_add_unset_length_positive(
     @"%Element": type,
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": @".length.vec"(P32, Vec(@"%Origin", @"%Element")),
 ) error{OutOfMemory}!@".span.vec"(Unset_span(@"%Origin"), Vec(@"%Origin", @"%Element")) {
-    const @"%unset_span" = try @"%".vec.addUnsetSpan(@"%allocator", @"%".length);
+    const @"%unset_span" = try @"%".vec.addUnsetLengthPositive(@"%allocator", @"%".length);
     return .{ .vec = @"%".vec, .span = @"%unset_span" };
 }
 pub fn vec_remove(
@@ -1613,7 +1634,7 @@ pub fn vec_unset_span_add_own_span(
     Unset_span(@"%Origin"),
     Vec(@"%Origin", @"%Element"),
 ) {
-    const @"%combined_span" = try @"%".vec.emptySpanAddOwnSpan(@"%allocator", @"%".start, @"%".end);
+    const @"%combined_span" = try @"%".vec.unsetSpanAddOwnSpan(@"%allocator", @"%".start, @"%".end);
     return .{
         .span = @"%combined_span",
         .vec = @"%".vec,
@@ -1635,7 +1656,7 @@ pub fn vec_opt_unset_span_add_own_span(
     switch (@"%".start) {
         .absent => return .{ .vec = @"%".vec, .span = @"%".end },
         .present => |@"%start"| {
-            const @"%combined_unset_span" = try @"%".vec.emptySpanAddOwnSpan(@"%allocator", @"%start", @"%".end);
+            const @"%combined_unset_span" = try @"%".vec.unsetSpanAddOwnSpan(@"%allocator", @"%start", @"%".end);
             return .{
                 .span = @"%combined_unset_span",
                 .vec = @"%".vec,
@@ -1659,7 +1680,7 @@ pub fn vec_unset_span_add_own_opt_span(
     switch (@"%".end) {
         .absent => return .{ .vec = @"%".vec, .span = @"%".start },
         .present => |@"%end"| {
-            const @"%combined_unset_span" = try @"%".vec.emptySpanAddOwnSpan(@"%allocator", @"%".start, @"%end");
+            const @"%combined_unset_span" = try @"%".vec.unsetSpanAddOwnSpan(@"%allocator", @"%".start, @"%end");
             return .{
                 .span = @"%combined_unset_span",
                 .vec = @"%".vec,
@@ -1686,7 +1707,7 @@ pub fn vec_opt_unset_span_add_own_opt_span(
             switch (@"%".end) {
                 .absent => return .{ .vec = @"%".vec, .span = .{ .present = @"%start" } },
                 .present => |@"%end"| {
-                    const @"%combined_unset_span" = try @"%".vec.emptySpanAddOwnSpan(@"%allocator", @"%start", @"%end");
+                    const @"%combined_unset_span" = try @"%".vec.unsetSpanAddOwnSpan(@"%allocator", @"%start", @"%end");
                     return .{
                         .span = .{ .present = @"%combined_unset_span" },
                         .vec = @"%".vec,

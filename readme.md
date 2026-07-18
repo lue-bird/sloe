@@ -553,7 +553,7 @@ cargo install --offline --debug --path . sloe
       :> .start _unset-slice Element .after _unset-slice Element
   fn unset-slice-length _unset-slice Element :> .slice _unset-slice Element .length u32
   fn unset-slice-rid _unset-slice Element :> .
-  fn unset-slice-transmute-or-reallocate<NewElement>
+  fn unset-slice-transmute-or-rid-and-allocate<NewElement>
        _unset-slice Element :> _unset-slice NewElement
   ```
   That last one is a bit worse than safe transmute as it doesn't catch mistakes in size+alignment at compile-time (a fair tradeoff in my opinion. I'm glad transmute is feasable at all in sloe).
@@ -562,6 +562,8 @@ cargo install --offline --debug --path . sloe
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
+
+- switch syntax to wrapping pattern in `[]` (lambda, case) and fn result type  in `<>`. => is not distinctly visible enough
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements

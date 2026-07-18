@@ -9331,7 +9331,8 @@ See also `unset-span-start-of-length-positive`, `unset-span-end`.",
                 name: "vec-pre-allocate-at-least",
                 documentation: "Reserves capacity for at least `length` more elements to be added.
 This can prevent frequent re-allocation of the underlying array.
-If you can estimate a lower bound of how many elements are ultimately added, this is always worth it!",
+If you can estimate a lower bound of how many elements are ultimately added, this is always worth it!
+Equivalent to `vec-add-unset-length` followed by `vec-opt-span-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -9411,6 +9412,47 @@ Assign an unset-slot with `vec-set` or vacate it with `vec-vacate`",
                         type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
                     ("slot", type_unset_slot(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-add-length-positive",
+                documentation: "Claim a given count of new end slots to be set in the near future.
+Combined with `vec-span-rid` this has the same effect as `vec-pre-allocate-at-least` for example.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("length", type_p32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_unset_span(type_variable("Origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-add-length",
+                documentation: "Claim a given count of new end slots to be set in the near future.
+Combined with `vec-opt-span-rid` this has the same effect as `vec-pre-allocate-at-least` for example.
+To get non-empty spans use `vec-add-length-positive`",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("length", type_u32),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_opt(type_unset_span(type_variable("Origin")))),
                 ]),
             },
             CoreFnInfo {
