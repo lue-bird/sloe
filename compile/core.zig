@@ -126,6 +126,18 @@ pub fn @".length.vec"(@"%Length": type, @"%Vec": type) type {
 pub fn @"record.length.vec"(@"%length": anytype, @"%vec": anytype) @".length.vec"(@TypeOf(@"%length"), @TypeOf(@"%vec")) {
     return .{ .length = @"%length", .vec = @"%vec" };
 }
+pub fn @".length.slice"(@"%Length": type, @"%Slice": type) type {
+    return struct { length: @"%Length", slice: @"%Slice" };
+}
+pub fn @"record.length.slice"(@"%length": anytype, @"%slice": anytype) @".length.slice"(@TypeOf(@"%length"), @TypeOf(@"%slice")) {
+    return .{ .length = @"%length", .slice = @"%slice" };
+}
+pub fn @".origin.slice"(@"%Origin": type, @"%Slice": type) type {
+    return struct { origin: @"%Origin", slice: @"%Slice" };
+}
+pub fn @"record.origin.slice"(@"%origin": anytype, @"%slice": anytype) @".origin.slice"(@TypeOf(@"%origin"), @TypeOf(@"%slice")) {
+    return .{ .origin = @"%origin", .slice = @"%slice" };
+}
 pub fn @".slot.state"(@"%Slot": type, @"%State": type) type {
     return struct { slot: @"%Slot", state: @"%State" };
 }
@@ -284,13 +296,10 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
         start: Slot_with_occupancy(@"%Origin", @"%Occupancy"),
         length: P32,
         pub fn endIndexUsize(@"%span": @This()) usize {
-            return @"%span".raw().endIndexUsize();
+            return @as(usize, @"%span".start.index) + @as(usize, @"%span".length.predecessor());
         }
         pub fn endIndex(@"%span": @This()) error{OutOfMemory}!u32 {
-            return @"%span".raw().endIndex();
-        }
-        pub fn raw(@"%span": @This()) SpanRaw {
-            return .{ .start = @"%span".start.index, .length = @"%span".length };
+            return u32AddOrOutOfMem(@"%span".start.index, @"%span".length.predecessor());
         }
         pub fn splitStart(@"%span": @This()) error{OutOfMemory}!@".end.start"(
             Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
@@ -393,16 +402,38 @@ pub fn Span(@"%Origin": type) type {
 pub fn Unset_span(@"%Origin": type) type {
     return Span_with_occupancy(@"%Origin", OccupancyUnset);
 }
-pub const SpanRaw = struct {
-    start: u32,
-    length: P32,
-    pub fn endIndexUsize(@"%span": @This()) usize {
-        return @as(usize, @"%span".start) + @as(usize, @"%span".length.predecessor());
-    }
-    pub fn endIndex(@"%span": @This()) error{OutOfMemory}!u32 {
-        return u32AddOrOutOfMem(@"%span".start, @"%span".length.predecessor());
-    }
-};
+/// slice whose actual items are undefined
+pub fn Unset_slice(@"%Element": type) type {
+    return struct {
+        undefined_items: []@"%Element",
+
+        pub fn allocateLength(
+            @"%allocator": std.mem.Allocator,
+            @"%length": u32,
+        ) error{OutOfMemory}!@This() {
+            return .{ .undefined_items = try @"%allocator".alloc(@"%Element", @"%length") };
+        }
+        pub fn length(@"%unset_slice": @This()) u32 {
+            return std.math.lossyCast(u32, @"%unset_slice".undefined_items.len);
+        }
+        /// the given unset slice is invalid after
+        pub fn transmuteOrRidAndAllocate(
+            @"%unset_slice": @This(),
+            @"%NewElement": type,
+            @"%allocator": std.mem.Allocator,
+        ) error{OutOfMemory}!Unset_slice(@"%NewElement") {
+            if (@sizeOf(@"%NewElement") == @sizeOf(@"%Element")) {
+                return .{ .undefined_items = @as([]@"%NewElement", @ptrCast(@"%unset_slice".undefined_items)) };
+            } else {
+                @"%unset_slice".rid(@"%allocator");
+                return Unset_slice(@"%NewElement").allocateLength(@"%allocator", @"%unset_slice".length());
+            }
+        }
+        pub fn rid(@"%unset_slice": @This(), @"%allocator": std.mem.Allocator) void {
+            return @"%allocator".free(@"%unset_slice".undefined_items);
+        }
+    };
+}
 /// Usage is only safe when
 /// - each vec has a unique origin
 /// - returned slots, spans, origin-rids are never mem-copied
@@ -419,6 +450,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
         origin: Origin(@"%Origin"),
         elements: std.ArrayList(@"%Element"),
         vacant: std.ArrayList(Unset_span(@"%Origin")),
+
         pub fn empty(@"%origin": Origin(@"%Origin")) @This() {
             return .{
                 .origin = @"%origin",
@@ -426,18 +458,21 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 .vacant = std.ArrayList(Unset_span(@"%Origin")).empty,
             };
         }
-        pub fn preAllocateAtLeast(
-            @"%vec": @This(),
-            @"%allocator": std.mem.Allocator,
-            min_pre_allocated_length: u32,
-        ) error{OutOfMemory}!@This() {
-            try @"%vec".elements.ensureUnusedCapacity(@"%allocator", min_pre_allocated_length);
+        pub fn reuse(@"%origin": Origin(@"%Origin"), @"%unset_slice": Unset_slice(@"%Element")) @This() {
+            var elements = std.ArrayList(@"%Element").fromOwnedSlice(@"%unset_slice".undefined_items);
+            elements.clearRetainingCapacity();
+            return .{
+                .origin = @"%origin",
+                .elements = elements,
+                .vacant = std.ArrayList(Unset_span(@"%Origin")).empty,
+            };
         }
-        /// vec is invalid after
-        pub fn rid(@"%vec": @This(), @"%allocator": std.mem.Allocator) void {
-            var @"%vec_mut" = @"%vec";
-            @"%vec_mut".elements.deinit(@"%allocator");
-            @"%vec_mut".vacant.deinit(@"%allocator");
+        pub fn preAllocateAtLeast(
+            @"%vec": *@This(),
+            @"%allocator": std.mem.Allocator,
+            @"%min_pre_allocated_length": u32,
+        ) error{OutOfMemory}!void {
+            try @"%vec".elements.ensureUnusedCapacity(@"%allocator", @"%min_pre_allocated_length");
         }
         pub fn vacantSlotCount(@"%vec": @This()) u32 {
             var @"%combined_length": u32 = 0;
@@ -895,6 +930,18 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             std.mem.reverse(@"%Element", @"%vec".optSpanSlice(@"%opt_span"));
             return @"%opt_span";
         }
+        /// vec is invalid after
+        pub fn into_unset_slice(@"%vec": @This()) Unset_slice(@"%Element") {
+            var @"%elements" = @"%vec".elements;
+            @"%elements".expandToCapacity();
+            return .{ .undefined_items = @"%elements".items };
+        }
+        /// vec is invalid after
+        pub fn rid(@"%vec": @This(), @"%allocator": std.mem.Allocator) void {
+            var @"%vec_mut" = @"%vec";
+            @"%vec_mut".elements.deinit(@"%allocator");
+            @"%vec_mut".vacant.deinit(@"%allocator");
+        }
     };
 }
 
@@ -1190,8 +1237,19 @@ pub fn unset_span_fold(
     return @"%".span.fold(@"%".state, @"%".step);
 }
 
-pub fn vec_empty(@"%Element": type, @"%Origin": type, @"%origin": Origin(@"%Origin")) error{OutOfMemory}!Vec(@"%Origin", @"%Element") {
+pub fn vec_empty(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%origin": Origin(@"%Origin"),
+) error{OutOfMemory}!Vec(@"%Origin", @"%Element") {
     return Vec(@"%Origin", @"%Element").empty(@"%origin");
+}
+pub fn vec_reuse(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%": @".origin.slice"(Origin(@"%Origin"), Unset_slice(@"%Element")),
+) error{OutOfMemory}!Vec(@"%Origin", @"%Element") {
+    return Vec(@"%Origin", @"%Element").reuse(@"%".origin, @"%".slice);
 }
 pub fn vec_pre_allocate_at_least(
     @"%Element": type,
@@ -1199,7 +1257,9 @@ pub fn vec_pre_allocate_at_least(
     @"%allocator": std.mem.Allocator,
     @"%": @".length.vec"(u32, Vec(@"%Element", @"%Origin")),
 ) error{OutOfMemory}!Vec(@"%Origin", @"%Element") {
-    try @"%".vec.pre_allocate_at_least(@"%allocator", @"%".length);
+    var @"%vec" = @"%".vec;
+    try @"%vec".preAllocateAtLeast(@"%allocator", @"%".length);
+    return @"%vec";
 }
 pub fn vec_insert(
     @"%Element": type,
@@ -1806,6 +1866,42 @@ pub fn vec_opt_span_rid(
     @"%".vec.optSpanRid(@"%allocator", @"%".span);
     return @"%".vec;
 }
+pub fn vec_to_unset(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%vec": Vec(@"%Origin", @"%Element"),
+) error{OutOfMemory}!Unset_slice(@"%Element") {
+    @"%vec".into_unset_slice();
+}
 pub fn vec_rid(@"%Element": type, @"%Origin": type, @"%allocator": std.mem.Allocator, @"%vec": Vec(@"%Origin", @"%Element")) error{OutOfMemory}!void {
     @"%vec".rid(@"%allocator");
+}
+
+pub fn unset_slice_allocate_length(
+    @"%Element": type,
+    @"%allocator": std.mem.Allocator,
+    @"%length": U32,
+) error{OutOfMemory}!Unset_slice(@"%Element") {
+    return Unset_slice(@"%Element").allocateLength(@"%allocator", @"%length");
+}
+pub fn unset_slice_length(
+    @"%Element": type,
+    @"%unset_slice": Unset_slice(@"%Element"),
+) error{OutOfMemory}!@".length.slice"(U32, Unset_slice(@"%Element")) {
+    return .{ .length = @"%unset_slice".length, .slice = @"%unset_slice" };
+}
+pub fn unset_slice_transmute_or_rid_and_allocate(
+    @"%Element": type,
+    @"%NewElement": type,
+    @"%allocator": std.mem.Allocator,
+    @"%unset_slice": Unset_slice(@"%Element"),
+) error{OutOfMemory}!Unset_slice(@"%NewElement") {
+    return @"%unset_slice".transmuteOrRidAndAllocate(@"%NewElement", @"%allocator");
+}
+pub fn unset_slice_rid(
+    @"%Element": type,
+    @"%allocator": std.mem.Allocator,
+    @"%unset_slice": Unset_slice(@"%Element"),
+) error{OutOfMemory}!Unset_slice(@"%Element") {
+    return @"%unset_slice".rid(@"%allocator");
 }

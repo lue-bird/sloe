@@ -95,6 +95,16 @@ pub struct Record·length·span<Length, Span> {
     pub span: Span,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·length·slice<Length, Slice> {
+    pub length: Length,
+    pub slice: Slice,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·origin·slice<Origin, Slice> {
+    pub origin: Origin,
+    pub slice: Slice,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·exit·remaining<Exit, Remaining> {
     pub exit: Exit,
     pub remaining: Remaining,
@@ -273,6 +283,7 @@ pub type Round_mode =
 
 #[derive(Debug)]
 pub struct Origin<LocalOrigin>(LocalOrigin);
+pub struct Unset_slice<Element>(std::boxed::Box<[std::mem::MaybeUninit<Element>]>);
 #[derive(Debug)]
 pub struct Vec<LocalOrigin, Element> {
     // invariants (in addition to the invariants of (Unset_)slot/span):
@@ -363,6 +374,13 @@ impl<Origin, Occupancy> std::fmt::Debug for Span_with_occupancy<Origin, Occupanc
             .finish()
     }
 }
+impl<Element> std::fmt::Debug for Unset_slice<Element> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Unset_slice")
+            .field("length", &self.0.len())
+            .finish()
+    }
+}
 
 impl<A> Opt<A> {
     pub fn from_option(option: std::option::Option<A>) -> Self {
@@ -429,7 +447,6 @@ impl<'a, Element> std::iter::Iterator for OwnedSliceIterator<'a, Element> {
 }
 
 impl<LocalOrigin> Origin<LocalOrigin> {
-    /// # Safety
     /// This constructor is exposed because sadly macros (namely origin_new!) require it.
     /// It's _very strongly_ recommended to instead only construct new origins with `origin_new!`.
     /// Misusing this constructor can lead to UB like unchecked out of bounds access.
@@ -446,10 +463,95 @@ macro_rules! origin_new {
 }
 pub use origin_new;
 
+impl<Element> Unset_slice<Element> {
+    pub fn allocate_length(length: u32) -> Self {
+        Unset_slice(std::boxed::Box::new_uninit_slice(length as usize))
+    }
+    pub fn from_vec_maybe_uninit(
+        mut maybe_uninit_vec: std::vec::Vec<std::mem::MaybeUninit<Element>>,
+    ) -> Self {
+        // This is the closest approximation for `vec.ptr[..vec.capacity]` I could find in safe rust.
+        // The first part should optimize to maybe_uninit_vec.set_len(maybe_uninit_vec.capacity())
+        // If it doesn't, change to that unsafe operation
+        let unused_capacity = maybe_uninit_vec.capacity() - maybe_uninit_vec.len();
+        std::iter::Extend::extend(
+            &mut maybe_uninit_vec,
+            std::iter::Iterator::take(
+                std::iter::repeat_with(|| std::mem::MaybeUninit::uninit()),
+                unused_capacity,
+            ),
+        );
+        Unset_slice(maybe_uninit_vec.into_boxed_slice())
+    }
+    pub fn as_slice(&self) -> &[std::mem::MaybeUninit<Element>] {
+        &self.0
+    }
+    pub fn length_usize(&self) -> usize {
+        self.as_slice().len()
+    }
+    pub fn length(&self) -> u32 {
+        self.as_slice().len() as u32
+    }
+    pub fn transmute_or_rid_and_allocate<NewElement>(self) -> Unset_slice<NewElement> {
+        // TODO verify that there are no hidden compiler errors that will arise
+        // when sizes are off.
+        // If there are issues, change to
+        // ```rust
+        // self.into_boxed_slice().into_iter().collect().into_boxed_slice()
+        // ```
+        // which automatically should reuse the memory if sizes are equal anyway (in release mode)
+        if const { std::mem::size_of::<Element>() == std::mem::size_of::<NewElement>() } {
+            // safe because all contained memory is uninitialized
+            // and will never be "resurrected" (assumed to be initialized)
+            Unset_slice(unsafe {
+                std::boxed::Box::from_raw(std::boxed::Box::into_raw(self.into_boxed_slice())
+                    as *mut [std::mem::MaybeUninit<NewElement>])
+            })
+        } else {
+            Unset_slice::<NewElement>::allocate_length(self.length())
+        }
+    }
+    pub fn into_boxed_slice(self) -> std::boxed::Box<[std::mem::MaybeUninit<Element>]> {
+        self.0
+    }
+    pub fn into_vec(self) -> std::vec::Vec<Element> {
+        let mut vec: std::vec::Vec<std::mem::MaybeUninit<Element>> =
+            self.into_boxed_slice().into_vec();
+        vec.clear();
+        // only safe because there are no more safely accessible items in the Vec anymore
+        // and the spare_capacity is assumed to never be accessed via assume_init.
+        // IMO there should be a safe operation in std::vec::Vec for this.
+        //
+        // Granted we could use vec.into_iter().map(|_| unreachable!()).collect()
+        // combined with asserting equal size and alignment to reuse memory (in release mode)
+        unsafe {
+            std::mem::transmute::<
+                std::vec::Vec<std::mem::MaybeUninit<Element>>,
+                std::vec::Vec<Element>,
+            >(vec)
+        }
+    }
+    pub fn into_vec_maybe_uninit(self) -> std::vec::Vec<std::mem::MaybeUninit<Element>> {
+        let mut vec: std::vec::Vec<std::mem::MaybeUninit<Element>> =
+            self.into_boxed_slice().into_vec();
+        vec.clear();
+        vec
+    }
+    pub fn leak<'a>(self) -> &'a mut [std::mem::MaybeUninit<Element>] {
+        std::boxed::Box::leak(self.into_boxed_slice())
+    }
+}
+
 impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     pub fn new(_: Origin<LocalOrigin>) -> Self {
         Vec::<LocalOrigin, Element> {
             elements: std::vec::Vec::new(),
+            vacant: std::vec::Vec::new(),
+        }
+    }
+    pub fn reuse(_: Origin<LocalOrigin>, allocation: Unset_slice<Element>) -> Self {
+        Vec::<LocalOrigin, Element> {
+            elements: allocation.into_vec_maybe_uninit(),
             vacant: std::vec::Vec::new(),
         }
     }
@@ -1116,6 +1218,11 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     /// counts both occupied positions and temporarily empty ones referenced by `empty-slot`s
     pub fn not_vacant_count_usize(&self) -> usize {
         usize::saturating_sub(self.length_vacated_or_not(), self.vacant_count_usize())
+    }
+    /// The raw allocation. Can be used to create new Vecs or even
+    /// to drop the memory in a separate thread
+    pub fn into_unset_slice(self) -> Unset_slice<Element> {
+        Unset_slice::from_vec_maybe_uninit(self.elements)
     }
 }
 impl<Origin> Vec<Origin, Char> {
@@ -2402,6 +2509,35 @@ pub fn vec_opt_span_move_to_end<Origin, Element>(
             }
         }
     }
+}
+pub fn vec_to_unset<Origin, Element>(vec: Vec<Origin, Element>) -> Unset_slice<Element> {
+    vec.into_unset_slice()
+}
+pub fn vec_reuse<LocalOrigin, Element>(
+    Record·origin·slice { origin, slice }: Record·origin·slice<
+        Origin<LocalOrigin>,
+        Unset_slice<Element>,
+    >,
+) -> Vec<LocalOrigin, Element> {
+    Vec::<LocalOrigin, Element>::reuse(origin, slice)
+}
+
+pub fn unset_slice_rid<Element>(_: Unset_slice<Element>) -> Record {}
+pub fn unset_slice_length<Element>(
+    unset_slice: Unset_slice<Element>,
+) -> Record·length·slice<U32, Unset_slice<Element>> {
+    Record·length·slice {
+        length: unset_slice.length(),
+        slice: unset_slice,
+    }
+}
+pub fn unset_slice_allocate_length<Element>(length: U32) -> Unset_slice<Element> {
+    Unset_slice::allocate_length(length)
+}
+pub fn unset_slice_transmute_or_rid_and_allocate<Element, NewElement>(
+    unset_slice: Unset_slice<Element>,
+) -> Unset_slice<NewElement> {
+    unset_slice.transmute_or_rid_and_allocate::<NewElement>()
 }
 
 #[cfg(test)]

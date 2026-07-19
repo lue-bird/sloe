@@ -173,6 +173,19 @@ test "unset_span_end" {
     try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
     try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
 }
+test "unset_slice transmuteOrRidAndAllocate working" {
+    const allocator = std.testing.allocator;
+    const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
+    const unset_slice_i32 = try unset_slice_u32.transmuteOrRidAndAllocate(i32, allocator);
+    unset_slice_i32.rid(allocator);
+}
+test "unset_slice transmuteOrRidAndAllocate fallback" {
+    const allocator = std.testing.allocator;
+    const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
+    const unset_slice_f128 = try unset_slice_u32.transmuteOrRidAndAllocate(f128, allocator);
+    try std.testing.expect(@intFromPtr(unset_slice_u32.undefined_items.ptr) != @intFromPtr(unset_slice_f128.undefined_items.ptr));
+    unset_slice_f128.rid(allocator);
+}
 test "vec insert, add, take, notVacantCount, rid" {
     const allocator = std.testing.allocator;
     const VecOrigin = enum { vec };
@@ -311,6 +324,22 @@ test "vec add remove stress test" {
     try std.testing.expectEqual(0, vec.elements.items.len);
     vec.rid(allocator);
 }
+test "vec into unset slice then reuse" {
+    const allocator = std.testing.allocator;
+    const AOrigin = enum { origin };
+    const a_origin: core.Origin(AOrigin) = .origin;
+    var a_vec = core.Vec(AOrigin, usize).empty(a_origin);
+    try a_vec.preAllocateAtLeast(allocator, 20);
+    const a_capacity = a_vec.elements.capacity;
+    try std.testing.expect(a_capacity >= 20);
+    const unset_slice = a_vec.into_unset_slice();
+    const BOrigin = enum { origin };
+    const b_origin: core.Origin(BOrigin) = .origin;
+    var b_vec = core.Vec(BOrigin, usize).reuse(b_origin, unset_slice);
+    try std.testing.expectEqual(0, b_vec.elements.items.len);
+    try std.testing.expectEqual(a_capacity, b_vec.elements.capacity);
+    b_vec.rid(allocator);
+}
 test "Unset_span != Span" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin) = .origin;
@@ -378,6 +407,12 @@ test "compiles" {
     try expect_fn(core.vec_unset_span_add_own_opt_span);
     try expect_fn(core.vec_opt_unset_span_add_own_span);
     try expect_fn(core.vec_opt_unset_span_add_own_opt_span);
+    try expect_fn(core.vec_reuse);
+    try expect_fn(core.vec_to_unset);
+    try expect_fn(core.unset_slice_allocate_length);
+    try expect_fn(core.unset_slice_length);
+    try expect_fn(core.unset_slice_transmute_or_rid_and_allocate);
+    try expect_fn(core.unset_slice_rid);
 }
 fn expect_fn(thing: anytype) !void {
     return switch (@typeInfo(@TypeOf(thing))) {

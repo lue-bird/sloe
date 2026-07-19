@@ -8831,6 +8831,12 @@ fn type_unset_span(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
+fn type_unset_slice(element: Type) -> Type {
+    Type::CoreConstruct {
+        name: Name::const_new("unset-slice"),
+        arguments: vec![element],
+    }
+}
 fn type_opt(present: Type) -> Type {
     type_choice([("absent", type_record([])), ("present", present)])
 }
@@ -9328,10 +9334,29 @@ See also `unset-span-start-of-length-positive`, `unset-span-end`.",
                 result_type: type_vec(type_variable("Origin"), type_variable("Element")),
             },
             CoreFnInfo {
+                name: "vec-reuse",
+                documentation: "Initialize a `vec` with 0 elements and spare allocated memory from an `unset-slice`.
+This can be used to recycle vec memory from one vec with one origin into another vec with a different origin.
+```sloe
+fn vec-recycle-empty-vec
+    .new-origin new-origin NewOrigin
+    .old old _vec OldOrigin, Element
+    :> _vec NewOrigin Element >
+    ? _vec-to-unset old = unset-slice >
+    _vec-reuse .origin new-origin .slice unset-slice
+```",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("origin", type_origin(type_variable("Origin"))),
+                    ("slice", type_unset_slice(type_variable("Element"))),
+                ]),
+                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+            },
+            CoreFnInfo {
                 name: "vec-pre-allocate-at-least",
-                documentation: "Reserves capacity for at least `length` more elements to be added.
+                documentation: "Reserves spare capacity for at least `length` more elements to be added.
 This can prevent frequent re-allocation of the underlying array.
-If you can estimate a lower bound of how many elements are ultimately added, this is always worth it!
+If you can guesstimate a lower bound of how many elements are ultimately added, this is always worth it!
 Equivalent to `vec-add-unset-length` followed by `vec-opt-span-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -10014,13 +10039,73 @@ If start and end spans are not already connected, both are appended at the end a
                 ]),
             },
             CoreFnInfo {
+                name: "vec-to-unset",
+                documentation: "Extract the underlying slice that been used to store elements in including spare capacity.
+This `unset-slice` can if necessary be casted to a new element type with `unset-slice-transmute-or-rid-and-allocate`.
+Finally, the allocation can be the base of a new vec with `vec-reuse` or be scrapped with `unset-slice-rid`",
+                type_parameters: vec![],
+                parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_unset_slice(type_variable("Element")),
+            },
+            CoreFnInfo {
                 name: "vec-rid",
                 documentation: "Mark the given vec value as \"won't be used anymore\".
 Used for temporary vecs at the end of their scope once all of their elements are used up.
 If any slots or spans are still floating around, you will not be able to get rid of them.
-This nicely forces you to handle all remaining elements before you can get rid of the vec.",
+This nicely forces you to handle all remaining elements before you can get rid of the vec.
+To reuse the underlying allocation, use `vec-to-unset`",
                 type_parameters: vec![],
                 parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_record([]),
+            },
+            CoreFnInfo {
+                name: "unset-slice-allocate-length",
+                documentation: "Create a new `unset-slice` with a given length.
+There rarely is a need to use this except when a function expects an `unset-slice` as an argument",
+                type_parameters: vec![Name::const_new("Element")],
+                parameter_type: type_u32,
+                result_type: type_unset_slice(type_variable("Element")),
+            },
+            CoreFnInfo {
+                name: "unset-slice-length",
+                documentation: "How many elements could fit",
+                type_parameters: vec![],
+                parameter_type: type_unset_slice(type_variable("Element")),
+                result_type: type_record([
+                    ("slice", type_unset_slice(type_variable("Element"))),
+                    ("length", type_u32),
+                ]),
+            },
+            CoreFnInfo {
+                name: "unset-slice-transmute-or-rid-and-allocate",
+                documentation: r#"Reinterpret the slice of unset bytes as a slice of a different element type.
+This only works when the new element type has the same "size" (byte count including padding bits).
+For example, `u32` consists of 4 bytes, just like `i32`, so they can be reinterpreted.
+Similarly `.x f32 .y f32` can be reinterpreted as `.width i32 .height i32` and so forth.
+If the types are incompatible, this function calls `unset-slice-rid` on the old slice
+and allocates a new one with the same length as the scrapped one.
+
+Note: This difference in behavior does not get reported at compile-time
+which is a bit of a stinker.
+For one: different compilation targets may have a different memory packing of sloe values,
+so we can never really guarantee this reinterpretation works.
+For two: it could be possible to fit multiples(ish) of element sizes into the slice.
+For example, 3 u32s could be transformed into 6 u16s.
+This is not the case yet, but it could be in the future.
+For three: sloe has a simple type system so I'm happy such a compromise can exist at all"#,
+                type_parameters: vec![Name::const_new("NewElement")],
+                parameter_type: type_unset_slice(type_variable("Element")),
+                result_type: type_unset_slice(type_variable("NewElement"))
+            },
+            CoreFnInfo {
+                name: "unset-slice-rid",
+                documentation: "Deallocate an `unset-slice` in full. Very rarely useful.
+```sloe
+fn hand-warmer-in-debug-mode . :> . >
+    _unset-slice-rid _unset-slice-allocate-length 9999999
+```",
+                type_parameters: vec![],
+                parameter_type: type_unset_slice(type_variable("Element")),
                 result_type: type_record([]),
             },
         ].map(|core_fn_info| {

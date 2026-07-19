@@ -363,6 +363,16 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   explicit, I feel users deserve some sugar for their effort.
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
+- rust does not support (in std) a way to split/resize/drain a Box<[]> which is a real shame IMO because this could e.g. allow reusing a bigger allocation for smaller parts. Think this API (which would be possible if sloe only targetted zig):
+  ```sloe
+  fn unset-slice-rid-end
+      .slice _unset-slice Element .length u32 :> _unset-slice Element
+  fn unset-slice-rid-start
+      .slice _unset-slice Element .length u32 :> _unset-slice Element
+  fn unset-slice-start
+      .slice _unset-slice Element .length u32
+      :> .start _unset-slice Element .after _unset-slice Element
+  ```
 - when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
@@ -539,31 +549,11 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add
-  ```sloe
-  fn vec-to-unset _vec Origin, Element :> _unset-slice Element
-  fn vec-reuse .slice _unset-slice Element .origin Origin :> _vec Origin, Element
-  fn unset-slice-allocate-length<Element> u32 :> _unset-slice Element
-  fn unset-slice-rid-end
-      .slice _unset-slice Element .length u32 :> _unset-slice Element
-  fn unset-slice-rid-start
-      .slice _unset-slice Element .length u32 :> _unset-slice Element
-  fn unset-slice-start
-      .slice _unset-slice Element .length u32
-      :> .start _unset-slice Element .after _unset-slice Element
-  fn unset-slice-length _unset-slice Element :> .slice _unset-slice Element .length u32
-  fn unset-slice-rid _unset-slice Element :> .
-  fn unset-slice-transmute-or-rid-and-allocate<NewElement>
-       _unset-slice Element :> _unset-slice NewElement
-  ```
-  That last one is a bit worse than safe transmute as it doesn't catch mistakes in size+alignment at compile-time (a fair tradeoff in my opinion. I'm glad transmute is feasable at all in sloe).
-  Note that vacant memory cannot be reused with this API. This is fine, as vec reuse usually coincides with append-only vec usage
-
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- switch syntax to wrapping pattern in `[]` (lambda, case) and fn result type  in `<>`. => is not distinctly visible enough
+- switch syntax to wrapping pattern in `[]` (lambda, case) and fn result type  in `<>`. => is not distinctly visible enough and more annoying
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
