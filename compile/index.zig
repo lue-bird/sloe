@@ -385,6 +385,8 @@ fn SourceLocationUniqueEnum(src_loc: std.lang.SourceLocation) type {
     );
 }
 test "compiles" {
+    try expect_fn(core.vec_pre_allocate_at_least);
+    try expect_fn(core.vec_pre_allocation_rid);
     try expect_fn(core.vec_add);
     try expect_fn(core.vec_insert);
     try expect_fn(core.vec_insert_unset);

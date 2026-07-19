@@ -9369,6 +9369,16 @@ Equivalent to `vec-add-unset-length` followed by `vec-opt-span-rid`",
                 result_type: type_vec(type_variable("Origin"), type_variable("Element")),
             },
             CoreFnInfo {
+                name: "vec-pre-allocation-rid",
+                documentation: "Shrinks down spare capacity as much as possible.
+Some allocators may scrap and re-allocate the whole vec as a result.
+It's rarely useful but can reuce idle memory usage for vecs that are very unlikely to be added to in the future.
+You may also use it to adjust memory usage after `vec-reuse` when the given `unset-slice` was large",
+                type_parameters: vec![],
+                parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+            },
+            CoreFnInfo {
                 name: "vec-insert",
                 documentation: "Add a new element into the vec and keep a slot to it,
 reusing vacant space earlier in the vec when available.

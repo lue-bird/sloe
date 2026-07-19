@@ -472,7 +472,10 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
             @"%min_pre_allocated_length": u32,
         ) error{OutOfMemory}!void {
-            try @"%vec".elements.ensureUnusedCapacity(@"%allocator", @"%min_pre_allocated_length");
+            return @"%vec".elements.ensureUnusedCapacity(@"%allocator", @"%min_pre_allocated_length");
+        }
+        pub fn preAllocationRid(@"%vec": *@This(), @"%allocator": std.mem.Allocator) void {
+            return @"%vec".elements.shrinkAndFreePrecise(@"%allocator", @"%vec".elements.items.len);
         }
         pub fn vacantSlotCount(@"%vec": @This()) u32 {
             var @"%combined_length": u32 = 0;
@@ -1264,6 +1267,16 @@ pub fn vec_pre_allocate_at_least(
 ) error{OutOfMemory}!Vec(@"%Origin", @"%Element") {
     var @"%vec" = @"%".vec;
     try @"%vec".preAllocateAtLeast(@"%allocator", @"%".length);
+    return @"%vec";
+}
+pub fn vec_pre_allocation_rid(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Vec(@"%Element", @"%Origin"),
+) error{OutOfMemory}!Vec(@"%Origin", @"%Element") {
+    var @"%vec" = @"%".vec;
+    try @"%vec".preAllocationRid(@"%allocator");
     return @"%vec";
 }
 pub fn vec_insert(

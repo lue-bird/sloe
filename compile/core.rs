@@ -472,13 +472,14 @@ impl<Element> Unset_slice<Element> {
     ) -> Self {
         // This is the closest approximation for `vec.ptr[..vec.capacity]` I could find in safe rust.
         // The first part should optimize to maybe_uninit_vec.set_len(maybe_uninit_vec.capacity())
-        // If it doesn't, change to that unsafe operation
-        let unused_capacity = maybe_uninit_vec.capacity() - maybe_uninit_vec.len();
+        // If it doesn't, change to that unsafe operation.
+        // Preferably there would be something like `vec.clear(); vec.into_spare_capacity()`
+        let spare_capacity = maybe_uninit_vec.spare_capacity_mut().len();
         std::iter::Extend::extend(
             &mut maybe_uninit_vec,
             std::iter::Iterator::take(
                 std::iter::repeat_with(|| std::mem::MaybeUninit::uninit()),
-                unused_capacity,
+                spare_capacity,
             ),
         );
         Unset_slice(maybe_uninit_vec.into_boxed_slice())
@@ -493,16 +494,13 @@ impl<Element> Unset_slice<Element> {
         self.as_slice().len() as u32
     }
     pub fn transmute_or_rid_and_allocate<NewElement>(self) -> Unset_slice<NewElement> {
-        // TODO verify that there are no hidden compiler errors that will arise
-        // when sizes are off.
-        // If there are issues, change to
+        // safe alternative
         // ```rust
         // self.into_boxed_slice().into_iter().collect().into_boxed_slice()
         // ```
-        // which automatically should reuse the memory if sizes are equal anyway (in release mode)
+        // which automatically should reuse the memory if sizes are equal (in release mode)
         if const { std::mem::size_of::<Element>() == std::mem::size_of::<NewElement>() } {
             // safe because all contained memory is uninitialized
-            // and will never be "resurrected" (assumed to be initialized)
             Unset_slice(unsafe {
                 std::boxed::Box::from_raw(std::boxed::Box::into_raw(self.into_boxed_slice())
                     as *mut [std::mem::MaybeUninit<NewElement>])
@@ -522,8 +520,11 @@ impl<Element> Unset_slice<Element> {
         // and the spare_capacity is assumed to never be accessed via assume_init.
         // IMO there should be a safe operation in std::vec::Vec for this.
         //
-        // Granted we could use vec.into_iter().map(|_| unreachable!()).collect()
-        // combined with asserting equal size and alignment to reuse memory (in release mode)
+        // Safe alternative:
+        // ```rust
+        // vec.into_iter().map(|impossible| impossible.assume_init()).collect()
+        // ```
+        // combined with asserting equal size to reuse memory (in release mode)
         unsafe {
             std::mem::transmute::<
                 std::vec::Vec<std::mem::MaybeUninit<Element>>,
@@ -564,6 +565,9 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     }
     pub fn pre_allocate_at_least(&mut self, min_pre_allocated_length: u32) {
         self.pre_allocate_at_least_usize(min_pre_allocated_length as usize);
+    }
+    pub fn pre_allocation_rid(&mut self) {
+        self.elements.shrink_to_fit();
     }
     pub fn element<'a>(&'a self, slot: &'a Slot<LocalOrigin>) -> &'a Element {
         // the .elements are never shortened and new slots are bound to this collection origin and contain a known valid index
@@ -1881,6 +1885,12 @@ pub fn vec_pre_allocate_at_least<Origin, Element>(
     }: Record·length·vec<u32, Vec<Origin, Element>>,
 ) -> Vec<Origin, Element> {
     vec.pre_allocate_at_least(min_pre_allocated_length);
+    vec
+}
+pub fn vec_pre_allocation_rid<Origin, Element>(
+    mut vec: Vec<Origin, Element>,
+) -> Vec<Origin, Element> {
+    vec.pre_allocation_rid();
     vec
 }
 pub fn vec_remove<Origin, Element>(

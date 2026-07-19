@@ -372,6 +372,9 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn unset-slice-start
       .slice _unset-slice Element .length u32
       :> .start _unset-slice Element .after _unset-slice Element
+  fn vec-pre-allocated-to-slice
+      _vec Origin, Element
+      :> .vec _vec Origin, Element .slice _unset-slice Element
   ```
 - when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
