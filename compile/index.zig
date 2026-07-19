@@ -332,7 +332,7 @@ test "vec into unset slice then reuse" {
     try a_vec.preAllocateAtLeast(allocator, 20);
     const a_capacity = a_vec.elements.capacity;
     try std.testing.expect(a_capacity >= 20);
-    const unset_slice = a_vec.into_unset_slice();
+    const unset_slice = a_vec.intoUnsetSlice(allocator);
     const BOrigin = enum { origin };
     const b_origin: core.Origin(BOrigin) = .origin;
     var b_vec = core.Vec(BOrigin, usize).reuse(b_origin, unset_slice);

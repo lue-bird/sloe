@@ -555,6 +555,8 @@ cargo install --offline --debug --path . sloe
 
 - switch syntax to wrapping pattern in `[]` (lambda, case) and fn result type  in `<>`. => is not distinctly visible enough and more annoying
 
+- upgrade syn to 3.0.0
+
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
     - zig actually doesn't have the concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
