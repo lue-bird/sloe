@@ -258,6 +258,12 @@ fn usizeAddOrOutOfMem(a: usize, b: usize) error{OutOfMemory}!usize {
     const sum, const overflow = @addWithOverflow(a, b);
     return if (overflow != 0) error.OutOfMemory else sum;
 }
+fn strideOf(@"%Element": type) comptime_int {
+    // at the time of writing, this is the same as
+    // @sizeOf(@"%Element")
+    // is there a nicer way? And is this always correct in the first place?
+    return @sizeOf(@"%Element");
+}
 
 /// This wrapper is largely meaningless in zig. It exists to make it safe on the rust side.
 /// I have tried to patch in some mechanisms to avoid having multiple origins with the same name in a scope
@@ -417,12 +423,13 @@ pub fn Unset_slice(@"%Element": type) type {
             return std.math.lossyCast(u32, @"%unset_slice".undefined_items.len);
         }
         /// the given unset slice is invalid after
-        pub fn transmuteOrRidAndAllocate(
+        pub fn castOrRidAndAllocate(
             @"%unset_slice": @This(),
             @"%NewElement": type,
             @"%allocator": std.mem.Allocator,
         ) error{OutOfMemory}!Unset_slice(@"%NewElement") {
-            if (@sizeOf(@"%NewElement") == @sizeOf(@"%Element")) {
+            const @"%ptr_is_valid_for_new_alignment" = @alignOf(@"%NewElement") <= @alignOf(@"%Element") or std.mem.isAligned(@intFromPtr(@"%unset_slice".undefined_items.ptr), @alignOf(@"%NewElement"));
+            if (strideOf(@"%NewElement") == strideOf(@"%Element") and @"%ptr_is_valid_for_new_alignment") {
                 return .{ .undefined_items = @as([]@"%NewElement", @ptrCast(@"%unset_slice".undefined_items)) };
             } else {
                 @"%unset_slice".rid(@"%allocator");
@@ -1909,13 +1916,13 @@ pub fn unset_slice_length(
 ) error{OutOfMemory}!@".length.slice"(U32, Unset_slice(@"%Element")) {
     return .{ .length = @"%unset_slice".length, .slice = @"%unset_slice" };
 }
-pub fn unset_slice_transmute_or_rid_and_allocate(
+pub fn unset_slice_cast_or_rid_and_allocate(
     @"%Element": type,
     @"%NewElement": type,
     @"%allocator": std.mem.Allocator,
     @"%unset_slice": Unset_slice(@"%Element"),
 ) error{OutOfMemory}!Unset_slice(@"%NewElement") {
-    return @"%unset_slice".transmuteOrRidAndAllocate(@"%NewElement", @"%allocator");
+    return @"%unset_slice".castOrRidAndAllocate(@"%NewElement", @"%allocator");
 }
 pub fn unset_slice_rid(
     @"%Element": type,

@@ -173,16 +173,16 @@ test "unset_span_end" {
     try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
     try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
 }
-test "unset_slice transmuteOrRidAndAllocate working" {
+test "unset_slice castOrRidAndAllocate working" {
     const allocator = std.testing.allocator;
     const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
-    const unset_slice_i32 = try unset_slice_u32.transmuteOrRidAndAllocate(i32, allocator);
+    const unset_slice_i32 = try unset_slice_u32.castOrRidAndAllocate(i32, allocator);
     unset_slice_i32.rid(allocator);
 }
-test "unset_slice transmuteOrRidAndAllocate fallback" {
+test "unset_slice castOrRidAndAllocate fallback" {
     const allocator = std.testing.allocator;
     const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
-    const unset_slice_f128 = try unset_slice_u32.transmuteOrRidAndAllocate(f128, allocator);
+    const unset_slice_f128 = try unset_slice_u32.castOrRidAndAllocate(f128, allocator);
     try std.testing.expect(@intFromPtr(unset_slice_u32.undefined_items.ptr) != @intFromPtr(unset_slice_f128.undefined_items.ptr));
     unset_slice_f128.rid(allocator);
 }
@@ -413,7 +413,7 @@ test "compiles" {
     try expect_fn(core.vec_to_unset);
     try expect_fn(core.unset_slice_allocate_length);
     try expect_fn(core.unset_slice_length);
-    try expect_fn(core.unset_slice_transmute_or_rid_and_allocate);
+    try expect_fn(core.unset_slice_cast_or_rid_and_allocate);
     try expect_fn(core.unset_slice_rid);
 }
 fn expect_fn(thing: anytype) !void {

@@ -493,13 +493,23 @@ impl<Element> Unset_slice<Element> {
     pub fn length(&self) -> u32 {
         self.as_slice().len() as u32
     }
-    pub fn transmute_or_rid_and_allocate<NewElement>(self) -> Unset_slice<NewElement> {
+    pub fn cast_or_rid_and_allocate<NewElement>(self) -> Unset_slice<NewElement> {
+        const fn mem_stride_of<Element>() -> usize {
+            // at the time of writing, this is the same as size
+            // is there a nicer way?
+            std::mem::size_of::<Element>()
+        }
         // safe alternative
         // ```rust
         // self.into_boxed_slice().into_iter().collect().into_boxed_slice()
         // ```
-        // which automatically should reuse the memory if sizes are equal (in release mode)
-        if const { std::mem::size_of::<Element>() == std::mem::size_of::<NewElement>() } {
+        // which should automatically reuse the memory if sizes are equal (in release mode)
+        if const {
+            // potential improvement: even when alignment doesn't match,
+            // check if it coincidentally matches new alignment
+            mem_stride_of::<NewElement>() == mem_stride_of::<Element>()
+                && std::mem::align_of::<NewElement>() <= std::mem::align_of::<Element>()
+        } {
             // safe because all contained memory is uninitialized
             Unset_slice(unsafe {
                 std::boxed::Box::from_raw(std::boxed::Box::into_raw(self.into_boxed_slice())
@@ -523,13 +533,13 @@ impl<Element> Unset_slice<Element> {
         // Safe alternative:
         // ```rust
         // vec.into_iter().map(|impossible| impossible.assume_init()).collect()
+        // // or
+        // vec.into_iter().map(|_| unsafe { std::hint::unreachable_unchecked() }).collect()
         // ```
         // combined with asserting equal size to reuse memory (in release mode)
+        let (vec_ptr, vec_length, vec_capacity) = vec.into_raw_parts();
         unsafe {
-            std::mem::transmute::<
-                std::vec::Vec<std::mem::MaybeUninit<Element>>,
-                std::vec::Vec<Element>,
-            >(vec)
+            std::vec::Vec::from_raw_parts(vec_ptr.cast::<Element>(), vec_length, vec_capacity)
         }
     }
     pub fn into_vec_maybe_uninit(self) -> std::vec::Vec<std::mem::MaybeUninit<Element>> {
@@ -2544,10 +2554,10 @@ pub fn unset_slice_length<Element>(
 pub fn unset_slice_allocate_length<Element>(length: U32) -> Unset_slice<Element> {
     Unset_slice::allocate_length(length)
 }
-pub fn unset_slice_transmute_or_rid_and_allocate<Element, NewElement>(
+pub fn unset_slice_cast_or_rid_and_allocate<Element, NewElement>(
     unset_slice: Unset_slice<Element>,
 ) -> Unset_slice<NewElement> {
-    unset_slice.transmute_or_rid_and_allocate::<NewElement>()
+    unset_slice.cast_or_rid_and_allocate::<NewElement>()
 }
 
 #[cfg(test)]

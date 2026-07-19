@@ -10051,7 +10051,7 @@ If start and end spans are not already connected, both are appended at the end a
             CoreFnInfo {
                 name: "vec-to-unset",
                 documentation: "Extract the underlying slice that been used to store elements in including spare capacity.
-This `unset-slice` can if necessary be casted to a new element type with `unset-slice-transmute-or-rid-and-allocate`.
+This `unset-slice` can if necessary be casted to a new element type with `unset-slice-cast-or-rid-and-allocate`.
 Finally, the allocation can be the base of a new vec with `vec-reuse` or be scrapped with `unset-slice-rid`",
                 type_parameters: vec![],
                 parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
@@ -10087,22 +10087,26 @@ There rarely is a need to use this except when a function expects an `unset-slic
                 ]),
             },
             CoreFnInfo {
-                name: "unset-slice-transmute-or-rid-and-allocate",
+                name: "unset-slice-cast-or-rid-and-allocate",
                 documentation: r#"Reinterpret the slice of unset bytes as a slice of a different element type.
-This only works when the new element type has the same "size" (byte count including padding bits).
+This only works when the new element type has the same "size" (byte count including padding bits)
+and not a greater "alignment" (byte count of the biggest field).
 For example, `u32` consists of 4 bytes, just like `i32`, so they can be reinterpreted.
 Similarly `.x f32 .y f32` can be reinterpreted as `.width i32 .height i32` and so forth.
 If the types are incompatible, this function calls `unset-slice-rid` on the old slice
 and allocates a new one with the same length as the scrapped one.
 
 Note: This difference in behavior does not get reported at compile-time
-which is a bit of a stinker.
-For one: different compilation targets may have a different memory packing of sloe values,
-so we can never really guarantee this reinterpretation works.
-For two: it could be possible to fit multiples(ish) of element sizes into the slice.
-For example, 3 u32s could be transformed into 6 u16s.
-This is not the case yet, but it could be in the future.
-For three: sloe has a simple type system so I'm happy such a compromise can exist at all"#,
+which is a bit of a stinker. The reasons are:
+- some compilation targets already now allow reinterpreting element types
+  with incompatible alignments when the slice pointer happens to align correctly.
+- different compilation targets may have a different memory packing of sloe values,
+  so we can never really guarantee this reinterpretation works.
+- it could be possible to fit different element sizes into the slice
+  (if size of NewElement is multiple of unset-slice length).
+  For example, 3 u32s could be transformed into 6 u16s and the other way around.
+  This is not the case yet, but it could be in the future, and is only possible at runtime.
+- sloe has a simple type system so I'm happy such a compromise can exist at all"#,
                 type_parameters: vec![Name::const_new("NewElement")],
                 parameter_type: type_unset_slice(type_variable("Element")),
                 result_type: type_unset_slice(type_variable("NewElement"))

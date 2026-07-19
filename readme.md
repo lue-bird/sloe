@@ -399,6 +399,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
     - most bytes are 3/4th 0s because ascii is so common. wasted space is bad for the cache and memory usage
   If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `vec _ char` is a much nicer API to work with
+- (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
 - (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
     - `vec Origin, .a A .b B` to `A·B<Vec<A>, Vec<B>>`
@@ -552,11 +553,11 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- switch syntax to wrapping pattern in `[]` (lambda, case) and fn result type  in `<>`. => is not distinctly visible enough and more annoying
+
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
-
-- switch syntax to wrapping pattern in `[]` (lambda, case) and fn result type  in `<>`. => is not distinctly visible enough and more annoying
 
 - upgrade syn to 3.0.0
 
