@@ -2062,10 +2062,7 @@ fn parse_expression_fn<Expressions, Patterns, Types>(
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    if state.position.character == 0 {
-        return None;
-    }
-    let Some(open_bracket_start) = parse_sloe_keyword_as_start(state, "[") else {
+    let Some(open_bracket_start) = parse_symbol_as_start(state, "[") else {
         return None;
     };
     parse_sloe_whitespace(state);
