@@ -10098,14 +10098,15 @@ and allocates a new one with the same length as the scrapped one.
 
 Note: This difference in behavior does not get reported at compile-time
 which is a bit of a stinker. The reasons are:
-- some compilation targets already now allow reinterpreting element types
-  with incompatible alignments when the slice pointer happens to align correctly.
 - different compilation targets may have a different memory packing of sloe values,
-  so we can never really guarantee this reinterpretation works.
+  so we can never really guarantee this reinterpretation works
 - it could be possible to fit different element sizes into the slice
   (if size of NewElement is multiple of unset-slice length).
   For example, 3 u32s could be transformed into 6 u16s and the other way around.
-  This is not the case yet, but it could be in the future, and is only possible at runtime.
+  For bigger sizes, this is only possible at runtime
+- it could be possible to reinterpret element types with different alignments.
+  For growing alignments, this is only possible at runtime
+  when the slice pointer happens to align correctly
 - sloe has a simple type system so I'm happy such a compromise can exist at all"#,
                 type_parameters: vec![Name::const_new("NewElement")],
                 parameter_type: type_unset_slice(type_variable("Element")),

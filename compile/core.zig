@@ -428,9 +428,16 @@ pub fn Unset_slice(@"%Element": type) type {
             @"%NewElement": type,
             @"%allocator": std.mem.Allocator,
         ) error{OutOfMemory}!Unset_slice(@"%NewElement") {
-            const @"%ptr_is_valid_for_new_alignment" = @alignOf(@"%NewElement") <= @alignOf(@"%Element") or std.mem.isAligned(@intFromPtr(@"%unset_slice".undefined_items.ptr), @alignOf(@"%NewElement"));
-            if (strideOf(@"%NewElement") == strideOf(@"%Element") and @"%ptr_is_valid_for_new_alignment") {
-                return .{ .undefined_items = @as([]@"%NewElement", @ptrCast(@"%unset_slice".undefined_items)) };
+            // alignment must match exactly sadly, required by Allocator.free.
+            // SmpAllocator for example uses alignment for size classes.
+            // The alternative would be carrying original allocation alignment
+            // through all uses (Vec, Unset_slice, future collections)
+            // which is a price I'm not willing to pay for a niche feature
+            if (strideOf(@"%NewElement") == strideOf(@"%Element") and @alignOf(@"%NewElement") == @alignOf(@"%Element")) {
+                return .{ .undefined_items = @as(
+                    []@"%NewElement",
+                    @ptrCast(@"%unset_slice".undefined_items),
+                ) };
             } else {
                 @"%unset_slice".rid(@"%allocator");
                 return Unset_slice(@"%NewElement").allocateLength(@"%allocator", @"%unset_slice".length());

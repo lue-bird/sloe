@@ -340,6 +340,37 @@ test "vec into unset slice then reuse" {
     try std.testing.expectEqual(a_capacity, b_vec.elements.capacity);
     b_vec.rid(allocator);
 }
+test "unset_slice_cast_or_rid_and_allocate u64 to i63" {
+    const allocator = std.testing.allocator;
+    const unset_slice_u64 = try core.unset_slice_allocate_length(u64, allocator, 20);
+    const unset_slice_u64_length = unset_slice_u64.length();
+    try std.testing.expect(unset_slice_u64_length >= 20);
+    const unset_slice_i63 = try core.unset_slice_cast_or_rid_and_allocate(u64, i63, allocator, unset_slice_u64);
+    // memory is reused, not re-allocated
+    try std.testing.expectEqual(
+        @intFromPtr(unset_slice_u64.undefined_items.ptr),
+        @intFromPtr(unset_slice_i63.undefined_items.ptr),
+    );
+    const Origin = enum { origin };
+    const origin: core.Origin(Origin) = .origin;
+    var vec = core.Vec(Origin, i63).reuse(origin, unset_slice_i63);
+    try std.testing.expectEqual(0, vec.elements.items.len);
+    try std.testing.expectEqual(unset_slice_u64_length, vec.elements.capacity);
+    vec.rid(allocator);
+}
+test "unset_slice_cast_or_rid_and_allocate u64 to struct{u32,u16}" {
+    const allocator = std.testing.allocator;
+    const unset_slice_u64 = try core.unset_slice_allocate_length(u64, allocator, 20);
+    const unset_slice_u64_length = unset_slice_u64.length();
+    try std.testing.expect(unset_slice_u64_length >= 20);
+    const unset_slice_tuple_u32_u16 = try core.unset_slice_cast_or_rid_and_allocate(u64, struct { u32, u16 }, allocator, unset_slice_u64);
+    const Origin = enum { origin };
+    const origin: core.Origin(Origin) = .origin;
+    var vec = core.Vec(Origin, struct { u32, u16 }).reuse(origin, unset_slice_tuple_u32_u16);
+    try std.testing.expectEqual(0, vec.elements.items.len);
+    try std.testing.expectEqual(unset_slice_u64_length, vec.elements.capacity);
+    vec.rid(allocator);
+}
 test "Unset_span != Span" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin) = .origin;

@@ -503,12 +503,10 @@ impl<Element> Unset_slice<Element> {
         // ```rust
         // self.into_boxed_slice().into_iter().collect().into_boxed_slice()
         // ```
-        // which should automatically reuse the memory if sizes are equal (in release mode)
+        // which should automatically reuse the memory if layouts are equal (in release mode)
         if const {
-            // potential improvement: even when alignment doesn't match,
-            // check if it coincidentally matches new alignment
             mem_stride_of::<NewElement>() == mem_stride_of::<Element>()
-                && std::mem::align_of::<NewElement>() <= std::mem::align_of::<Element>()
+                && std::mem::align_of::<NewElement>() == std::mem::align_of::<Element>()
         } {
             // safe because all contained memory is uninitialized
             Unset_slice(unsafe {
@@ -2583,6 +2581,28 @@ mod core_test {
         }
         std::assert_eq!(vec.vacant_spans().len(), 0);
         std::assert_eq!(vec.maybe_uninit_elements().len(), 0);
+        crate::core::vec_rid(vec);
+    }
+    #[test]
+    fn unset_slice_cast_or_rid_and_allocate_u64_to_i64() {
+        let unset_slice_u64 = crate::core::Unset_slice::<u64>::allocate_length(20);
+        let unset_slice_u64_address = unset_slice_u64.0.iter().as_slice().as_ptr().addr();
+        let unset_slice_i64 = unset_slice_u64.cast_or_rid_and_allocate::<i64>();
+        // memory is reused, not re-allocated
+        std::assert_eq!(
+            unset_slice_i64.0.iter().as_slice().as_ptr().addr(),
+            unset_slice_u64_address
+        );
+        crate::core::origin_new!(origin, Origin);
+        let vec = crate::core::Vec::reuse(origin, unset_slice_i64);
+        crate::core::vec_rid(vec);
+    }
+    #[test]
+    fn unset_slice_cast_or_rid_and_allocate_u64_to_tuple_u32_u32() {
+        let unset_slice_u64 = crate::core::Unset_slice::<u64>::allocate_length(20);
+        let unset_slice_tuple_u32_u32 = unset_slice_u64.cast_or_rid_and_allocate::<(u32, u32)>();
+        crate::core::origin_new!(origin, Origin);
+        let vec = crate::core::Vec::reuse(origin, unset_slice_tuple_u32_u32);
         crate::core::vec_rid(vec);
     }
 }
