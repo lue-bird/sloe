@@ -12068,6 +12068,7 @@ fn syntax_type_unparenthesized_format<Types>(
 pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     ProjectTypeOrUnknown {
         name: WithStartPosition<&'a Name>,
+        construct_info: ConstructInfo,
         origins: std::collections::HashMap<
             &'a Name,
             OriginStartAndScope<'a, Expressions, Patterns, Types>,
@@ -12087,6 +12088,7 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     VariantOrUnknown(WithStartPosition<&'a Name>),
     ProjectFnOrUnknown {
         name: WithStartPosition<&'a Name>,
+        construct_info: ConstructInfo,
         pattern_variables: std::collections::HashMap<
             &'a Name,
             PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
@@ -12101,6 +12103,12 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
         use_start: lsp_types::Position,
         origin: PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     },
+}
+pub enum ConstructInfo {
+    NotExpectingArgument,
+    ArgumentMissing,
+    ArgumentExists,
+    Declaration,
 }
 pub struct PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types> {
     pub start: lsp_types::Position,
@@ -12146,6 +12154,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
             {
                 return Some(SyntaxSymbol::ProjectTypeOrUnknown {
                     name: with_start_position_as_ref(name),
+                    construct_info: ConstructInfo::Declaration,
                     origins: std::collections::HashMap::new(),
                 });
             }
@@ -12202,6 +12211,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
             {
                 return Some(SyntaxSymbol::ProjectFnOrUnknown {
                     name: with_start_position_as_ref(name),
+                    construct_info: ConstructInfo::Declaration,
                     pattern_variables: std::collections::HashMap::new(),
                     origins: std::collections::HashMap::new(),
                 });
@@ -12325,6 +12335,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             },
             None => SyntaxSymbol::ProjectFnOrUnknown {
                 name: with_start_position_as_ref(name),
+                construct_info: ConstructInfo::NotExpectingArgument,
                 pattern_variables: std::mem::take(pattern_variables),
                 origins: std::mem::take(origins),
             },
@@ -12352,6 +12363,11 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     },
                     None => SyntaxSymbol::ProjectFnOrUnknown {
                         name: with_start_position_as_ref(name),
+                        construct_info: if argument.is_some() || type_arguments.is_some() {
+                            ConstructInfo::ArgumentExists
+                        } else {
+                            ConstructInfo::ArgumentMissing
+                        },
                         pattern_variables: std::mem::take(pattern_variables),
                         origins: std::mem::take(origins),
                     },
@@ -13090,6 +13106,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             },
             None => SyntaxSymbol::ProjectTypeOrUnknown {
                 name: with_start_position_as_ref(name),
+                construct_info: ConstructInfo::NotExpectingArgument,
                 origins: std::mem::take(origins),
             },
         }),
@@ -13110,6 +13127,11 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             {
                 return Some(SyntaxSymbol::ProjectTypeOrUnknown {
                     name: with_start_position_as_ref(name),
+                    construct_info: if argument0.is_some() || !argument1_up.is_empty() {
+                        ConstructInfo::ArgumentExists
+                    } else {
+                        ConstructInfo::ArgumentMissing
+                    },
                     origins: std::mem::take(origins),
                 });
             }
@@ -13215,6 +13237,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
     match symbol {
         SyntaxSymbol::ProjectTypeOrUnknown {
             name: symbol_name,
+            construct_info: _,
             origins: _,
         } => project.elements.iter().find_map(|element| match element {
             SyntaxProjectElement::TypeAlias {
@@ -13304,6 +13327,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
         SyntaxSymbol::VariantOrUnknown(_) => None,
         SyntaxSymbol::ProjectFnOrUnknown {
             name: symbol_name,
+            construct_info: _,
             pattern_variables: _,
             origins: _,
         } => project.elements.iter().find_map(|element| match element {
@@ -13636,6 +13660,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
         SyntaxType::ConstructWithoutArguments(name) => {
             if let SyntaxSymbol::ProjectTypeOrUnknown {
                 name: symbol_name,
+                construct_info: _,
                 origins: _,
             } = symbol
                 && name.value == symbol_name.value
@@ -13653,6 +13678,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(name) = name
                 && let SyntaxSymbol::ProjectTypeOrUnknown {
                     name: symbol_name,
+                    construct_info: _,
                     origins: _,
                 } = symbol
                 && name.value == symbol_name.value
@@ -13800,6 +13826,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         start: _,
                         value: symbol_name,
                     },
+                construct_info: _,
                 pattern_variables: _,
                 origins: _,
             } => {
@@ -13834,6 +13861,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                                 start: _,
                                 value: symbol_name,
                             },
+                        construct_info: _,
                         pattern_variables: _,
                         origins: _,
                     } => {
