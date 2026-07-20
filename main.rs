@@ -1884,17 +1884,17 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
         sloe::SyntaxExpression::Fn {
-            fn_keyword_start,
+            open_bracket_start,
             parameter,
-            angle_right_start,
+            closed_bracket_start,
             result,
         } => {
-            keyword_highlight(state, "fn", *fn_keyword_start);
+            keyword_highlight(state, "[", *open_bracket_start);
             if let Some(parameter) = parameter {
                 sloe_syntax_pattern_highlight(state, patterns, types, parameter);
             }
-            if let Some(angle_right_start) = angle_right_start {
-                keyword_highlight(state, ">", *angle_right_start);
+            if let Some(closed_bracket_start) = closed_bracket_start {
+                keyword_highlight(state, "]", *closed_bracket_start);
             }
             if let Some(result) = result {
                 sloe_syntax_expression_highlight(
@@ -1988,12 +1988,12 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
             for case in cases {
-                keyword_highlight(state, "=", case.equals_start);
+                keyword_highlight(state, "[", case.open_bracket_start);
                 if let Some(pattern) = &case.pattern {
                     sloe_syntax_pattern_highlight(state, patterns, types, pattern);
                 }
-                if let Some(right_angle_start) = case.right_angle_start {
-                    keyword_highlight(state, ">", right_angle_start);
+                if let Some(closed_bracket_start) = case.closed_bracket_start {
+                    keyword_highlight(state, "]", closed_bracket_start);
                 }
                 if let Some(result) = &case.result {
                     sloe_syntax_expression_highlight(state, expressions, patterns, types, result);

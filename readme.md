@@ -59,14 +59,14 @@ This is checked at compile-time for the expression following origin creation but
 ```sloe
 fn some-vec . :> _vec ??origin cannot even be annotated??, u32 >
     origin vec-origin
-    ? _vec-empty<u32> vec-origin = vec >
-    ? _vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
+    ? _vec-empty<u32> vec-origin [vec]
+    ? _vec-add .vec vec .new 123 u32 [.vec vec .slot slot]
     ...
     vec
 
 # compiles
 fn add-some-values<Origin> vec _vec Origin, u32 :> _vec Origin, u32 >
-    ? _vec-add .vec vec .new 123 u32 = .vec vec .slot slot >
+    ? _vec-add .vec vec .new 123 u32 [.vec vec .slot slot]
     ...
     vec
 ```
@@ -92,12 +92,12 @@ An origin type does not have a `-dup` helper and thus can only be used for one c
 # use a temporary value within a scope
 fn use-vec . :> u32 >
     origin vec-origin
-  	? _vec-empty<u32> vec-origin = vec >
-  	? _vec-add .vec vec .new 123 u32 = .vec vec .slot first-slot >
-  	? _vec-remove .vec vec .slot first-slot = .vec vec .element first >
-  	? |absent<_opt vec-origin> . = after-first >
-  	? _vec-opt-span-add .vec vec .span after-first .new 456 u32 = .vec vec .span after-first >
-  	? _vec-span-add .vec vec .span after-first .new 789 u32 = .vec vec .span after-first >
+  	? _vec-empty<u32> vec-origin [vec]
+  	? _vec-add .vec vec .new 123 u32 [.vec vec .slot first-slot]
+  	? _vec-remove .vec vec .slot first-slot [.vec vec .element first]
+  	? |absent<_opt vec-origin> . [after-first]
+  	? _vec-opt-span-add .vec vec .span after-first .new 456 u32 [.vec vec .span after-first]
+  	? _vec-span-add .vec vec .span after-first .new 789 u32 [.vec vec .span after-first]
     ...
   	first # = 123 u32
 
@@ -106,30 +106,30 @@ fn use-opt opt _opt u32 :> ... >
     # this won't compile as their origins come from different branches
     ? (
         ? opt
-        = |absent . >
+        [|absent .]
             origin vec-origin
             _vec-empty<u32> vec-origin
-        = |present number > (
+        [|present number] (
             origin vec-origin
-            ? _vec-one .origin vec-origin .element number = .vec vec .slot slot >
+            ? _vec-one .origin vec-origin .element number [.vec vec .slot slot]
             ...
             vec
             )
         )
-    = vec >
+    [vec]
     # this will compile:
     origin vec-origin
     ? (
         :opt
-        = |absent . >
+        [|absent .]
             _vec-empty<u32> vec-origin
-        = |present number > (
-            ? _vec-one .origin vec-origin .element number = .vec vec .slot slot >
+        [|present number] (
+            ? _vec-one .origin vec-origin .element number [.vec vec .slot slot]
             ...
             vec
             )
         )
-    = vec >
+    [vec]
     ...
 
 # recursive structure. every slot and span exclusively belongs to that expression
@@ -164,7 +164,7 @@ fn state-to-interfaces-into
         .origin interfaces-origin
         .element |console-log<_interface _state Expressions-origin> "hello"
         )
-    = .slot slot .vec interfaces >
+    [.slot slot .vec interfaces]
     ...
     interfaces
 ```
@@ -217,10 +217,10 @@ _some-function<Type, Arguments> _inner-call-as-the-argument inner-inner-argument
 # Can be placed anywhere and multiple are allowed
 .field-1st value-1st .. one-existing-record .. another .field-2nd value-2nd
 
-# local fn of type fn.
+# local function of type fn.
 # the pattern must add a type to all variables
 # can **not** use variables from the outer scope.
-fn parameter-pattern > result
+[parameter-pattern] result
 
 # pattern variable
 # appending a type is only necessary and allowed in function parameters
@@ -228,7 +228,7 @@ some-variable some-type
 
 # pattern match, checked for exhaustiveness. expressions must be parenthesized if they themselves end in a query.
 # The last case result does not need to be parenthesized
-? value = first-case-pattern > first-result = second-case-pattern > second-result
+? value [first-case-pattern] first-result [second-case-pattern] second-result
 
 # introduce a new origin. The given name can be used as a variable and type
 origin new-origin-name expression-that uses the-origin
@@ -302,7 +302,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add field and variant rename and references
 - add "add remaining query cases" code action
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
-- add `set Origin, Element` along with add something like `map Origin, Key, Value` (or just `map Origin, Element` where key is derived from element) which still gives out `slot Origin`s for each entry but can be queried by key or similar. `map-empty` will require providing a `fn .a Key .b Key, .a Key .b Key .order order` or similar.
+- add `set Origin, Element` along with add something like `map Origin, Key, Value` (or just `map Origin, Element` where key is derived from element) which still gives out `slot Origin`s for each entry but can be queried by key or similar. `map-empty` will require providing a `_fn .a Key .b Key, .a Key .b Key .order order` or similar.
   Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `vec` is fast enough
 - consider adding `vec-counting` and `slot` which can reference a slot that is already in use:
   ```sloe
@@ -310,9 +310,9 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       .vec _vec-counting Origin, Element
       .slot slot _slot Origin
       :>
-          .vec _vec-counting Origin, Element
-          .a _slot Origin
-          .b _slot Origin
+      .vec _vec-counting Origin, Element
+      .a _slot Origin
+      .b _slot Origin
       >
   # what about spans?
   ```
@@ -385,9 +385,9 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       .result-origin result-origin Result-origin
       :> _vec Result-origin, u32 >
       origin local-origin
-      ? _vec-empty<u32> consume-origin = temporary >
-      ? _recurse local-origin result-origin = result >
-      ? _vec-add .a temporary .b 1 u32 = .slot slot .vec temporary >
+      ? _vec-empty<u32> consume-origin [temporary]
+      ? _recurse local-origin result-origin [result]
+      ? _vec-add .a temporary .b 1 u32 [.slot slot .vec temporary]
       ...
       result
   ```
@@ -442,9 +442,9 @@ It also makes initial_state much easier to call from the rust side (though we ne
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
   ```sloe
   origin vec-origin
-  ? _vec-empty<.expression expression .pattern pattern vec-origin> vec-origin = vec >
-  ? _vec-add .vec vec .new some-expression = .vec vec slot some-expression-slot >
-  ? _vec-add .vec vec .new some-pattern  = .vec vec .slot some-pattern-slot >
+  ? _vec-empty<.expression expression .pattern pattern vec-origin> vec-origin [vec]
+  ? _vec-add .vec vec .new some-expression [.vec vec slot some-expression-slot]
+  ? _vec-add .vec vec .new some-pattern  [.vec vec .slot some-pattern-slot]
   ...
   ```
   This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
@@ -553,13 +553,19 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- switch syntax to wrapping pattern in `[]` (lambda, case) and fn result type  in `<>`. => is not distinctly visible enough and more annoying
-
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
 - upgrade syn to 3.0.0
+
+- honestly think about replacing kebab-case with camelCase/PascalCase.
+  while I do much prefer the typing experience of kebab-case,
+  camelCase is shorter (!!), think
+  `vecCharOptSpanAddStr` compared to
+  `vec-char-opt-span-add-str` (5 chars less, 20%!)
+  and potentially more readable (?) due to clearer distinction to _ and spaces.
+  Take a bigger example, convert the case and see how it feels
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements

@@ -12,11 +12,11 @@
 
 (key_symbol_question_mark) @keyword
 
-(key_symbol_equals) @keyword
-
 (key_symbol_arrow) @keyword
 
 (key_symbol_angle_right) @keyword
+
+(key_symbol_spread_fields) @keyword
 
 (field_name) @property
 

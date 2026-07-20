@@ -157,51 +157,39 @@ export default grammar({
         repeat($.expression_query_case_not_open_ending_in_query),
         $.expression_query_case_not_open_ending_in_query,
       ),
-    expression_query_case: ($) =>
-      seq($.key_symbol_equals, $.pattern_untyped, $.key_symbol_angle_right, $.expression),
+    expression_query_case: ($) => seq("[", $.pattern_untyped, "]", $.expression),
     expression_query_case_not_open_ending_in_query: ($) =>
-      seq(
-        $.key_symbol_equals,
-        $.pattern_untyped,
-        $.key_symbol_angle_right,
-        $.expression_not_open_ending_in_query,
-      ),
+      seq("[", $.pattern_untyped, "]", $.expression_not_open_ending_in_query),
     expression_query_case_not_open_ending_in_record: ($) =>
-      seq(
-        $.key_symbol_equals,
-        $.pattern_untyped,
-        $.key_symbol_angle_right,
-        $.expression_not_open_ending_in_record,
-      ),
+      seq("[", $.pattern_untyped, "]", $.expression_not_open_ending_in_record),
     expression_record_empty: ($) => ".",
     expression_record: ($) =>
-      seq(repeat($.expression_field_not_open_ending_in_record), $.expression_field),
+      seq(
+        repeat($.expression_record_part_not_open_ending_in_record),
+        $.expression_record_part,
+      ),
     expression_record_not_open_ending_in_query: ($) =>
       seq(
-        repeat($.expression_field_not_open_ending_in_record),
-        $.expression_field_not_open_ending_in_query,
+        repeat($.expression_record_part_not_open_ending_in_record),
+        $.expression_record_part_not_open_ending_in_query,
       ),
-    expression_field: ($) => seq($.field_name, $.expression),
-    expression_field_not_open_ending_in_query: ($) =>
-      seq($.field_name, $.expression_not_open_ending_in_query),
-    expression_field_not_open_ending_in_record: ($) =>
-      seq($.field_name, $.expression_not_open_ending_in_record),
-    expression_fn: ($) =>
-      seq($.keyword_fn, $.pattern_typed, $.key_symbol_angle_right, $.expression),
-    expression_fn_not_open_ending_in_query: ($) =>
+    expression_record_part: ($) =>
+      seq(choice($.key_symbol_spread_fields, $.field_name), $.expression),
+    expression_record_part_not_open_ending_in_query: ($) =>
       seq(
-        $.keyword_fn,
-        $.pattern_typed,
-        $.key_symbol_angle_right,
+        choice($.key_symbol_spread_fields, $.field_name),
         $.expression_not_open_ending_in_query,
       ),
-    expression_fn_not_open_ending_in_record: ($) =>
+    expression_record_part_not_open_ending_in_record: ($) =>
       seq(
-        $.keyword_fn,
-        $.pattern_typed,
-        $.key_symbol_angle_right,
+        choice($.key_symbol_spread_fields, $.field_name),
         $.expression_not_open_ending_in_record,
       ),
+    expression_fn: ($) => seq("[", $.pattern_typed, "]", $.expression),
+    expression_fn_not_open_ending_in_query: ($) =>
+      seq("[", $.pattern_typed, "]", $.expression_not_open_ending_in_query),
+    expression_fn_not_open_ending_in_record: ($) =>
+      seq("[", $.pattern_typed, "]", $.expression_not_open_ending_in_record),
 
     pattern_typed: ($) =>
       choice(
@@ -362,24 +350,35 @@ export default grammar({
     type_choice_variant_not_open_ending_in_choice: ($) =>
       seq($.variant_name, $.type_not_open_ending_in_choice),
     type_record_empty: ($) => ".",
-    type_record: ($) => seq(repeat($.type_field_not_open_ending_in_record), $.type_field),
+    type_record: ($) =>
+      seq(repeat($.type_record_part_not_open_ending_in_record), $.type_record_part),
     type_record_not_open_ending_in_construct: ($) =>
       seq(
-        repeat($.type_field_not_open_ending_in_record),
-        $.type_field_not_open_ending_in_construct,
+        repeat($.type_record_part_not_open_ending_in_record),
+        $.type_record_part_not_open_ending_in_construct,
       ),
     type_record_not_open_ending_in_choice: ($) =>
       seq(
-        repeat($.type_field_not_open_ending_in_record),
-        $.type_field_not_open_ending_in_choice,
+        repeat($.type_record_part_not_open_ending_in_record),
+        $.type_record_part_not_open_ending_in_choice,
       ),
-    type_field: ($) => seq($.field_name, $.type),
-    type_field_not_open_ending_in_record: ($) =>
-      seq($.field_name, $.type_not_open_ending_in_record),
-    type_field_not_open_ending_in_choice: ($) =>
-      seq($.field_name, $.type_not_open_ending_in_choice),
-    type_field_not_open_ending_in_construct: ($) =>
-      seq($.field_name, $.type_not_open_ending_in_construct),
+    type_record_part: ($) =>
+      seq(choice($.key_symbol_spread_fields, $.field_name), $.type),
+    type_record_part_not_open_ending_in_record: ($) =>
+      seq(
+        choice($.key_symbol_spread_fields, $.field_name),
+        $.type_not_open_ending_in_record,
+      ),
+    type_record_part_not_open_ending_in_choice: ($) =>
+      seq(
+        choice($.key_symbol_spread_fields, $.field_name),
+        $.type_not_open_ending_in_choice,
+      ),
+    type_record_part_not_open_ending_in_construct: ($) =>
+      seq(
+        choice($.key_symbol_spread_fields, $.field_name),
+        $.type_not_open_ending_in_construct,
+      ),
 
     type_name: ($) => $.lower_name,
     char: ($) => seq("'", choice("\\\\", "\\'", /[^']/), "'"),
@@ -396,7 +395,7 @@ export default grammar({
     key_symbol_question_mark: ($) => "?",
     key_symbol_angle_right: ($) => ">",
     key_symbol_arrow: ($) => ":>",
-    key_symbol_equals: ($) => "=",
+    key_symbol_spread_fields: ($) => "..",
     symbol_call_underscore: ($) => "_",
     symbol_type_construct_underscore: ($) => "_",
   },

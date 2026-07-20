@@ -187,9 +187,9 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         value: Option<core::Slot<Expressions>>,
     },
     Fn {
-        fn_keyword_start: lsp_types::Position,
+        open_bracket_start: lsp_types::Position,
         parameter: Option<SyntaxPattern<Patterns, Types>>,
-        angle_right_start: Option<lsp_types::Position>,
+        closed_bracket_start: Option<lsp_types::Position>,
         result: Option<core::Slot<Expressions>>,
     },
     RecordEmpty {
@@ -222,9 +222,9 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
 }
 #[derive(Debug)]
 pub struct SyntaxExpressionQueryCase<Expressions, Patterns, Types> {
-    pub equals_start: lsp_types::Position,
+    pub open_bracket_start: lsp_types::Position,
     pub pattern: Option<SyntaxPattern<Patterns, Types>>,
-    pub right_angle_start: Option<lsp_types::Position>,
+    pub closed_bracket_start: Option<lsp_types::Position>,
     pub result: Option<SyntaxExpression<Expressions, Patterns, Types>>,
 }
 #[derive(Debug)]
@@ -630,11 +630,11 @@ pub fn expression_start<Expressions, Patterns, Types>(
             value: _,
         } => name.start,
         SyntaxExpression::Fn {
-            fn_keyword_start,
+            open_bracket_start,
             parameter: _,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result: _,
-        } => *fn_keyword_start,
+        } => *open_bracket_start,
         SyntaxExpression::RecordEmpty { dot_start } => *dot_start,
         SyntaxExpression::Record { part0, part1_up: _ } => expression_record_part_start(part0),
         SyntaxExpression::Parenthesized {
@@ -735,9 +735,9 @@ pub fn expression_end<Expressions, Patterns, Types>(
             })
             .unwrap_or_else(|| optional_variant_name_end(name)),
         SyntaxExpression::Fn {
-            fn_keyword_start,
+            open_bracket_start,
             parameter,
-            angle_right_start,
+            closed_bracket_start,
             result,
         } => result
             .as_ref()
@@ -750,14 +750,15 @@ pub fn expression_end<Expressions, Patterns, Types>(
                 )
             })
             .or_else(|| {
-                angle_right_start.map(|angle_right_start| symbol_end(angle_right_start, ">"))
+                closed_bracket_start
+                    .map(|closed_bracket_start| symbol_end(closed_bracket_start, "]"))
             })
             .or_else(|| {
                 parameter
                     .as_ref()
                     .map(|parameter| pattern_end(parameter, patterns, types))
             })
-            .unwrap_or_else(|| symbol_end(*fn_keyword_start, "fn")),
+            .unwrap_or_else(|| symbol_end(*open_bracket_start, "[")),
         SyntaxExpression::RecordEmpty { dot_start } => symbol_end(*dot_start, "."),
         SyntaxExpression::Record { part0, part1_up } => expression_record_part_end(
             part1_up.last().unwrap_or(part0),
@@ -848,15 +849,15 @@ fn expression_query_case_end<Expressions, Patterns, Types>(
         .as_ref()
         .map(|result| expression_end(result, expressions, patterns, types))
         .or_else(|| {
-            case.right_angle_start
-                .map(|left_angle_start| symbol_end(left_angle_start, ">"))
+            case.closed_bracket_start
+                .map(|closed_bracket_start| symbol_end(closed_bracket_start, "]"))
         })
         .or_else(|| {
             case.pattern
                 .as_ref()
                 .map(|pattern| pattern_end(pattern, patterns, types))
         })
-        .unwrap_or_else(|| symbol_end(case.equals_start, "="))
+        .unwrap_or_else(|| symbol_end(case.open_bracket_start, "["))
 }
 
 pub struct ParseState<'a> {
@@ -2064,19 +2065,19 @@ fn parse_expression_fn<Expressions, Patterns, Types>(
     if state.position.character == 0 {
         return None;
     }
-    let Some(fn_keyword_start) = parse_sloe_keyword_as_start(state, "fn") else {
+    let Some(open_bracket_start) = parse_sloe_keyword_as_start(state, "[") else {
         return None;
     };
     parse_sloe_whitespace(state);
     let parameter = parse_pattern_typed(state, patterns, types);
     parse_sloe_whitespace(state);
-    let angle_right_start = parse_symbol_as_start(state, ">");
+    let closed_bracket_start = parse_symbol_as_start(state, "]");
     parse_sloe_whitespace(state);
     let result = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Fn {
-        fn_keyword_start: fn_keyword_start,
+        open_bracket_start,
         parameter: parameter,
-        angle_right_start: angle_right_start,
+        closed_bracket_start,
         result: result.map(|result| expressions.insert(result)),
     })
 }
@@ -2129,19 +2130,19 @@ fn parse_expression_query_case<Expressions, Patterns, Types>(
     patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpressionQueryCase<Expressions, Patterns, Types>> {
-    let Some(equals_start) = parse_symbol_as_start(state, "=") else {
+    let Some(open_bracket_start) = parse_symbol_as_start(state, "[") else {
         return None;
     };
     parse_sloe_whitespace(state);
     let pattern = parse_pattern_untyped(state, patterns, types);
     parse_sloe_whitespace(state);
-    let angle_right_start = parse_symbol_as_start(state, ">");
+    let closed_bracket_start = parse_symbol_as_start(state, "]");
     parse_sloe_whitespace(state);
     let result = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpressionQueryCase {
-        equals_start: equals_start,
+        open_bracket_start: open_bracket_start,
         pattern: pattern,
-        right_angle_start: angle_right_start,
+        closed_bracket_start,
         result: result,
     })
 }
@@ -2264,7 +2265,7 @@ If you wanted to start a project declaration, try one of:
                     } else   if unknown_source
                         .starts_with('.')
                     {
-                        "Record access is not a feature in sloe. Instead, use pattern matching, like value ? your-value = .field variable ..other fields.. > result. Otherwise, is everything indented correctly?"
+                        "Record access is not a feature in sloe. Instead, use pattern matching, like value ? your-value [.field variable ..other fields..] result. Otherwise, is everything indented correctly?"
                     } else if unknown_source
                         .starts_with(['+', '-', '*', '^', '/', '!', '&'])
                     {
@@ -2741,9 +2742,9 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             }
         }
         SyntaxExpression::Fn {
-            fn_keyword_start: _,
+            open_bracket_start: _,
             parameter: _,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => {
             if let Some(result) = result {
@@ -6026,15 +6027,15 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             Some(checked_type)
         }
         SyntaxExpression::Fn {
-            fn_keyword_start,
+            open_bracket_start,
             parameter,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => {
             let Some(parameter) = parameter else {
                 errors.push(ErrorNode {
-                    range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing parameter after fn. An example of a local fn expression is fn n u32 > u32-add .a n .b 1 u32"),
+                    range: symbol_range(*open_bracket_start, "["),
+                    message: Box::from("missing parameter after open bracket [. An example of a local fn expression is [n u32] _u32-add .a n .b 1 u32"),
                 });
                 return None;
             };
@@ -6061,8 +6062,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let mut result_used_origin_variables = std::collections::HashMap::new();
             let Some(result) = result else {
                 errors.push(ErrorNode {
-                    range: symbol_range(*fn_keyword_start, "fn"),
-                    message: Box::from("missing result after fn ..pattern.. here"),
+                    range: symbol_range(*open_bracket_start, "["),
+                    message: Box::from("missing result after [..pattern..] here"),
                 });
                 return None;
             };
@@ -6115,7 +6116,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 );
             }
             checked_local_fns.insert(
-                *fn_keyword_start,
+                *open_bracket_start,
                 CheckedLocalFn {
                     parameter_type: checked_parmeter.type_.clone(),
                     result_type: checked_result_type.clone(),
@@ -6351,7 +6352,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some(queried) = queried else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing queried expression after this colon. An example of a query is ? option = |present n > n = |absent . > 0 u32")
+                    message: Box::from("missing queried expression after this colon. An example of a query is ? option [|present n] n [|absent .] 0 u32")
                 });
                 return None;
             };
@@ -6359,7 +6360,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some((case0, case1_up)) = cases.split_first() else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing case(s) after the queried expression. Cases look like = pattern > result-expression. An example of a query is ? option = |present n > n = |absent . > 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
+                    message: Box::from("missing case(s) after the queried expression. Cases look like [pattern] result-expression. An example of a query is ? option [|present n] n [|absent .] 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
                 });
                 return None;
             };
@@ -6385,15 +6386,15 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             };
             let Some(case0_pattern) = &case0.pattern else {
                 errors.push(ErrorNode {
-                    range:  symbol_range(case0.equals_start, "="),
-                    message: Box::from("missing query case pattern after this equals = . Cases consist of = pattern > result-expression. An example of a query is :option = |present n > n = |absent > 0 u32")
+                    range:  symbol_range(case0.open_bracket_start, "["),
+                    message: Box::from("missing query case pattern after this open bracket [. Cases consist of [pattern] result-expression. An example of a query is ? option [|present n] n [|absent] 0 u32")
                 });
                 return None;
             };
             let Some(case0_result) = &case0.result else {
                 errors.push(ErrorNode {
-                    range: case0.right_angle_start.map(|right_angle_start| symbol_range(right_angle_start, ">")).unwrap_or_else(|| pattern_range(case0_pattern, patterns, types)),
-                    message: Box::from("missing result expression after this query case pattern. Cases look like = pattern > result-expression. An example of a query is :option = |present n > n = |absent > 0 u32")
+                    range: case0.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(|| pattern_range(case0_pattern, patterns, types)),
+                    message: Box::from("missing result expression after this query case pattern. Cases look like [pattern] result-expression. An example of a query is ? option [|present n] n [|absent] 0 u32")
                 });
                 return None;
             };
@@ -6466,8 +6467,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             {
                 let Some(case_pattern) = &case.pattern else {
                     errors.push(ErrorNode {
-                        range:  symbol_range(case.equals_start, "="),
-                        message: Box::from("missing query case pattern after this equals = . Cases consist of = pattern > result-expression. A full query could look like :option = |present n > n = |absent > 0 u32")
+                        range:  symbol_range(case.open_bracket_start, "["),
+                        message: Box::from("missing query case pattern after this open bracket [. Cases are written as [pattern] result-expression. A full query could look like ? option [|present n] n [|absent] 0 u32")
                     });
                     continue 'checking_case1_up;
                 };
@@ -6511,8 +6512,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 );
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
-                        range: case.right_angle_start.map(|right_angle_start| symbol_range(right_angle_start, "<")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
-                        message: Box::from("missing result expression after this query case pattern. Cases can be (pattern result-expression) or pattern result-expression for the last one. An example of a query is : option = |present n > n = |absent > 0 u32")
+                        range: case.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
+                        message: Box::from("missing result expression after this query case pattern. Cases are written as [pattern] result-expression. An example of a query is ? option [|present n] n [|absent .] 0 u32")
                     });
                     continue 'checking_case1_up;
                 };
@@ -6566,7 +6567,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case_result_used_pattern_variable, start: case_result_used_pattern_variable_start }),
-                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..")
+                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..")
                         });
                     }
                 }
@@ -6581,7 +6582,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case0_result_used_pattern_variable, start: case0_result_used_pattern_variable_start }),
                             message: format!(
-                                "this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..",
+                                "this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..",
                                 index_to_th(case_index)
                             ).into_boxed_str()
                         });
@@ -6595,7 +6596,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case_result_used_origin_variable, start: case_result_used_origin_variable_start }),
-                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..")
+                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..")
                         });
                     }
                 }
@@ -6608,7 +6609,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case0_result_used_origin_variable, start: case0_result_used_origin_variable_start }),
                             message: format!(
-                                "this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result..",
+                                "this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..",
                                 index_to_th(case_index)
                             ).into_boxed_str()
                         });
@@ -6765,7 +6766,7 @@ fn push_error_if_introduced_pattern_variable_is_unused(
                 start: origin_start,
             }),
             message: Box::from(
-                "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? u32-rid your-variable = . > ..your existing case result.."
+                "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result.."
             )
         });
     }
@@ -7087,12 +7088,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             })
         }
         SyntaxExpression::Fn {
-            fn_keyword_start,
+            open_bracket_start,
             parameter,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => {
-            let Some(checked_local_fn) = checked_local_fns.get(fn_keyword_start) else {
+            let Some(checked_local_fn) = checked_local_fns.get(open_bracket_start) else {
                 return syn_expr_todo();
             };
             let Some(parameter) = parameter else {
@@ -9139,8 +9140,8 @@ fn span-slot-at
         _span-start-of-length-positive
         .span span
         .length (_p32-add .p 1 p32 .u index)
-    = .start start .after after >
-    ? _span-end start = .before before .end at >
+    [.start start .after after]
+    ? _span-end start [.before before .end at]
     .before before .at at .after after
 ```
 See also `span-end-of-length-positive`, `span-start`.",
@@ -9269,8 +9270,8 @@ fn unset-span-slot-at
         _unset-span-start-of-length-positive
         .span span
         .length (_p32-add .p 1 p32 .u index)
-    = .start start .after after >
-    ? _unset-span-end start = .before before .end at >
+    [.start start .after after]
+    ? _unset-span-end start [.before before .end at]
     .before before .at at .after after
 ```
 See also `unset-span-end-of-length-positive`, `unset-span-start`.",
@@ -9342,7 +9343,7 @@ fn vec-recycle-empty-vec
     .new-origin new-origin NewOrigin
     .old old _vec OldOrigin, Element
     :> _vec NewOrigin Element >
-    ? _vec-to-unset old = unset-slice >
+    ? _vec-to-unset old [unset-slice]
     _vec-reuse .origin new-origin .slice unset-slice
 ```",
                 type_parameters: vec![],
@@ -9523,9 +9524,9 @@ fn vec-copy-u32-at
     .element u32
     >
     ? vec-unset .vec vec .slot slot
-    = .vec vec .element element .slot unset-slot >
-    ? u32-dup element = .a element .b element-copied >
-    ? vec-set .vec vec .slot unset-slot .new element = .vec vec .slot slot >
+    [.vec vec .element element .slot unset-slot]
+    ? u32-dup element [.a element .b element-copied]
+    ? vec-set .vec vec .slot unset-slot .new element [.vec vec .slot slot]
     .vec vec .slot slot .element element-copied
 ```
 A little roundabout but it works.
@@ -9959,8 +9960,8 @@ fn vec-span-add
     >
     # the first line is optional: it ensures that the new slot will actually be connected,
     # meaning the new element can stay at its position
-    ? _vec-span-move-to-end .vec vec .span span = .vec vec .span .span >
-    ? _vec-add .vec vec .new new = .vec vec .slot new-slot >
+    ? _vec-span-move-to-end .vec vec .span span [.vec vec .span .span]
+    ? _vec-add .vec vec .new new [.vec vec .slot new-slot]
     _vec-span-add-own-span
     .vec vec
     .start span
@@ -10090,7 +10091,7 @@ There rarely is a need to use this except when a function expects an `unset-slic
                 name: "unset-slice-cast-or-rid-and-allocate",
                 documentation: r#"Reinterpret the slice of unset bytes as a slice of a different element type.
 This only works when the new element type has the same "size" (byte count including padding bits)
-and not a greater "alignment" (byte count of the biggest field).
+and equal "alignment" (byte count of the biggest field).
 For example, `u32` consists of 4 bytes, just like `i32`, so they can be reinterpreted.
 Similarly `.x f32 .y f32` can be reinterpreted as `.width i32 .height i32` and so forth.
 If the types are incompatible, this function calls `unset-slice-rid` on the old slice
@@ -10301,10 +10302,10 @@ This type argument is also used in slot, span, arena, vec as the first type argu
 ```sloe
 fn use-a-vec . u32
     origin my-elements-origin
-    ? _vec-empty<u32> my-elements-origin = my-elements >
-    ? _vec-add .vec my-elements .element 609 u32 = .vec my-elements .slot first-element-slot >
-    ? _vec-remove .vec my-elements .slot first-element-slot = .vec my-elements .element first-element >
-    ? vec-rid my-elements = . >
+    ? _vec-empty<u32> my-elements-origin [my-elements]
+    ? _vec-add .vec my-elements .element 609 u32 [.vec my-elements .slot first-element-slot]
+    ? _vec-remove .vec my-elements .slot first-element-slot [.vec my-elements .element first-element]
+    ? vec-rid my-elements [.]
     first-element # = 609 u32
 ```"
                 )),
@@ -10369,14 +10370,15 @@ As this prevents other elements from filling these positions, you shouldn't keep
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A pure transformation from In to Out.
-As such, it cannot access variables from the outside; everything must be passed in and out explicitly.
+                    "A transformation from In to Out.
+It cannot access local variables from the outside; everything must be passed in and out explicitly.
 The parameter pattern must always have a known type.
 Functions, even local ones are called as `_function argument`.
-Functions values can be copied with `fn-dup` and scrapped with `fn-rid`. This is only possible because functions do not have access to variables from the outside.
+Functions values can be copied with `fn-dup` and scrapped with `fn-rid`.
+This is only possible because functions do not have access to variables from the outside.
 ```sloe
 fn three . :> . >
-    ? fn n u32 > u32-add-clamp .a n .b 1 u32 = increment >
+    ? ([n u32] _u32-add-clamp .a n .b 1 u32) [increment]
     _increment 2
 ```"
                 )),
@@ -10485,11 +10487,7 @@ pub fn compiled_rust_to_file_content(rust_file: &syn::File, compiled_mod_name: &
 {}",
         // I don't like this but I also haven't found any other way
         // to make a macro automatically adapt to the mod name it's placed in :(
-        include_str!("core.rs").replacen(
-            "$crate::core",
-            &format!("$crate::{compiled_mod_name}"),
-            1
-        ),
+        include_str!("core.rs").replacen("crate::core", &format!("crate::{compiled_mod_name}"), 1),
         prettyplease::unparse(rust_file)
     )
 }
@@ -10821,9 +10819,9 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             None => no_open_end_kinds,
         },
         SyntaxExpression::Fn {
-            fn_keyword_start: _,
+            open_bracket_start: _,
             parameter: _,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => match result {
             Some(result) => {
@@ -11050,20 +11048,22 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Fn {
-            fn_keyword_start: _,
+            open_bracket_start: _,
             parameter,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => {
-            formatted.push_str("fn ");
+            formatted.push_str("[");
             if let Some(parameter) = parameter {
                 let parameter_line_span =
                     range_line_span(pattern_range(parameter, patterns, types));
                 syntax_pattern_unparenthesized_format(
                     formatted, indent, patterns, types, parameter,
                 );
-                space_or_linebreak_indented_into(formatted, parameter_line_span, indent);
-                formatted.push('>');
+                if parameter_line_span == LineSpan::Multiple {
+                    linebreak_indented_into(formatted, indent);
+                }
+                formatted.push(']');
             }
             if let Some(result) = result {
                 space_or_linebreak_indented_into(
@@ -11181,7 +11181,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
             match cases.as_slice() {
                 [] => {
-                    formatted.push(' ');
+                    formatted.push_str(" [] ");
                 }
                 [case0, case1_up @ ..] => {
                     let line_span_before_last_case_pattern = range_line_span(lsp_types::Range {
@@ -11189,15 +11189,15 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                         end: {
                             let last_case = case1_up.last().unwrap_or(case0);
                             last_case
-                                .right_angle_start
-                                .map(|left_angle_start| symbol_end(left_angle_start, ">"))
+                                .closed_bracket_start
+                                .map(|closed_bracket_start| symbol_end(closed_bracket_start, "]"))
                                 .or_else(|| {
                                     last_case
                                         .pattern
                                         .as_ref()
                                         .map(|pattern| pattern_end(pattern, patterns, types))
                                 })
-                                .unwrap_or_else(|| symbol_end(last_case.equals_start, "="))
+                                .unwrap_or_else(|| symbol_end(last_case.open_bracket_start, "["))
                         },
                     });
                     let case_count = 1 + case1_up.len();
@@ -11363,7 +11363,7 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
     case_index: usize,
     case: &SyntaxExpressionQueryCase<Expressions, Patterns, Types>,
 ) {
-    formatted.push_str("= ");
+    formatted.push_str("[");
     if let Some(pattern) = &case.pattern {
         let pattern_line_span = range_line_span(pattern_range(pattern, patterns, types));
         syntax_pattern_unparenthesized_format(
@@ -11373,9 +11373,11 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
             types,
             pattern,
         );
-        space_or_linebreak_indented_into(formatted, pattern_line_span, indent);
+        if pattern_line_span == LineSpan::Multiple {
+            linebreak_indented_into(formatted, indent);
+        }
     }
-    formatted.push('>');
+    formatted.push(']');
     match &case.result {
         None => {
             formatted.push(' ');
@@ -11399,7 +11401,7 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
                 case_count,
                 case_index,
                 match &case.pattern {
-                    None => case.equals_start,
+                    None => case.open_bracket_start,
                     Some(case_pattern) => pattern_start(case_pattern),
                 },
                 expression_range(result, expressions, patterns, types),
@@ -12395,9 +12397,9 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 })
         }
         SyntaxExpression::Fn {
-            fn_keyword_start: _,
+            open_bracket_start: _,
             parameter,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => {
             let result = result.as_ref().map(|result| expressions.element(result));
@@ -13871,9 +13873,9 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Fn {
-            fn_keyword_start: _,
+            open_bracket_start: _,
             parameter,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => {
             if let Some(parameter) = parameter {
@@ -14321,9 +14323,9 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Fn {
-            fn_keyword_start: _,
+            open_bracket_start: _,
             parameter,
-            angle_right_start: _,
+            closed_bracket_start: _,
             result,
         } => {
             if let Some(paramter) = parameter {
@@ -14394,9 +14396,9 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
                 syntax_expression_rid(expressions.remove(queried), expressions, patterns, types);
             }
             for SyntaxExpressionQueryCase {
-                equals_start: _,
+                open_bracket_start: _,
                 pattern,
-                right_angle_start: _,
+                closed_bracket_start: _,
                 result,
             } in cases
             {

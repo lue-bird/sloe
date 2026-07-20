@@ -240,63 +240,6 @@
     }
   },
   {
-    "type": "expression_field",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "expression",
-          "named": true
-        },
-        {
-          "type": "field_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "expression_field_not_open_ending_in_query",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "expression_not_open_ending_in_query",
-          "named": true
-        },
-        {
-          "type": "field_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "expression_field_not_open_ending_in_record",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "expression_not_open_ending_in_record",
-          "named": true
-        },
-        {
-          "type": "field_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "expression_fn",
     "named": true,
     "fields": {},
@@ -306,14 +249,6 @@
       "types": [
         {
           "type": "expression",
-          "named": true
-        },
-        {
-          "type": "key_symbol_angle_right",
-          "named": true
-        },
-        {
-          "type": "keyword_fn",
           "named": true
         },
         {
@@ -336,14 +271,6 @@
           "named": true
         },
         {
-          "type": "key_symbol_angle_right",
-          "named": true
-        },
-        {
-          "type": "keyword_fn",
-          "named": true
-        },
-        {
           "type": "pattern_typed",
           "named": true
         }
@@ -360,14 +287,6 @@
       "types": [
         {
           "type": "expression_not_open_ending_in_record",
-          "named": true
-        },
-        {
-          "type": "key_symbol_angle_right",
-          "named": true
-        },
-        {
-          "type": "keyword_fn",
           "named": true
         },
         {
@@ -653,14 +572,6 @@
           "named": true
         },
         {
-          "type": "key_symbol_angle_right",
-          "named": true
-        },
-        {
-          "type": "key_symbol_equals",
-          "named": true
-        },
-        {
           "type": "pattern_untyped",
           "named": true
         }
@@ -680,14 +591,6 @@
           "named": true
         },
         {
-          "type": "key_symbol_angle_right",
-          "named": true
-        },
-        {
-          "type": "key_symbol_equals",
-          "named": true
-        },
-        {
           "type": "pattern_untyped",
           "named": true
         }
@@ -703,11 +606,11 @@
       "required": true,
       "types": [
         {
-          "type": "expression_field",
+          "type": "expression_record_part",
           "named": true
         },
         {
-          "type": "expression_field_not_open_ending_in_record",
+          "type": "expression_record_part_not_open_ending_in_record",
           "named": true
         }
       ]
@@ -727,11 +630,80 @@
       "required": true,
       "types": [
         {
-          "type": "expression_field_not_open_ending_in_query",
+          "type": "expression_record_part_not_open_ending_in_query",
           "named": true
         },
         {
-          "type": "expression_field_not_open_ending_in_record",
+          "type": "expression_record_part_not_open_ending_in_record",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "expression_record_part",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "expression_record_part_not_open_ending_in_query",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression_not_open_ending_in_query",
+          "named": true
+        },
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "expression_record_part_not_open_ending_in_record",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression_not_open_ending_in_record",
+          "named": true
+        },
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
           "named": true
         }
       ]
@@ -1575,82 +1547,6 @@
     }
   },
   {
-    "type": "type_field",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "type",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "type_field_not_open_ending_in_choice",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "type_not_open_ending_in_choice",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "type_field_not_open_ending_in_construct",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "type_not_open_ending_in_construct",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "type_field_not_open_ending_in_record",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "type_not_open_ending_in_record",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "type_name",
     "named": true,
     "fields": {},
@@ -1845,11 +1741,11 @@
       "required": true,
       "types": [
         {
-          "type": "type_field",
+          "type": "type_record_part",
           "named": true
         },
         {
-          "type": "type_field_not_open_ending_in_record",
+          "type": "type_record_part_not_open_ending_in_record",
           "named": true
         }
       ]
@@ -1869,11 +1765,11 @@
       "required": true,
       "types": [
         {
-          "type": "type_field_not_open_ending_in_choice",
+          "type": "type_record_part_not_open_ending_in_choice",
           "named": true
         },
         {
-          "type": "type_field_not_open_ending_in_record",
+          "type": "type_record_part_not_open_ending_in_record",
           "named": true
         }
       ]
@@ -1888,11 +1784,103 @@
       "required": true,
       "types": [
         {
-          "type": "type_field_not_open_ending_in_construct",
+          "type": "type_record_part_not_open_ending_in_construct",
           "named": true
         },
         {
-          "type": "type_field_not_open_ending_in_record",
+          "type": "type_record_part_not_open_ending_in_record",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_record_part",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_record_part_not_open_ending_in_choice",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "type_not_open_ending_in_choice",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_record_part_not_open_ending_in_construct",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "type_not_open_ending_in_construct",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_record_part_not_open_ending_in_record",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "type_not_open_ending_in_record",
           "named": true
         }
       ]
@@ -1950,6 +1938,10 @@
     "named": false
   },
   {
+    "type": "[",
+    "named": false
+  },
+  {
     "type": "\\\"",
     "named": false
   },
@@ -1959,6 +1951,10 @@
   },
   {
     "type": "\\\\",
+    "named": false
+  },
+  {
+    "type": "]",
     "named": false
   },
   {
@@ -1978,11 +1974,11 @@
     "named": true
   },
   {
-    "type": "key_symbol_equals",
+    "type": "key_symbol_question_mark",
     "named": true
   },
   {
-    "type": "key_symbol_question_mark",
+    "type": "key_symbol_spread_fields",
     "named": true
   },
   {
