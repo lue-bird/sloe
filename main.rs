@@ -2120,16 +2120,19 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     .iter()
                     .map(|(type_alias_name, type_alias_info)| {
                         let mut inserted_text = String::new();
-                        if type_alias_info.parameters.is_empty() {
-                            inserted_text.push_str(type_alias_name);
-                        } else {
-                            inserted_text.push_str("(_");
-                            inserted_text.push_str(type_alias_name);
-                            for parameter in &type_alias_info.parameters {
+                        match type_alias_info.parameters.as_slice() {
+                            [] => inserted_text.push_str(type_alias_name),
+                            [parameter0, parameter1_up @ ..] => {
+                                inserted_text.push_str("(_");
+                                inserted_text.push_str(type_alias_name);
                                 inserted_text.push(' ');
-                                inserted_text.push_str(parameter);
+                                inserted_text.push_str(parameter0);
+                                for parameter in parameter1_up {
+                                    inserted_text.push_str(", ");
+                                    inserted_text.push_str(parameter);
+                                }
+                                inserted_text.push(')');
                             }
-                            inserted_text.push(')');
                         }
                         lsp_types::CompletionItem {
                             label: type_alias_name.to_string(),
