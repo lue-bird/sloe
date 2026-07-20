@@ -299,6 +299,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
 
 # potential improvements in the future
+- when type or function construct or a call argument already exists, do not complete as (_ .some . .other .)
 - add field and variant rename and references
 - add "add remaining query cases" code action
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
@@ -552,8 +553,6 @@ cargo install --offline --debug --path . sloe
 ```
 
 # TODO
-
-- provide completions for _function-names
 
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 

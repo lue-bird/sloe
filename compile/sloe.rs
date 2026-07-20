@@ -12197,7 +12197,6 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
             documentation: _,
             result,
         } => {
-            // TODO why are origins not propagated here?
             if let Some(name) = name
                 && range_includes_position(name_range(with_start_position_as_ref(name)), position)
             {
@@ -12319,15 +12318,15 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Char { .. } => None,
         SyntaxExpression::Str { .. } => None,
         SyntaxExpression::Variable(name) => Some(match pattern_variables.remove(&name.value) {
-            None => SyntaxSymbol::ProjectFnOrUnknown {
-                name: with_start_position_as_ref(name),
-                pattern_variables: std::mem::take(pattern_variables),
-                origins: std::mem::take(origins),
-            },
             Some(pattern_variable) => SyntaxSymbol::PatternVariable {
                 name: &name.value,
                 use_start: name.start,
                 origin: pattern_variable,
+            },
+            None => SyntaxSymbol::ProjectFnOrUnknown {
+                name: with_start_position_as_ref(name),
+                pattern_variables: std::mem::take(pattern_variables),
+                origins: std::mem::take(origins),
             },
         }),
         SyntaxExpression::Call {
@@ -12346,15 +12345,15 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 )
             {
                 return Some(match pattern_variables.remove(&name.value) {
-                    None => SyntaxSymbol::ProjectFnOrUnknown {
-                        name: with_start_position_as_ref(name),
-                        pattern_variables: std::mem::take(pattern_variables),
-                        origins: std::mem::take(origins),
-                    },
                     Some(pattern_variable) => SyntaxSymbol::PatternVariable {
                         name: &name.value,
                         use_start: name.start,
                         origin: pattern_variable,
+                    },
+                    None => SyntaxSymbol::ProjectFnOrUnknown {
+                        name: with_start_position_as_ref(name),
+                        pattern_variables: std::mem::take(pattern_variables),
+                        origins: std::mem::take(origins),
                     },
                 });
             }
