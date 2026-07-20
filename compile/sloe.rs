@@ -7189,7 +7189,37 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 stmts: fn_result_statements,
                             }),
                         })),
-                        syn::Stmt::Expr(syn_expr_reference([local_unnamed_function_name]), None),
+                        // local_unnamed_function_name as fn(_) -> _
+                        syn::Stmt::Expr(
+                            syn::Expr::Cast(syn::ExprCast {
+                                attrs: vec![],
+                                expr: Box::new(syn_expr_reference([local_unnamed_function_name])),
+                                as_token: syn::token::As(syn_span()),
+                                ty: Box::new(syn::Type::BareFn(syn::TypeBareFn {
+                                    lifetimes: None,
+                                    unsafety: None,
+                                    abi: None,
+                                    fn_token: syn::token::Fn(syn_span()),
+                                    paren_token: syn::token::Paren(syn_span()),
+                                    inputs: std::iter::once(syn::BareFnArg {
+                                        attrs: vec![],
+                                        name: None,
+                                        ty: syn::Type::Infer(syn::TypeInfer {
+                                            underscore_token: syn::token::Underscore(syn_span()),
+                                        }),
+                                    })
+                                    .collect(),
+                                    variadic: None,
+                                    output: syn::ReturnType::Type(
+                                        syn::token::RArrow(syn_span()),
+                                        Box::new(syn::Type::Infer(syn::TypeInfer {
+                                            underscore_token: syn::token::Underscore(syn_span()),
+                                        })),
+                                    ),
+                                })),
+                            }),
+                            None,
+                        ),
                     ],
                 },
             })
