@@ -2987,6 +2987,7 @@ fn checked_project_to_rust<Expressions, Patterns, Types>(
     CompiledProject {
         rust: syn::File {
             shebang: None,
+            frontmatter: None,
             attrs: vec![],
             items: rust_items,
         },
@@ -3014,7 +3015,6 @@ fn syntax_choice_to_rust(used_choice_variants: &[Name]) -> syn::Item {
                         ident: syn_ident(&type_variable_to_rust(field_name)),
                         colon_token: None,
                         bounds: syn::punctuated::Punctuated::new(),
-                        eq_token: None,
                         default: None,
                     })
                 })
@@ -3032,14 +3032,16 @@ fn syntax_choice_to_rust(used_choice_variants: &[Name]) -> syn::Item {
                     paren_token: syn::token::Paren(syn_span()),
                     unnamed: std::iter::once(syn::Field {
                         attrs: vec![],
-                        mutability: syn::FieldMutability::None,
+                        modifiers: syn::FieldModifiers::default(),
                         vis: syn::Visibility::Inherited,
                         ident: None,
                         colon_token: None,
                         ty: syn::Type::Path(syn::TypePath {
+                            attrs: vec![],
                             qself: None,
                             path: syn_path_reference([&type_variable_to_rust(variant_name)]),
                         }),
+                        default: None,
                     })
                     .collect(),
                 }),
@@ -3067,7 +3069,6 @@ fn syntax_record_to_rust(used_choice_variants: &[Name]) -> syn::Item {
                         ident: syn_ident(&type_variable_to_rust(field_name)),
                         colon_token: None,
                         bounds: syn::punctuated::Punctuated::new(),
-                        eq_token: None,
                         default: None,
                     })
                 })
@@ -3082,13 +3083,15 @@ fn syntax_record_to_rust(used_choice_variants: &[Name]) -> syn::Item {
                 .map(|field_name| syn::Field {
                     attrs: vec![],
                     vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
-                    mutability: syn::FieldMutability::None,
+                    modifiers: syn::FieldModifiers::default(),
                     ident: Some(syn_ident(&name_to_lowercase_rust(field_name))),
                     colon_token: Some(syn::token::Colon(syn_span())),
                     ty: syn::Type::Path(syn::TypePath {
+                        attrs: vec![],
                         qself: None,
                         path: syn_path_reference([&type_variable_to_rust(field_name)]),
                     }),
+                    default: None,
                 })
                 .collect(),
         }),
@@ -3218,6 +3221,7 @@ fn project_type_alias_to_rust(
             .into_iter()
             .collect::<Vec<_>>(),
         vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
+        modifiers: syn::TypeModifiers::default(),
         type_token: syn::token::Type(syn_span()),
         ident: syn_ident(&rust_name),
         generics: syn::Generics {
@@ -3229,6 +3233,7 @@ fn project_type_alias_to_rust(
         eq_token: syn::token::Eq(syn_span()),
         ty: Box::new(type_rust),
         semi_token: syn::token::Semi(syn_span()),
+        where_clause_placement: syn::WhereClausePlacement::Late,
     })
 }
 
@@ -3521,7 +3526,6 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
                     ident: syn_ident(&type_variable_to_rust(name)),
                     colon_token: Some(syn::token::Colon(syn_span())),
                     bounds: syn::punctuated::Punctuated::new(),
-                    eq_token: None,
                     default: None,
                 })
             })
@@ -3569,10 +3573,11 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
     syn::Item::Fn(syn::ItemFn {
         attrs: rust_attrs,
         vis: syn::Visibility::Public(syn::token::Pub(syn_span())),
+        modifiers: syn::FnModifiers::default(),
         sig: syn::Signature {
             constness: None,
             asyncness: None,
-            unsafety: None,
+            safety: syn::Safety::Default,
             abi: None,
             fn_token: syn::token::Fn(syn_span()),
             ident: rust_ident,
@@ -4114,10 +4119,12 @@ fn type_to_rust(type_: &Type) -> syn::Type {
     match type_ {
         Type::Variable(variable) => syn_type_variable(&type_variable_to_rust(variable)),
         Type::Origin(name) => syn::Type::Path(syn::TypePath {
+            attrs: vec![],
             qself: None,
             path: syn_path_reference([&name_to_uppercase_rust(name)]),
         }),
         Type::CoreConstruct { name, arguments } => syn::Type::Path(syn::TypePath {
+            attrs: vec![],
             qself: None,
             path: syn::Path {
                 leading_colon: None,
@@ -4144,6 +4151,7 @@ fn type_to_rust(type_: &Type) -> syn::Type {
             let mut fields_sorted: Vec<&TypeField> = fields.iter().collect();
             fields_sorted.sort_unstable_by_key(|a| &a.name);
             syn::Type::Path(syn::TypePath {
+                attrs: vec![],
                 qself: None,
                 path: syn::Path {
                     leading_colon: None,
@@ -4173,6 +4181,7 @@ fn type_to_rust(type_: &Type) -> syn::Type {
             let mut variants_sorted: Vec<&TypeVariant> = variants.iter().collect();
             variants_sorted.sort_unstable_by_key(|a| &a.name);
             syn::Type::Path(syn::TypePath {
+                attrs: vec![],
                 qself: None,
                 path: syn::Path {
                     leading_colon: None,
@@ -5446,6 +5455,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         recombine_statements.push(syn::Stmt::Local(syn::Local {
                             attrs: vec![],
                             let_token: syn::token::Let(syn_span()),
+                            modifiers: syn::LocalModifiers::default(),
                             pat: compiled_record,
                             init: Some(syn::LocalInit {
                                 eq_token: syn::token::Eq(syn_span()),
@@ -7144,10 +7154,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         syn::Stmt::Item(syn::Item::Fn(syn::ItemFn {
                             attrs: vec![],
                             vis: syn::Visibility::Inherited,
+                            modifiers: syn::FnModifiers::default(),
                             sig: syn::Signature {
                                 constness: None,
                                 asyncness: None,
-                                unsafety: None,
+                                safety: syn::Safety::Default,
                                 abi: None,
                                 fn_token: syn::token::Fn(syn_span()),
                                 ident: syn_ident(local_unnamed_function_name),
@@ -7163,7 +7174,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                 )),
                                                 colon_token: None,
                                                 bounds: syn::punctuated::Punctuated::new(),
-                                                eq_token: None,
                                                 default: None,
                                             })
                                         })
@@ -7196,16 +7206,18 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 attrs: vec![],
                                 expr: Box::new(syn_expr_reference([local_unnamed_function_name])),
                                 as_token: syn::token::As(syn_span()),
-                                ty: Box::new(syn::Type::BareFn(syn::TypeBareFn {
+                                ty: Box::new(syn::Type::FnPtr(syn::TypeFnPtr {
+                                    attrs: vec![],
                                     lifetimes: None,
                                     unsafety: None,
                                     abi: None,
                                     fn_token: syn::token::Fn(syn_span()),
                                     paren_token: syn::token::Paren(syn_span()),
-                                    inputs: std::iter::once(syn::BareFnArg {
+                                    inputs: std::iter::once(syn::NamedArg {
                                         attrs: vec![],
                                         name: None,
                                         ty: syn::Type::Infer(syn::TypeInfer {
+                                            attrs: vec![],
                                             underscore_token: syn::token::Underscore(syn_span()),
                                         }),
                                     })
@@ -7214,6 +7226,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                     output: syn::ReturnType::Type(
                                         syn::token::RArrow(syn_span()),
                                         Box::new(syn::Type::Infer(syn::TypeInfer {
+                                            attrs: vec![],
                                             underscore_token: syn::token::Underscore(syn_span()),
                                         })),
                                     ),
@@ -7299,6 +7312,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         rust_statements.push(syn::Stmt::Local(syn::Local {
                             attrs: vec![],
                             let_token: syn::token::Let(syn_span()),
+                            modifiers: syn::LocalModifiers::default(),
                             pat: syn::Pat::Ident(syn::PatIdent {
                                 attrs: vec![],
                                 by_ref: None,
@@ -7474,7 +7488,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 syn::Arm {
                     attrs: vec![],
                     pat: pattern,
-                    guard: None,
                     fat_arrow_token: syn::token::FatArrow(syn_span()),
                     body: Box::new(syn::Expr::Block(syn::ExprBlock {
                         attrs: vec![],
@@ -7559,7 +7572,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         underscore_token: syn::token::Underscore(syn_span()),
                     }),
                     fat_arrow_token: syn::token::FatArrow(syn_span()),
-                    guard: None,
                     body: Box::new(syn_expr_todo()),
                     comma: None,
                 });
@@ -7586,6 +7598,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 syn::Stmt::Local(syn::Local {
                                     attrs: vec![],
                                     let_token: syn::token::Let(syn_span()),
+                                    modifiers: syn::LocalModifiers::default(),
                                     pat: only_match_arm.pat,
                                     init: Some(syn::LocalInit {
                                         eq_token: syn::token::Eq(syn_span()),
@@ -8723,6 +8736,7 @@ fn syn_attribute_doc(documentation: &str) -> syn::Attribute {
 }
 fn syn_type_variable(name: &str) -> syn::Type {
     syn::Type::Path(syn::TypePath {
+        attrs: vec![],
         qself: None,
         path: syn::Path::from(syn_ident(name)),
     })
