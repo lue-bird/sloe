@@ -4860,6 +4860,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                             "A variant is part of a choice type (for example |a u32 |b str) but the expected type here is\n",
                         );
                         type_format(&mut error_message, 0, expected_type);
+                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for query case results");
                         errors.push(ErrorNode {
                             range: optional_variant_name_range(name),
                             message: error_message.into_boxed_str(),
@@ -8868,19 +8869,6 @@ fn type_unset_slice(element: Type) -> Type {
 fn type_opt(present: Type) -> Type {
     type_choice([("absent", type_record([])), ("present", present)])
 }
-fn type_round_mode() -> Type {
-    type_choice(
-        [
-            "away-from-0",
-            "down",
-            "nearest-else-away-from-0",
-            "nearest-else-even",
-            "toward-0",
-            "up",
-        ]
-        .map(|name| (name, type_record([]))),
-    )
-}
 struct CoreFnInfo {
     name: &'static str,
     documentation: &'static str,
@@ -8993,29 +8981,113 @@ Try not to divide by 0.0, as 0.0 will be returned which is not mathematically co
                 result_type: type_f32,
             },
             CoreFnInfo {
-                name: "f32-round",
-                documentation: "If not already equal to an integer value,
-find a neighboring integer with a given `round-mode`.
-For math-type round for example, use
+                name: "f32-round-nearest-else-away-from-0",
+                documentation: "If not already equal to an integer value, find the closest neighboring integer.
+Round midpoint of a negative number to the lower neighbor
+and round midpoint of a positive number to the higher neighbor.
+This is (I think) often the semantically correct mode for geometry, ui and similar use cases
+where behavior should be the same everywhere and e.g adding 1 should not change it.
+It's the default round operation implementation in e.g. [C](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=271), [rust](https://doc.rust-lang.org/std/primitive.f32.html#method.round), [zig](https://ziglang.org/documentation/master/#round), ([llvm](https://llvm.org/docs/LangRef.html#llvm-round-intrinsic)), python 2.
+However, it's slower than `f32-round-nearest-else-even` on most architectures.
 ```sloe
 fn age . :> f32 >
-    f32-round .n 68.8 .mode |nearest-else-away-from-0<round-mode> .
+    f32-round-nearest-else-away-from-0 68.8 f32
 ```",
                 type_parameters: vec![],
-                parameter_type: type_record([("n", type_f32), ("mode", type_round_mode())]),
+                parameter_type: type_f32 ,
                 result_type: type_f32,
             },
             CoreFnInfo {
-                name: "f32-to-i32-clamp",
-                documentation: "If not already equal to an integer value,
-find a neighboring integer with a given `round-mode`. Finally, clamp it to within 32 bits.
-For truncating off at the decimal point for example, use
+                name: "f32-round-nearest-else-even",
+                documentation: r#"If not already equal to an integer value, find the closest neighboring integer.
+Round negative midpoint to the nearest even neighbor.
+This is sometimes called banker's rounding and is well-supported by architectures.
+An argument could be made that this is more "fair" than `f32-round-nearest-else-away-from-0`
+when operating in a linear scale where numbers are distributed evenly (even numbers as likely as uneven in all cases)
+but as a result it can feel less predictable.
+If fairness is a real concern, the midpoint should be explicitly handled, e.g.
+by ignoring midpoint values, counting midpoint values or actually [randomizing their outcome](https://en.wikipedia.org/wiki/Rounding#Randomized_rounding_to_an_integer).
+It's the default round operation implementation in e.g. python 3, dotnet, haskell, [erlang](https://erlangcentral.org/wiki/index.php?title=Floating_Point_Rounding), lisp"#,
+                type_parameters: vec![],
+                parameter_type: type_f32 ,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "f32-round-up",
+                documentation: "If not already equal to an integer value, find the closest greater (not absolute greater) neighboring integer.
+Often called ceiling",
+                type_parameters: vec![],
+                parameter_type: type_f32 ,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "f32-round-down",
+                documentation: "If not already equal to an integer value, find the closest smaller (not absolute smaller) neighboring integer.
+Often called floor",
+                type_parameters: vec![],
+                parameter_type: type_f32 ,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "f32-toward-0",
+                documentation: "If not already equal to an integer value, find the closest neighboring integer with a smaller absolute value.
+Often called truncate",
+                type_parameters: vec![],
+                parameter_type: type_f32 ,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "f32-away-from-0",
+                documentation: "If not already equal to an integer value, find the closest neighboring integer with a greater absolute value",
+                type_parameters: vec![],
+                parameter_type: type_f32 ,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "f32-round-up-to-i32-clamp",
+                documentation: "`f32-round-up`, then clamp to within 32 bits",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "f32-round-down-to-i32-clamp",
+                documentation: "`f32-round-down`, then clamp to within 32 bits",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "f32-round-toward-0-to-i32-clamp",
+                documentation: "`f32-round-toward-0`, then clamp to within 32 bits",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "f32-round-away-from-0-to-i32-clamp",
+                documentation: "`f32-round-away-from-0`, then clamp to within 32 bits",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "f32-round-nearest-else-away-from-0-to-i32-clamp",
+                documentation: "`f32-round-nearest-else-away-from-0`, then clamp to within 32 bits.
+In effect, `f32-round-toward-0-to-i32-clamp` truncates off at the decimal point:
 ```sloe
 fn age . :> f32 >
-    f32-to-i32-clamp .n 68.8 .mode |toward-0<round-mode> .
+    f32-round-toward-0-to-i32-clamp 68.8 f32
 ```",
                 type_parameters: vec![],
-                parameter_type: type_record([("n", type_f32), ("mode", type_round_mode(  ))]),
+                parameter_type: type_f32 ,
+                result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "f32-round-nearest-else-even-to-i32-clamp",
+                documentation: "`f32-round-nearest-else-even`, then clamp to within 32 bits",
+                type_parameters: vec![],
+                parameter_type: type_f32,
                 result_type: type_i32,
             },
             CoreFnInfo {
@@ -10269,40 +10341,6 @@ When building strings, use functions like `vec-char-opt-span-add-str`."#,
                 )),
                 parameters: vec![Name::const_new("A")],
                 type_: Some(type_opt(type_variable("A"))),
-            },
-        ),
-        (
-            Name::const_new("round-mode"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    r#"The are many strategies for deciding which neighboring integer to round to.
-Especially controversial is the handling of where to round -xyz.5 to:
-  - `nearest-else-away-from-0`: round midpoint of a negative number to the lower neighbor
-    and round midpoint of a positive number to the higher neighbor.
-    This is (I think) often the semantically correct mode for geometry, ui and similar use cases
-    where behavior should be the same everywhere and e.g adding 1 should not change it.
-    However, it's slower than `nearest-else-even` on most architectures.
-    It's the default round operation implementation in e.g. [C](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=271), [rust](https://doc.rust-lang.org/std/primitive.f32.html#method.round), [zig](https://ziglang.org/documentation/master/#round), ([llvm](https://llvm.org/docs/LangRef.html#llvm-round-intrinsic)), python 2
-  - `nearest-else-even`: round negative midpoint to the higher neighbor.
-    This is sometimes called banker's rounding and is well-supported by architectures.
-    An argument could be made that this is more "fair" when operating in a linear scale where
-    numbers are distributed evenly (even numbers as likely as uneven in all cases)
-    but as a result it can feel less deterministic.
-    If fairness is a real concern, the midpoint should be explicitly handled, e.g.
-    by ignoring midpoint values, counting midpoint values or actually [randomizing their outcome](https://en.wikipedia.org/wiki/Rounding#Randomized_rounding_to_an_integer).
-    It's the default round operation implementation in e.g. python 3, dotnet, haskell, [erlang](https://erlangcentral.org/wiki/index.php?title=Floating_Point_Rounding), lisp
-
-There are even languages that use `nearest-else-up` (e.g. [js](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/round#description), [java](https://docs.oracle.com/javase/7/docs/api/java/lang/Math.html#round(float)), closure, prolog)
-but this isn't supported in sloe as it feels like the worst of both worlds.
-`nearest-else-down`, `nearest-else-toward-0` and `nearest-else-odd` are also not supported
-due to their extremely limited use and limited explicit support.
-[A fairly complete overview of midpoint rounding in programming languages](https://github.com/JuliaLang/julia/issues/8750)
-
-Heavily inspired by [swift's FloatingPointRoundingRule](https://developer.apple.com/documentation/swift/floatingpointroundingrule)."#,
-                )),
-                parameters: vec![],
-                type_: Some(type_round_mode()),
             },
         ),
         (

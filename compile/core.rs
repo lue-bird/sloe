@@ -240,22 +240,6 @@ pub enum Choice·Contained·Overflowed<Contained, Overflowed> {
     Contained(Contained),
     Overflowed(Overflowed),
 }
-#[derive(Clone, Copy, Debug)]
-pub enum Choice·Away_from_0·Down·Nearest_else_away_from_0·Nearest_else_even·Toward_0·Up<
-    Away_from_0,
-    Down,
-    Nearest_else_away_from_0,
-    Nearest_else_even,
-    Toward_0,
-    Up,
-> {
-    Away_from_0(Away_from_0),
-    Down(Down),
-    Nearest_else_away_from_0(Nearest_else_away_from_0),
-    Nearest_else_even(Nearest_else_even),
-    Toward_0(Toward_0),
-    Up(Up),
-}
 
 /// empty record, represented as unit
 pub type Record = ();
@@ -271,15 +255,6 @@ pub type Char = char;
 pub type Str = &'static str;
 pub type Fn<In, Out> = fn(In) -> Out;
 pub type Opt<Present> = Choice·Absent·Present<Record, Present>;
-pub type Round_mode =
-    Choice·Away_from_0·Down·Nearest_else_away_from_0·Nearest_else_even·Toward_0·Up<
-        Record,
-        Record,
-        Record,
-        Record,
-        Record,
-        Record,
-    >;
 
 #[derive(Debug)]
 pub struct Origin<LocalOrigin>(LocalOrigin);
@@ -1526,22 +1501,43 @@ pub fn f32_abs(n: F32) -> F32 {
 pub fn f32_negate(n: F32) -> F32 {
     -n
 }
-pub fn f32_round(Record·mode·n { mode, n }: Record·mode·n<Round_mode, F32>) -> F32 {
-    match mode {
-        Round_mode::Up(()) => n.ceil(),
-        Round_mode::Down(()) => n.floor(),
-        Round_mode::Away_from_0(()) => {
-            // I'm not convinced this is the fastest but since this is by far the
-            // most common implementation I've seen I'm hoping this gets optimized at least
-            n.abs().ceil() * n.signum()
-        }
-        Round_mode::Toward_0(()) => n.trunc(),
-        Round_mode::Nearest_else_away_from_0(()) => n.round(),
-        Round_mode::Nearest_else_even(()) => n.round_ties_even(),
-    }
+pub fn f32_round_up(n: F32) -> F32 {
+    n.ceil()
 }
-pub fn f32_to_i32_clamp(operation: Record·mode·n<Round_mode, F32>) -> I32 {
-    f32_round(operation) as I32
+pub fn f32_round_down(n: F32) -> F32 {
+    n.floor()
+}
+pub fn f32_round_toward_0(n: F32) -> F32 {
+    n.trunc()
+}
+pub fn f32_round_away_from_0(n: F32) -> F32 {
+    // I'm not convinced this is the fastest but since this is by far the
+    // most common implementation I've seen I'm hoping this gets optimized at least
+    n.abs().ceil() * n.signum()
+}
+pub fn f32_round_nearest_else_even(n: F32) -> F32 {
+    n.round_ties_even()
+}
+pub fn f32_round_nearest_else_away_from_0(n: F32) -> F32 {
+    n.round()
+}
+pub fn f32_round_up_to_i32_clamp(n: F32) -> I32 {
+    f32_round_up(n) as I32
+}
+pub fn f32_round_down_to_i32_clamp(n: F32) -> I32 {
+    f32_round_down(n) as I32
+}
+pub fn f32_round_toward_0_to_i32_clamp(n: F32) -> I32 {
+    n as I32
+}
+pub fn f32_round_away_from_0_to_i32_clamp(n: F32) -> I32 {
+    f32_round_away_from_0(n) as I32
+}
+pub fn f32_round_nearest_else_even_to_i32_clamp(n: F32) -> I32 {
+    f32_round_nearest_else_even(n) as I32
+}
+pub fn f32_round_nearest_else_away_from_0_to_i32_clamp(n: F32) -> I32 {
+    f32_round_nearest_else_away_from_0(n) as I32
 }
 
 pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> Record·a·b<Fn<In, Out>, Fn<In, Out>> {

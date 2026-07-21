@@ -50,19 +50,79 @@ test "various trivial" {
     try std.testing.expectEqual(-99, core.i32_mul_clamp(.{ .a = -11, .b = 9 }));
     try std.testing.expectEqual(0.6, core.f32_mul_clamp(.{ .a = -1.5, .b = -0.4 }));
 }
-test "f32 round ties even" {
-    try std.testing.expectEqual(-2, core.f32_round(.{ .n = -1.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(-2, core.f32_round(.{ .n = -1.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(-1, core.f32_round(.{ .n = -1.4, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(-1, core.f32_round(.{ .n = -0.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(0, core.f32_round(.{ .n = -0.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(0, core.f32_round(.{ .n = -0.4, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(0, core.f32_round(.{ .n = 0.4, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(0, core.f32_round(.{ .n = 0.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(1, core.f32_round(.{ .n = 0.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(1, core.f32_round(.{ .n = 1.4, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.5, .mode = core.Round_mode{ .nearest_else_even = {} } }));
-    try std.testing.expectEqual(2, core.f32_round(.{ .n = 1.6, .mode = core.Round_mode{ .nearest_else_even = {} } }));
+test "trivial rounding" {
+    try std.testing.expectEqual(-1, try core.f32_round_up(-1.5));
+    try std.testing.expectEqual(-1, try core.f32_round_up_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-2, try core.f32_round_down(-1.5));
+    try std.testing.expectEqual(-2, try core.f32_round_down_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-1, try core.f32_round_toward_0(-1.5));
+    try std.testing.expectEqual(1, try core.f32_round_toward_0(1.5));
+    try std.testing.expectEqual(-1, try core.f32_round_toward_0_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(1, try core.f32_round_toward_0_to_i32_clamp(1.5));
+    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_away_from_0(-1.5));
+    try std.testing.expectEqual(2, try core.f32_round_nearest_else_away_from_0(1.5));
+    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_away_from_0_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(2, try core.f32_round_nearest_else_away_from_0_to_i32_clamp(1.5));
+}
+test "f32_round_away_from_0" {
+    try std.testing.expectEqual(-2, try core.f32_round_away_from_0(-1.6));
+    try std.testing.expectEqual(-2, try core.f32_round_away_from_0(-1.5));
+    try std.testing.expectEqual(-2, try core.f32_round_away_from_0(-1.4));
+    try std.testing.expectEqual(-1, try core.f32_round_away_from_0(-0.6));
+    try std.testing.expectEqual(-1, try core.f32_round_away_from_0(-0.5));
+    try std.testing.expectEqual(-1, try core.f32_round_away_from_0(-0.4));
+    try std.testing.expectEqual(0, try core.f32_round_away_from_0(0.0));
+    try std.testing.expectEqual(1, try core.f32_round_away_from_0(0.4));
+    try std.testing.expectEqual(1, try core.f32_round_away_from_0(0.5));
+    try std.testing.expectEqual(1, try core.f32_round_away_from_0(0.6));
+    try std.testing.expectEqual(2, try core.f32_round_away_from_0(1.4));
+    try std.testing.expectEqual(2, try core.f32_round_away_from_0(1.5));
+    try std.testing.expectEqual(2, try core.f32_round_away_from_0(1.6));
+}
+test "f32_round_away_from_0_to_i32_clamp_to_i32_clamp" {
+    try std.testing.expectEqual(-2, try core.f32_round_away_from_0_to_i32_clamp(-1.6));
+    try std.testing.expectEqual(-2, try core.f32_round_away_from_0_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-2, try core.f32_round_away_from_0_to_i32_clamp(-1.4));
+    try std.testing.expectEqual(-1, try core.f32_round_away_from_0_to_i32_clamp(-0.6));
+    try std.testing.expectEqual(-1, try core.f32_round_away_from_0_to_i32_clamp(-0.5));
+    try std.testing.expectEqual(-1, try core.f32_round_away_from_0_to_i32_clamp(-0.4));
+    try std.testing.expectEqual(0, try core.f32_round_away_from_0_to_i32_clamp(0.0));
+    try std.testing.expectEqual(1, try core.f32_round_away_from_0_to_i32_clamp(0.4));
+    try std.testing.expectEqual(1, try core.f32_round_away_from_0_to_i32_clamp(0.5));
+    try std.testing.expectEqual(1, try core.f32_round_away_from_0_to_i32_clamp(0.6));
+    try std.testing.expectEqual(2, try core.f32_round_away_from_0_to_i32_clamp(1.4));
+    try std.testing.expectEqual(2, try core.f32_round_away_from_0_to_i32_clamp(1.5));
+    try std.testing.expectEqual(2, try core.f32_round_away_from_0_to_i32_clamp(1.6));
+}
+test "f32_round_nearest_else_even" {
+    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even(-1.6));
+    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even(-1.5));
+    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even(-1.4));
+    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even(-0.6));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(-0.5));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(-0.4));
+    try std.testing.expectEqual(0, try core.f32_round_away_from_0(0.0));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(0.4));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(0.5));
+    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even(0.6));
+    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even(1.4));
+    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even(1.5));
+    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even(1.6));
+}
+test "f32_round_nearest_else_even_to_i32_clamp" {
+    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even_to_i32_clamp(-1.6));
+    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even_to_i32_clamp(-1.4));
+    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even_to_i32_clamp(-0.6));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(-0.5));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(-0.4));
+    try std.testing.expectEqual(0, try core.f32_round_away_from_0(0.0));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(0.4));
+    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(0.5));
+    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even_to_i32_clamp(0.6));
+    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even_to_i32_clamp(1.4));
+    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.5));
+    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.6));
 }
 test "simple slot and span queries" {
     const ExampleOrigin = enum { vec };

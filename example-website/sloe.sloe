@@ -22,16 +22,27 @@ fn update
     .event event event
     :> _state Mouse-trail-origin >
     ? event
-    [|counter-clicked .] state
+    [|counter-clicked .] (
+        ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
+        .count (_u32-add-clamp .a count .b 1 u32)
+        .mouse-x old-mouse-x
+        .mouse-y old-mouse-y
+        .mouse-trail mouse-trail
+        .mouse-trail-span mouse-trail-span
+        )
     [|mouse-moved .x new-mouse-x .y new-mouse-y] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
-        ? _vec-opt-span-add .vec mouse-trail .span mouse-trail-span .new (.x old-mouse-x .y old-mouse-y)
+        ?
+            _vec-opt-span-add
+            .vec mouse-trail
+            .span mouse-trail-span
+            .new (.x old-mouse-x .y old-mouse-y)
         [.vec mouse-trail .span mouse-trail-span]
-            .count count
-            .mouse-x new-mouse-x
-            .mouse-y new-mouse-y
-            .mouse-trail mouse-trail
-            .mouse-trail-span |present<_opt _span Mouse-trail-origin> mouse-trail-span
+        .count count
+        .mouse-x new-mouse-x
+        .mouse-y new-mouse-y
+        .mouse-trail mouse-trail
+        .mouse-trail-span |present<_opt _span Mouse-trail-origin> mouse-trail-span
         )
 
 fn view
@@ -62,7 +73,9 @@ fn view
     ?
         _vec-add
         .vec modifiers
-        .new |on-mouse-move<_modifier event, Chars> [mouse-position .x u32 .y u32] |mouse-moved<event> mouse-position
+        .new
+            |on-mouse-move<_modifier event, Chars>
+            [mouse-position .x u32 .y u32] |mouse-moved<event> mouse-position
     [.vec modifiers .slot main-modifiers]
     ?
         _vec-span-add

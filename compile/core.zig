@@ -198,9 +198,6 @@ pub fn @"|contained|overflowed"(@"%Contained": type, @"%Overflowed": type) type 
 pub fn @"|absent|present"(@"%Absent": type, @"%Present": type) type {
     return union(enum) { absent: @"%Absent", present: @"%Present" };
 }
-pub fn @"|away_from_0|down|nearest_else_away_from_0|nearest_else_even|toward_0|up"(@"%Away_from_0": type, @"%Down": type, @"%Nearest_else_away_from_0": type, @"%Nearest_else_even": type, @"%Toward_0": type, @"%Up": type) type {
-    return union(enum) { away_from_0: @"%Away_from_0", down: @"%Down", nearest_else_away_from_0: @"%Nearest_else_away_from_0", nearest_else_even: @"%Nearest_else_even", toward_0: @"%Toward_0", up: @"%Up" };
-}
 
 pub const P32 = struct {
     // zig does not have non-zero number types, yet.
@@ -248,7 +245,6 @@ pub fn Fn(@"%In": type, @"%Out": type) type {
 pub fn Opt(@"%Present": type) type {
     return @"|absent|present"(void, @"%Present");
 }
-pub const Round_mode = @"|away_from_0|down|nearest_else_away_from_0|nearest_else_even|toward_0|up"(void, void, void, void, void, void);
 
 fn u32AddOrOutOfMem(a: u32, b: u32) error{OutOfMemory}!u32 {
     const sum, const overflow = @addWithOverflow(a, b);
@@ -1029,44 +1025,63 @@ pub fn f32_rid(_: F32) error{OutOfMemory}!void {}
 pub fn f32_dup(@"%n": F32) error{OutOfMemory}!@".a.b"(F32, F32) {
     return .{ .a = @"%n", .b = @"%n" };
 }
-pub fn f32_negate(@"%n": F32) F32 {
+pub fn f32_negate(@"%n": F32) error{OutOfMemory}!F32 {
     return -@"%n";
 }
 pub fn f32_abs(@"%n": F32) error{OutOfMemory}!F32 {
     return @abs(@"%n");
 }
-pub fn f32_round(@"%": @".mode.n"(Round_mode, F32)) error{OutOfMemory}!F32 {
-    return switch (@"%".mode) {
-        .up => @ceil(@"%".n),
-        .down => @floor(@"%".n),
-        .toward_0 => @trunc(@"%".n),
-        .away_from_0 => @ceil(@abs(@"%".n)) * std.math.sign(@"%".n),
-        .nearest_else_away_from_0 => @round(@"%".n),
-        .nearest_else_even => {
-            // your move zig. Please add an intrinsic
-            const @"%mod" = std.math.modf(@"%".n);
-            return if (@"%mod".fpart == 0.0) @"%".n
-                // @"%".n is on the midpoint
-            else if (@abs(@"%mod".fpart) == 0.5)
-                (
-                    // @"%".n is on the midpoint
-                    if (@mod(@"%mod".ipart, 2) == 1)
-                        // is odd
-                        //  11.5 ->  12
-                        // -11.5 -> -12
-                        @round(@"%".n)
-                    else
-                        // @"%".n is even
-                        //  10.5 ->  10, not  11
-                        // -10.5 -> -10, not -11
-                        (@round(@"%".n) - std.math.sign(@"%".n)))
-            else
-                @round(@"%".n);
-        },
-    };
+pub fn f32_round_up(@"%n": F32) error{OutOfMemory}!F32 {
+    return @ceil(@"%n");
 }
-pub fn f32_to_i32_clamp(@"%": @".mode.n"(Round_mode, F32)) error{OutOfMemory}!I32 {
-    return std.math.lossyCast(i32, f32_round(@"%"));
+pub fn f32_round_down(@"%n": F32) error{OutOfMemory}!F32 {
+    return @floor(@"%n");
+}
+pub fn f32_round_toward_0(@"%n": F32) error{OutOfMemory}!F32 {
+    return @trunc(@"%n");
+}
+pub fn f32_round_away_from_0(@"%n": F32) error{OutOfMemory}!F32 {
+    return @ceil(@abs(@"%n")) * std.math.sign(@"%n");
+}
+pub fn f32_round_nearest_else_away_from_0(@"%n": F32) error{OutOfMemory}!F32 {
+    return @round(@"%n");
+}
+pub fn f32_round_nearest_else_even(@"%n": F32) error{OutOfMemory}!F32 {
+    // your move zig. Please add an intrinsic
+    const @"%mod" = std.math.modf(@"%n");
+    return if (@"%mod".fpart == 0.0) @"%n" else if (@abs(@"%mod".fpart) == 0.5)
+        (
+            // @"%n" is on the midpoint
+            if (@mod(@"%mod".ipart, 2) == 1)
+                // is odd
+                //  11.5 ->  12
+                // -11.5 -> -12
+                @round(@"%n")
+            else
+                // @"%n" is even
+                //  10.5 ->  10, not  11
+                // -10.5 -> -10, not -11
+                (@round(@"%n") - std.math.sign(@"%n")))
+    else
+        @round(@"%n");
+}
+pub fn f32_round_up_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
+    return std.math.lossyCast(i32, try f32_round_up(@"%n"));
+}
+pub fn f32_round_down_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
+    return std.math.lossyCast(i32, try f32_round_down(@"%n"));
+}
+pub fn f32_round_toward_0_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
+    return std.math.lossyCast(i32, try f32_round_toward_0(@"%n"));
+}
+pub fn f32_round_away_from_0_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
+    return std.math.lossyCast(i32, try f32_round_away_from_0(@"%n"));
+}
+pub fn f32_round_nearest_else_away_from_0_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
+    return std.math.lossyCast(i32, try f32_round_nearest_else_away_from_0(@"%n"));
+}
+pub fn f32_round_nearest_else_even_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
+    return std.math.lossyCast(i32, try f32_round_nearest_else_even(@"%n"));
 }
 pub fn f32_add_clamp(@"%": @".a.b"(F32, F32)) error{OutOfMemory}!F32 {
     const @"%sum" = @"%".a + @"%".b;

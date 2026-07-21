@@ -560,6 +560,8 @@ cargo install --offline --debug --path . sloe
 
 - upgrade syn to 3.0.0
 
+- add more math and maybe bit operations
+
 - honestly think about replacing kebab-case with camelCase/PascalCase.
   while I do much prefer the typing experience of kebab-case,
   camelCase is shorter (!!), think
