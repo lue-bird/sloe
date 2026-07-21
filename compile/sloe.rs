@@ -3,7 +3,7 @@
 use gen_lsp_types as lsp_types;
 pub mod core;
 
-pub type Name = compact_str::CompactString;
+pub type Name = kstring::KString;
 #[derive(Clone, Copy, Debug)]
 pub struct WithStartPosition<Value> {
     pub value: Value,
@@ -1038,7 +1038,7 @@ fn parse_sloe_lowercase_name(state: &mut ParseState) -> Option<Name> {
         let parsed_str: &str = &state.source[state.offset_utf8..end_offset_utf8];
         state.offset_utf8 = end_offset_utf8;
         state.position.character += parsed_str.encode_utf16().count() as u32;
-        Some(Name::from(parsed_str))
+        Some(Name::from_ref(parsed_str))
     } else {
         None
     }
@@ -1069,7 +1069,7 @@ fn parse_sloe_uppercase_name(state: &mut ParseState) -> Option<Name> {
         let parsed_str: &str = &state.source[state.offset_utf8..end_offset_utf8];
         state.offset_utf8 = end_offset_utf8;
         state.position.character += parsed_str.encode_utf16().count() as u32;
-        Some(Name::from(parsed_str))
+        Some(Name::from_ref(parsed_str))
     } else {
         None
     }
@@ -3922,7 +3922,7 @@ pub fn syntax_type_check<Types>(
                 };
                 if field_types
                     .iter()
-                    .any(|type_field| type_field.name == field_name)
+                    .any(|type_field| &type_field.name == field_name)
                 {
                     errors.push(ErrorNode {
                         range: optional_field_name_range(&field.name),
@@ -4015,7 +4015,7 @@ pub fn syntax_type_check<Types>(
                 };
                 if variant_types
                     .iter()
-                    .any(|type_variant| type_variant.name == variant_name)
+                    .any(|type_variant| &type_variant.name == variant_name)
                 {
                     errors.push(ErrorNode {
                         range: optional_variant_name_range(&syntax_variant.name),
@@ -4878,7 +4878,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     };
                     let Some(expected_value_type) =
                         origin_choice_type_variants.iter().find_map(|variant| {
-                            if variant.name == name_value {
+                            if &variant.name == name_value {
                                 Some(&variant.value)
                             } else {
                                 None
@@ -4983,7 +4983,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         };
                         if type_fields
                             .iter()
-                            .any(|type_field| type_field.name == field_name_value)
+                            .any(|type_field| &type_field.name == field_name_value)
                         {
                             errors.push(ErrorNode {
                                 range: field_name_range(WithStartPosition {
@@ -5006,7 +5006,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                             maybe_expected_type_record.and_then(|expected_record_type| {
                                 expected_record_type
                                     .iter()
-                                    .find(|expected_field| expected_field.name == field_name_value)
+                                    .find(|expected_field| &expected_field.name == field_name_value)
                                     .map(|expected_field| &expected_field.value)
                             }),
                             errors,
@@ -5271,7 +5271,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     };
                     let Some(expected_value_type) =
                         origin_choice_type_variants.iter().find_map(|variant| {
-                            if variant.name == name_value {
+                            if &variant.name == name_value {
                                 Some(&variant.value)
                             } else {
                                 None
@@ -5345,7 +5345,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                             maybe_expected_type_record.and_then(|expected_record_type| {
                                 expected_record_type
                                     .iter()
-                                    .find(|expected_field| expected_field.name == field_name_value)
+                                    .find(|expected_field| &expected_field.name == field_name_value)
                                     .map(|expected_field| &expected_field.value)
                             }),
                             introduced_variables,
@@ -5975,7 +5975,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 return None;
             };
             let Some(expected_value_type) = origin_choice_type.iter().find_map(|variant| {
-                if variant.name == name_value {
+                if &variant.name == name_value {
                     Some(&variant.value)
                 } else {
                     None
@@ -8784,11 +8784,11 @@ fn syn_expr_reference<const N: usize>(segments: [&str; N]) -> syn::Expr {
 }
 
 const fn type_variable(name: &'static str) -> Type {
-    Type::Variable(Name::const_new(name))
+    Type::Variable(Name::from_static(name))
 }
 fn type_fn(in_: Type, out: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("fn"),
+        name: Name::from_static("fn"),
         arguments: vec![in_, out],
     }
 }
@@ -8797,7 +8797,7 @@ fn type_record(fields: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
         fields
             .into_iter()
             .map(|(field_name, field_value)| TypeField {
-                name: Name::const_new(field_name),
+                name: Name::from_static(field_name),
                 value: field_value,
             })
             .collect(),
@@ -8808,75 +8808,75 @@ fn type_choice(variants: impl IntoIterator<Item = (&'static str, Type)>) -> Type
         variants
             .into_iter()
             .map(|(variant_name, variant_value)| TypeVariant {
-                name: Name::const_new(variant_name),
+                name: Name::from_static(variant_name),
                 value: variant_value,
             })
             .collect(),
     )
 }
 const type_p32: Type = Type::CoreConstruct {
-    name: Name::const_new("p32"),
+    name: Name::from_static("p32"),
     arguments: vec![],
 };
 const type_u32: Type = Type::CoreConstruct {
-    name: Name::const_new("u32"),
+    name: Name::from_static("u32"),
     arguments: vec![],
 };
 const type_i32: Type = Type::CoreConstruct {
-    name: Name::const_new("i32"),
+    name: Name::from_static("i32"),
     arguments: vec![],
 };
 const type_f32: Type = Type::CoreConstruct {
-    name: Name::const_new("f32"),
+    name: Name::from_static("f32"),
     arguments: vec![],
 };
 const type_char: Type = Type::CoreConstruct {
-    name: Name::const_new("char"),
+    name: Name::from_static("char"),
     arguments: vec![],
 };
 const type_str: Type = Type::CoreConstruct {
-    name: Name::const_new("str"),
+    name: Name::from_static("str"),
     arguments: vec![],
 };
 fn type_origin(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("origin"),
+        name: Name::from_static("origin"),
         arguments: vec![origin],
     }
 }
 fn type_vec(origin: Type, element: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("vec"),
+        name: Name::from_static("vec"),
         arguments: vec![origin, element],
     }
 }
 fn type_slot(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("slot"),
+        name: Name::from_static("slot"),
         arguments: vec![origin],
     }
 }
 fn type_unset_slot(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("unset-slot"),
+        name: Name::from_static("unset-slot"),
         arguments: vec![origin],
     }
 }
 fn type_span(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("span"),
+        name: Name::from_static("span"),
         arguments: vec![origin],
     }
 }
 fn type_unset_span(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("unset-span"),
+        name: Name::from_static("unset-span"),
         arguments: vec![origin],
     }
 }
 fn type_unset_slice(element: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::const_new("unset-slice"),
+        name: Name::from_static("unset-slice"),
         arguments: vec![element],
     }
 }
@@ -9443,7 +9443,7 @@ See also `unset-span-start-of-length-positive`, `unset-span-end`.",
             CoreFnInfo {
                 name: "vec-empty",
                 documentation: "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add`, `vec-add-unset` etc.",
-                type_parameters: vec![Name::const_new("Element")],
+                type_parameters: vec![Name::from_static("Element")],
                 parameter_type: type_origin(type_variable("Origin")),
                 result_type: type_vec(type_variable("Origin"), type_variable("Element")),
             },
@@ -10186,7 +10186,7 @@ To reuse the underlying allocation, use `vec-to-unset`",
                 name: "unset-slice-allocate-length",
                 documentation: "Create a new `unset-slice` with a given length.
 There rarely is a need to use this except when a function expects an `unset-slice` as an argument",
-                type_parameters: vec![Name::const_new("Element")],
+                type_parameters: vec![Name::from_static("Element")],
                 parameter_type: type_u32,
                 result_type: type_unset_slice(type_variable("Element")),
             },
@@ -10222,7 +10222,7 @@ which is a bit of a stinker. The reasons are:
   For growing alignments, this is only possible at runtime
   when the slice pointer happens to align correctly
 - sloe has a simple type system so I'm happy such a compromise can exist at all"#,
-                type_parameters: vec![Name::const_new("NewElement")],
+                type_parameters: vec![Name::from_static("NewElement")],
                 parameter_type: type_unset_slice(type_variable("Element")),
                 result_type: type_unset_slice(type_variable("NewElement"))
             },
@@ -10239,7 +10239,7 @@ fn hand-warmer-in-debug-mode . :> . >
             },
         ].map(|core_fn_info| {
             (
-                Name::const_new(core_fn_info.name),
+                Name::from_static(core_fn_info.name),
                 CheckedProjectFn {
                     documentation: Some(Box::from(core_fn_info.documentation)),
                     type_parameters: core_fn_info.type_parameters,
@@ -10255,7 +10255,7 @@ pub static core_type_aliases: std::sync::LazyLock<
 > = std::sync::LazyLock::new(|| {
     std::collections::HashMap::from([
         (
-            Name::const_new("p32"),
+            Name::from_static("p32"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10270,7 +10270,7 @@ fn answer . :> p32 >
             },
         ),
         (
-            Name::const_new("u32"),
+            Name::from_static("u32"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10285,7 +10285,7 @@ fn answer . :> u32 >
             },
         ),
         (
-            Name::const_new("i32"),
+            Name::from_static("i32"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10300,7 +10300,7 @@ fn answer . :> i32 >
             },
         ),
         (
-            Name::const_new("f32"),
+            Name::from_static("f32"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10316,7 +10316,7 @@ fn answer . :> f32 >
             },
         ),
         (
-            Name::const_new("char"),
+            Name::from_static("char"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10334,7 +10334,7 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
             },
         ),
         (
-            Name::const_new("str"),
+            Name::from_static("str"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10347,18 +10347,18 @@ When building strings, use functions like `vec-char-opt-span-add-str`."#,
             },
         ),
         (
-            Name::const_new("opt"),
+            Name::from_static("opt"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     r"Either you have some value or you have nothing.",
                 )),
-                parameters: vec![Name::const_new("A")],
+                parameters: vec![Name::from_static("A")],
                 type_: Some(type_opt(type_variable("A"))),
             },
         ),
         (
-            Name::const_new("origin"),
+            Name::from_static("origin"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10368,12 +10368,12 @@ This is not possible for values of type `origin`.
 The type argument to an `origin` is the type that also gets created with `origin some-origin expression`.
 This type argument is also used in slot, span, arena, vec as the first type argument."
                 )),
-                parameters: vec![Name::const_new("LocalOrigin")],
+                parameters: vec![Name::from_static("LocalOrigin")],
                 type_: Some(type_origin(type_variable("LocalOrigin"))),
             },
         ),
         (
-            Name::const_new("vec"),
+            Name::from_static("vec"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10388,12 +10388,12 @@ fn use-a-vec . u32
     first-element # = 609 u32
 ```"
                 )),
-                parameters: vec![Name::const_new("Origin"), Name::const_new("Element")],
+                parameters: vec![Name::from_static("Origin"), Name::from_static("Element")],
                 type_: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
             },
         ),
         (
-            Name::const_new("slot"),
+            Name::from_static("slot"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10401,12 +10401,12 @@ fn use-a-vec . u32
 This works because each collection has a unique origin and only gives out one slot for each position.
 For consecutive `slot`s, check out `span`."
                 )),
-                parameters: vec![Name::const_new("Origin")],
+                parameters: vec![Name::from_static("Origin")],
                 type_: Some(type_slot(type_variable("Origin"))),
             },
         ),
         (
-            Name::const_new("span"),
+            Name::from_static("span"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10414,12 +10414,12 @@ For consecutive `slot`s, check out `span`."
 This works because each collection has a unique origin and only gives out one span for each range.
 For potentially 0-length spans, use `_opt _span Origin`"
                 )),
-                parameters: vec![Name::const_new("Origin")],
+                parameters: vec![Name::from_static("Origin")],
                 type_: Some(type_span(type_variable("Origin"))),
             },
         ),
         (
-            Name::const_new("unset-slot"),
+            Name::from_static("unset-slot"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10427,12 +10427,12 @@ For potentially 0-length spans, use `_opt _span Origin`"
 It's similar to what languages use uninitialized memory/undefined for.
 As this prevents another element from filling this position, you shouldn't keep it around for too long."
                 )),
-                parameters: vec![Name::const_new("Origin")],
+                parameters: vec![Name::from_static("Origin")],
                 type_: Some(type_unset_slot(type_variable("Origin"))),
             },
         ),
         (
-            Name::const_new("unset-span"),
+            Name::from_static("unset-span"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10440,12 +10440,12 @@ As this prevents another element from filling this position, you shouldn't keep 
 It's similar to what languages use uninitialized memory/undefined for.
 As this prevents other elements from filling these positions, you shouldn't keep it around for too long."
                 )),
-                parameters: vec![Name::const_new("Origin")],
+                parameters: vec![Name::from_static("Origin")],
                 type_: Some(type_unset_span(type_variable("Origin"))),
             },
         ),
         (
-            Name::const_new("fn"),
+            Name::from_static("fn"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
@@ -10461,7 +10461,7 @@ fn three . :> . >
     _increment 2
 ```"
                 )),
-                parameters: vec![Name::const_new("In"), Name::const_new("Out")],
+                parameters: vec![Name::from_static("In"), Name::from_static("Out")],
                 type_: Some(type_fn(type_variable("In"), type_variable("Out"))),
             },
         ),
@@ -12876,7 +12876,7 @@ fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
                             expected_variants.iter().find(|expected_variant| {
                                 name.value
                                     .as_ref()
-                                    .is_some_and(|name_value| name_value == expected_variant.name)
+                                    .is_some_and(|name_value| name_value == &expected_variant.name)
                             })
                         }
                         _ => None,
@@ -12902,7 +12902,7 @@ fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
                                     Type::Record(expected_fields) => {
                                         expected_fields.iter().find(|expected_field| {
                                             name.value.as_ref().is_some_and(|field_name_value| {
-                                                field_name_value == expected_field.name
+                                                field_name_value == &expected_field.name
                                             })
                                         })
                                     }
@@ -13022,7 +13022,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                             Type::Choice(expected_variants) => {
                                 expected_variants.iter().find(|expected_variant| {
                                     name.value.as_ref().is_some_and(|name_value| {
-                                        name_value == expected_variant.name
+                                        name_value == &expected_variant.name
                                     })
                                 })
                             }
@@ -13052,7 +13052,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                                 Type::Record(expected_fields) => {
                                     expected_fields.iter().find(|expected_field| {
                                         name.value.as_ref().is_some_and(|field_name_value| {
-                                            field_name_value == expected_field.name
+                                            field_name_value == &expected_field.name
                                         })
                                     })
                                 }
@@ -13300,7 +13300,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 type_: _,
             } => {
                 if let Some(type_alias_name) = type_alias_name
-                    && type_alias_name.value == symbol_name.value
+                    && &type_alias_name.value == symbol_name.value
                 {
                     Some(name_range(with_start_position_as_ref(type_alias_name)))
                 } else {
@@ -13319,7 +13319,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
             value: name,
             start: origin.start,
         })),
-        SyntaxSymbol::TypeVariable {
+        &SyntaxSymbol::TypeVariable {
             name: symbol_name,
             use_start: _,
             scope,
@@ -13339,7 +13339,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                             .filter_map(|parameter| parameter.name.as_ref()),
                     )
                     .find_map(|parameter| {
-                        if parameter.value == symbol_name {
+                        if &parameter.value == symbol_name {
                             Some(name_range(with_start_position_as_ref(parameter)))
                         } else {
                             None
@@ -13367,7 +13367,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                             .filter_map(|parameter| parameter.name.as_ref()),
                     )
                     .find_map(|parameter| {
-                        if parameter.value == symbol_name {
+                        if &parameter.value == symbol_name {
                             Some(name_range(with_start_position_as_ref(parameter)))
                         } else {
                             None
@@ -13393,7 +13393,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 angle_right_start: _,
                 documentation: _,
                 result: _,
-            } if fn_name.value == symbol_name.value => {
+            } if &fn_name.value == symbol_name.value => {
                 Some(name_range(with_start_position_as_ref(fn_name)))
             }
             _ => None,
@@ -13667,12 +13667,12 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
 ) {
     match type_ {
         SyntaxType::Variable(name) => {
-            if let SyntaxSymbol::TypeVariable {
+            if let &SyntaxSymbol::TypeVariable {
                 name: symbol_name,
                 use_start: _,
                 scope: _,
             } = symbol
-                && name.value == symbol_name
+                && &name.value == symbol_name
             {
                 uses.push(name_range(with_start_position_as_ref(name)));
             }
@@ -13710,12 +13710,12 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxType::ConstructWithoutArguments(name) => {
-            if let SyntaxSymbol::ProjectTypeOrUnknown {
+            if let &SyntaxSymbol::ProjectTypeOrUnknown {
                 name: symbol_name,
                 construct_info: _,
                 origins: _,
             } = symbol
-                && name.value == symbol_name.value
+                && &name.value == symbol_name.value
                 && !origins.contains(&name.value)
             {
                 uses.push(name_range(with_start_position_as_ref(name)));
@@ -13733,7 +13733,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
                     construct_info: _,
                     origins: _,
                 } = symbol
-                && name.value == symbol_name.value
+                && &name.value == symbol_name.value
             {
                 uses.push(name_range(with_start_position_as_ref(name)));
             }
@@ -13882,7 +13882,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 pattern_variables: _,
                 origins: _,
             } => {
-                if symbol_name == &name.value
+                if *symbol_name == &name.value
                     && !pattern_variables.contains(&name.value)
                     && !origins.contains(&name.value)
                 {
@@ -13917,7 +13917,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         pattern_variables: _,
                         origins: _,
                     } => {
-                        if symbol_name == &name.value
+                        if *symbol_name == &name.value
                             && !pattern_variables.contains(&name.value)
                             && !origins.contains(&name.value)
                         {
@@ -14132,7 +14132,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         use_start: _,
                         origin: _,
                     } = symbol
-                        && symbol_name == &introduced_origin_name.value
+                        && *symbol_name == &introduced_origin_name.value
                     {
                         return;
                     }

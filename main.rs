@@ -444,7 +444,7 @@ For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
                     input_file_path = input_file_path.to_string_lossy(),
                     span_start_line = output_error.range.start.line + 1,
                     span_start_column = output_error.range.start.character + 1,
-                    message = &output_error.message
+                    message = output_error.message
                 );
             }
             let output_rust_file_string: String =
@@ -577,7 +577,7 @@ fn server_loop<Expressions, Patterns, Types>(
                     lsp_types::LspRequestMethod::from(request.method.as_str()),
                     request.params,
                 ) {
-                    eprintln!("request {} failed: {error}", &request.method);
+                    eprintln!("request {} failed: {error}", request.method);
                 }
             }
             lsp_server::Message::Notification(notification) => {
@@ -1116,7 +1116,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::Fn {
                     name: Some(fn_name),
                     ..
-                } if fn_name.value == symbol_name.value => {
+                } if &fn_name.value == symbol_name.value => {
                     Some(sloe::name_range(sloe::with_start_position_as_ref(fn_name)))
                 }
                 _ => None,
@@ -1133,7 +1133,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
                 sloe::SyntaxProjectElement::TypeAlias {
                     name: Some(type_alias_name),
                     ..
-                } if type_alias_name.value == symbol_name.value => Some(sloe::name_range(
+                } if &type_alias_name.value == symbol_name.value => Some(sloe::name_range(
                     sloe::with_start_position_as_ref(type_alias_name),
                 )),
                 _ => None,
