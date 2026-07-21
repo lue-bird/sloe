@@ -7,7 +7,7 @@ path = "sloe.rs"
 
 [dependencies]
 gen-lsp-types = "0.9.0"
-kstring = { version = "2.0.4", features = ["max_inline"], default-features = false }
+kstring = { version = "2.0.4", features = ["max_inline"] }
 prettyplease = { version = "0.3.0", default-features = false }
 proc-macro2 = { version = "1.0.106", default-features = false }
 quote = { version = "1.0.44", default-features = false }
