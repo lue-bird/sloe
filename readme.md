@@ -299,7 +299,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
 
 # potential improvements in the future
-- when type or function construct or a call argument already exists, do not complete as (_ .some . .other .)
 - add field and variant rename and references
 - add "add remaining query cases" code action
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
@@ -351,7 +350,14 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   ```
   This is likely the better option anyway (even though it "hops twice")
   as it makes searching for the right span possible (and reasonably fast)
-- introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html), maybe even alongside `in-a-to-z`, `in-0-to-9` and other choice types). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the reverse operations which return `opt`
+- introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`.
+  remove `'c'` syntax in favor of `"c" char/ascii`
+- (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
+  `!str-to-u32 "3"` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`)
+- (probably not that good of an idea) consider not counting function calls as using up a function variable.
+  The disadvantage is that "overplacing" a variable step-wise doesn't work anymore
+  if not wrapped somehow. Maybe a small price to pay
+  And where no `Length` field can be instantiated
 - (not fully sure) Add explicit field punning syntax:
   Add pattern syntax `_` (untyped) / `_ value-type` (typed) (and maybe expression syntax `_`) where `_` behaves like a variable with the name of the parent.
   So e.g. `.field (_ value-type)` would introduce a variable named `field`.
@@ -364,7 +370,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   explicit, I feel users deserve some sugar for their effort.
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
-- rust does not support (in std) a way to split/resize/drain a Box<[]> which is a real shame IMO because this could e.g. allow reusing a bigger allocation for smaller parts. Think this API (which would be possible if sloe only targetted zig):
+- rust does not support (in std) a way to split/resize/drain a Box<[]> which is a shame IMO because this could e.g. allow reusing a bigger allocation for smaller parts. Think this API:
   ```sloe
   fn unset-slice-rid-end
       .slice _unset-slice Element .length u32 :> _unset-slice Element
@@ -400,6 +406,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
     - most bytes are 3/4th 0s because ascii is so common. wasted space is bad for the cache and memory usage
   If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `vec _ char` is a much nicer API to work with
+- find a way to do stack-allocated arrays, especially for temoprary many-element add/insert
+- zig-only: store an allocator within an origin (but! what about unset_slice? That one should probably store an allocator, too, and re-allocate if the vec origin allocator reference differs. I think this can be slightly unintuitive for sloe users but should in practice be okay). This achieves that origins created from within sloe code are arena-allocated and origins from user code are (usually) not
 - (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
 - (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
@@ -524,17 +532,33 @@ a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly
 "Positionality" in general is pretty much absent in sloe. E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
 Sloe had positional arguments once, largely because the rust-sloe interface is simpler in rust with positional arguments.
 
+## unnecessary features in sloe
+Features I've added which are fully replacible by other existing features.
+If you're looking to learn from sloe, maybe do not learn from these:
+
+- record spread. It provides an alternative syntax sugar for something that could already be expressed. I originally introduced it to make builders like string builers less jarring
+  but I'm not so sure this worked.
+  I'm on the fence; if you have complaints I'll remove this feature
+- nested pattern matching.
+  It's existence makes compilation, exhaustiveness-checking, error messages and flow-typing-like matching (e.g. matching |a in <|a|b|c> leaving |b|c) harder.
+  It also creates a "two modes of matching" problem: You e.g. can't match on numbers, chars, strings, span start and lengths etc. And so you sometimes need an extra step, leading to nested matches anyway (does not feel consistent).
+  It also "takes control from the user int othe magic hands of the compiler" and thus it may run checks etc. in a different order than you have.
+  I originally introduced it to make e.g. matching on multiple `opt`s easier.
+  It helps keep context clear and visible like "if the left sub is empty and the right sub is a branch with an empty left side, do this".
+  Honestly I should not have been so hasty to add this feature
+
+
 # general quetions you might have
 
 ## does sloe fill any niche well enough to be worth it?
-Domains where languages like safe rust, C#, roc, swift, safe haskell, maybe go stand today:
-  - not extensive enough to have any place in systems programming,
+I'd say domains where languages like safe rust, C#, swift, go, nim stand today:
+  - not extensive enough to have a place in bare systems programming,
     but comfortably sitting on top of a somewhat thin platform layer.
-  - not as easy to (ab)use as scripting languages like python, gleam, prolog, elm, lua, etc.
+  - not as easy to use as scripting languages like python, gleam, lua, elm, prolog, etc.
   - mainly used for applications or similar where maintainability and being easy to reason about is important
 
 Don't be afraid to program in a language sloe compiles to for tasks sloe feels annoying to use for.
-E.g. I imagine writing a recursive file watcher in sloe
+E.g. I imagine writing a recursive file watcher in sloe is not fun, so just "outsource" it :)
 
 ## why put work into transpiling to existing languages
 The best user experience interfacing with sloe code from existing system-level languages
@@ -558,9 +582,9 @@ cargo install --offline --debug --path . sloe
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- upgrade syn to 3.0.0
-
 - add more math and maybe bit operations
+
+- change `str` to mean non-empty string. This is more annoying for FFI (needs a wrapper over str/[]u8) but I think overall this is okay especially since memory efficiency is the same
 
 - honestly think about replacing kebab-case with camelCase/PascalCase.
   while I do much prefer the typing experience of kebab-case,

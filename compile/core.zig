@@ -277,8 +277,8 @@ pub fn Origin(@"%Origin": type) type {
 }
 pub fn Slot_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
     return struct {
-        origin: @"%Origin",
         index: u32,
+        const origin = @"%Origin";
         const occupancy = @"%Occupancy";
         pub fn to_span(@"%slot": @This()) Span_with_occupancy(@"%Origin", @"%Occupancy") {
             return .{ .start = @"%slot", .length = P32.one };
@@ -311,10 +311,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                 .start = @"%span".start,
                 .end = if (P32.fromU32(@"%span".length.predecessor())) |@"%end_length"|
                     .{ .present = .{
-                        .start = .{
-                            .origin = @"%span".start.origin,
-                            .index = try u32AddOrOutOfMem(@"%span".start.index, 1),
-                        },
+                        .start = .{ .index = try u32AddOrOutOfMem(@"%span".start.index, 1) },
                         .length = @"%end_length",
                     } }
                 else
@@ -326,7 +323,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
         ) {
             return .{
-                .end = .{ .origin = @"%span".start.origin, .index = try @"%span".endIndex() },
+                .end = .{ .index = try @"%span".endIndex() },
                 .start = if (P32.fromU32(@"%span".length.predecessor())) |@"%start_length"|
                     .{ .present = .{
                         .start = @"%span".start,
@@ -348,10 +345,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                 .start = .{ .start = @"%span".start, .length = @"%start_length" },
                 .after = if (P32.fromU32(@"%span".length.positive - @"%start_length".positive)) |@"%after_length_positive"| .{
                     .present = .{
-                        .start = .{
-                            .origin = @"%span".start.origin,
-                            .index = @"%span".start.index + @"%start_length".positive,
-                        },
+                        .start = .{ .index = @"%span".start.index + @"%start_length".positive },
                         .length = @"%after_length_positive",
                     },
                 } else .{ .absent = {} },
@@ -368,10 +362,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             const @"%before_length" = @"%span".length.positive - @"%end_length".positive;
             return .{
                 .end = .{
-                    .start = .{
-                        .origin = @"%span".start.origin,
-                        .index = @"%span".start.index + @"%before_length",
-                    },
+                    .start = .{ .index = @"%span".start.index + @"%before_length" },
                     .length = @"%end_length",
                 },
                 .before = if (P32.fromU32(@"%before_length")) |@"%before_length_positive"| .{
@@ -391,7 +382,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             for (@"%span".start.index..(try @"%span".length.addOrOutOfMem(@"%span".start.index)).positive) |index| {
                 @"%state" = try @"%step"(.{
                     .state = @"%state",
-                    .slot = .{ .origin = @"%span".start.origin, .index = std.math.lossyCast(u32, index) },
+                    .slot = .{ .index = std.math.lossyCast(u32, index) },
                 });
             }
             return @"%state";
@@ -504,7 +495,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%new_element": @"%Element",
         ) error{OutOfMemory}!Slot(@"%Origin") {
             const @"%new_slot" = Slot(@"%Origin"){
-                .origin = @"%vec".origin,
                 .index = std.math.lossyCast(u32, @"%vec".elements.items.len),
             };
             try @"%vec".elements.append(@"%allocator", @"%new_element");
@@ -515,7 +505,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
         ) error{OutOfMemory}!Unset_slot(@"%Origin") {
             const @"%new_slot" = Unset_slot(@"%Origin"){
-                .origin = @"%vec".origin,
                 .index = std.math.lossyCast(u32, @"%vec".elements.items.len),
             };
             try @"%vec".elements.append(@"%allocator", undefined);
@@ -541,7 +530,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             const @"%start" = @"%vec".elements.items.len;
             try @"%vec".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%vec".elements.items.len, @"%length".positive));
             return Unset_span(@"%Origin"){
-                .start = .{ .origin = @"%vec".origin, .index = try (std.math.cast(u32, @"%start") orelse error.OutOfMemory) },
+                .start = .{ .index = try (std.math.cast(u32, @"%start") orelse error.OutOfMemory) },
                 .length = @"%length",
             };
         }
@@ -592,7 +581,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             const @"%accessed_element" = @"%vec".element(@"%slot").*;
             return .{
                 .element = @"%accessed_element",
-                .slot = .{ .origin = @"%slot".origin, .index = @"%slot".index },
+                .slot = .{ .index = @"%slot".index },
             };
         }
         pub fn set(
@@ -601,7 +590,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%new": @"%Element",
         ) Slot(@"%Origin") {
             @"%vec".elements.items[@"%slot".index] = @"%new";
-            return .{ .origin = @"%slot".origin, .index = @"%slot".index };
+            return .{ .index = @"%slot".index };
         }
         // The given span is invalid while the returned slice is live.
         pub fn spanSlice(@"%vec": @This(), @"%span": Span(@"%Origin")) []@"%Element" {
@@ -624,10 +613,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             return .{
                 .slice = @"%slice",
                 .span = .{
-                    .start = .{
-                        .origin = @"%span".start.origin,
-                        .index = @"%span".start.index,
-                    },
+                    .start = .{ .index = @"%span".start.index },
                     .length = @"%span".length,
                 },
             };
@@ -736,11 +722,11 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             try @"%vec".elements.ensureUnusedCapacity(@"%allocator", @"%span".length.positive);
             @"%vec".elements.appendSliceAssumeCapacity(@"%vec".spanSlice(@"%span"));
             try @"%vec".spanRid(@"%allocator", Unset_span(@"%Origin"){
-                .start = .{ .origin = @"%vec".origin, .index = @"%span".start.index },
+                .start = .{ .index = @"%span".start.index },
                 .length = @"%span".length,
             });
             return Span(@"%Origin"){
-                .start = .{ .origin = @"%vec".origin, .index = @"%move_destination_start" },
+                .start = .{ .index = @"%move_destination_start" },
                 .length = @"%span".length,
             };
         }
@@ -757,7 +743,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 );
                 @"%vec".elements.shrinkRetainingCapacity(@"%vec".elements.items.len - @"%span".length.positive);
                 return Span(@"%Origin"){
-                    .start = .{ .origin = @"%vec".origin, .index = @"%earlier_start_to_occupy_from" },
+                    .start = .{ .index = @"%earlier_start_to_occupy_from" },
                     .length = @"%span".length,
                 };
             } else {
@@ -829,7 +815,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 try @"%vec".elements.appendSlice(@"%allocator", @"%new_elements");
                 return .{ .present = .{
                     .start = .{
-                        .origin = @"%vec".origin,
                         .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
                     },
                     .length = @"%new_length",
@@ -851,7 +836,6 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             return if (P32.fromU32(try (std.math.cast(u32, @"%vec".elements.items.len - @"%length_before_add") orelse error.OutOfMemory))) |@"%new_length"|
                 .{ .present = .{
                     .start = .{
-                        .origin = @"%vec".origin,
                         .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
                     },
                     .length = @"%new_length",

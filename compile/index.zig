@@ -126,14 +126,13 @@ test "f32_round_nearest_else_even_to_i32_clamp" {
 }
 test "simple slot and span queries" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const slot4 = core.Slot(ExampleOrigin){ .origin = origin, .index = 4 };
+    const slot4 = core.Slot(ExampleOrigin){ .index = 4 };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
     try std.testing.expectEqual(4, (try core.slot_index(ExampleOrigin, slot4)).index);
     try std.testing.expectEqual(10, (try core.span_length(ExampleOrigin, span4_to_13)).length.positive);
     try std.testing.expectEqual(10, (try core.opt_span_length(ExampleOrigin, .{ .present = span4_to_13 })).length);
     try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, .{ .absent = {} })).length);
-    const unset_slot4 = core.Unset_slot(ExampleOrigin){ .origin = origin, .index = 4 };
+    const unset_slot4 = core.Unset_slot(ExampleOrigin){ .index = 4 };
     const unset_span4_to_13 = core.Unset_span(ExampleOrigin){ .start = unset_slot4, .length = core.P32.fromComptime(10) };
     try std.testing.expectEqual(4, (try core.unset_slot_index(ExampleOrigin, unset_slot4)).index);
     try std.testing.expectEqual(10, (try core.unset_span_length(ExampleOrigin, unset_span4_to_13)).length.positive);
@@ -142,8 +141,7 @@ test "simple slot and span queries" {
 }
 test "span_start" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot4_and_span5_to_13 = try core.span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
     try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
@@ -152,8 +150,7 @@ test "span_start" {
 }
 test "span_end" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot13_and_span4_to_12 = try core.span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
     try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
@@ -162,8 +159,7 @@ test "span_end" {
 }
 test "span_start_of_length_positive, normal inputs" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_10_and_11_to_13 = try core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 7 } });
     try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.present.start.index);
     try std.testing.expectEqual(13, try span4_to_10_and_11_to_13.after.present.endIndex());
@@ -172,8 +168,7 @@ test "span_start_of_length_positive, normal inputs" {
 }
 test "span_start_of_length_positive, given length > given span length" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_13_and_empty = try core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
     try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.after)).length);
     try std.testing.expectEqual(4, span4_to_13_and_empty.start.start.index);
@@ -181,8 +176,7 @@ test "span_start_of_length_positive, given length > given span length" {
 }
 test "span_end_of_length_positive, normal inputs" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_10_and_11_to_13 = try core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 3 } });
     try std.testing.expectEqual(11, span4_to_10_and_11_to_13.end.start.index);
     try std.testing.expectEqual(13, try span4_to_10_and_11_to_13.end.endIndex());
@@ -191,8 +185,7 @@ test "span_end_of_length_positive, normal inputs" {
 }
 test "span_end_of_length_positive, given length > given span length" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_13_and_empty = try core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
     try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.before)).length);
     try std.testing.expectEqual(4, span4_to_13_and_empty.end.start.index);
@@ -200,8 +193,7 @@ test "span_end_of_length_positive, given length > given span length" {
 }
 test "span_fold" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_fold(ExampleOrigin, u32, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .present = span4_to_13 },
         .state = 0,
@@ -215,8 +207,7 @@ test "span_fold" {
 }
 test "unset_span_start" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot4_and_span5_to_13 = try core.unset_span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
     try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
@@ -225,8 +216,7 @@ test "unset_span_start" {
 }
 test "unset_span_end" {
     const ExampleOrigin = enum { vec };
-    const origin: core.Origin(ExampleOrigin) = .vec;
-    const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .origin = origin, .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot13_and_span4_to_12 = try core.unset_span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
     try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
@@ -433,16 +423,14 @@ test "unset_slice_cast_or_rid_and_allocate u64 to struct{u32,u16}" {
 }
 test "Unset_span != Span" {
     const Origin = enum { origin };
-    const origin: core.Origin(Origin) = .origin;
-    const a_span: core.Span(Origin) = .{ .start = .{ .origin = origin, .index = 0 }, .length = core.P32.one };
-    const b_span: core.Unset_span(Origin) = .{ .start = .{ .origin = origin, .index = 0 }, .length = core.P32.one };
+    const a_span: core.Span(Origin) = .{ .start = .{ .index = 0 }, .length = core.P32.one };
+    const b_span: core.Unset_span(Origin) = .{ .start = .{ .index = 0 }, .length = core.P32.one };
     try std.testing.expect(@TypeOf(a_span) != @TypeOf(b_span));
 }
 test "Unset_slot != Slot" {
     const Origin = enum { origin };
-    const origin: core.Origin(Origin) = .origin;
-    const a_slot: core.Slot(Origin) = .{ .origin = origin, .index = 0 };
-    const b_slot: core.Unset_slot(Origin) = .{ .origin = origin, .index = 0 };
+    const a_slot: core.Slot(Origin) = .{ .index = 0 };
+    const b_slot: core.Unset_slot(Origin) = .{ .index = 0 };
     try std.testing.expect(@TypeOf(a_slot) != @TypeOf(b_slot));
 }
 test "origin with enums containing the same member name" {
