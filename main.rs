@@ -17,7 +17,7 @@ struct ProjectState<Expressions, Patterns, Types> {
     queries: std::collections::HashMap<lsp_types::Position, sloe::CheckedQuery>,
     spread_records: std::collections::HashMap<lsp_types::Position, Vec<sloe::Name>>,
 }
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), std::process::ExitCode> {
     let mut full_command = std::env::args().skip(1);
     match full_command.next() {
         None => {
@@ -30,14 +30,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{command_help}");
                 Ok(())
             }
-            "build" | "make" | "compile" | "transpile" | "b" | "m" | "c" => {
+            "build" | "make" | "compile" | "transpile" | "b" | "m" => {
                 let maybe_input_file_path: Option<String> = full_command.next();
                 let maybe_output_file_path: Option<String> = full_command.next();
                 build_main(
                     maybe_input_file_path.as_ref().map(std::path::Path::new),
                     maybe_output_file_path.as_ref().map(std::path::Path::new),
-                );
-                Ok(())
+                )
+            }
+            "check" | "analyze" | "errors" | "warn" | "warnings" | "examine" | "validate"
+            | "review" | "verify" | "c" => {
+                let maybe_input_file_path: Option<String> = full_command.next();
+                check_main(maybe_input_file_path.as_ref().map(std::path::Path::new))
             }
             "doc" | "docs" | "documentation" | "core" | "stdlib" | "core-doc" | "core-docs"
             | "core-documentation" | "core-types" | "d" => {
@@ -387,10 +391,65 @@ For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
     }
 }
 
+fn check_main(
+    maybe_input_file_path: Option<&std::path::Path>,
+) -> Result<(), std::process::ExitCode> {
+    let input_file_path: &std::path::Path = match maybe_input_file_path {
+        Some(input_file_path) => &input_file_path.with_extension("sloe"),
+        None => std::path::Path::new("sloe.sloe"),
+    };
+    println!("...checking {input_file_path:?} for errors.");
+    match std::fs::read_to_string(input_file_path) {
+        Err(read_error) => {
+            eprintln!(
+                "was looking for a file with the name {input_file_path:?} but failed: {read_error}"
+            );
+            std::process::exit(1)
+        }
+        Ok(project_source) => {
+            sloe::core::origin_new!(expressions, Expressions);
+            sloe::core::origin_new!(patterns, Patterns);
+            sloe::core::origin_new!(types, Types);
+            let mut syntax_expressions = sloe::core::vec_empty(expressions);
+            let mut syntax_patterns = sloe::core::vec_empty(patterns);
+            let mut syntax_types = sloe::core::vec_empty(types);
+            let syntax_project = sloe::parse_project(
+                &mut syntax_expressions,
+                &mut syntax_patterns,
+                &mut syntax_types,
+                &project_source,
+            );
+            let mut output_errors: Vec<sloe::ErrorNode> = Vec::new();
+            let _checked_info = sloe::syntax_project_check(
+                &mut output_errors,
+                &syntax_project,
+                &syntax_expressions,
+                &syntax_patterns,
+                &syntax_types,
+            );
+            if output_errors.is_empty() {
+                println!("No errors found. Note that sloe build already checks before building.");
+                Ok(())
+            } else {
+                for output_error in output_errors.iter().rev() {
+                    eprintln!(
+                        "{input_file_path}:{span_start_line}:{span_start_column} {message}",
+                        input_file_path = input_file_path.to_string_lossy(),
+                        span_start_line = output_error.range.start.line + 1,
+                        span_start_column = output_error.range.start.character + 1,
+                        message = output_error.message
+                    );
+                }
+                Err(std::process::ExitCode::FAILURE)
+            }
+            // potential improvement: statistics
+        }
+    }
+}
 fn build_main(
     maybe_input_file_path: Option<&std::path::Path>,
     maybe_output_file_path: Option<&std::path::Path>,
-) {
+) -> Result<(), std::process::ExitCode> {
     let input_file_path: &std::path::Path = match maybe_input_file_path {
         Some(input_file_path) => &input_file_path.with_extension("sloe"),
         None => std::path::Path::new("sloe.sloe"),
@@ -407,7 +466,7 @@ fn build_main(
             "Can't compile to {output_file_path:?} because there's no clear module name to extract.
 For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
         );
-        return;
+        return Err(std::process::ExitCode::FAILURE);
     };
     println!("...compiling {input_file_path:?} into {output_file_path:?}.");
     match std::fs::read_to_string(input_file_path) {
@@ -415,7 +474,7 @@ For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
             eprintln!(
                 "was looking for a file with the name {input_file_path:?} but failed: {read_error}"
             );
-            std::process::exit(1)
+            Err(std::process::ExitCode::FAILURE)
         }
         Ok(project_source) => {
             sloe::core::origin_new!(expressions, Expressions);
@@ -456,7 +515,7 @@ For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
                     "tried to create the directory containing the output rust file {output_file_path:?} but failed: {}",
                     error
                 );
-                std::process::exit(1)
+                return Err(std::process::ExitCode::FAILURE);
             }
             match std::fs::write(output_file_path, output_rust_file_string) {
                 Err(write_error) => {
@@ -467,15 +526,26 @@ For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
                     std::process::exit(1)
                 }
                 Ok(()) => {
-                    if !output_errors.is_empty() {
-                        std::process::exit(1)
+                    if output_errors.is_empty() {
+                        Ok(())
+                    } else {
+                        Err(std::process::ExitCode::FAILURE)
                     }
                 }
             }
         }
     }
 }
-fn lsp_main() -> Result<(), Box<dyn std::error::Error>> {
+fn lsp_main() -> Result<(), std::process::ExitCode> {
+    match lsp_main_or_error() {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            eprintln!("{}", error);
+            Err(std::process::ExitCode::FAILURE)
+        }
+    }
+}
+fn lsp_main_or_error() -> Result<(), Box<dyn std::error::Error>> {
     let (connection, io_thread) = lsp_server::Connection::stdio();
 
     let (initialize_request_id, _initialize_arguments_json) = connection.initialize_start()?;

@@ -2185,7 +2185,7 @@ pub struct CheckedProjectFn {
     pub result_type: Option<Type>,
     pub result_expression_is_invalid: bool,
 }
-
+// TODO inline use sites
 pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     syntax_project: &SyntaxProject<Expressions, Patterns, Types>,

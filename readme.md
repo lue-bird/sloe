@@ -1,7 +1,7 @@
 Small, fast programming language where indexes are valid and values can't be shared.
 
-The goal is representing tree-like data structures without segmented, non-pre-allocatable memory or plain index integers (along with the need to handle failure and generations),
-instead offering a safe, infallible way to refer to elements and slices stored in flat memory structures.
+The goal is representing tree-like data structures without segmented, non-pre-allocatable memory or plain index integers (along with the need to handle failure and generations).
+Sloe offers a safe, infallible way to refer to elements and slices stored in consecutive memory.
 
 [skip to examples](#examples)
 
@@ -22,19 +22,19 @@ This allows
 - values know when they aren't used anymore at compile time. Their memory can be reclaimed without garbage collection or similar
 - values can be mutated internally without mutation being detectable
 - representing things that should only be consumed once, like thread join handles
-- representing things that should be cleaned up in a specific way, like memory that should be freed
-- guaranteeing non-overlapping pointed memory regions can enable some more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently none of the languages sloe compile to make much explicit use of this fact)
+- representing things that should be cleaned up in a specific way, like memory that should be freed from a specific origin
+- guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compile to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515)). [Some CPUs even seem to have an "aliasing predictor"](https://github.com/travisdowns/uarch-bench/wiki/Memory-Disambiguation-on-Skylake#summary)
 
-This can feel annoying and clunky. Think e.g. `fn span-length span _span Origin :> .span _span Origin .length p32` (take a span, give back its size and the given span).
-Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't).
+This can feel annoying and clunky. Think e.g. `span-length` which takes a span and gives back its size and the given span.
+Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
 Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
 Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
 
-# concept: flat memory collection `vec`
-A collection which can mark some ranges within itself as vacant.
+# concept: consecutive memory collection `vec`
+A collection which can mark some ranges within itself as vacant without moving existing elemnts around.
 This can be used to "return" memory which has become outdated or useless, for example with `vec-remove` and `vec-span-add-remove-vec-span`.
 Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
@@ -43,18 +43,18 @@ In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
 [Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
 There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
 
-# concept: collections cannot access their elements
+# concept: collections do not handle their elements
 Similar to allocators, you cannot access, alter or iterate their contained values.
-Collections are seen as storage into which you can add elements, slices etc.
-Whenever you do so, you'll get `(unset-)slot`s and `(unset-)span`s that assert your right to access and alter the referenced elements as well as your duty to announce their release at some point.
+Collections are seen as storage into which you can add elements, build slices etc.
+Whenever you do so, you'll get `(unset-)slot`s and `(unset-)span`s that assert your right to access and alter the referenced elements as well as your responsibility to announce their release at some point.
 
-The alternative to this would be to make tiny allocations for each and every slot and small span and to allow recursive types.
+The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types.
 This is not uncommon in languages like rust.
-However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead have a big array of each kind and point into it.
+However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead, store a big array of each kind and point into it.
 
 # concept: distinct origin of a collection in your code
 Every created collection has a correlated origin.
-A value whose type contains an origin can't escape the function scope of it's origin.
+A value whose type contains an origin can't escape the scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```sloe
 fn some-vec . :> _vec ??origin cannot even be annotated??, u32 >
@@ -353,7 +353,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`.
   remove `'c'` syntax in favor of `"c" char/ascii`
 - (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
-  `!str-to-u32 "3"` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`)
+  `!u32 "3"` where `u32` is of type `_fn str, |success u32 |failure str` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`).
+  This would allow userland to create e.g. hex parsing functions, arabic number systems, string raw bytes stuff etc.
 - (probably not that good of an idea) consider not counting function calls as using up a function variable.
   The disadvantage is that "overplacing" a variable step-wise doesn't work anymore
   if not wrapped somehow. Maybe a small price to pay
@@ -406,8 +407,35 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
     - most bytes are 3/4th 0s because ascii is so common. wasted space is bad for the cache and memory usage
   If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `vec _ char` is a much nicer API to work with
-- find a way to do stack-allocated arrays, especially for temoprary many-element add/insert
-- zig-only: store an allocator within an origin (but! what about unset_slice? That one should probably store an allocator, too, and re-allocate if the vec origin allocator reference differs. I think this can be slightly unintuitive for sloe users but should in practice be okay). This achieves that origins created from within sloe code are arena-allocated and origins from user code are (usually) not
+- add stack-allocated arrays, mainly for temoprary many-element add/insert
+  ```sloe
+  fn example-three . :> _array u32, .part0 u32 .part1 u32 .part2 u32 >
+      ; 0 u32
+      ; 2 u32
+      ; 4 u32
+  ```
+  including adding `vec-opt-span-add-array`, `vec-span-add-array`, `vec-span-add-opt-array`, `vec-opt-span-add-opt-array`. Implemented as
+  ```rust
+  struct Array<Element, Array> {
+      array: Array,
+      into_iter: const fn(Array) -> impl std::iter::ExactSizeIterator<Element> + std::iter::DoubleEndedIterator<Element>
+  }
+  ```
+  ```zig
+  fn Array(@"%Element": type, @"%Array": type) type {
+      return struct {
+          array: @"%Array",
+          slice: fn(*@"%Array") []@"%Element",
+      };
+  }
+  ```
+  where the array parameter is something like `.part0 Element .part1 Element ...`
+  which gets tracked and generated at check-time.
+  This is obviously quite primitive.
+  Can't do much more in sloe's type system.
+  Question: does zigs copy-don't-move make passing this by value wasteful?
+  Or does zig catch and auto-stackref this in most cases well enough to not matter?
+- zig-only: store an allocator within an origin (but! what about unset_slice? That one should probably store an allocator, too, and re-allocate if the vec origin allocator reference differs. I think this can be slightly unintuitive for sloe users but should in practice be okay). This achieves that origins created from within sloe code are arena-allocated and origins from user code are (usually) not, choosing e.g. MemoryPool.Aligned (does that actually work even?)
 - (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
 - (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
@@ -457,10 +485,6 @@ It also makes initial_state much easier to call from the rust side (though we ne
   ...
   ```
   This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
-- (not planned but not rejected) allowing field and variant names to start with numbers and -, like `fn char-dup char char :> .0 char .1 char`.
-  The nice thing is that this matches what most language use as field names for tuples.
-  Overall though, this is also a little bit confusing.
-  If you have a use-case for this, I will probably reconsider (e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`; something in that ballpark)
 - allowing `.. (|variant ...)` with a single variant and untyped variant expressions. No, should consistently use single-field record
 - field and variants are changed so field names and variant names are uppercase
   and `.` is spread (same for `|`), e.g.
@@ -577,6 +601,13 @@ cargo install --offline --debug --path . sloe
 ```
 
 # TODO
+
+- add `sloe check` command which skips codegen
+
+- allow field and variant names to start with digit, upper-case and -, like `fn char-dup char char :> .0 char .1 char`.
+  The nice thing is that this matches what most language use as field names for tuples.
+  This is also a little bit confusing but you don't have to use it.
+  UUse cases are e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`
 
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
