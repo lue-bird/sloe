@@ -50,6 +50,13 @@ pub struct Record·max·min<Max, Min> {
     pub min: Min,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·array·direction·state·step<Array, Direction, State, Step> {
+    pub array: Array,
+    pub direction: Direction,
+    pub state: State,
+    pub step: Step,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·element·in<Element, In> {
     pub element: Element,
     pub in_: In,
@@ -58,6 +65,11 @@ pub struct Record·element·in<Element, In> {
 pub struct Record·element·slot<Element, Slot> {
     pub element: Element,
     pub slot: Slot,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·element·state<Element, State> {
+    pub element: Element,
+    pub state: State,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·slot·state<Slot, State> {
@@ -336,6 +348,36 @@ pub struct Span_with_occupancy<LocalOrigin, Occupancy> {
 pub enum UccupancyUnset {}
 pub enum OccupancySet {}
 
+pub struct Array<Element, Record> {
+    pub record: Record,
+    // It would be great if we could find a _safe_ way to as directly as possible iterate the array.
+    // Various helpers like getting the size and dup-ing would aso be nice
+    // but are to be avoided if they come at a memory cost.
+    // The problem is that
+    // - providing fold is impossible because for<State> fn is not allowed
+    // - providing for_each is impossible because fn(impl FnMut) is not allowed
+    // - there is no such thing as an "owned stack-allocated slice" in rust
+    //
+    // The current solution relies(!) on callers to use unsafe to extract owned elements
+    pub as_slice: fn(&mut Record) -> &mut [Element],
+}
+
+impl<Element, Rec> Array<Element, Rec> {
+    pub fn fold<State>(
+        mut self,
+        direction: Choice·Down·Up<Record, Record>,
+        initial_state: State,
+        step: impl std::ops::Fn(State, Element) -> State,
+    ) -> State {
+        iterator_fold_in_direction(
+            // self will not be accessible after this fold
+            unsafe { mut_slice_into_owned_iterator((self.as_slice)(&mut self.record)) },
+            direction,
+            initial_state,
+            step,
+        )
+    }
+}
 impl<Origin, Occupancy> std::fmt::Debug for Slot_with_occupancy<Origin, Occupancy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Slot").field("index", &self.index).finish()
@@ -416,6 +458,14 @@ impl<'a, Element> std::iter::Iterator for OwnedSliceIterator<'a, Element> {
     fn next(&mut self) -> std::option::Option<Self::Item> {
         // usage is safe when constructor is safe, see mut_slice_into_owned_iterator
         self.ref_mut_iterator.next().map(|element_ref| unsafe {
+            std::ptr::NonNull::read(std::ptr::NonNull::from_ref(element_ref))
+        })
+    }
+}
+impl<'a, Element> std::iter::DoubleEndedIterator for OwnedSliceIterator<'a, Element> {
+    fn next_back(&mut self) -> std::option::Option<Self::Item> {
+        // usage is safe when constructor is safe, see mut_slice_into_owned_iterator
+        self.ref_mut_iterator.next_back().map(|element_ref| unsafe {
             std::ptr::NonNull::read(std::ptr::NonNull::from_ref(element_ref))
         })
     }
@@ -607,7 +657,7 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         span: Span<LocalOrigin>,
     ) -> OwnedSliceIterator<'a, Element> {
         // elements in the opt_span are consumed and never accessed after. During this whole ordeal
-        // the elements are "locked" behind a mut ref
+        // the elements are "locked" behind a mut ref with the same lifetime as the iterator
         unsafe {
             mut_slice_into_owned_iterator(
                 self.elements
@@ -1875,6 +1925,27 @@ pub fn opt_unset_span_fold<Origin, State>(
             })
         },
     )
+}
+
+pub fn array_fold<Element, Rec, State>(
+    Record·array·direction·state·step {
+        array,
+        direction,
+        state,
+        step,
+    }: Record·array·direction·state·step<
+        Array<Element, Rec>,
+        Choice·Down·Up<Record, Record>,
+        State,
+        Fn<Record·element·state<Element, State>, State>,
+    >,
+) -> State {
+    array.fold(direction, state, |state, element| {
+        step(Record·element·state {
+            element: element,
+            state: state,
+        })
+    })
 }
 
 pub fn origin_rid<LocalOrigin>(_: Origin<LocalOrigin>) -> Record {}

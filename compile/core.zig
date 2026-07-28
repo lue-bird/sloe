@@ -144,17 +144,23 @@ pub fn @".slot.state"(@"%Slot": type, @"%State": type) type {
 pub fn @"record.slot.state"(@"%slot": anytype, @"%state": anytype) @".slot.state"(@TypeOf(@"%slot"), @TypeOf(@"%state")) {
     return .{ .slot = @"%slot", .state = @"%state" };
 }
+pub fn @".element.state"(@"%Element": type, @"%State": type) type {
+    return struct { element: @"%Element", state: @"%State" };
+}
+pub fn @"record.element.state"(@"%element": anytype, @"%state": anytype) @".element.state"(@TypeOf(@"%element"), @TypeOf(@"%state")) {
+    return .{ .element = @"%element", .state = @"%state" };
+}
 pub fn @".span.vec"(@"%Span": type, @"%Vec": type) type {
     return struct { span: @"%Span", vec: @"%Vec" };
 }
 pub fn @"record.span.vec"(@"%span": anytype, @"%vec": anytype) @".span.vec"(@TypeOf(@"%span"), @TypeOf(@"%vec")) {
     return .{ .span = @"%span", .vec = @"%vec" };
 }
-pub fn @".span.state.step"(@"%Span": type, @"%State": type, @"%Step": type) type {
-    return struct { span: @"%Span", state: @"%State", step: @"%Step" };
+pub fn @".direction.span.state.step"(@"%Direction": type, @"%Span": type, @"%State": type, @"%Step": type) type {
+    return struct { direction: @"%Direction", span: @"%Span", state: @"%State", step: @"%Step" };
 }
-pub fn @"record.span.state.step"(@"%span": anytype, @"%state": anytype, @"%step": anytype) @".span.state.step"(@TypeOf(@"%span"), @TypeOf(@"%state"), @TypeOf(@"%step")) {
-    return .{ .span = @"%span", .state = @"%state", .step = @"%step" };
+pub fn @"record.span.state.step"(@"%direction": anytype, @"%span": anytype, @"%state": anytype, @"%step": anytype) @".direction.span.state.step"(@TypeOf(@"%direction"), @TypeOf(@"%span"), @TypeOf(@"%state"), @TypeOf(@"%step")) {
+    return .{ .direction = @"%direction", .span = @"%span", .state = @"%state", .step = @"%step" };
 }
 pub fn @".new.span.vec"(@"%New": type, @"%Span": type, @"%Vec": type) type {
     return struct { new: @"%New", span: @"%Span", vec: @"%Vec" };
@@ -186,6 +192,12 @@ pub fn @".in.slot.update.vec"(@"%In": type, @"%Slot": type, @"%Update": type, @"
 pub fn @"record.in.slot.update.vec"(@"%in": anytype, @"%slot": anytype, @"%update": anytype, @"%vec": anytype) @".in.slot.update.vec"(@TypeOf(@"%in"), @TypeOf(@"%slot"), @TypeOf(@"%update"), @TypeOf(@"%vec")) {
     return .{ .in = @"%in", .slot = @"%slot", .update = @"%update", .vec = @"%vec" };
 }
+pub fn @".array.direction.state.step"(@"%Array": type, @"%Direction": type, @"%State": type, @"%Step": type) type {
+    return struct { array: @"%Array", direction: @"%Direction", state: @"%State", step: @"%Step" };
+}
+pub fn @"record.array.direction.state.step"(@"%array": anytype, @"%direction": anytype, @"%state": anytype, @"%step": anytype) @".array.direction.state.step"(@TypeOf(@"%array"), @TypeOf(@"%direction"), @TypeOf(@"%state"), @TypeOf(@"%step")) {
+    return .{ .array = @"%array", .direction = @"%direction", .state = @"%state", .step = @"%step" };
+}
 pub fn @"|empty"(@"%Empty": type) type {
     return union(enum) { empty: @"%Empty" };
 }
@@ -197,6 +209,9 @@ pub fn @"|contained|overflowed"(@"%Contained": type, @"%Overflowed": type) type 
 }
 pub fn @"|absent|present"(@"%Absent": type, @"%Present": type) type {
     return union(enum) { absent: @"%Absent", present: @"%Present" };
+}
+pub fn @"|down|up"(@"%Down": type, @"%Up": type) type {
+    return union(enum) { down: @"%Down", up: @"%Up" };
 }
 
 pub const P32 = struct {
@@ -261,6 +276,30 @@ fn strideOf(@"%Element": type) comptime_int {
     return @sizeOf(@"%Element");
 }
 
+pub fn Array(@"%Element": type, @"%Record": type) type {
+    return [
+        switch (@typeInfo(@"%Record")) {
+            .@"struct" => |@"%record_type_info"| @"%record_type_info".field_names.len,
+            else =>
+            // no point in throwing a compile error since this cannot happen in sloe-generated code
+            // and should not lead to valid (but useless) sloe code not compiling when converted to zig
+            0,
+        }
+    ]@"%Element";
+}
+pub fn record_to_array(@"%record": anytype) Array(
+    @typeInfo(@TypeOf(@"%record")).@"struct".field_types[0],
+    @TypeOf(@"%record"),
+) {
+    // yeah this is all crazy
+    const @"%record_struct_type_info" = @typeInfo(@TypeOf(@"%record")).@"struct";
+    var @"%actual_array": [@"%record_struct_type_info".field_names.len]@typeInfo(@TypeOf(@"%record")).@"struct".field_types[0] = undefined;
+    inline for (0..@"%record_struct_type_info".field_names.len) |@"%actual_array_index"| {
+        @"%actual_array"[@"%actual_array_index"] = @field(@"%record", std.fmt.comptimePrint("e{}", .{@"%actual_array_index"}));
+    }
+    return @"%actual_array";
+}
+pub fn array_rid(@"%Element": type, @"%Record": type, _: Array(@"%Element", @"%Record")) error{OutOfMemory}!void {}
 /// This wrapper is largely meaningless in zig. It exists to make it safe on the rust side.
 /// I have tried to patch in some mechanisms to avoid having multiple origins with the same name in a scope
 /// but due to the (reasonable) lack of comptime mutable variables/mutable pointers it can't be done
@@ -375,15 +414,31 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
         }
         pub fn fold(
             @"%span": Span(@"%Origin"),
+            @"%direction": @"|down|up"(void, void),
             @"%initial_state": anytype,
             @"%step": Fn(@".slot.state"(Slot(@"%Origin"), @TypeOf(@"%initial_state")), @TypeOf(@"%initial_state")),
         ) error{OutOfMemory}!@TypeOf(@"%initial_state") {
             var @"%state" = @"%initial_state";
-            for (@"%span".start.index..(try @"%span".length.addOrOutOfMem(@"%span".start.index)).positive) |index| {
-                @"%state" = try @"%step"(.{
-                    .state = @"%state",
-                    .slot = .{ .index = std.math.lossyCast(u32, index) },
-                });
+            switch (@"%direction") {
+                .up => {
+                    for (@"%span".start.index..(try @"%span".length.addOrOutOfMem(@"%span".start.index)).positive) |index| {
+                        @"%state" = try @"%step"(.{
+                            .state = @"%state",
+                            .slot = .{ .index = std.math.lossyCast(u32, index) },
+                        });
+                    }
+                },
+                .down => {
+                    // dear zig, add for in reverse
+                    var @"%index": u32 = try @"%span".endIndex();
+                    while (@"%index" >= @"%span".start.index) {
+                        @"%state" = try @"%step"(.{
+                            .state = @"%state",
+                            .slot = .{ .index = std.math.lossyCast(u32, @"%index") },
+                        });
+                        @"%index" -= 1;
+                    }
+                },
             }
             return @"%state";
         }
@@ -1161,7 +1216,8 @@ pub fn span_end_of_length_positive(
 pub fn opt_span_fold(
     @"%Origin": type,
     @"%State": type,
-    @"%": @".span.state.step"(
+    @"%": @".direction.span.state.step"(
+        @"|down|up"(void, void),
         Opt(Span(@"%Origin")),
         @"%State",
         Fn(@".slot.state"(Slot(@"%Origin"), @"%State"), @"%State"),
@@ -1169,19 +1225,50 @@ pub fn opt_span_fold(
 ) error{OutOfMemory}!@"%State" {
     return switch (@"%".span) {
         .absent => @"%".state,
-        .present => |@"%span"| @"%span".fold(@"%".state, @"%".step),
+        .present => |@"%span"| @"%span".fold(@"%".direction, @"%".state, @"%".step),
     };
 }
 pub fn span_fold(
     @"%Origin": type,
     @"%State": type,
-    @"%": @".span.state.step"(
+    @"%": @".direction.span.state.step"(
+        @"|down|up"(void, void),
         Span(@"%Origin"),
         @"%State",
         Fn(@".slot.state"(Slot(@"%Origin"), @"%State"), @"%State"),
     ),
 ) error{OutOfMemory}!@"%State" {
-    return @"%".span.fold(@"%".state, @"%".step);
+    return @"%".span.fold(@"%".direction, @"%".state, @"%".step);
+}
+
+pub fn array_fold(
+    @"%Element": type,
+    @"%Record": type,
+    @"%State": type,
+    @"%": @".array.direction.state.step"(
+        Array(@"%Element", @"%Record"),
+        @"|down|up"(void, void),
+        @"%State",
+        Fn(@".element.state"(@"%Element", @"%State"), @"%State"),
+    ),
+) error{OutOfMemory}!@"%State" {
+    var @"%state" = @"%".state;
+    switch (@"%".direction) {
+        .up => {
+            inline for (@"%".array) |@"%element"| {
+                @"%state" = try @"%".step(.{ .state = @"%state", .element = @"%element" });
+            }
+        },
+        .down => {
+            // dear zig, add for in reverse
+            comptime var @"%index" = @"%".array.len;
+            inline while (@"%index" >= 1) {
+                @"%index" -= 1;
+                @"%state" = try @"%".step(.{ .state = @"%state", .element = @"%".array[@"%index"] });
+            }
+        },
+    }
+    return @"%state";
 }
 
 pub fn unset_span_length(
@@ -1235,7 +1322,8 @@ pub fn unset_span_end_of_length_positive(
 pub fn opt_unset_span_fold(
     @"%Origin": type,
     @"%State": type,
-    @"%": @".span.state.step"(
+    @"%": @".direction.span.state.step"(
+        @"|down|up"(void, void),
         Opt(Unset_span(@"%Origin")),
         @"%State",
         Fn(@".slot.state"(Unset_slot(@"%Origin"), @"%State"), @"%State"),
@@ -1243,19 +1331,20 @@ pub fn opt_unset_span_fold(
 ) error{OutOfMemory}!@"%State" {
     return switch (@"%".span) {
         .absent => @"%".state,
-        .present => |@"%span"| @"%span".fold(@"%".state, @"%".step),
+        .present => |@"%span"| @"%span".fold(@"%".direction, @"%".state, @"%".step),
     };
 }
 pub fn unset_span_fold(
     @"%Origin": type,
     @"%State": type,
-    @"%": @".span.state.step"(
+    @"%": @".direction.span.state.step"(
+        @"|down|up"(void, void),
         Unset_span(@"%Origin"),
         @"%State",
         Fn(@".slot.state"(Unset_slot(@"%Origin"), @"%State"), @"%State"),
     ),
 ) error{OutOfMemory}!@"%State" {
-    return @"%".span.fold(@"%".state, @"%".step);
+    return @"%".span.fold(@"%".direction, @"%".state, @"%".step);
 }
 
 pub fn vec_empty(

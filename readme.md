@@ -86,10 +86,10 @@ In my opinion this isn't quite a solved problem and if you have other ideas, I w
 
 # examples
 ## creating new origins, slots and spans
-`origin some-name` creates a new origin variable and a local unique type for the start offset of its scope.
-An origin type does not have a `-dup` helper and thus can only be used for one collection.
+`origin some-name` creates a new variable of type `origin` and a unique local type.
+Like every other sloe value, an origin type can only be used once, so only for one collection.
 ```sloe
-# use a temporary value within a scope
+# use a temporary collection contained within a scope
 fn use-vec . :> u32 >
     origin vec-origin
   	? _vec-empty<u32> vec-origin [vec]
@@ -132,7 +132,7 @@ fn use-opt opt _opt u32 :> ... >
     [vec]
     ...
 
-# recursive structure. every slot and span exclusively belongs to that expression
+# tree structure. every slot and span exclusively belongs to that expression
 ty expression Expressions-origin Patterns-origin Str-origin
     |int i32
     |string _opt _span Str-origin
@@ -174,12 +174,11 @@ fn state-to-interfaces-into
 ```sloe
 fn vec-empty<Element> origin _origin Origin :> _vec Origin, Element
 ```
-shift the responsibility for cleanup to the caller.
-This is done for most initializer functions, e.g. for the initial persistent application state.
-For most other functions, it's more common to pass in an existing collection
+Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
+For most other functions, it's more common to pass in an existing collection that you want to edit.
 
 # syntax
-Syntax is secondary but I tried to make it coherent and practical, avoiding parens and indentation when possible, especially for trailing syntax.
+Syntax is secondary but I tried to make it coherent, practical and compact, avoiding parens and indentation when possible, especially for trailing syntax.
 Sloe is a very explicit language, so any extra verbosity is not tolerable.
 ```sloe
 # line comment
@@ -278,11 +277,21 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
   Honestly, the current "fold over one span and step through the rest with `span-start`"
   is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
-  Zig "fixes" this by introducing special syntax and crashing if the length is different,
-  which of course is not an option in sloe
+  Additionally, this wastes memory for the duplicated memory and wastes computation for unnecessarily handling 
+  
+  Zig "fixes" this by both
+    - introducing special syntax and crashing at runtime if lengths differ
+    - only storing the length in one of multiple slices and documenting the expected length for the other start pointers
+  
+  I think introducing `span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes a bunch of sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
+  TODO how would this work with existing vec APIs? Something like `vec2-opt-span-add`
 - scattered sub-spans/slots in a persistent vec cannot be easily de-allocated/iterated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
   For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
   However, this would mean that slots and spans within the AST would not be owning.
+  One quasi-solution would be storing `vec<origin vec-originless<...>>` and introducing `-originless` versions of slot/span/vec. These would need to be checked at runtime, with the branch with unequal origins being in the cold path.
+  While this technically does solve the problem quite nicely, it's purely at runtime. Mistakes won't be caught early, runtime costs may add up, complexity increases, unnecessary error handling gets introduced.
+  → More complex type systems could solve this (e.g. :hand-wave: add type `origin-erase` that takes a function taking an origin and returning an element type, thus eliding a concrete origin from the vec type. Then you could call its wrapper to hide the origin and its unwrapper with a fresh origin whenever you need to access or modify the inards) but I'd like to stay simple
+  → I need to investigate how other languages do this. E.g. [carbon's outer-self-other-field-place-referencing feature](https://chandlerc.blog/slides/2026-memory-safety-deep-3/#/51) may solve this (I'm not sure, but it's also not that simple).
   (For temporary vecs, a possible solution could be `vec-slot-rid-without-vacating`, `vec-span-rid-without-vacating` and `vec-opt-span-rid-without-vacating` which would temporarily leak these slots and spans. This can be misused for persistent vecs but more importantly it does not solve the issue for persistent vecs)
 - sometimes, you really own all the elements of a vec in one place (especially when the vec elements can be trivially copied).
   Splitting it into `opt span`+`vec` is annoying and wastes a bit of space (length is carried twice and start is always 0).
@@ -352,6 +361,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   as it makes searching for the right span possible (and reasonably fast)
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`.
   remove `'c'` syntax in favor of `"c" char/ascii`
+- combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth
 - (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
   `!u32 "3"` where `u32` is of type `_fn str, |success u32 |failure str` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`).
   This would allow userland to create e.g. hex parsing functions, arabic number systems, string raw bytes stuff etc.
@@ -385,6 +395,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       :> .vec _vec Origin, Element .slice _unset-slice Element
   ```
 - when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
+- add typescript backend or similar web support
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```sloe
@@ -407,34 +418,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
     - most bytes are 3/4th 0s because ascii is so common. wasted space is bad for the cache and memory usage
   If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `vec _ char` is a much nicer API to work with
-- add stack-allocated arrays, mainly for temoprary many-element add/insert
-  ```sloe
-  fn example-three . :> _array u32, .part0 u32 .part1 u32 .part2 u32 >
-      ; 0 u32
-      ; 2 u32
-      ; 4 u32
-  ```
-  including adding `vec-opt-span-add-array`, `vec-span-add-array`, `vec-span-add-opt-array`, `vec-opt-span-add-opt-array`. Implemented as
-  ```rust
-  struct Array<Element, Array> {
-      array: Array,
-      into_iter: const fn(Array) -> impl std::iter::ExactSizeIterator<Element> + std::iter::DoubleEndedIterator<Element>
-  }
-  ```
-  ```zig
-  fn Array(@"%Element": type, @"%Array": type) type {
-      return struct {
-          array: @"%Array",
-          slice: fn(*@"%Array") []@"%Element",
-      };
-  }
-  ```
-  where the array parameter is something like `.part0 Element .part1 Element ...`
-  which gets tracked and generated at check-time.
-  This is obviously quite primitive.
-  Can't do much more in sloe's type system.
-  Question: does zigs copy-don't-move make passing this by value wasteful?
-  Or does zig catch and auto-stackref this in most cases well enough to not matter?
 - zig-only: store an allocator within an origin (but! what about unset_slice? That one should probably store an allocator, too, and re-allocate if the vec origin allocator reference differs. I think this can be slightly unintuitive for sloe users but should in practice be okay). This achieves that origins created from within sloe code are arena-allocated and origins from user code are (usually) not, choosing e.g. MemoryPool.Aligned (does that actually work even?)
 - (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
 - (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
@@ -602,20 +585,39 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `sloe check` command which skips codegen
-
-- allow field and variant names to start with digit, upper-case and -, like `fn char-dup char char :> .0 char .1 char`.
-  The nice thing is that this matches what most language use as field names for tuples.
-  This is also a little bit confusing but you don't have to use it.
-  UUse cases are e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`
-
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
 - add more math and maybe bit operations
 
+- add more functions for reaching into span elements, e.g. swapping two elemnts at indexes inside the span
+
+- strongly consider changing `_name argument` to `Name argument` in types and expressions.
+  In the same change, change type variables from `Upper` to `_lower` (quite neat, no?)
+  Also, calling function variables needs new syntax. Requires function variables to be `Upper` which I guess could be okay.
+  
+  This means
+    - shorter and less confusing (convention is easier not to forget compared to _call)
+    - definition and call sites are closer aligned
+    - adding/removing argument to a type is a little more confusing
+    - the chance of project fns overlapping with variable names is more slim
+    - the chance for different-arity types are less likely to collide
+    - function variables in theory do not need to be explicitly dup-ed anymore. I think this would be a great change considering passing functions from the outside is fairly accepted for FFI and similar. Open question: Should Fns need to be rid-ed? I'd say yes but not crazy clear
+  
+  so not a clear-cut improvement. I'm especially unsure about the pattern variable change as I have seen 0 other languages with this design :/
+  Tracking function variables separately from other variables also seems like a pain but manageable.
+  Current opionion: "yes, do this change"
+
 - change `str` to mean non-empty string. This is more annoying for FFI (needs a wrapper over str/[]u8) but I think overall this is okay especially since memory efficiency is the same
+
+- for simplicity, change `_function<..., ..., ...>` to `_function<...><...><...>` at call and project fn sites
+
+- rename `vec` to `buf`. `vec` is unintuitive (it's not a vector). buf is used by carbon and often for builders like StringBuffer
+
+- find a symbol to replace the `origin` keyword
+
+- strongly consider replacing `<>` to `{}` because it it more easily recognized as parens
 
 - honestly think about replacing kebab-case with camelCase/PascalCase.
   while I do much prefer the typing experience of kebab-case,
@@ -624,6 +626,61 @@ cargo install --offline --debug --path . sloe
   `vec-char-opt-span-add-str` (5 chars less, 20%!)
   and potentially more readable (?) due to clearer distinction to _ and spaces.
   Take a bigger example, convert the case and see how it feels
+
+- add stack-allocated arrays, mainly for temoprary many-element add/insert
+  ```sloe
+  fn example-three . :> _array u32, .e0 u32 .e1 u32 .e2 u32 >
+      ; 0 u32
+      ; 2 u32
+      ; 4 u32
+  ```
+  including adding `vec-opt-span-add-array`, `vec-span-add-array`, `vec-span-add-opt-array`, `vec-opt-span-add-opt-array`, `array-rid`. Implemented as
+  ```rust
+  struct Array<Element, Array> {
+      array: Array,
+      into_iter: const fn(Array) -> impl std::iter::ExactSizeIterator<Element> + std::iter::DoubleEndedIterator<Element>
+  }
+  ```
+  ```zig
+  fn Array(@"%Element": type, @"%Array": type) type {
+      return struct {
+          array: @"%Array",
+          slice: fn(*@"%Array") []@"%Element",
+      };
+  }
+  ```
+  where the array parameter is something like `.e0 Element .e1 Element ...`
+  which gets tracked and generated at check-time.
+  This is obviously quite primitive.
+  Can't do much more in sloe's type system.
+  
+  An alternative that wouldn't introduce new syntax is
+  ```sloe
+  fn array-empty . :> _array Element, .
+  fn array-prepend
+    .after _array Element, After .start Element
+    :> _array Element, .s Element .a After
+
+  fn example-array . :> _array u32, .s u32 .a .s u32 .a .s u32 .a . >
+      _array-prepend
+      .start 0 u32
+      .after
+      _array-prepend
+      .start 1 u32
+      .after
+      _array-prepend
+      .start 2 u32
+      .after
+      _array-empty .
+  ```
+  but there isn't a trivial way to implement this in rust I think
+  and it also defeats one of the main purposes of static arrays: Convenience.
+  The only advantage is that the language wouldn't have to change.
+
+- allow field and variant names to start with digit, upper-case and -, like `fn char-dup char char :> .0 char .1 char`.
+  The nice thing is that this matches what most language use as field names for tuples.
+  This is also a little bit confusing but you don't have to use it.
+  Use cases are e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements

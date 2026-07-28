@@ -191,11 +191,12 @@ test "span_end_of_length_positive, given length > given span length" {
     try std.testing.expectEqual(4, span4_to_13_and_empty.end.start.index);
     try std.testing.expectEqual(13, try span4_to_13_and_empty.end.endIndex());
 }
-test "span_fold" {
+test "span_fold up" {
     const ExampleOrigin = enum { vec };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_fold(ExampleOrigin, u32, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .present = span4_to_13 },
+        .direction = .{ .up = {} },
         .state = 0,
         .step = struct {
             pub fn step(current: core.@".slot.state"(core.Slot(ExampleOrigin), u32)) error{OutOfMemory}!u32 {
@@ -204,6 +205,30 @@ test "span_fold" {
         }.step,
     });
     try std.testing.expectEqual(85, index_sum);
+}
+test "span_fold down" {
+    const ExampleOrigin = enum { vec };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    var reverse_indexes_array_list = try core.opt_span_fold(ExampleOrigin, std.ArrayList(u32), .{
+        .span = core.Opt(core.Span(ExampleOrigin)){ .present = span4_to_13 },
+        .direction = .{ .down = {} },
+        .state = std.ArrayList(u32).empty,
+        .step = struct {
+            pub fn step(
+                current: core.@".slot.state"(core.Slot(ExampleOrigin), std.ArrayList(u32)),
+            ) error{OutOfMemory}!std.ArrayList(u32) {
+                var modified_array_list = current.state;
+                try modified_array_list.append(std.testing.allocator, current.slot.index);
+                return modified_array_list;
+            }
+        }.step,
+    });
+    try std.testing.expectEqualSlices(
+        u32,
+        &.{ 13, 12, 11, 10, 9, 8, 7, 6, 5, 4 },
+        reverse_indexes_array_list.items,
+    );
+    reverse_indexes_array_list.deinit(std.testing.allocator);
 }
 test "unset_span_start" {
     const ExampleOrigin = enum { vec };
@@ -222,6 +247,41 @@ test "unset_span_end" {
     try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
     try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
     try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
+}
+test "array create" {
+    const ExampleArrayRecord = struct { e0: u32, e1: u32 };
+    const example_array0 = core.record_to_array(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    try std.testing.expectEqualSlices(u32, &[_]u32{ 0, 2 }, &example_array0);
+    // we can just specify them as arrays directly
+    const example_array1 = [_]u32{ @as(u32, 0), @as(u32, 2) };
+    try std.testing.expectEqualSlices(u32, &example_array1, &example_array0);
+    try std.testing.expectEqual(@TypeOf(example_array1), @TypeOf(example_array0));
+    // or as anonymus structs (unrelated record type, but nobody can care)
+    // Which means sloe doesn't even need to collect and generate record types etc.
+    // I do not think this is possible in rust but happy to be proven wrong
+    const example_array2 = core.record_to_array(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) });
+    try std.testing.expectEqualSlices(u32, &example_array2, &example_array0);
+    try std.testing.expectEqual(@TypeOf(example_array2), @TypeOf(example_array0));
+}
+test "array fold down" {
+    const ExampleArrayRecord = struct { e0: u32, e1: u32, e2: u32 };
+    const example_array = core.record_to_array(ExampleArrayRecord{ .e0 = @as(u32, 0), .e1 = @as(u32, 2), .e2 = @as(u32, 4) });
+    var reverse_indexes_array_list = try core.array_fold(u32, ExampleArrayRecord, std.ArrayList(u32), .{
+        .array = example_array,
+        .direction = .{ .down = {} },
+        .state = std.ArrayList(u32).empty,
+        .step = struct {
+            pub fn step(
+                current: core.@".element.state"(u32, std.ArrayList(u32)),
+            ) error{OutOfMemory}!std.ArrayList(u32) {
+                var modified_array_list = current.state;
+                try modified_array_list.append(std.testing.allocator, current.element);
+                return modified_array_list;
+            }
+        }.step,
+    });
+    try std.testing.expectEqualSlices(u32, &.{ 4, 2, 0 }, reverse_indexes_array_list.items);
+    reverse_indexes_array_list.deinit(std.testing.allocator);
 }
 test "unset_slice castOrRidAndAllocate working" {
     const allocator = std.testing.allocator;

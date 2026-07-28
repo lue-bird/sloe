@@ -10445,6 +10445,23 @@ As this prevents other elements from filling these positions, you shouldn't keep
             },
         ),
         (
+            Name::from_static("unset-slice"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "A heap-allocated array with unknown length and undefined contents.
+Can be constructed manually or as an intermediate type when recycling the allocated space of a collection,
+see `vec-to-unset`.
+Since you can't read from it, you can also safely attempt to reuse this allocation for a different element type,
+see `unset-slice-cast-or-rid-and-allocate`.
+Note that `unset-slice` does not have a dup function to make heap allocation explicit.
+Use `unset-slice-length` and `unset-slice-allocate-length` to achieve the same effect."
+                )),
+                parameters: vec![Name::from_static("Origin")],
+                type_: Some(type_unset_span(type_variable("Origin"))),
+            },
+        ),
+        (
             Name::from_static("fn"),
             CheckedTypeAlias {
                 name_range: None,
