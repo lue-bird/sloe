@@ -216,6 +216,9 @@ _some-function<Type, Arguments> _inner-call-as-the-argument inner-inner-argument
 # Can be placed anywhere and multiple are allowed
 .field-1st value-1st .. one-existing-record .. another .field-2nd value-2nd
 
+# temporary array
+; first-element ; second-element ; third-element
+
 # local function of type fn.
 # the pattern must add a type to all variables
 # can **not** use variables from the outer scope.
@@ -284,7 +287,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - only storing the length in one of multiple slices and documenting the expected length for the other start pointers
   
   I think introducing `span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes a bunch of sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
-  TODO how would this work with existing vec APIs? Something like `vec2-opt-span-add`
+  The sad thing is that this is positional and individual span slots then do not have an associated name.
+  Also, how would this work with existing vec APIs? Something like `vec2-opt-span-add`
 - scattered sub-spans/slots in a persistent vec cannot be easily de-allocated/iterated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
   For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
   However, this would mean that slots and spans within the AST would not be owning.
@@ -553,6 +557,28 @@ If you're looking to learn from sloe, maybe do not learn from these:
   I originally introduced it to make e.g. matching on multiple `opt`s easier.
   It helps keep context clear and visible like "if the left sub is empty and the right sub is a branch with an empty left side, do this".
   Honestly I should not have been so hasty to add this feature
+- stack-allocated array syntax. It provides an alternative syntax sugar for something that could already be expressed as repeated queried function calls.
+  I'm convinced that a feature like this would be very asked for if it didn't exist.
+  Adding a bulk of elements to a vec seems very useful on first sight because
+    - all kinds of examples and tests start with manually adding elements. Doing this one by one seems like cringe busywork.
+    - building uis or any kind of trees programmatically,
+      you more than often end up needing to specify sub-nodes of a parent.
+      Adding this bulk of nodes as an array is only natural and avoids so much noise.
+  
+  Well, what are the alternatives, then?
+    - simply provide `vec-opt-span-add2/3/4/5/6/7/8` etc. While it really doesn't feel good, it's not very far from solutions of production languages, see e.g. java's `list.of2/3/4/...`
+    - provide and suggest better primitives and helpers. For example, instead of providing a list of modifiers, it may just make sense to e.g. provide a record of options or use builder-style helpers for the individual properties
+    - introduce syntactical diabetis or macro-esque bullshit for repeated function calls
+      ```sloe
+      ...
+      _@0 stack-cons .. example-stack .new 39 u32
+      & _@0 ..@ .new 3 u32
+      & _@0 ..@ .new 6 u32
+      & _@0 ..@ .new 9 u32
+      ```
+      (the above is obviously insane in a bad way, but there may be a middle-ground)
+  
+  So yeah, these aren't amazing either, but arrays are similarly not amazing as well.
 
 
 # general quetions you might have
@@ -627,57 +653,7 @@ cargo install --offline --debug --path . sloe
   and potentially more readable (?) due to clearer distinction to _ and spaces.
   Take a bigger example, convert the case and see how it feels
 
-- add stack-allocated arrays, mainly for temoprary many-element add/insert
-  ```sloe
-  fn example-three . :> _array u32, .e0 u32 .e1 u32 .e2 u32 >
-      ; 0 u32
-      ; 2 u32
-      ; 4 u32
-  ```
-  including adding `vec-opt-span-add-array`, `vec-span-add-array`, `vec-span-add-opt-array`, `vec-opt-span-add-opt-array`, `array-rid`. Implemented as
-  ```rust
-  struct Array<Element, Array> {
-      array: Array,
-      into_iter: const fn(Array) -> impl std::iter::ExactSizeIterator<Element> + std::iter::DoubleEndedIterator<Element>
-  }
-  ```
-  ```zig
-  fn Array(@"%Element": type, @"%Array": type) type {
-      return struct {
-          array: @"%Array",
-          slice: fn(*@"%Array") []@"%Element",
-      };
-  }
-  ```
-  where the array parameter is something like `.e0 Element .e1 Element ...`
-  which gets tracked and generated at check-time.
-  This is obviously quite primitive.
-  Can't do much more in sloe's type system.
-  
-  An alternative that wouldn't introduce new syntax is
-  ```sloe
-  fn array-empty . :> _array Element, .
-  fn array-prepend
-    .after _array Element, After .start Element
-    :> _array Element, .s Element .a After
-
-  fn example-array . :> _array u32, .s u32 .a .s u32 .a .s u32 .a . >
-      _array-prepend
-      .start 0 u32
-      .after
-      _array-prepend
-      .start 1 u32
-      .after
-      _array-prepend
-      .start 2 u32
-      .after
-      _array-empty .
-  ```
-  but there isn't a trivial way to implement this in rust I think
-  and it also defeats one of the main purposes of static arrays: Convenience.
-  The only advantage is that the language wouldn't have to change.
-
-- allow field and variant names to start with digit, upper-case and -, like `fn char-dup char char :> .0 char .1 char`.
+- (not sure, maybe not actually) allow field and variant names to start with digit, upper-case and -, like `fn char-dup char char :> .0 char .1 char`.
   The nice thing is that this matches what most language use as field names for tuples.
   This is also a little bit confusing but you don't have to use it.
   Use cases are e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`

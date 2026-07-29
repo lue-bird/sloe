@@ -200,6 +200,11 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         // possible optimization: use SyntaxExpression directly, not slot
         part1_up: Vec<SyntaxRecordPart<Expressions>>,
     },
+    Array {
+        semicolon_start: lsp_types::Position,
+        element0: Option<core::Slot<Expressions>>,
+        element1_up: Vec<SyntaxExpressionArrayElement<Expressions, Patterns, Types>>,
+    },
     Parenthesized {
         open_paren_start: lsp_types::Position,
         inner: Option<core::Slot<Expressions>>,
@@ -226,6 +231,11 @@ pub struct SyntaxExpressionQueryCase<Expressions, Patterns, Types> {
     pub pattern: Option<SyntaxPattern<Patterns, Types>>,
     pub closed_bracket_start: Option<lsp_types::Position>,
     pub result: Option<SyntaxExpression<Expressions, Patterns, Types>>,
+}
+#[derive(Debug)]
+pub struct SyntaxExpressionArrayElement<Expressions, Patterns, Types> {
+    pub semicolon_start: lsp_types::Position,
+    pub element: Option<SyntaxExpression<Expressions, Patterns, Types>>,
 }
 #[derive(Debug)]
 pub enum SyntaxRecordPart<Sub> {
@@ -637,6 +647,11 @@ pub fn expression_start<Expressions, Patterns, Types>(
         } => *open_bracket_start,
         SyntaxExpression::RecordEmpty { dot_start } => *dot_start,
         SyntaxExpression::Record { part0, part1_up: _ } => expression_record_part_start(part0),
+        SyntaxExpression::Array {
+            semicolon_start,
+            element0: _,
+            element1_up: _,
+        } => *semicolon_start,
         SyntaxExpression::Parenthesized {
             open_paren_start,
             inner: _,
@@ -766,6 +781,25 @@ pub fn expression_end<Expressions, Patterns, Types>(
             patterns,
             types,
         ),
+        SyntaxExpression::Array {
+            semicolon_start,
+            element0,
+            element1_up,
+        } => element1_up
+            .last()
+            .map(|last_element| {
+                last_element
+                    .element
+                    .as_ref()
+                    .map(|element| expression_end(element, expressions, patterns, types))
+                    .unwrap_or_else(|| symbol_end(*semicolon_start, ";"))
+            })
+            .or_else(|| {
+                element0.as_ref().map(|element0| {
+                    expression_end(expressions.element(element0), expressions, patterns, types)
+                })
+            })
+            .unwrap_or_else(|| symbol_end(*semicolon_start, ";")),
         SyntaxExpression::Parenthesized {
             open_paren_start,
             inner,
@@ -1739,6 +1773,7 @@ pub fn parse_expression<Expressions, Patterns, Types>(
         .or_else(|| parse_expression_commented(state, expressions, patterns, types))
         .or_else(|| parse_expression_record(state, expressions, patterns, types))
         .or_else(|| parse_expression_query(state, expressions, patterns, types))
+        .or_else(|| parse_expression_array(state, expressions, patterns, types))
 }
 fn parse_expression_record<Expressions, Patterns, Types>(
     state: &mut ParseState,
@@ -1782,7 +1817,7 @@ fn parse_expression_record<Expressions, Patterns, Types>(
     }
     Some(SyntaxExpression::Record {
         part0: part0,
-        part1_up,
+        part1_up: part1_up,
     })
 }
 fn parse_expression_record_part<Expressions, Patterns, Types>(
@@ -1808,6 +1843,34 @@ fn parse_expression_record_part<Expressions, Patterns, Types>(
     } else {
         None
     }
+}
+fn parse_expression_array<Expressions, Patterns, Types>(
+    state: &mut ParseState,
+    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Vec<Types, SyntaxType<Types>>,
+) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
+    let Some(semicolon_start) = parse_symbol_as_start(state, ";") else {
+        return None;
+    };
+    parse_sloe_whitespace(state);
+    let element0 = parse_expression(state, expressions, patterns, types);
+    parse_sloe_whitespace(state);
+    let mut element1_up = Vec::new();
+    while let Some(semicolon_start) = parse_symbol_as_start(state, ";") {
+        parse_sloe_whitespace(state);
+        let element = parse_expression(state, expressions, patterns, types);
+        element1_up.push(SyntaxExpressionArrayElement {
+            semicolon_start: semicolon_start,
+            element: element,
+        });
+        parse_sloe_whitespace(state);
+    }
+    Some(SyntaxExpression::Array {
+        semicolon_start: semicolon_start,
+        element0: element0.map(|element0| expressions.add(element0)),
+        element1_up: element1_up,
+    })
 }
 fn parse_expression_number<Expressions, Patterns, Types>(
     state: &mut ParseState,
@@ -2790,6 +2853,31 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                         }
                     }
                 }
+            }
+        }
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => {
+            for element in element0
+                .iter()
+                .map(|element0| expressions.element(element0))
+                .chain(
+                    element1_up
+                        .iter()
+                        .filter_map(|element| element.element.as_ref()),
+                )
+            {
+                syntax_expression_connect_variables_in_graph_from(
+                    origin_project_fn_graph_node,
+                    project_fn_graph_node_by_name,
+                    expressions,
+                    patterns,
+                    types,
+                    element,
+                    project_fn_graph,
+                );
             }
         }
         SyntaxExpression::Parenthesized {
@@ -4791,6 +4879,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     ) else {
                         return None;
                     };
+                    // TODO report unnecessary type
                     Some(CheckedPattern {
                         type_: actual_type,
                         catch: PatternCatch::Exhaustive,
@@ -4953,14 +5042,35 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                 }
             }
         }
-        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(CheckedPattern {
-            type_: Type::Record(vec![]),
-            catch: PatternCatch::Exhaustive,
-        }),
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {
+            // TODO check this matches up with the expected type
+            Some(CheckedPattern {
+                type_: Type::Record(vec![]),
+                catch: PatternCatch::Exhaustive,
+            })
+        }
         SyntaxPattern::Record { part0, part1_up } => {
             let mut type_fields: Vec<TypeField> = Vec::with_capacity(1 + part1_up.len());
             let mut field_catches: std::collections::BTreeMap<Name, PatternCatch> =
                 std::collections::BTreeMap::new();
+            let maybe_expected_type_record = match expected_type {
+                None => None,
+                Some(expected_type) => match expected_type {
+                    Type::Record(type_fields) => Some(type_fields),
+                    _ => {
+                        let mut error_message: String = String::from(
+                            "This pattern matches a record but the expected type here is\n",
+                        );
+                        type_format(&mut error_message, 0, expected_type);
+                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for query case results");
+                        errors.push(ErrorNode {
+                            range: pattern_range(pattern, patterns, types),
+                            message: error_message.into_boxed_str(),
+                        });
+                        return None;
+                    }
+                },
+            };
             for part in std::iter::once(part0).chain(part1_up) {
                 match part {
                     SyntaxRecordPart::Field { name, value } => {
@@ -4996,19 +5106,34 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                             });
                             return None;
                         }
-                        let maybe_expected_type_record =
-                            expected_type.and_then(|expected_type| match expected_type {
-                                Type::Record(type_fields) => Some(type_fields),
-                                _ => None,
-                            });
-                        let Some(checked_field_value) = syntax_pattern_check(
-                            patterns.element(value),
-                            maybe_expected_type_record.and_then(|expected_record_type| {
-                                expected_record_type
+                        let maybe_expected_type_field_value = match maybe_expected_type_record {
+                            None => None,
+                            Some(expected_type_record) => {
+                                match expected_type_record
                                     .iter()
                                     .find(|expected_field| &expected_field.name == field_name_value)
-                                    .map(|expected_field| &expected_field.value)
-                            }),
+                                {
+                                    None => {
+                                        let error_message: String = format!(
+                                            "This pattern matches a record with the field {} but the expected record type here only expects these fields
+.{}
+You might have intended this pattern to belong to a different query. Use parens for query case results",
+                                            field_name_value,
+                                            expected_type_record.iter().map(|expected_type_field| expected_type_field.name.as_str()).collect::<Vec<_>>().join(" .")
+                                        );
+                                        errors.push(ErrorNode {
+                                            range: pattern_range(pattern, patterns, types),
+                                            message: error_message.into_boxed_str(),
+                                        });
+                                        return None;
+                                    }
+                                    Some(expected_type_field) => Some(&expected_type_field.value),
+                                }
+                            }
+                        };
+                        let Some(checked_field_value) = syntax_pattern_check(
+                            patterns.element(value),
+                            maybe_expected_type_field_value,
                             errors,
                             introduced_variables,
                             type_aliases,
@@ -6281,6 +6406,91 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             // a pattern or type. Nothing to add to used_records here
             maybe_field_types.map(Type::Record)
         }
+        SyntaxExpression::Array {
+            semicolon_start,
+            element0,
+            element1_up,
+        } => {
+            let Some(element0) = element0 else {
+                errors.push(ErrorNode {
+                    range: symbol_range(*semicolon_start, ";"),
+                    message: Box::from("missing expression after array start ;. An example of an array is ; first ; second ; third"),
+                });
+                return None;
+            };
+            let Some(checked_element0) = syntax_expression_check(
+                errors,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                pattern_variables,
+                used_pattern_variables,
+                origins,
+                used_origin_variables,
+                expressions.element(element0),
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                records_used,
+                choices_used,
+            ) else {
+                return None;
+            };
+            let mut type_fields = vec![TypeField {
+                name: array_record_field_name_for_index0,
+                value: checked_element0.clone(),
+            }];
+            for (element_index, element) in element1_up.iter().enumerate().map(|(i, e)| (i + 1, e))
+            {
+                let Some(element) = &element.element else {
+                    errors.push(ErrorNode {
+                        range: symbol_range(element.semicolon_start, ";"),
+                        message: Box::from("missing expression after ; in array. An example of an array is ; first ; second ; third"),
+                    });
+                    return None;
+                };
+                let Some(checked_element) = syntax_expression_check(
+                    errors,
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    pattern_variables,
+                    used_pattern_variables,
+                    origins,
+                    used_origin_variables,
+                    element,
+                    checked_local_fns,
+                    checked_queries,
+                    checked_spread_records,
+                    records_used,
+                    choices_used,
+                ) else {
+                    return None;
+                };
+                if let Some(type_diff) = type_diff(&checked_element0, &checked_element) {
+                    errors.push(ErrorNode {
+                        range: expression_range(element, expressions, patterns, types),
+                        message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    });
+                    return None;
+                }
+                type_fields.push(TypeField {
+                    name: array_record_field_name_for_index(element_index),
+                    value: checked_element,
+                });
+            }
+            records_used.insert(
+                type_fields
+                    .iter()
+                    .map(|type_field| type_field.name.clone())
+                    .collect::<Vec<_>>(),
+            );
+            Some(type_array(checked_element0, Type::Record(type_fields)))
+        }
         SyntaxExpression::Parenthesized {
             open_paren_start,
             inner,
@@ -7370,6 +7580,252 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     },
                 })
             }
+        }
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => {
+            let array_record = syn::Expr::Struct(syn::ExprStruct {
+                attrs: vec![],
+                qself: None,
+                path: syn_path_reference([&field_name_cows_to_rust_record_struct_name(
+                    (0..(1 + element1_up.len()))
+                        .map(|i| std::borrow::Cow::Owned(array_record_field_name_for_index(i))),
+                )]),
+                brace_token: syn::token::Brace(syn_span()),
+                fields: std::iter::once(
+                    element0
+                        .as_ref()
+                        .map(|element0| expressions.element(element0)),
+                )
+                .chain(element1_up.iter().map(|element| element.element.as_ref()))
+                .enumerate()
+                .map(|(element_index, element)| syn::FieldValue {
+                    attrs: vec![],
+                    member: syn::Member::Named(syn_ident(&array_record_field_name_for_index(
+                        element_index,
+                    ))),
+                    colon_token: Some(syn::token::Colon(syn_span())),
+                    expr: match element {
+                        None => syn_expr_todo(),
+                        Some(element) => syntax_expression_to_rust(
+                            type_aliases,
+                            project_fns,
+                            expressions,
+                            patterns,
+                            types,
+                            checked_local_fns,
+                            checked_queries,
+                            checked_spread_records,
+                            pattern_variables,
+                            origins,
+                            element,
+                        ),
+                    },
+                })
+                .collect(),
+                dot2_token: None,
+                rest: None,
+            });
+            let array_record_struct_name = field_name_cows_to_rust_record_struct_name(
+                (0..(1 + element1_up.len()))
+                    .map(|i| std::borrow::Cow::Owned(array_record_field_name_for_index(i))),
+            );
+            const split_last_and_extend_vec_with_before_local_function_name: &str =
+                "split_last_and_extend_vec_with_before";
+            let split_last_and_extend_vec_with_before_local_function =
+                syn::Expr::Block(syn::ExprBlock {
+                    attrs: vec![],
+                    label: None,
+                    block: syn::Block {
+                        brace_token: syn::token::Brace(syn_span()),
+                        stmts: [
+                            syn::Stmt::Item(syn::Item::Fn(syn::ItemFn {
+                                attrs: vec![],
+                                vis: syn::Visibility::Inherited,
+                                modifiers: syn::FnModifiers::default(),
+                                sig: syn::Signature {
+                                    constness: None,
+                                    asyncness: None,
+                                    safety: syn::Safety::Default,
+                                    abi: None,
+                                    fn_token: syn::token::Fn(syn_span()),
+                                    ident: syn_ident(
+                                        split_last_and_extend_vec_with_before_local_function_name,
+                                    ),
+                                    generics: syn::Generics {
+                                        lt_token: Some(syn::token::Lt(syn_span())),
+                                        params: std::iter::once(syn::GenericParam::Type(
+                                            syn::TypeParam {
+                                                attrs: vec![],
+                                                ident: syn_ident("Element"),
+                                                colon_token: None,
+                                                bounds: syn::punctuated::Punctuated::new(),
+                                                default: None,
+                                            },
+                                        ))
+                                        .collect(),
+                                        gt_token: Some(syn::token::Gt(syn_span())),
+                                        where_clause: None,
+                                    },
+                                    paren_token: syn::token::Paren(syn_span()),
+                                    inputs: [
+                                        syn::FnArg::Typed(syn::PatType {
+                                            attrs: vec![],
+                                            pat: Box::new(syn::Pat::Ident(syn::PatIdent {
+                                                attrs: vec![],
+                                                by_ref: None,
+                                                mutability: None,
+                                                ident: syn_ident("vec"),
+                                                subpat: None,
+                                            })),
+                                            colon_token: syn::token::Colon(syn_span()),
+                                            ty: Box::new(syn::Type::Reference(
+                                                syn::TypeReference {
+                                                    attrs: vec![],
+                                                    and_token: syn::token::And(syn_span()),
+                                                    lifetime: None,
+                                                    mutability: Some(syn::token::Mut(syn_span())),
+                                                    elem: Box::new(syn_type_construct(
+                                                        ["std", "vec"],
+                                                        "Vec",
+                                                        [syn_type_construct(
+                                                            ["std", "mem"],
+                                                            "MaybeUninit",
+                                                            [syn_type_variable("Element")],
+                                                        )],
+                                                    )),
+                                                },
+                                            )),
+                                        }),
+                                        syn::FnArg::Typed(syn::PatType {
+                                            attrs: vec![],
+                                            pat: Box::new(syn::Pat::Ident(syn::PatIdent {
+                                                attrs: vec![],
+                                                by_ref: None,
+                                                mutability: None,
+                                                ident: syn_ident("record"),
+                                                subpat: None,
+                                            })),
+                                            colon_token: syn::token::Colon(syn_span()),
+                                            ty: Box::new(syn_type_construct(
+                                                [],
+                                                &array_record_struct_name,
+                                                std::iter::repeat_with(|| {
+                                                    syn_type_variable("Element")
+                                                })
+                                                .take(1 + element1_up.len()),
+                                            )),
+                                        }),
+                                    ]
+                                    .into_iter()
+                                    .collect(),
+                                    variadic: None,
+                                    output: syn::ReturnType::Type(
+                                        syn::token::RArrow(syn_span()),
+                                        Box::new(syn_type_variable("Element")),
+                                    ),
+                                },
+                                block: Box::new(syn::Block {
+                                    brace_token: syn::token::Brace(syn_span()),
+                                    stmts: (0..element1_up.len())
+                                        .map(|element_index| {
+                                            let array_record_field_value =
+                                                syn::Expr::Field(syn::ExprField {
+                                                    attrs: vec![],
+                                                    base: Box::new(syn_expr_reference(["record"])),
+                                                    dot_token: syn::token::Dot(syn_span()),
+                                                    member: syn::Member::Named(syn_ident(
+                                                        &array_record_field_name_for_index(
+                                                            element_index,
+                                                        ),
+                                                    )),
+                                                });
+                                            syn::Stmt::Expr(
+                                                syn::Expr::MethodCall(syn::ExprMethodCall {
+                                                    attrs: vec![],
+                                                    receiver: Box::new(syn_expr_reference(["vec"])),
+                                                    dot_token: syn::token::Dot(syn_span()),
+                                                    method: syn_ident("push"),
+                                                    turbofish: None,
+                                                    paren_token: syn::token::Paren(syn_span()),
+                                                    args: std::iter::once(syn::Expr::Call(
+                                                        syn::ExprCall {
+                                                            attrs: vec![],
+                                                            func: Box::new(syn_expr_reference([
+                                                                "std",
+                                                                "mem",
+                                                                "MaybeUninit",
+                                                                "new",
+                                                            ])),
+                                                            paren_token: syn::token::Paren(
+                                                                syn_span(),
+                                                            ),
+                                                            args: std::iter::once(
+                                                                array_record_field_value,
+                                                            )
+                                                            .collect(),
+                                                        },
+                                                    ))
+                                                    .collect(),
+                                                }),
+                                                Some(syn::token::Semi(syn_span())),
+                                            )
+                                        })
+                                        .chain(std::iter::once(syn::Stmt::Expr(
+                                            syn::Expr::Field(syn::ExprField {
+                                                attrs: vec![],
+                                                base: Box::new(syn_expr_reference(["record"])),
+                                                dot_token: syn::token::Dot(syn_span()),
+                                                member: syn::Member::Named(syn_ident(
+                                                    &array_record_field_name_for_index(
+                                                        element1_up.len(),
+                                                    ),
+                                                )),
+                                            }),
+                                            None,
+                                        )))
+                                        .collect(),
+                                }),
+                            })),
+                            syn::Stmt::Expr(
+                                syn_expr_reference([
+                                    split_last_and_extend_vec_with_before_local_function_name,
+                                ]),
+                                None,
+                            ),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    },
+                });
+            syn::Expr::Struct(syn::ExprStruct {
+                attrs: vec![],
+                qself: None,
+                path: syn_path_reference(["Array"]),
+                brace_token: syn::token::Brace(syn_span()),
+                fields: [
+                    syn::FieldValue {
+                        attrs: vec![],
+                        member: syn::Member::Named(syn_ident("record")),
+                        colon_token: Some(syn::token::Colon(syn_span())),
+                        expr: array_record,
+                    },
+                    syn::FieldValue {
+                        attrs: vec![],
+                        member: syn::Member::Named(syn_ident(
+                            "split_last_and_extend_vec_with_before",
+                        )),
+                        colon_token: Some(syn::token::Colon(syn_span())),
+                        expr: split_last_and_extend_vec_with_before_local_function,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+                dot2_token: None,
+                rest: None,
+            })
         }
         SyntaxExpression::Parenthesized {
             open_paren_start: _,
@@ -8664,8 +9120,14 @@ fn sorted_field_names<'a>(field_names: impl Iterator<Item = &'a Name>) -> Vec<Na
 fn field_names_to_rust_record_struct_name<'a>(
     field_names: impl Iterator<Item = &'a Name>,
 ) -> String {
+    field_name_cows_to_rust_record_struct_name(field_names.map(std::borrow::Cow::Borrowed))
+}
+
+fn field_name_cows_to_rust_record_struct_name<'a>(
+    field_names: impl Iterator<Item = std::borrow::Cow<'a, Name>>,
+) -> String {
     let mut rust_field_names_vec: Vec<String> = field_names
-        .map(|field_name| name_to_lowercase_rust(field_name))
+        .map(|field_name| name_to_lowercase_rust(field_name.as_str()))
         .collect::<Vec<_>>();
     rust_field_names_vec.sort_unstable();
     // the separator between fields is the "middle dot": https://util.unicode.org/UnicodeJsps/character.jsp?a=00B7
@@ -8697,6 +9159,11 @@ fn variant_names_to_rust_enum_name<'a>(field_names: impl Iterator<Item = &'a Nam
         .fold("Choice".to_string(), |so_far, variant_name| {
             so_far + "·" + &variant_name
         })
+}
+const array_record_field_name_for_index0: Name = Name::from_static("el0");
+fn array_record_field_name_for_index(element_index: usize) -> Name {
+    // there must be something faster
+    Name::from_string(format!("el{}", element_index))
 }
 fn syn_span() -> proc_macro2::Span {
     proc_macro2::Span::call_site()
@@ -8739,6 +9206,40 @@ fn syn_type_variable(name: &str) -> syn::Type {
         attrs: vec![],
         qself: None,
         path: syn::Path::from(syn_ident(name)),
+    })
+}
+fn syn_type_construct<'a>(
+    qualification: impl IntoIterator<Item = &'a str>,
+    parameterized: &str,
+    arguments: impl IntoIterator<Item = syn::Type>,
+) -> syn::Type {
+    syn::Type::Path(syn::TypePath {
+        attrs: vec![],
+        qself: None,
+        path: syn::Path {
+            leading_colon: None,
+            segments: qualification
+                .into_iter()
+                .map(|qualifiction_name| syn::PathSegment {
+                    ident: syn_ident(qualifiction_name),
+                    arguments: syn::PathArguments::None,
+                })
+                .chain(std::iter::once(syn::PathSegment {
+                    ident: syn_ident(&name_to_uppercase_rust(parameterized)),
+                    arguments: syn::PathArguments::AngleBracketed(
+                        syn::AngleBracketedGenericArguments {
+                            colon2_token: None,
+                            lt_token: syn::token::Lt(syn_span()),
+                            args: arguments
+                                .into_iter()
+                                .map(|argument_type| syn::GenericArgument::Type(argument_type))
+                                .collect(),
+                            gt_token: syn::token::Gt(syn_span()),
+                        },
+                    ),
+                }))
+                .collect(),
+        },
     })
 }
 fn syn_attribute_derive<'a>(trait_macro_names: impl Iterator<Item = &'a str>) -> syn::Attribute {
@@ -9620,14 +10121,14 @@ Convenient equivalent to `vec-opt-span-add-array` with an empty span.",
                         "vec",
                         type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
-                    ("new", type_variable("Element")),
+                    ("new", type_array(type_variable("Element"), type_variable("Record"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
                         type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
-                    ("slot", type_slot(type_variable("Origin"))),
+                    ("span", type_span(type_variable("Origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10519,8 +11020,18 @@ As this prevents other elements from filling these positions, you shouldn't keep
                 documentation: Some(Box::from(
                     "A stack-allocated array of known, positive length.
 Arrays make adding multiple elements of the same type much less cumbersome,
-see `vec-span-add-array`/`vec-opt-span-add-array`.
-This is a very bare-bones feature. In fact, as of writing this you cannot even create an array."
+see `vec-add-array`/`vec-span-add-array`/`vec-opt-span-add-array`.
+This is a very bare-bones feature because of sloe's simple type system.
+
+How does arry work then? The second record argument is set to an equivalent record
+that the runtime knows how to interpret as an actual array.
+```sloe
+fn example-array . :> _array u32, .e0 u32 .e1 u32 >
+    ; 6 u32 ; 9 u32
+```
+This is quite cursed!
+It is _not_ recommended or useful to use an `_array` with a non-variable record type argument _ever_.
+Use a regular record instead!"
                 )),
                 parameters: vec![Name::from_static("Element"), Name::from_static("Record")],
                 type_: Some(type_array(type_variable("Element"), type_variable("Record"))),
@@ -10955,12 +11466,14 @@ struct OpenEndKinds {
     type_choice: bool,
     record: bool,
     expression_query: bool,
+    expression_array: bool,
 }
 const no_open_end_kinds: OpenEndKinds = OpenEndKinds {
     type_construct: false,
     type_choice: false,
     record: false,
     expression_query: false,
+    expression_array: false,
 };
 fn syntax_expression_open_end<Expressions, Patterns, Types>(
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
@@ -11033,6 +11546,33 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             OpenEndKinds {
                 record: true,
                 ..last_field_open_end
+            }
+        }
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => {
+            match element1_up
+                .last()
+                .and_then(|element| element.element.as_ref())
+                .or_else(|| {
+                    element0
+                        .as_ref()
+                        .map(|element0| expressions.element(element0))
+                }) {
+                None => OpenEndKinds {
+                    expression_array: true,
+                    ..no_open_end_kinds
+                },
+                Some(last_element) => {
+                    let last_element_open_end =
+                        { syntax_expression_open_end(last_element, expressions, types) };
+                    OpenEndKinds {
+                        expression_array: true,
+                        ..last_element_open_end
+                    }
+                }
             }
         }
         SyntaxExpression::Parenthesized {
@@ -11276,7 +11816,6 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             );
             let line_span =
                 range_line_span(expression_range(expression, expressions, patterns, types));
-
             for (part_index, part) in part1_up.iter().enumerate().map(|(i, e)| (i + 1, e)) {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
                 syntax_expression_record_part_format(
@@ -11289,6 +11828,76 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     part,
                     part_index,
                 );
+            }
+        }
+        SyntaxExpression::Array {
+            semicolon_start,
+            element0,
+            element1_up,
+        } => {
+            let element_count = 1 + element1_up.len();
+            formatted.push(';');
+            match element0 {
+                None => {
+                    formatted.push(' ');
+                }
+                Some(element0) => {
+                    let value = expressions.element(element0);
+                    maybe_open_end_whitespace_then_element_format(
+                        formatted,
+                        indent,
+                        |formatted, indent| {
+                            syntax_expression_unparenthesized_format(
+                                formatted,
+                                indent,
+                                expressions,
+                                patterns,
+                                types,
+                                value,
+                            );
+                        },
+                        || syntax_expression_open_end(value, expressions, types),
+                        |open_end| open_end.expression_array,
+                        element_count,
+                        0,
+                        *semicolon_start,
+                        expression_range(value, expressions, patterns, types),
+                    );
+                }
+            }
+            let line_span =
+                range_line_span(expression_range(expression, expressions, patterns, types));
+            for (element_index, element) in element1_up.iter().enumerate().map(|(i, e)| (i + 1, e))
+            {
+                space_or_linebreak_indented_into(formatted, line_span, indent);
+                formatted.push(';');
+                match &element.element {
+                    None => {
+                        formatted.push(' ');
+                    }
+                    Some(element_expression) => {
+                        maybe_open_end_whitespace_then_element_format(
+                            formatted,
+                            indent,
+                            |formatted, indent| {
+                                syntax_expression_unparenthesized_format(
+                                    formatted,
+                                    indent,
+                                    expressions,
+                                    patterns,
+                                    types,
+                                    element_expression,
+                                );
+                            },
+                            || syntax_expression_open_end(element_expression, expressions, types),
+                            |open_end| open_end.expression_array,
+                            element_count,
+                            element_index,
+                            element.semicolon_start,
+                            expression_range(element_expression, expressions, patterns, types),
+                        );
+                    }
+                }
             }
         }
         SyntaxExpression::Parenthesized {
@@ -12692,6 +13301,33 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         origins,
                     )
                 }),
+            }),
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => element0
+            .iter()
+            .map(|element0| expressions.element(element0))
+            .chain(
+                element1_up
+                    .iter()
+                    .filter_map(|element| element.element.as_ref()),
+            )
+            .find_map(|element| {
+                expression_symbol_at_position(
+                    element,
+                    position,
+                    type_aliases,
+                    checked_queries,
+                    checked_spread_records,
+                    expressions,
+                    patterns,
+                    types,
+                    scope,
+                    pattern_variables,
+                    origins,
+                )
             }),
         SyntaxExpression::Parenthesized {
             open_paren_start: _,
@@ -14130,6 +14766,32 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 );
             }
         }
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => {
+            for element in element0
+                .iter()
+                .map(|element0| expressions.element(element0))
+                .chain(
+                    element1_up
+                        .iter()
+                        .filter_map(|element| element.element.as_ref()),
+                )
+            {
+                syntax_expression_symbol_uses_into(
+                    uses,
+                    element,
+                    symbol,
+                    expressions,
+                    patterns,
+                    types,
+                    pattern_variables,
+                    origins,
+                );
+            }
+        }
         SyntaxExpression::Parenthesized {
             open_paren_start: _,
             inner,
@@ -14567,6 +15229,24 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
                             );
                         }
                     }
+                }
+            }
+        }
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => {
+            if let Some(element0) = element0 {
+                syntax_expression_rid(expressions.remove(element0), expressions, patterns, types);
+            }
+            for SyntaxExpressionArrayElement {
+                semicolon_start: _,
+                element,
+            } in element1_up
+            {
+                if let Some(element) = element {
+                    syntax_expression_rid(element, expressions, patterns, types);
                 }
             }
         }
