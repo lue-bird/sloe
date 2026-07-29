@@ -263,25 +263,18 @@ test "array create" {
     try std.testing.expectEqualSlices(u32, &example_array2, &example_array0);
     try std.testing.expectEqual(@TypeOf(example_array2), @TypeOf(example_array0));
 }
-test "array fold down" {
-    const ExampleArrayRecord = struct { e0: u32, e1: u32, e2: u32 };
-    const example_array = core.record_to_array(ExampleArrayRecord{ .e0 = @as(u32, 0), .e1 = @as(u32, 2), .e2 = @as(u32, 4) });
-    var reverse_indexes_array_list = try core.array_fold(u32, ExampleArrayRecord, std.ArrayList(u32), .{
-        .array = example_array,
-        .direction = .{ .down = {} },
-        .state = std.ArrayList(u32).empty,
-        .step = struct {
-            pub fn step(
-                current: core.@".element.state"(u32, std.ArrayList(u32)),
-            ) error{OutOfMemory}!std.ArrayList(u32) {
-                var modified_array_list = current.state;
-                try modified_array_list.append(std.testing.allocator, current.element);
-                return modified_array_list;
-            }
-        }.step,
+test "vec_opt_span_add_array" {
+    const ExampleOrigin = enum { origin };
+    const example_origin: ExampleOrigin = .origin;
+    const example_vec = try core.vec_empty(u32, ExampleOrigin, example_origin);
+    const ExampleArrayRecord = struct { e0: u32, e1: u32 };
+    const example_array0 = core.record_to_array(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const with_array = try core.vec_opt_span_add_array(u32, ExampleOrigin, ExampleArrayRecord, std.testing.allocator, .{
+        .vec = example_vec,
+        .span = .{ .absent = {} },
+        .new = example_array0,
     });
-    try std.testing.expectEqualSlices(u32, &.{ 4, 2, 0 }, reverse_indexes_array_list.items);
-    reverse_indexes_array_list.deinit(std.testing.allocator);
+    try core.vec_rid(u32, ExampleOrigin, std.testing.allocator, with_array.vec);
 }
 test "unset_slice castOrRidAndAllocate working" {
     const allocator = std.testing.allocator;

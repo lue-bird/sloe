@@ -8874,6 +8874,12 @@ fn type_unset_span(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
+fn type_array(element: Type, record: Type) -> Type {
+    Type::CoreConstruct {
+        name: Name::from_static("array"),
+        arguments: vec![element, record],
+    }
+}
 fn type_unset_slice(element: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("unset-slice"),
@@ -9822,6 +9828,48 @@ To instead replace a `slot`, use `slot-replace`",
                 ]),
             },
             CoreFnInfo {
+                name: "vec-span-add-array",
+                documentation: "Attach a given `array` of elements at the end of the span.
+This can remove a bunch of noise compared to chaining `vec-span-add` operations",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_span(type_variable("Origin"))),
+                    ("new", type_array(type_variable("Element"), type_variable("Record"))),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_span(type_variable("Origin")))
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-opt-span-add-array",
+                documentation: "Attach a given `array` of elements at the end of the span.
+This can remove a bunch of noise compared to chaining `vec-span-add` operations",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("new", type_array(type_variable("Element"), type_variable("Record"))),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("span", type_span(type_variable("Origin")))
+                ]),
+            },
+            CoreFnInfo {
                 name: "vec-char-opt-span-add-str",
                 documentation: "Attach a given `str` at the end of the span",
                 type_parameters: vec![],
@@ -10442,6 +10490,20 @@ As this prevents other elements from filling these positions, you shouldn't keep
                 )),
                 parameters: vec![Name::from_static("Origin")],
                 type_: Some(type_unset_span(type_variable("Origin"))),
+            },
+        ),
+        (
+            Name::from_static("array"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "A stack-allocated array of known, positive length.
+Arrays make adding multiple elements of the same type much less cumbersome,
+see `vec-span-add-array`/`vec-opt-span-add-array`.
+This is a very bare-bones feature. In fact, as of writing this you cannot even create an array."
+                )),
+                parameters: vec![Name::from_static("Element"), Name::from_static("Record")],
+                type_: Some(type_array(type_variable("Element"), type_variable("Record"))),
             },
         ),
         (
