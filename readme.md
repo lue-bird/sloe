@@ -611,6 +611,8 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- rename `|present` to `|yes` and `|absent` to `|no` for brevity (which is very important because aliases are inlined in documentation. And because I find it more intuitive. It may also nudge you to switch from `|yes . |no .` to a payload-ed one). then introduce `opt-yes`
+
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold

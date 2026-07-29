@@ -63,6 +63,7 @@ export default grammar({
         $.expression_fn,
         $.expression_query,
         $.expression_origin,
+        $.expression_array,
       ),
     expression_not_open_ending_in_query: ($) =>
       choice(
@@ -78,6 +79,7 @@ export default grammar({
         $.expression_variant_not_open_ending_in_query,
         $.expression_record_not_open_ending_in_query,
         $.expression_commented_not_open_ending_in_query,
+        $.expression_array_not_open_ending_in_query,
       ),
     expression_not_open_ending_in_record: ($) =>
       choice(
@@ -92,6 +94,22 @@ export default grammar({
         $.expression_origin_not_open_ending_in_record,
         $.expression_variant_not_open_ending_in_record,
         $.expression_commented_not_open_ending_in_record,
+        $.expression_array_not_open_ending_in_record,
+      ),
+    expression_not_open_ending_in_array: ($) =>
+      choice(
+        $.expression_parenthesized,
+        $.string,
+        $.char,
+        $.expression_variable,
+        $.expression_record_empty,
+        $.expression_call_not_open_ending_in_array,
+        $.expression_number,
+        $.expression_fn_not_open_ending_in_array,
+        $.expression_origin_not_open_ending_in_array,
+        $.expression_variant_not_open_ending_in_array,
+        $.expression_commented_not_open_ending_in_array,
+        $.expression_record_not_open_ending_in_array,
       ),
     expression_parenthesized: ($) => seq("(", $.expression, ")"),
     expression_commented: ($) =>
@@ -104,6 +122,8 @@ export default grammar({
       seq($.comment, $.expression_not_open_ending_in_query),
     expression_commented_not_open_ending_in_record: ($) =>
       seq($.comment, $.expression_not_open_ending_in_record),
+    expression_commented_not_open_ending_in_array: ($) =>
+      seq($.comment, $.expression_not_open_ending_in_array),
     expression_number: ($) => seq($.number, $.type),
     expression_number_not_open_ending_in_record: ($) =>
       seq($.number, $.type_not_open_ending_in_record),
@@ -112,11 +132,15 @@ export default grammar({
       seq($.keyword_origin, $.lower_name, $.expression_not_open_ending_in_query),
     expression_origin_not_open_ending_in_record: ($) =>
       seq($.keyword_origin, $.lower_name, $.expression_not_open_ending_in_record),
+    expression_origin_not_open_ending_in_array: ($) =>
+      seq($.keyword_origin, $.lower_name, $.expression_not_open_ending_in_array),
     expression_variant: ($) => seq($.variant_name, "<", $.type, ">", $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
       seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_query),
     expression_variant_not_open_ending_in_record: ($) =>
       seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_record),
+    expression_variant_not_open_ending_in_array: ($) =>
+      seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_array),
     expression_variable: ($) => $.lower_name,
     expression_call: ($) =>
       seq(
@@ -139,6 +163,13 @@ export default grammar({
         optional($.angled_type_arguments),
         $.expression_not_open_ending_in_record,
       ),
+    expression_call_not_open_ending_in_array: ($) =>
+      seq(
+        $.symbol_call_underscore,
+        $.expression_variable,
+        optional($.angled_type_arguments),
+        $.expression_not_open_ending_in_array,
+      ),
     angled_type_arguments: ($) =>
       seq("<", repeat(seq($.type_not_open_ending_in_construct, ",")), $.type, ">"),
     angled_type_parameters: ($) =>
@@ -155,13 +186,22 @@ export default grammar({
         $.key_symbol_question_mark,
         $.expression_not_open_ending_in_query,
         repeat($.expression_query_case_not_open_ending_in_query),
-        $.expression_query_case_not_open_ending_in_query,
+        $.expression_query_case_not_open_ending_in_record,
+      ),
+    expression_query_not_ending_in_array: ($) =>
+      seq(
+        $.key_symbol_question_mark,
+        $.expression_not_open_ending_in_query,
+        repeat($.expression_query_case_not_open_ending_in_query),
+        $.expression_query_case_not_open_ending_in_array,
       ),
     expression_query_case: ($) => seq("[", $.pattern_untyped, "]", $.expression),
     expression_query_case_not_open_ending_in_query: ($) =>
       seq("[", $.pattern_untyped, "]", $.expression_not_open_ending_in_query),
     expression_query_case_not_open_ending_in_record: ($) =>
       seq("[", $.pattern_untyped, "]", $.expression_not_open_ending_in_record),
+    expression_query_case_not_open_ending_in_array: ($) =>
+      seq("[", $.pattern_untyped, "]", $.expression_not_open_ending_in_array),
     expression_record_empty: ($) => ".",
     expression_record: ($) =>
       seq(
@@ -172,6 +212,11 @@ export default grammar({
       seq(
         repeat($.expression_record_part_not_open_ending_in_record),
         $.expression_record_part_not_open_ending_in_query,
+      ),
+    expression_record_not_open_ending_in_array: ($) =>
+      seq(
+        repeat($.expression_record_part_not_open_ending_in_record),
+        $.expression_record_part_not_open_ending_in_array,
       ),
     expression_record_part: ($) =>
       seq(choice($.key_symbol_spread_fields, $.field_name), $.expression),
@@ -185,11 +230,32 @@ export default grammar({
         choice($.key_symbol_spread_fields, $.field_name),
         $.expression_not_open_ending_in_record,
       ),
+    expression_record_part_not_open_ending_in_array: ($) =>
+      seq(
+        choice($.key_symbol_spread_fields, $.field_name),
+        $.expression_not_open_ending_in_array,
+      ),
+    expression_array: ($) =>
+      seq(repeat(seq(";", $.expression_not_open_ending_in_array)), ";", $.expression),
+    expression_array_not_open_ending_in_record: ($) =>
+      seq(
+        repeat(seq(";", $.expression_not_open_ending_in_array)),
+        ";",
+        $.expression_not_open_ending_in_record,
+      ),
+    expression_array_not_open_ending_in_query: ($) =>
+      seq(
+        repeat(seq(";", $.expression_not_open_ending_in_array)),
+        ";",
+        $.expression_not_open_ending_in_query,
+      ),
     expression_fn: ($) => seq("[", $.pattern_typed, "]", $.expression),
     expression_fn_not_open_ending_in_query: ($) =>
       seq("[", $.pattern_typed, "]", $.expression_not_open_ending_in_query),
     expression_fn_not_open_ending_in_record: ($) =>
       seq("[", $.pattern_typed, "]", $.expression_not_open_ending_in_record),
+    expression_fn_not_open_ending_in_array: ($) =>
+      seq("[", $.pattern_typed, "]", $.expression_not_open_ending_in_array),
 
     pattern_typed: ($) =>
       choice(
