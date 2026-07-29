@@ -263,6 +263,18 @@ test "array create" {
     try std.testing.expectEqualSlices(u32, &example_array2, &example_array0);
     try std.testing.expectEqual(@TypeOf(example_array2), @TypeOf(example_array0));
 }
+test "vec_add_array" {
+    const ExampleOrigin = enum { origin };
+    const example_origin: ExampleOrigin = .origin;
+    const example_vec = try core.vec_empty(u32, ExampleOrigin, example_origin);
+    const ExampleArrayRecord = struct { e0: u32, e1: u32 };
+    const example_array0 = core.record_to_array(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const with_array = try core.vec_add_array(u32, ExampleOrigin, ExampleArrayRecord, std.testing.allocator, .{
+        .vec = example_vec,
+        .new = example_array0,
+    });
+    try core.vec_rid(u32, ExampleOrigin, std.testing.allocator, with_array.vec);
+}
 test "vec_opt_span_add_array" {
     const ExampleOrigin = enum { origin };
     const example_origin: ExampleOrigin = .origin;

@@ -1434,6 +1434,26 @@ pub fn vec_add_unset_length_positive(
     const @"%unset_span" = try @"%".vec.addUnsetLengthPositive(@"%allocator", @"%".length);
     return .{ .vec = @"%".vec, .span = @"%unset_span" };
 }
+pub fn vec_add_array(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%Record": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": @".new.vec"(
+        Array(@"%Element", @"%Record"),
+        Vec(@"%Origin", @"%Element"),
+    ),
+) error{OutOfMemory}!@".span.vec"(
+    Span(@"%Origin"),
+    Vec(@"%Origin", @"%Element"),
+) {
+    var @"%vec" = @"%".vec;
+    const @"%new_span" = try @"%vec".addArray(@"%Record", @"%allocator", @"%".new);
+    return .{
+        .span = @"%new_span",
+        .vec = @"%vec",
+    };
+}
 pub fn vec_remove(
     @"%Element": type,
     @"%Origin": type,

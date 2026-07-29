@@ -9570,7 +9570,7 @@ Assign an unset-slot with `vec-set` or vacate it with `vec-vacate`",
                 ]),
             },
             CoreFnInfo {
-                name: "vec-add-length-positive",
+                name: "vec-add-unset-length-positive",
                 documentation: "Claim a given count of new end slots to be set in the near future.
 Combined with `vec-span-rid` this has the same effect as `vec-pre-allocate-at-least` for example.",
                 type_parameters: vec![],
@@ -9590,7 +9590,7 @@ Combined with `vec-span-rid` this has the same effect as `vec-pre-allocate-at-le
                 ]),
             },
             CoreFnInfo {
-                name: "vec-add-length",
+                name: "vec-add-unset-length",
                 documentation: "Claim a given count of new end slots to be set in the near future.
 Combined with `vec-opt-span-rid` this has the same effect as `vec-pre-allocate-at-least` for example.
 To get non-empty spans use `vec-add-length-positive`",
@@ -9608,6 +9608,26 @@ To get non-empty spans use `vec-add-length-positive`",
                         type_vec(type_variable("Origin"), type_variable("Element")),
                     ),
                     ("span", type_opt(type_unset_span(type_variable("Origin")))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "vec-add-array",
+                documentation: "Add a given `array` of new elements to the end of the vec and keep a span to it without trying to reuse already vacant slots.
+Convenient equivalent to `vec-opt-span-add-array` with an empty span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("new", type_variable("Element")),
+                ]),
+                result_type: type_record([
+                    (
+                        "vec",
+                        type_vec(type_variable("Origin"), type_variable("Element")),
+                    ),
+                    ("slot", type_slot(type_variable("Origin"))),
                 ]),
             },
             CoreFnInfo {

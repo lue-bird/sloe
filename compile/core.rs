@@ -2111,6 +2111,15 @@ pub fn vec_add_unset_length_positive<Element, Origin>(
         span: span,
     }
 }
+pub fn vec_add_array<Element, Origin, Record>(
+    Record·new·vec { mut vec, new }: Record·new·vec<Array<Element, Record>, Vec<Origin, Element>>,
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
+    let span = vec.add_array(new);
+    Record·span·vec {
+        vec: vec,
+        span: span,
+    }
+}
 pub fn vec_insert_vec_span<Origin, SourceOrigin, Element>(
     mut vec: Vec<Origin, Element>,
     mut source: Vec<SourceOrigin, Element>,
@@ -2129,7 +2138,7 @@ pub fn vec_insert_vec_span<Origin, SourceOrigin, Element>(
         span: new_span,
     }
 }
-pub fn vec_insert_str<Origin>(
+pub fn vec_char_insert_str<Origin>(
     Record·new·vec {
         mut vec,
         new: new_str,
