@@ -58,7 +58,6 @@ fn view
     .chars _vec Chars, char
     >
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
-    ? |absent<_opt _span Htmls> . [main-subs]
     ? .vec chars .span |absent<_opt _span Chars> . [text]
     ? _vec-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
     ? _u32-dup mouse-x [.a mouse-x .b mouse-x-use]
@@ -66,40 +65,33 @@ fn view
     ? _vec-char-span-add-str .. text .new " .y " [text]
     ? _u32-dup mouse-y [.a mouse-y .b mouse-y-use]
     ? _vec-char-span-add-u32 .. text .new mouse-y-use [.vec chars .span text-span]
-    ? |text-dynamic<_html Htmls, Modifiers, Chars> |present<_opt _span Chars> text-span [info-html]
-    # ? |text-static<_html Htmls, Modifiers, Chars> "hello" [placeholder-html]
-    ? _vec-opt-span-add .vec htmls .span main-subs .new info-html [.vec htmls .span div-subs]
-    # ? _vec-span-add .vec htmls .span div-subs .new placeholder-html [.vec htmls .span div-subs]
     ?
-        _vec-add
+        _vec-add-array
+        .vec htmls
+        .new
+            ; |text-dynamic<_html Htmls, Modifiers, Chars> |present<_opt _span Chars> text-span
+            ; |text-static<_html Htmls, Modifiers, Chars> "hello"
+    [.vec htmls .span div-subs]
+    ?
+        _vec-add-array
         .vec modifiers
         .new
-            |on-mouse-move<_modifier event, Chars>
-            [mouse-position .x u32 .y u32] |mouse-moved<event> mouse-position
-    [.vec modifiers .slot main-modifiers]
-    ?
-        _vec-span-add
-        .vec modifiers
-        .span _slot-to-span main-modifiers
-        .new (|style-static<_modifier event, Chars> .key "height" .value "100vh")
+            ; |style-static<_modifier event, Chars> .key "height" .value "100vh"
+            ; |style-static<_modifier event, Chars> .key "width" .value "100vw"
+            ;
+                |on-mouse-move<_modifier event, Chars>
+                [mouse-position .x u32 .y u32] |mouse-moved<event> mouse-position
     [.vec modifiers .span main-modifiers]
-    ?
-        _vec-span-add
-        .vec modifiers
-        .span main-modifiers
-        .new (|style-static<_modifier event, Chars> .key "width" .value "100vw")
-    [.vec modifiers .span main-modifiers]
-    ?
+    .state (.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span)
+    .html (
         |element<_html Htmls, Modifiers, Chars>
         .tag "main"
         .modifiers |present<_opt _span Modifiers> main-modifiers
         .subs |present<_opt _span Htmls> div-subs
-    [html]
-    .state (.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span)
+        )
     .htmls htmls
     .modifiers modifiers
     .chars chars
-    .html html
 
 ty html Htmls, Modifiers, Chars
     # for namespace, use xmlns attribute

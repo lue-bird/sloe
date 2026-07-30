@@ -35,7 +35,7 @@ Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making th
 
 # concept: consecutive memory collection `vec`
 A collection which can mark some ranges within itself as vacant without moving existing elemnts around.
-This can be used to "return" memory which has become outdated or useless, for example with `vec-remove` and `vec-span-add-remove-vec-span`.
+This can be used to "return" memory which has become outdated or useless, for example with `vec-remove`, `vec-slot-rid` and `vec-span-rid`.
 Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
 Further reading if interested: This concept is often called slot map, reusing memory.
@@ -95,9 +95,7 @@ fn use-vec . :> u32 >
   	? _vec-empty<u32> vec-origin [vec]
   	? _vec-add .vec vec .new 123 u32 [.vec vec .slot first-slot]
   	? _vec-remove .vec vec .slot first-slot [.vec vec .element first]
-  	? |absent<_opt vec-origin> . [after-first]
-  	? _vec-opt-span-add .vec vec .span after-first .new 456 u32 [.vec vec .span after-first]
-  	? _vec-span-add .vec vec .span after-first .new 789 u32 [.vec vec .span after-first]
+  	? _vec-add-array .vec vec .new ; 456 u32 ; 789 u32 [.vec vec .span after-first]
     ...
   	first # = 123 u32
 
@@ -410,7 +408,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       origin local-origin
       ? _vec-empty<u32> consume-origin [temporary]
       ? _recurse local-origin result-origin [result]
-      ? _vec-add .a temporary .b 1 u32 [.slot slot .vec temporary]
+      ? _vec-add .vec temporary .new 1 u32 [.slot slot .vec temporary]
       ...
       result
   ```
@@ -621,21 +619,16 @@ cargo install --offline --debug --path . sloe
 
 - add more functions for reaching into span elements, e.g. swapping two elemnts at indexes inside the span
 
-- strongly consider changing `_name argument` to `Name argument` in types and expressions.
+- change `_name argument` to `Name argument` in types and expressions.
   In the same change, change type variables from `Upper` to `_lower` (quite neat, no?)
-  Also, calling function variables needs new syntax. Requires function variables to be `Upper` which I guess could be okay.
+  Also, calling function variables needs to be done via `Call .fn variable .in argument`.
   
   This means
-    - shorter and less confusing (convention is easier not to forget compared to _call)
+    - shorter and less confusing (much easier to remember compared to _call)
     - definition and call sites are closer aligned
     - adding/removing argument to a type is a little more confusing
-    - the chance of project fns overlapping with variable names is more slim
-    - the chance for different-arity types are less likely to collide
-    - function variables in theory do not need to be explicitly dup-ed anymore. I think this would be a great change considering passing functions from the outside is fairly accepted for FFI and similar. Open question: Should Fns need to be rid-ed? I'd say yes but not crazy clear
-  
-  so not a clear-cut improvement. I'm especially unsure about the pattern variable change as I have seen 0 other languages with this design :/
-  Tracking function variables separately from other variables also seems like a pain but manageable.
-  Current opionion: "yes, do this change"
+    - project fns can never overlap with variable names anymore (!)
+    - different-arity types are less likely to collide
 
 - change `str` to mean non-empty string. This is more annoying for FFI (needs a wrapper over str/[]u8) but I think overall this is okay especially since memory efficiency is the same
 
