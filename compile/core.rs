@@ -40,9 +40,9 @@ pub struct Record·by·n<By, N> {
     pub n: N,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·mode·n<Mode, N> {
-    pub mode: Mode,
-    pub n: N,
+pub struct Record·fn·in<Fn, In> {
+    pub fn_: Fn,
+    pub in_: In,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·max·min<Max, Min> {
@@ -1638,6 +1638,9 @@ pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> Record·a·b<Fn<In, Out>, Fn<In, Out
     Record·a·b { a: fn_, b: fn_ }
 }
 pub fn fn_rid<In, Out>(_: Fn<In, Out>) -> Record {}
+pub fn call<In, Out>(to_call: Record·fn·in<Fn<In, Out>, In>) -> Out {
+    (to_call.fn_)(to_call.in_)
+}
 
 pub fn char_dup(char: Char) -> Record·a·b<Char, Char> {
     Record·a·b { a: char, b: char }

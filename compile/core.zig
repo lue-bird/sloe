@@ -24,11 +24,11 @@ pub fn @".p.u"(@"%P": type, @"%U": type) type {
 pub fn @"record.p.u"(@"%p": anytype, @"%u": anytype) @".p.u"(@TypeOf(@"%p"), @TypeOf(@"%u")) {
     return .{ .p = @"%p", .u = @"%u" };
 }
-pub fn @".mode.n"(@"%Mode": type, @"%N": type) type {
-    return struct { mode: @"%Mode", n: @"%N" };
+pub fn @".fn_.in"(@"%Fn": type, @"%In": type) type {
+    return struct { fn_: @"%Fn", n: @"%In" };
 }
-pub fn @"record.mode.n"(@"%mode": anytype, @"%n": anytype) @".mode.n"(@TypeOf(@"%mode"), @TypeOf(@"%n")) {
-    return .{ .mode = @"%mode", .n = @"%n" };
+pub fn @"record.fn_.in"(@"%fn_": anytype, @"%in": anytype) @".fn_.in"(@TypeOf(@"%fn_"), @TypeOf(@"%in")) {
+    return .{ .fn_ = @"%fn_", .in = @"%in" };
 }
 pub fn @".end.start"(@"%End": type, @"%Start": type) type {
     return struct { end: @"%End", start: @"%Start" };
@@ -1172,6 +1172,13 @@ pub fn str_dup(@"%n": Str) error{OutOfMemory}!@".a.b"(Str, Str) {
 pub fn fn_rid(@"%In": type, @"%Out": type, _: Fn(@"%In", @"%Out")) error{OutOfMemory}!void {}
 pub fn fn_dup(@"%In": type, @"%Out": type, @"%function": Fn(@"%In", @"%Out")) error{OutOfMemory}!@".a.b"(Fn(@"%In", @"%Out"), Fn(@"%In", @"%Out")) {
     return .{ .a = @"%function", .b = @"%function" };
+}
+pub fn call(
+    @"%In": type,
+    @"%Out": type,
+    @"%": @".fn_.in"(Fn(@"%In", @"%Out"), @"%In"),
+) error{OutOfMemory}!@"%Out" {
+    return @"%".fn_(@"%".in);
 }
 
 pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
