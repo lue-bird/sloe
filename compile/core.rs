@@ -221,9 +221,9 @@ pub struct Record·carry·wrapped<Carry, Wrapped> {
     pub wrapped: Wrapped,
 }
 #[derive(Clone, Copy, Debug)]
-pub enum Choice·Absent·Present<Absent, Present> {
-    Absent(Absent),
-    Present(Present),
+pub enum Choice·No·Yes<No, Yes> {
+    No(No),
+    Yes(Yes),
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Choice·Exit·Go_on<Exit, Go_on> {
@@ -254,7 +254,7 @@ pub type F32 = f32;
 pub type Char = char;
 pub type Str = &'static str;
 pub type Fn<In, Out> = fn(In) -> Out;
-pub type Opt<Present> = Choice·Absent·Present<Record, Present>;
+pub type Opt<Yes> = Choice·No·Yes<Record, Yes>;
 
 #[derive(Debug)]
 pub struct Origin<LocalOrigin>(LocalOrigin);
@@ -402,26 +402,26 @@ impl<Element> std::fmt::Debug for Unset_slice<Element> {
 impl<A> Opt<A> {
     pub fn from_option(option: std::option::Option<A>) -> Self {
         match option {
-            std::option::Option::None => Opt::Absent(()),
-            std::option::Option::Some(present) => Opt::Present(present),
+            std::option::Option::None => Opt::No(()),
+            std::option::Option::Some(yes) => Opt::Yes(yes),
         }
     }
     pub fn into_option(self) -> std::option::Option<A> {
         match self {
-            Opt::Absent(()) => std::option::Option::None,
-            Opt::Present(present) => std::option::Option::Some(present),
+            Opt::No(()) => std::option::Option::None,
+            Opt::Yes(yes) => std::option::Option::Some(yes),
         }
     }
     pub fn as_ref(&self) -> Opt<&A> {
         match self {
-            Opt::Absent(()) => Opt::Absent(()),
-            Opt::Present(present) => Opt::Present(present),
+            Opt::No(()) => Opt::No(()),
+            Opt::Yes(yes) => Opt::Yes(yes),
         }
     }
     pub fn as_mut(&mut self) -> Opt<&mut A> {
         match self {
-            Opt::Absent(()) => Opt::Absent(()),
-            Opt::Present(present) => Opt::Present(present),
+            Opt::No(()) => Opt::No(()),
+            Opt::Yes(yes) => Opt::Yes(yes),
         }
     }
 }
@@ -620,8 +620,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     }
     pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&'a Span<LocalOrigin>>) -> &'a [Element] {
         match opt_span {
-            Opt::Absent(()) => &[],
-            Opt::Present(span) => self.span_slice(span),
+            Opt::No(()) => &[],
+            Opt::Yes(span) => self.span_slice(span),
         }
     }
     pub fn span_slice<'a>(&'a self, span: &'a Span<LocalOrigin>) -> &'a [Element] {
@@ -637,8 +637,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         opt_span: &'a mut Opt<Span<LocalOrigin>>,
     ) -> &'a mut [Element] {
         match opt_span {
-            Opt::Absent(()) => &mut [],
-            Opt::Present(span) => self.span_slice_mut(span),
+            Opt::No(()) => &mut [],
+            Opt::Yes(span) => self.span_slice_mut(span),
         }
     }
     pub fn span_slice_mut<'a>(&'a mut self, span: &'a mut Span<LocalOrigin>) -> &'a mut [Element] {
@@ -695,7 +695,7 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         self.span_rid(slot_to_vacate.to_span());
     }
     pub fn opt_span_rid(&mut self, span_to_vacate: Opt<Unset_span<LocalOrigin>>) {
-        if let Opt::Present(span_to_vacate) = span_to_vacate {
+        if let Opt::Yes(span_to_vacate) = span_to_vacate {
             self.span_rid(span_to_vacate);
         }
     }
@@ -814,10 +814,10 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     }
     pub fn add_unset_length(&mut self, length: u32) -> Opt<Unset_span<LocalOrigin>> {
         match P32::new(length) {
-            std::option::Option::None => Opt::Absent(()),
+            std::option::Option::None => Opt::No(()),
             std::option::Option::Some(length) => {
                 let span = self.add_unset_length_positive(length);
-                Opt::Present(span)
+                Opt::Yes(span)
             }
         }
     }
@@ -901,8 +901,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         );
         match std::num::NonZeroU32::new((self.elements.len() - length_without_new_elements) as u32)
         {
-            std::option::Option::None => Opt::Absent(()),
-            std::option::Option::Some(new_length) => Opt::Present(Span {
+            std::option::Option::None => Opt::No(()),
+            std::option::Option::Some(new_length) => Opt::Yes(Span {
                 start: Slot::from_index(length_without_new_elements as u32),
                 length: new_length,
             }),
@@ -929,9 +929,9 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         new_elements: impl std::iter::ExactSizeIterator<Item = Element>,
     ) -> Opt<Span<LocalOrigin>> {
         match std::num::NonZeroU32::new(new_elements.len() as u32) {
-            std::option::Option::None => Opt::Absent(()),
+            std::option::Option::None => Opt::No(()),
             std::option::Option::Some(new_element_count) => {
-                Opt::Present(self.insert_iterator_filled(new_elements, new_element_count))
+                Opt::Yes(self.insert_iterator_filled(new_elements, new_element_count))
             }
         }
     }
@@ -945,10 +945,10 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         let std::option::Option::Some(new_length) =
             std::num::NonZeroU32::new(std::iter::Iterator::count(new_elements.clone()) as u32)
         else {
-            return Opt::Absent(());
+            return Opt::No(());
         };
         let new_span = self.insert_iterator_filled(new_elements, new_length);
-        Opt::Present(new_span)
+        Opt::Yes(new_span)
     }
     pub fn add_array<Record>(&mut self, new_elements: Array<Element, Record>) -> Span<LocalOrigin> {
         let length_without_new_elements = self.elements.len();
@@ -1024,11 +1024,11 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         source_span: Opt<Span<SourceOrigin>>,
     ) -> (Opt<Unset_span<SourceOrigin>>, Span<LocalOrigin>) {
         match source_span {
-            Opt::Absent(()) => (Opt::Absent(()), span),
-            Opt::Present(source_span) => {
+            Opt::No(()) => (Opt::No(()), span),
+            Opt::Yes(source_span) => {
                 let (source_span, combined_span) =
                     self.span_add_vec_span(span, source, source_span);
-                (Opt::Present(source_span), combined_span)
+                (Opt::Yes(source_span), combined_span)
             }
         }
     }
@@ -1039,8 +1039,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         source_span: Span<SourceOrigin>,
     ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
         match span {
-            Opt::Absent(()) => self.add_vec_span(source, source_span),
-            Opt::Present(span) => self.span_add_vec_span(span, source, source_span),
+            Opt::No(()) => self.add_vec_span(source, source_span),
+            Opt::Yes(span) => self.span_add_vec_span(span, source, source_span),
         }
     }
     pub fn opt_span_add_vec_opt_span<SourceOrigin>(
@@ -1050,11 +1050,11 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         source_span: Opt<Span<SourceOrigin>>,
     ) -> (Opt<Unset_span<SourceOrigin>>, Opt<Span<LocalOrigin>>) {
         match source_span {
-            Opt::Absent(()) => (Opt::Absent(()), span),
-            Opt::Present(source_span) => {
+            Opt::No(()) => (Opt::No(()), span),
+            Opt::Yes(source_span) => {
                 let (source_span, combined_span) =
                     self.opt_span_add_vec_span(span, source, source_span);
-                (Opt::Present(source_span), Opt::Present(combined_span))
+                (Opt::Yes(source_span), Opt::Yes(combined_span))
             }
         }
     }
@@ -1101,8 +1101,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         new_elements: Array<Element, Record>,
     ) -> Span<LocalOrigin> {
         match span {
-            Opt::Absent(()) => self.add_array(new_elements),
-            Opt::Present(span) => self.span_add_array(span, new_elements),
+            Opt::No(()) => self.add_array(new_elements),
+            Opt::Yes(span) => self.span_add_array(span, new_elements),
         }
     }
     pub fn span_add(&mut self, span: Span<LocalOrigin>, new_element: Element) -> Span<LocalOrigin> {
@@ -1206,8 +1206,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         end: Opt<Span<LocalOrigin>>,
     ) -> Span<LocalOrigin> {
         match end {
-            Opt::Absent(()) => start,
-            Opt::Present(end) => self.span_add_own_span(start, end),
+            Opt::No(()) => start,
+            Opt::Yes(end) => self.span_add_own_span(start, end),
         }
     }
     pub fn opt_span_add_own_span(
@@ -1216,8 +1216,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         end: Span<LocalOrigin>,
     ) -> Span<LocalOrigin> {
         match start {
-            Opt::Absent(()) => end,
-            Opt::Present(start) => self.span_add_own_span(start, end),
+            Opt::No(()) => end,
+            Opt::Yes(start) => self.span_add_own_span(start, end),
         }
     }
     pub fn opt_span_add_own_opt_span(
@@ -1226,8 +1226,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         end: Opt<Span<LocalOrigin>>,
     ) -> Opt<Span<LocalOrigin>> {
         match start {
-            Opt::Absent(()) => end,
-            Opt::Present(start) => Opt::Present(self.span_add_own_opt_span(start, end)),
+            Opt::No(()) => end,
+            Opt::Yes(start) => Opt::Yes(self.span_add_own_opt_span(start, end)),
         }
     }
     pub fn unset_span_add_own_span(
@@ -1251,8 +1251,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         end: Opt<Unset_span<LocalOrigin>>,
     ) -> Unset_span<LocalOrigin> {
         match end {
-            Opt::Absent(()) => start,
-            Opt::Present(end) => self.unset_span_add_own_span(start, end),
+            Opt::No(()) => start,
+            Opt::Yes(end) => self.unset_span_add_own_span(start, end),
         }
     }
     pub fn opt_unset_span_add_own_span(
@@ -1261,8 +1261,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         end: Unset_span<LocalOrigin>,
     ) -> Unset_span<LocalOrigin> {
         match start {
-            Opt::Absent(()) => end,
-            Opt::Present(start) => self.unset_span_add_own_span(start, end),
+            Opt::No(()) => end,
+            Opt::Yes(start) => self.unset_span_add_own_span(start, end),
         }
     }
     pub fn opt_unset_span_add_own_opt_span(
@@ -1271,8 +1271,8 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
         end: Opt<Unset_span<LocalOrigin>>,
     ) -> Opt<Unset_span<LocalOrigin>> {
         match start {
-            Opt::Absent(()) => end,
-            Opt::Present(start) => Opt::Present(self.unset_span_add_own_opt_span(start, end)),
+            Opt::No(()) => end,
+            Opt::Yes(start) => Opt::Yes(self.unset_span_add_own_opt_span(start, end)),
         }
     }
     pub fn vacant_spans<'a>(&'a self) -> &'a std::vec::Vec<Unset_span<LocalOrigin>> {
@@ -1320,8 +1320,8 @@ impl<Origin> Vec<Origin, Char> {
         new_str: &str,
     ) -> Opt<Span<Origin>> {
         match span {
-            Opt::Absent(()) => self.add_str(new_str),
-            Opt::Present(span) => Opt::Present(self.span_add_str(span, new_str)),
+            Opt::No(()) => self.add_str(new_str),
+            Opt::Yes(span) => Opt::Yes(self.span_add_str(span, new_str)),
         }
     }
     pub fn span_add_str(&mut self, span: Span<Origin>, new_str: &str) -> Span<Origin> {
@@ -1369,8 +1369,8 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
     > {
         Record·after·start {
             after: match std::num::NonZeroU32::new(p32_predecessor(self.length)) {
-                std::option::Option::None => Opt::Absent(()),
-                std::option::Option::Some(after_length) => Opt::Present(Span_with_occupancy {
+                std::option::Option::None => Opt::No(()),
+                std::option::Option::Some(after_length) => Opt::Yes(Span_with_occupancy {
                     start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
                         self.start.index + 1,
                     ),
@@ -1389,8 +1389,8 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
         Record·before·end {
             end: Slot_with_occupancy::<Origin, Occupancy>::from_index(self.end_index()),
             before: match std::num::NonZeroU32::new(p32_predecessor(self.length)) {
-                std::option::Option::None => Opt::Absent(()),
-                std::option::Option::Some(before_length) => Opt::Present(Span_with_occupancy {
+                std::option::Option::None => Opt::No(()),
+                std::option::Option::Some(before_length) => Opt::Yes(Span_with_occupancy {
                     start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
                         self.start.index - 1,
                     ),
@@ -1410,9 +1410,9 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
             <std::num::NonZeroU32 as std::cmp::Ord>::min(start_length_or_greater, self.length);
         Record·after·start {
             after: match std::num::NonZeroU32::new(self.length.get() - start_length.get()) {
-                std::option::Option::None => Opt::Absent(()),
+                std::option::Option::None => Opt::No(()),
                 std::option::Option::Some(after_length) => {
-                    Opt::Present(Span_with_occupancy::<Origin, Occupancy> {
+                    Opt::Yes(Span_with_occupancy::<Origin, Occupancy> {
                         start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
                             self.start.index + start_length.get(),
                         ),
@@ -1444,9 +1444,9 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
                 length: end_length,
             },
             before: match std::num::NonZeroU32::new(before_length) {
-                std::option::Option::None => Opt::Absent(()),
+                std::option::Option::None => Opt::No(()),
                 std::option::Option::Some(before_length) => {
-                    Opt::Present(Span_with_occupancy::<Origin, Occupancy> {
+                    Opt::Yes(Span_with_occupancy::<Origin, Occupancy> {
                         start: self.start,
                         length: before_length,
                     })
@@ -1459,20 +1459,20 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
 impl<Origin, Occupancy> Opt<&Span_with_occupancy<Origin, Occupancy>> {
     pub fn to_range(self) -> std::ops::Range<usize> {
         match self {
-            Opt::Absent(()) => <std::ops::Range<usize> as std::default::Default>::default(),
-            Opt::Present(span) => span.to_range(),
+            Opt::No(()) => <std::ops::Range<usize> as std::default::Default>::default(),
+            Opt::Yes(span) => span.to_range(),
         }
     }
     pub fn to_range_u32(self) -> std::ops::Range<u32> {
         match self {
-            Opt::Absent(()) => <std::ops::Range<u32> as std::default::Default>::default(),
-            Opt::Present(span) => span.to_range_u32(),
+            Opt::No(()) => <std::ops::Range<u32> as std::default::Default>::default(),
+            Opt::Yes(span) => span.to_range_u32(),
         }
     }
     pub fn length(self) -> u32 {
         match self {
-            Opt::Absent(()) => 0,
-            Opt::Present(span) => span.length.get(),
+            Opt::No(()) => 0,
+            Opt::Yes(span) => span.length.get(),
         }
     }
 }
@@ -1537,13 +1537,13 @@ pub fn i32_to_f32(n: I32) -> F32 {
 }
 pub fn i32_to_u32(n: I32) -> Opt<U32> {
     match <U32 as std::convert::TryFrom<I32>>::try_from(n) {
-        std::result::Result::Err(_) => Opt::Absent(()),
-        std::result::Result::Ok(u) => Opt::Present(u),
+        std::result::Result::Err(_) => Opt::No(()),
+        std::result::Result::Ok(u) => Opt::Yes(u),
     }
 }
 pub fn i32_to_p32(n: I32) -> Opt<P32> {
     match <U32 as std::convert::TryFrom<I32>>::try_from(n) {
-        std::result::Result::Err(_) => Opt::Absent(()),
+        std::result::Result::Err(_) => Opt::No(()),
         std::result::Result::Ok(u) => u32_to_p32(u),
     }
 }
@@ -1749,8 +1749,8 @@ pub fn str_chars_fold_while<Exit, GoOn>(
     ))
 }
 
-pub fn opt_present<Present>(present: Present) -> Opt<Present> {
-    Opt::Present(present)
+pub fn opt_yes<Yes>(yes: Yes) -> Opt<Yes> {
+    Opt::Yes(yes)
 }
 
 pub fn slot_index<Origin>(slot: Slot<Origin>) -> Record·index·slot<u32, Slot<Origin>> {
@@ -1854,8 +1854,8 @@ pub fn opt_span_fold_while<Exit, GoOn, Origin>(
     >,
 ) -> Choice·Exit·Go_on<Record·exit·remaining<Exit, Opt<Span<Origin>>>, GoOn> {
     match span {
-        Opt::Absent(()) => Choice·Exit·Go_on::Go_on(initial_state),
-        Opt::Present(span) => span_fold_while(Record·direction·span·state·step {
+        Opt::No(()) => Choice·Exit·Go_on::Go_on(initial_state),
+        Opt::Yes(span) => span_fold_while(Record·direction·span·state·step {
             direction: direction,
             span: span,
             state: initial_state,
@@ -2200,14 +2200,14 @@ pub fn vec_opt_span_add<Element, Origin>(
     }: Record·new·span·vec<Element, Opt<Span<Origin>>, Vec<Origin, Element>>,
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
     match span {
-        Opt::Absent(()) => {
+        Opt::No(()) => {
             let new_slot = vec.insert(new_element);
             Record·span·vec {
                 vec: vec,
                 span: slot_to_span(new_slot),
             }
         }
-        Opt::Present(span) => vec_span_add(Record·new·span·vec {
+        Opt::Yes(span) => vec_span_add(Record·new·span·vec {
             vec: vec,
             span: span,
             new: new_element,
@@ -2614,14 +2614,14 @@ pub fn vec_opt_span_move_to_vacant<Element, Origin>(
     Record·span·vec { span, mut vec }: Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>>,
 ) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
     match span {
-        Opt::Absent(()) => Record·span·vec {
-            span: Opt::Absent(()),
+        Opt::No(()) => Record·span·vec {
+            span: Opt::No(()),
             vec: vec,
         },
-        Opt::Present(span) => {
+        Opt::Yes(span) => {
             let moved_span = vec.span_move_to_vacant(span);
             Record·span·vec {
-                span: Opt::Present(moved_span),
+                span: Opt::Yes(moved_span),
                 vec: vec,
             }
         }
@@ -2640,14 +2640,14 @@ pub fn vec_opt_span_move_to_end<Element, Origin>(
     Record·span·vec { span, mut vec }: Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>>,
 ) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
     match span {
-        Opt::Absent(()) => Record·span·vec {
-            span: Opt::Absent(()),
+        Opt::No(()) => Record·span·vec {
+            span: Opt::No(()),
             vec: vec,
         },
-        Opt::Present(span) => {
+        Opt::Yes(span) => {
             let moved_span = vec.span_move_to_end(span);
             Record·span·vec {
-                span: Opt::Present(moved_span),
+                span: Opt::Yes(moved_span),
                 vec: vec,
             }
         }

@@ -130,39 +130,39 @@ test "simple slot and span queries" {
     const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
     try std.testing.expectEqual(4, (try core.slot_index(ExampleOrigin, slot4)).index);
     try std.testing.expectEqual(10, (try core.span_length(ExampleOrigin, span4_to_13)).length.positive);
-    try std.testing.expectEqual(10, (try core.opt_span_length(ExampleOrigin, .{ .present = span4_to_13 })).length);
-    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, .{ .absent = {} })).length);
+    try std.testing.expectEqual(10, (try core.opt_span_length(ExampleOrigin, .{ .yes = span4_to_13 })).length);
+    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, .{ .no = {} })).length);
     const unset_slot4 = core.Unset_slot(ExampleOrigin){ .index = 4 };
     const unset_span4_to_13 = core.Unset_span(ExampleOrigin){ .start = unset_slot4, .length = core.P32.fromComptime(10) };
     try std.testing.expectEqual(4, (try core.unset_slot_index(ExampleOrigin, unset_slot4)).index);
     try std.testing.expectEqual(10, (try core.unset_span_length(ExampleOrigin, unset_span4_to_13)).length.positive);
-    try std.testing.expectEqual(10, (try core.opt_unset_span_length(ExampleOrigin, .{ .present = unset_span4_to_13 })).length);
-    try std.testing.expectEqual(0, (try core.opt_unset_span_length(ExampleOrigin, .{ .absent = {} })).length);
+    try std.testing.expectEqual(10, (try core.opt_unset_span_length(ExampleOrigin, .{ .yes = unset_span4_to_13 })).length);
+    try std.testing.expectEqual(0, (try core.opt_unset_span_length(ExampleOrigin, .{ .no = {} })).length);
 }
 test "span_start" {
     const ExampleOrigin = enum { vec };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot4_and_span5_to_13 = try core.span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
-    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
-    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.present.length.positive);
-    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.present.endIndex());
+    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.yes.start.index);
+    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.yes.length.positive);
+    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.yes.endIndex());
 }
 test "span_end" {
     const ExampleOrigin = enum { vec };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot13_and_span4_to_12 = try core.span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
-    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
-    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
-    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
+    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.yes.start.index);
+    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.yes.length.positive);
+    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.yes.endIndex());
 }
 test "span_start_of_length_positive, normal inputs" {
     const ExampleOrigin = enum { vec };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_10_and_11_to_13 = try core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 7 } });
-    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.present.start.index);
-    try std.testing.expectEqual(13, try span4_to_10_and_11_to_13.after.present.endIndex());
+    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.yes.start.index);
+    try std.testing.expectEqual(13, try span4_to_10_and_11_to_13.after.yes.endIndex());
     try std.testing.expectEqual(4, span4_to_10_and_11_to_13.start.start.index);
     try std.testing.expectEqual(10, try span4_to_10_and_11_to_13.start.endIndex());
 }
@@ -180,8 +180,8 @@ test "span_end_of_length_positive, normal inputs" {
     const span4_to_10_and_11_to_13 = try core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 3 } });
     try std.testing.expectEqual(11, span4_to_10_and_11_to_13.end.start.index);
     try std.testing.expectEqual(13, try span4_to_10_and_11_to_13.end.endIndex());
-    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.before.present.start.index);
-    try std.testing.expectEqual(10, try span4_to_10_and_11_to_13.before.present.endIndex());
+    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.before.yes.start.index);
+    try std.testing.expectEqual(10, try span4_to_10_and_11_to_13.before.yes.endIndex());
 }
 test "span_end_of_length_positive, given length > given span length" {
     const ExampleOrigin = enum { vec };
@@ -195,7 +195,7 @@ test "span_fold up" {
     const ExampleOrigin = enum { vec };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_fold(ExampleOrigin, u32, .{
-        .span = core.Opt(core.Span(ExampleOrigin)){ .present = span4_to_13 },
+        .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
         .state = 0,
         .step = struct {
@@ -210,7 +210,7 @@ test "span_fold down" {
     const ExampleOrigin = enum { vec };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     var reverse_indexes_array_list = try core.opt_span_fold(ExampleOrigin, std.ArrayList(u32), .{
-        .span = core.Opt(core.Span(ExampleOrigin)){ .present = span4_to_13 },
+        .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .down = {} },
         .state = std.ArrayList(u32).empty,
         .step = struct {
@@ -235,18 +235,18 @@ test "unset_span_start" {
     const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot4_and_span5_to_13 = try core.unset_span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
-    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.present.start.index);
-    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.present.length.positive);
-    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.present.endIndex());
+    try std.testing.expectEqual(5, slot4_and_span5_to_13.end.yes.start.index);
+    try std.testing.expectEqual(9, slot4_and_span5_to_13.end.yes.length.positive);
+    try std.testing.expectEqual(13, try slot4_and_span5_to_13.end.yes.endIndex());
 }
 test "unset_span_end" {
     const ExampleOrigin = enum { vec };
     const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot13_and_span4_to_12 = try core.unset_span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
-    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.present.start.index);
-    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.present.length.positive);
-    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.present.endIndex());
+    try std.testing.expectEqual(4, slot13_and_span4_to_12.start.yes.start.index);
+    try std.testing.expectEqual(9, slot13_and_span4_to_12.start.yes.length.positive);
+    try std.testing.expectEqual(12, try slot13_and_span4_to_12.start.yes.endIndex());
 }
 test "array create" {
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
@@ -283,7 +283,7 @@ test "vec_opt_span_add_array" {
     const example_array0 = core.record_to_array(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
     const with_array = try core.vec_opt_span_add_array(u32, ExampleOrigin, ExampleArrayRecord, std.testing.allocator, .{
         .vec = example_vec,
-        .span = .{ .absent = {} },
+        .span = .{ .no = {} },
         .new = example_array0,
     });
     try core.vec_rid(u32, ExampleOrigin, std.testing.allocator, with_array.vec);
@@ -344,7 +344,7 @@ test "vec add to span" {
     const VecOrigin = enum { vec };
     const origin: core.Origin(VecOrigin) = .vec;
     var vec = core.Vec(VecOrigin, u32).empty(origin);
-    const span0 = try vec.optSpanAdd(allocator, core.Opt(core.Span(VecOrigin)){ .absent = {} }, 123);
+    const span0 = try vec.optSpanAdd(allocator, core.Opt(core.Span(VecOrigin)){ .no = {} }, 123);
     const slot_causing_span_move_to_end = try vec.add(allocator, 4);
     const span1 = try vec.spanAdd(allocator, span0, 567);
     try std.testing.expectEqual(4, try vec.remove(allocator, slot_causing_span_move_to_end));
@@ -363,9 +363,9 @@ test "vec add strs" {
     const with_abcd = try core.vec_char_opt_span_add_str(
         VecOrigin,
         allocator,
-        .{ .vec = vec, .span = .{ .absent = {} }, .new = "abcd" },
+        .{ .vec = vec, .span = .{ .no = {} }, .new = "abcd" },
     );
-    try std.testing.expectEqual(4, with_abcd.span.present.length.positive);
+    try std.testing.expectEqual(4, with_abcd.span.yes.length.positive);
     const with_wrenches = try core.vec_char_opt_span_add_str(
         VecOrigin,
         allocator,
@@ -376,7 +376,7 @@ test "vec add strs" {
         &.{ 'a', 'b', 'c', 'd', '🔧', '🔧', '🔧' },
         with_wrenches.vec.optSpanSlice(with_wrenches.span),
     );
-    try std.testing.expectEqual(7, with_wrenches.span.present.length.positive);
+    try std.testing.expectEqual(7, with_wrenches.span.yes.length.positive);
     with_wrenches.vec.rid(allocator);
 }
 test "vec char add numbers" {
@@ -387,7 +387,7 @@ test "vec char add numbers" {
     const with_u32 = try core.vec_char_opt_span_add_u32(
         VecOrigin,
         allocator,
-        .{ .vec = vec, .span = .{ .absent = {} }, .new = 1234 },
+        .{ .vec = vec, .span = .{ .no = {} }, .new = 1234 },
     );
     try std.testing.expectEqual(4, with_u32.span.length.positive);
     const with_i32 = try core.vec_char_span_add_i32(
@@ -578,12 +578,12 @@ test "anonymous struct" {
 }
 test "anonymous union(enum)" {
     // below would not type-check
-    // const one = @as(union(enum) { absent: void, present: core.Str }, .{ .present = "" });
-    // const two = @as(union(enum) { absent: void, present: core.Str }, .{ .present = "" });
-    // rid_both(union(enum) { absent: void, present: core.Str }, one, two);
-    const one = @as(core.@"|absent|present"(void, core.Str), .{ .present = "" });
-    const two = @as(core.@"|absent|present"(void, core.Str), .{ .present = "" });
-    rid_both(core.@"|absent|present"(void, core.Str), one, two);
+    // const one = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "" });
+    // const two = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "" });
+    // rid_both(union(enum) { no: void, yes: core.Str }, one, two);
+    const one = @as(core.@"|no|yes"(void, core.Str), .{ .yes = "" });
+    const two = @as(core.@"|no|yes"(void, core.Str), .{ .yes = "" });
+    rid_both(core.@"|no|yes"(void, core.Str), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
 fn rid_both(value: type, _: value, _: value) void {}

@@ -4916,7 +4916,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
             let Some(name_value) = &name.value else {
                 errors.push(ErrorNode {
                     range: symbol_range(name.start, "|"),
-                    message: Box::from("missing variant name after this bar |. An example of a variant pattern is |present variable")
+                    message: Box::from("missing variant name after this bar |. An example of a variant pattern is |yes your-variable")
                 });
                 return None;
             };
@@ -4925,7 +4925,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     let Some(value) = value else {
                         errors.push(ErrorNode {
                             range: optional_variant_name_range(name),
-                            message: Box::from("missing variant value after this variant name. Each variants has a value, even if just ., an example of a variant pattern is |present variable")
+                            message: Box::from("missing variant value after this variant name. Each variants has a value, even if just ., an example of a variant pattern is |yes your-variable")
                         });
                         return None;
                     };
@@ -6059,21 +6059,21 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some(name_value) = &name.value else {
                 errors.push(ErrorNode {
                     range: optional_variant_name_range(name),
-                    message: Box::from("missing variant name after this bar | . An example of a valid variant is |present<_opt str> \"hi c:\""),
+                    message: Box::from("missing variant name after this bar | . An example of a valid variant is |yes<_opt str> \"hi c:\""),
                 });
                 return None;
             };
             let Some(syntax_type_argument) = type_ else {
                 errors.push(ErrorNode {
                     range: optional_variant_name_range(name),
-                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |present<_opt str> \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
+                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |yes<_opt str> \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
                 });
                 return None;
             };
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_angle_start, "<"),
-                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |present<_opt str> \"hi c:\""),
+                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |yes<_opt str> \"hi c:\""),
                 });
                 return None;
             };
@@ -6570,7 +6570,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some(queried) = queried else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing queried expression after this colon. An example of a query is ? option [|present n] n [|absent .] 0 u32")
+                    message: Box::from("missing queried expression after this colon. An example of a query is ? option [|yes n] n [|no .] 0 u32")
                 });
                 return None;
             };
@@ -6578,7 +6578,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some((case0, case1_up)) = cases.split_first() else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing case(s) after the queried expression. Cases look like [pattern] result-expression. An example of a query is ? option [|present n] n [|absent .] 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
+                    message: Box::from("missing case(s) after the queried expression. Cases look like [pattern] result-expression. An example of a query is ? option [|yes n] n [|no .] 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
                 });
                 return None;
             };
@@ -6605,14 +6605,14 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some(case0_pattern) = &case0.pattern else {
                 errors.push(ErrorNode {
                     range:  symbol_range(case0.open_bracket_start, "["),
-                    message: Box::from("missing query case pattern after this open bracket [. Cases consist of [pattern] result-expression. An example of a query is ? option [|present n] n [|absent] 0 u32")
+                    message: Box::from("missing query case pattern after this open bracket [. Cases consist of [pattern] result-expression. An example of a query is ? option [|yes n] n [|no] 0 u32")
                 });
                 return None;
             };
             let Some(case0_result) = &case0.result else {
                 errors.push(ErrorNode {
                     range: case0.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(|| pattern_range(case0_pattern, patterns, types)),
-                    message: Box::from("missing result expression after this query case pattern. Cases look like [pattern] result-expression. An example of a query is ? option [|present n] n [|absent] 0 u32")
+                    message: Box::from("missing result expression after this query case pattern. Cases look like [pattern] result-expression. An example of a query is ? option [|yes n] n [|no] 0 u32")
                 });
                 return None;
             };
@@ -6686,7 +6686,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 let Some(case_pattern) = &case.pattern else {
                     errors.push(ErrorNode {
                         range:  symbol_range(case.open_bracket_start, "["),
-                        message: Box::from("missing query case pattern after this open bracket [. Cases are written as [pattern] result-expression. A full query could look like ? option [|present n] n [|absent] 0 u32")
+                        message: Box::from("missing query case pattern after this open bracket [. Cases are written as [pattern] result-expression. A full query could look like ? option [|yes n] n [|no] 0 u32")
                     });
                     continue 'checking_case1_up;
                 };
@@ -6731,7 +6731,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
                         range: case.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
-                        message: Box::from("missing result expression after this query case pattern. Cases are written as [pattern] result-expression. An example of a query is ? option [|present n] n [|absent .] 0 u32")
+                        message: Box::from("missing result expression after this query case pattern. Cases are written as [pattern] result-expression. An example of a query is ? option [|yes n] n [|no .] 0 u32")
                     });
                     continue 'checking_case1_up;
                 };
@@ -9387,8 +9387,8 @@ fn type_unset_slice(element: Type) -> Type {
         arguments: vec![element],
     }
 }
-fn type_opt(present: Type) -> Type {
-    type_choice([("absent", type_record([])), ("present", present)])
+fn type_opt(yes: Type) -> Type {
+    type_choice([("no", type_record([])), ("yes", yes)])
 }
 struct CoreFnInfo {
     name: &'static str,
@@ -9641,11 +9641,11 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 result_type: type_record([]),
             },
             CoreFnInfo {
-                name: "opt-present",
-                documentation: "Shorthand for |present<opt ..value type..> value",
+                name: "opt-yes",
+                documentation: "Shorthand for |yes<_opt ..value type..> value which kind of specifies the value type twice",
                 type_parameters: vec![],
-                parameter_type: type_variable("Present"),
-                result_type: type_opt(type_variable("Present"))
+                parameter_type: type_variable("Yes"),
+                result_type: type_opt(type_variable("Yes"))
             },
             CoreFnInfo {
                 name: "fn-dup",
@@ -10893,7 +10893,7 @@ fn answer . :> f32 >
 Keep in mind that a human-readable visual symbol can be composed of multiple such unicode scalars (forming a grapheme cluster), For example:
 ```sloe
 _str-start "🇺🇸"
-# = |present .start '\u{1F1FA}' .after "\u{1F1F8}"
+# = |yes .start '\u{1F1FA}' .after "\u{1F1F8}"
 #                   Indicator U        Indicator S
 ```
 Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters)"#,

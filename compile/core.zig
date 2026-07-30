@@ -195,8 +195,8 @@ pub fn @"|occupied"(@"%Occupied": type) type {
 pub fn @"|contained|overflowed"(@"%Contained": type, @"%Overflowed": type) type {
     return union(enum) { contained: @"%Contained", overflowed: @"%Overflowed" };
 }
-pub fn @"|absent|present"(@"%Absent": type, @"%Present": type) type {
-    return union(enum) { absent: @"%Absent", present: @"%Present" };
+pub fn @"|no|yes"(@"%No": type, @"%Yes": type) type {
+    return union(enum) { no: @"%No", yes: @"%Yes" };
 }
 pub fn @"|down|up"(@"%Down": type, @"%Up": type) type {
     return union(enum) { down: @"%Down", up: @"%Up" };
@@ -245,8 +245,8 @@ pub const Str = []const u8;
 pub fn Fn(@"%In": type, @"%Out": type) type {
     return *const fn (@"%In") error{OutOfMemory}!@"%Out";
 }
-pub fn Opt(@"%Present": type) type {
-    return @"|absent|present"(void, @"%Present");
+pub fn Opt(@"%Yes": type) type {
+    return @"|no|yes"(void, @"%Yes");
 }
 
 fn u32AddOrOutOfMem(a: u32, b: u32) error{OutOfMemory}!u32 {
@@ -336,12 +336,12 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             return .{
                 .start = @"%span".start,
                 .end = if (P32.fromU32(@"%span".length.predecessor())) |@"%end_length"|
-                    .{ .present = .{
+                    .{ .yes = .{
                         .start = .{ .index = try u32AddOrOutOfMem(@"%span".start.index, 1) },
                         .length = @"%end_length",
                     } }
                 else
-                    .{ .absent = {} },
+                    .{ .no = {} },
             };
         }
         pub fn splitEnd(@"%span": @This()) error{OutOfMemory}!@".end.start"(
@@ -351,12 +351,12 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             return .{
                 .end = .{ .index = try @"%span".endIndex() },
                 .start = if (P32.fromU32(@"%span".length.predecessor())) |@"%start_length"|
-                    .{ .present = .{
+                    .{ .yes = .{
                         .start = @"%span".start,
                         .length = @"%start_length",
                     } }
                 else
-                    .{ .absent = {} },
+                    .{ .no = {} },
             };
         }
         pub fn splitAfterLengthPositive(
@@ -370,11 +370,11 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             return .{
                 .start = .{ .start = @"%span".start, .length = @"%start_length" },
                 .after = if (P32.fromU32(@"%span".length.positive - @"%start_length".positive)) |@"%after_length_positive"| .{
-                    .present = .{
+                    .yes = .{
                         .start = .{ .index = @"%span".start.index + @"%start_length".positive },
                         .length = @"%after_length_positive",
                     },
-                } else .{ .absent = {} },
+                } else .{ .no = {} },
             };
         }
         pub fn splitBeforeEndLengthPositive(
@@ -392,11 +392,11 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                     .length = @"%end_length",
                 },
                 .before = if (P32.fromU32(@"%before_length")) |@"%before_length_positive"| .{
-                    .present = .{
+                    .yes = .{
                         .start = @"%span".start,
                         .length = @"%before_length_positive",
                     },
-                } else .{ .absent = {} },
+                } else .{ .no = {} },
             };
         }
         pub fn fold(
@@ -559,9 +559,9 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
         ) error{OutOfMemory}!Opt(Unset_span(@"%Origin")) {
             if (P32.fromU32(@"%length")) |@"%length_positive"| {
                 const @"%span" = @"%vec".addUnsetLengthPositive(@"%allocator", @"%length_positive");
-                return .{ .present = @"%span" };
+                return .{ .yes = @"%span" };
             } else {
-                return .{ .absent = {} };
+                return .{ .no = {} };
             }
         }
         pub fn addUnsetLengthPositive(
@@ -591,10 +591,10 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             if (@"%vec".vacant.last()) |@"%vacant_span_ref"| {
                 const @"%vacant_span_start_end" = try @"%vacant_span_ref".splitStart();
                 switch (@"%vacant_span_start_end".end) {
-                    .absent => {
+                    .no => {
                         _ = @"%vec".vacant.pop();
                     },
-                    .present => |@"%new_shrunk_vacant_span"| {
+                    .yes => |@"%new_shrunk_vacant_span"| {
                         @"%vacant_span_ref".* = @"%new_shrunk_vacant_span";
                     },
                 }
@@ -641,8 +641,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
         // The given span is invalid while the returned slice is live.
         pub fn optSpanSlice(@"%vec": @This(), @"%opt_span": Opt(Span(@"%Origin"))) []@"%Element" {
             return switch (@"%opt_span") {
-                .absent => &.{},
-                .present => |@"%span"| @"%vec".spanSlice(@"%span"),
+                .no => &.{},
+                .yes => |@"%span"| @"%vec".spanSlice(@"%span"),
             };
         }
         /// The returned slice is only valid while vec.elements.items is live.
@@ -666,8 +666,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%opt_span": Opt(Span(@"%Origin")),
         ) struct { slice: []@"%Element", span: Opt(Unset_span(@"%Origin")) } {
             switch (@"%opt_span") {
-                .absent => return .{ .slice = []@"%Element", .span = .{ .absent = {} } },
-                .present => |@"%span"| {
+                .no => return .{ .slice = []@"%Element", .span = .{ .no = {} } },
+                .yes => |@"%span"| {
                     return @"%vec".spanElements(@"%span");
                 },
             }
@@ -686,8 +686,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%opt_span_to_vacate": Opt(Unset_span(@"%Origin")),
         ) error{OutOfMemory}!void {
             switch (@"%opt_span_to_vacate") {
-                .absent => {},
-                .present => |@"%span_to_vacate"| {
+                .no => {},
+                .yes => |@"%span_to_vacate"| {
                     return @"%vec".spanRid(@"%allocator", @"%span_to_vacate");
                 },
             }
@@ -855,13 +855,13 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             if (P32.fromU32(try (std.math.cast(u32, @"%new_elements".len) orelse error.OutOfMemory))) |@"%new_length"| {
                 const @"%length_before_add" = @"%vec".elements.items.len;
                 try @"%vec".elements.appendSlice(@"%allocator", @"%new_elements");
-                return .{ .present = .{
+                return .{ .yes = .{
                     .start = .{
                         .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
                     },
                     .length = @"%new_length",
                 } };
-            } else return .{ .absent = {} };
+            } else return .{ .no = {} };
         }
         // add insertIterator?
         pub fn addIterator(
@@ -879,14 +879,14 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 u32,
                 @"%vec".elements.items.len - @"%length_before_add",
             ) orelse error.OutOfMemory))) |@"%new_length"|
-                .{ .present = .{
+                .{ .yes = .{
                     .start = .{
                         .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
                     },
                     .length = @"%new_length",
                 } }
             else
-                .{ .absent = {} };
+                .{ .no = {} };
         }
         pub fn addArray(
             @"%vec": *@This(),
@@ -913,8 +913,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%new_element": @"%Element",
         ) error{OutOfMemory}!Span(@"%Origin") {
             return switch (@"%opt_span") {
-                .absent => (try @"%vec".add(@"%allocator", @"%new_element")).to_span(),
-                .present => |@"%span"| @"%vec".spanAdd(@"%allocator", @"%span", @"%new_element"),
+                .no => (try @"%vec".add(@"%allocator", @"%new_element")).to_span(),
+                .yes => |@"%span"| @"%vec".spanAdd(@"%allocator", @"%span", @"%new_element"),
             };
         }
         pub fn spanAdd(
@@ -934,8 +934,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%new_elements": []const @"%Element",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
             return switch (@"%opt_span") {
-                .absent => @"%vec".addSlice(@"%allocator", @"%new_elements"),
-                .present => |@"%span"| .{ .present = try @"%vec".spanAddSlice(@"%allocator", @"%span", @"%new_elements") },
+                .no => @"%vec".addSlice(@"%allocator", @"%new_elements"),
+                .yes => |@"%span"| .{ .yes = try @"%vec".spanAddSlice(@"%allocator", @"%span", @"%new_elements") },
             };
         }
         pub fn spanAddSlice(
@@ -961,8 +961,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%new_elements": Array(@"%Element", @"%Record"),
         ) error{OutOfMemory}!Span(@"%Origin") {
             return switch (@"%opt_span") {
-                .absent => @"%vec".addArray(@"%Record", @"%allocator", @"%new_elements"),
-                .present => |@"%span"| try @"%vec".spanAddSlice(@"%allocator", @"%span", &@"%new_elements"),
+                .no => @"%vec".addArray(@"%Record", @"%allocator", @"%new_elements"),
+                .yes => |@"%span"| try @"%vec".spanAddSlice(@"%allocator", @"%span", &@"%new_elements"),
             };
         }
         pub fn optSpanAddIterator(
@@ -973,8 +973,8 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%next_element": fn (*@TypeOf(@"%new_elements")) ?@"%Element",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
             return switch (@"%opt_span") {
-                .absent => @"%vec".addIterator(@"%allocator", @"%new_elements", @"%next_element"),
-                .present => |@"%span"| .{ .present = try @"%vec".spanAddIterator(@"%allocator", @"%span", @"%new_elements", @"%next_element") },
+                .no => @"%vec".addIterator(@"%allocator", @"%new_elements", @"%next_element"),
+                .yes => |@"%span"| .{ .yes = try @"%vec".spanAddIterator(@"%allocator", @"%span", @"%new_elements", @"%next_element") },
             };
         }
         pub fn spanAddIterator(
@@ -1062,7 +1062,7 @@ pub fn u32_mul_clamp(@"%": @".a.b"(U32, U32)) error{OutOfMemory}!U32 {
     return @"%".a *| @"%".b;
 }
 pub fn u32_to_p32(@"%n": U32) error{OutOfMemory}!Opt(P32) {
-    return if (P32.fromU32(@"%n")) |@"%p32"| .{ .present = @"%p32" } else .{ .absent = {} };
+    return if (P32.fromU32(@"%n")) |@"%p32"| .{ .yes = @"%p32" } else .{ .no = {} };
 }
 
 pub fn i32_rid(_: I32) error{OutOfMemory}!void {}
@@ -1200,8 +1200,8 @@ pub fn opt_span_length(
     return .{
         .span = @"%opt_span",
         .length = switch (@"%opt_span") {
-            .absent => 0,
-            .present => |@"%span"| @"%span".length.positive,
+            .no => 0,
+            .yes => |@"%span"| @"%span".length.positive,
         },
     };
 }
@@ -1246,8 +1246,8 @@ pub fn opt_span_fold(
     ),
 ) error{OutOfMemory}!@"%State" {
     return switch (@"%".span) {
-        .absent => @"%".state,
-        .present => |@"%span"| @"%span".fold(@"%".direction, @"%".state, @"%".step),
+        .no => @"%".state,
+        .yes => |@"%span"| @"%span".fold(@"%".direction, @"%".state, @"%".step),
     };
 }
 pub fn span_fold(
@@ -1277,8 +1277,8 @@ pub fn opt_unset_span_length(
     return .{
         .span = @"%opt_span",
         .length = switch (@"%opt_span") {
-            .absent => 0,
-            .present => |@"%span"| @"%span".length.positive,
+            .no => 0,
+            .yes => |@"%span"| @"%span".length.positive,
         },
     };
 }
@@ -1323,8 +1323,8 @@ pub fn opt_unset_span_fold(
     ),
 ) error{OutOfMemory}!@"%State" {
     return switch (@"%".span) {
-        .absent => @"%".state,
-        .present => |@"%span"| @"%span".fold(@"%".direction, @"%".state, @"%".step),
+        .no => @"%".state,
+        .yes => |@"%span"| @"%span".fold(@"%".direction, @"%".state, @"%".step),
     };
 }
 pub fn unset_span_fold(
@@ -1551,7 +1551,7 @@ pub fn vec_char_opt_span_add_u32(
         .span = @"%".span,
         .new = @"%buffer"[0..@"%buffer_exclusive_end"],
     });
-    return .{ .vec = @"%combined".vec, .span = @"%combined".span.present };
+    return .{ .vec = @"%combined".vec, .span = @"%combined".span.yes };
 }
 // is there a more correct way?
 const i32_max_print_len = @max(
@@ -1583,7 +1583,7 @@ pub fn vec_char_opt_span_add_i32(
         .span = @"%".span,
         .new = @"%buffer"[0..@"%buffer_exclusive_end"],
     });
-    return .{ .vec = @"%combined".vec, .span = @"%combined".span.present };
+    return .{ .vec = @"%combined".vec, .span = @"%combined".span.yes };
 }
 const f32_max_decimal_print_len =
     std.fmt.float.bufferSize(std.fmt.float.Mode.decimal, F32);
@@ -1620,7 +1620,7 @@ pub fn vec_char_opt_span_add_f32(
         .span = @"%".span,
         .new = @"%used_buffer_slice",
     });
-    return .{ .vec = @"%combined".vec, .span = @"%combined".span.present };
+    return .{ .vec = @"%combined".vec, .span = @"%combined".span.yes };
 }
 pub fn vec_span_add_array(
     @"%Element": type,
@@ -1804,8 +1804,8 @@ pub fn vec_opt_span_add_own_span(
     Vec(@"%Origin", @"%Element"),
 ) {
     switch (@"%".start) {
-        .absent => return .{ .vec = @"%".vec, .span = @"%".end },
-        .present => |@"%start"| {
+        .no => return .{ .vec = @"%".vec, .span = @"%".end },
+        .yes => |@"%start"| {
             var @"%vec" = @"%".vec;
             const @"%combined_span" = try @"%vec".spanAddOwnSpan(@"%allocator", @"%start", @"%".end);
             return .{
@@ -1829,8 +1829,8 @@ pub fn vec_span_add_own_opt_span(
     Vec(@"%Origin", @"%Element"),
 ) {
     switch (@"%".end) {
-        .absent => return .{ .vec = @"%".vec, .span = @"%".start },
-        .present => |@"%end"| {
+        .no => return .{ .vec = @"%".vec, .span = @"%".start },
+        .yes => |@"%end"| {
             var @"%vec" = @"%".vec;
             const @"%combined_span" = try @"%vec".spanAddOwnSpan(@"%allocator", @"%".start, @"%end");
             return .{
@@ -1854,15 +1854,15 @@ pub fn vec_opt_span_add_own_opt_span(
     Vec(@"%Origin", @"%Element"),
 ) {
     switch (@"%".start) {
-        .absent => return .{ .vec = @"%".vec, .span = @"%".end },
-        .present => |@"%start"| {
+        .no => return .{ .vec = @"%".vec, .span = @"%".end },
+        .yes => |@"%start"| {
             switch (@"%".end) {
-                .absent => return .{ .vec = @"%".vec, .span = .{ .present = @"%start" } },
-                .present => |@"%end"| {
+                .no => return .{ .vec = @"%".vec, .span = .{ .yes = @"%start" } },
+                .yes => |@"%end"| {
                     var @"%vec" = @"%".vec;
                     const @"%combined_span" = try @"%vec".spanAddOwnSpan(@"%allocator", @"%start", @"%end");
                     return .{
-                        .span = .{ .present = @"%combined_span" },
+                        .span = .{ .yes = @"%combined_span" },
                         .vec = @"%vec",
                     };
                 },
@@ -1904,8 +1904,8 @@ pub fn vec_opt_unset_span_add_own_span(
     Vec(@"%Origin", @"%Element"),
 ) {
     switch (@"%".start) {
-        .absent => return .{ .vec = @"%".vec, .span = @"%".end },
-        .present => |@"%start"| {
+        .no => return .{ .vec = @"%".vec, .span = @"%".end },
+        .yes => |@"%start"| {
             const @"%combined_unset_span" = try @"%".vec.unsetSpanAddOwnSpan(@"%allocator", @"%start", @"%".end);
             return .{
                 .span = @"%combined_unset_span",
@@ -1928,8 +1928,8 @@ pub fn vec_unset_span_add_own_opt_span(
     Vec(@"%Origin", @"%Element"),
 ) {
     switch (@"%".end) {
-        .absent => return .{ .vec = @"%".vec, .span = @"%".start },
-        .present => |@"%end"| {
+        .no => return .{ .vec = @"%".vec, .span = @"%".start },
+        .yes => |@"%end"| {
             const @"%combined_unset_span" = try @"%".vec.unsetSpanAddOwnSpan(@"%allocator", @"%".start, @"%end");
             return .{
                 .span = @"%combined_unset_span",
@@ -1952,14 +1952,14 @@ pub fn vec_opt_unset_span_add_own_opt_span(
     Vec(@"%Origin", @"%Element"),
 ) {
     switch (@"%".start) {
-        .absent => return .{ .vec = @"%".vec, .span = @"%".end },
-        .present => |@"%start"| {
+        .no => return .{ .vec = @"%".vec, .span = @"%".end },
+        .yes => |@"%start"| {
             switch (@"%".end) {
-                .absent => return .{ .vec = @"%".vec, .span = .{ .present = @"%start" } },
-                .present => |@"%end"| {
+                .no => return .{ .vec = @"%".vec, .span = .{ .yes = @"%start" } },
+                .yes => |@"%end"| {
                     const @"%combined_unset_span" = try @"%".vec.unsetSpanAddOwnSpan(@"%allocator", @"%start", @"%end");
                     return .{
-                        .span = .{ .present = @"%combined_unset_span" },
+                        .span = .{ .yes = @"%combined_unset_span" },
                         .vec = @"%".vec,
                     };
                 },
@@ -1983,10 +1983,10 @@ pub fn vec_opt_span_move_to_vacant(
     @"%": @".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")),
 ) error{OutOfMemory}!@".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")) {
     switch (@"%".span) {
-        .absent => return .{ .vec = @"%".vec, .span = .{ .absent = {} } },
-        .present => |@"%span"| {
+        .no => return .{ .vec = @"%".vec, .span = .{ .no = {} } },
+        .yes => |@"%span"| {
             const @"%moved_span" = @"%".vec.spanMoveToVacant(@"%allocator", @"%span");
-            return .{ .vec = @"%".vec, .span = .{ .present = @"%moved_span" } };
+            return .{ .vec = @"%".vec, .span = .{ .yes = @"%moved_span" } };
         },
     }
 }
@@ -2006,8 +2006,8 @@ pub fn vec_opt_span_move_to_end(
     @"%": @".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")),
 ) error{OutOfMemory}!@".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", @"%Element")) {
     switch (@"%".span) {
-        .absent => return .{ .vec = @"%".vec, .span = .{ .absent = {} } },
-        .present => |@"%span"| {
+        .no => return .{ .vec = @"%".vec, .span = .{ .no = {} } },
+        .yes => |@"%span"| {
             const @"%moved_span" = @"%".vec.spanMoveToEnd(@"%allocator", @"%span");
             return .{ .vec = @"%".vec, .span = .{ .preent = @"%moved_span" } };
         },

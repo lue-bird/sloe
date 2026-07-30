@@ -104,10 +104,10 @@ fn use-opt opt _opt u32 :> ... >
     # this won't compile as their origins come from different branches
     ? (
         ? opt
-        [|absent .]
+        [|no .]
             origin vec-origin
             _vec-empty<u32> vec-origin
-        [|present number] (
+        [|yes number] (
             origin vec-origin
             ? _vec-one .origin vec-origin .element number [.vec vec .slot slot]
             ...
@@ -119,9 +119,9 @@ fn use-opt opt _opt u32 :> ... >
     origin vec-origin
     ? (
         :opt
-        [|absent .]
+        [|no .]
             _vec-empty<u32> vec-origin
-        [|present number] (
+        [|yes number] (
             ? _vec-one .origin vec-origin .element number [.vec vec .slot slot]
             ...
             vec
@@ -608,8 +608,6 @@ cargo install --offline --debug --path . sloe
 ```
 
 # TODO
-
-- rename `|present` to `|yes` and `|absent` to `|no` for brevity (which is very important because aliases are inlined in documentation. And because I find it more intuitive. It may also nudge you to switch from `|yes . |no .` to a payload-ed one). then introduce `opt-yes`
 
 - (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
 

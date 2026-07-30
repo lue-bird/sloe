@@ -2,7 +2,7 @@
 fn greet
     .name name str .result-origin result-origin _origin Origin
     :> .vec _vec Origin, char .span _opt _span Origin >
-    ? .vec _vec-empty<char> result-origin .span |absent<_opt _span Origin> . [string]
+    ? .vec _vec-empty<char> result-origin .span |no<_opt _span Origin> . [string]
     ? _vec-char-opt-span-add-str .. string .new "Hello, " [string]
     ? _vec-char-opt-span-add-str .. string .new name [string]
     _vec-char-opt-span-add-str .. string .new "!\n"

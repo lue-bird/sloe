@@ -15,7 +15,8 @@ fn stack-cons
     .stack _stack Origin, Element
     >
     ? _vec-insert .vec nodes .new tail [.vec nodes .slot tail-slot]
-    .nodes nodes .stack (|stacked<_stack Origin, Element> .head new-head .tail tail-slot)
+    .nodes nodes
+    .stack (|stacked<_stack Origin, Element> .head new-head .tail tail-slot)
 
 fn stack-pop
     .nodes nodes _vec Origin, _stack Origin, Element
@@ -32,7 +33,7 @@ fn stack-pop
     [|empty .]
         .nodes nodes
         .element
-            |absent<
+            |no<
                 _opt
                 .head Element
                 .tail _stack Origin, Element
@@ -41,14 +42,7 @@ fn stack-pop
     [|stacked .head head .tail tail-slot] (
         ? _vec-remove .vec nodes .slot tail-slot [.vec nodes .element tail]
         .nodes nodes
-        .element (
-            |present<
-                _opt
-                .head Element
-                .tail _stack Origin, Element
-                >
-            .head head .tail tail
-            )
+        .element (_opt-yes .head head .tail tail)
         )
 
 fn stack-fold
