@@ -20,16 +20,16 @@
 
 (field_name) @property
 
-(symbol_call_underscore) @variable
-
 (expression_variable) @variable
+
+(project_fn_name) @variable
 
 (pattern_variable_untyped) @variable
 
 (type_variable) @variable
 
-(symbol_type_construct_underscore) @type
+(type_without_arguments) @type
 
-(type_name) @type
+(type_with_arguments_name) @type
 
 (variant_name) @variant

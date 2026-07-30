@@ -1914,20 +1914,11 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
         }
         sloe::SyntaxExpression::Call {
-            underscore_start,
             name,
             type_arguments,
             argument,
         } => {
-            symbol_highlight(
-                state,
-                "_",
-                *underscore_start,
-                lsp_types::SemanticTokenTypes::Function,
-            );
-            if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
-            }
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
             if let Some(type_arguments) = type_arguments {
                 sloe_angled_type_arguments_highlight(state, types, type_arguments);
             }

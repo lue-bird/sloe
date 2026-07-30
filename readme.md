@@ -25,17 +25,17 @@ This allows
 - representing things that should be cleaned up in a specific way, like memory that should be freed from a specific origin
 - guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compile to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515)). [Some CPUs even seem to have an "aliasing predictor"](https://github.com/travisdowns/uarch-bench/wiki/Memory-Disambiguation-on-Skylake#summary)
 
-This can feel annoying and clunky. Think e.g. `span-length` which takes a span and gives back its size and the given span.
-Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
+This can feel annoying and clunky. Think e.g. `Span-length` which takes a span and gives back its size and the given span.
+Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `Vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
 Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
 Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
 
-# concept: consecutive memory collection `vec`
+# concept: consecutive memory collection `Vec`
 A collection which can mark some ranges within itself as vacant without moving existing elemnts around.
-This can be used to "return" memory which has become outdated or useless, for example with `vec-remove`, `vec-slot-rid` and `vec-span-rid`.
+This can be used to "return" memory which has become outdated or useless, for example with `Vec-remove`, `Vec-slot-rid` and `Vec-span-rid`.
 Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
 Further reading if interested: This concept is often called slot map, reusing memory.
@@ -46,7 +46,7 @@ There are even fast general purpose allocators based on this concept, for exampl
 # concept: collections do not handle their elements
 Similar to allocators, you cannot access, alter or iterate their contained values.
 Collections are seen as storage into which you can add elements, build slices etc.
-Whenever you do so, you'll get `(unset-)slot`s and `(unset-)span`s that assert your right to access and alter the referenced elements as well as your responsibility to announce their release at some point.
+Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your right to access and alter the referenced elements as well as your responsibility to announce their release at some point.
 
 The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types.
 This is not uncommon in languages like rust.
@@ -191,15 +191,15 @@ Sloe is a very explicit language, so any extra verbosity is not tolerable.
 'a'
 
 # most identifiers
-some-function-or-variable-or-field-or-type-or-variant-name-2012
+some-variable-or-field-or-type-without-parameters-or-variant-name-2012
 
-# type variable name
-Some-type-variable-name
+# constructor name
+Some-type-with-parameters-or-function-name
 
-# function call, always starting with _
-# Rarely functions may require appended space-separated type arguments: <...>.
+# function call.
+# Rarely functions may require appended comma-separated type arguments: <...>.
 # Any function is of type `fn` and always requires an argument (which does not need to be parenthesized)
-_some-function<Type, Arguments> _inner-call-as-the-argument inner-inner-argument
+Some-function<type, arguments> Inner-call-as-the-argument inner-inner-argument
 
 # record. if values are open-ended they need to be parenthesized.
 # The last field value can end in a record without needing to be parenthesized
@@ -243,7 +243,7 @@ fn Function-name<_potential, _type-arguments, _only-used-in-the-result>
     # comment
     result-expression
 
-# type name without arguments. Lowercase
+# type name without arguments. lowercase
 u32
 
 # type with multiple arguments. Uppercase name.
@@ -274,12 +274,12 @@ ty Type-name _potential, _type-Parameters
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
-Writing these down has already helped a lot in coming up with fixes (e.g. `unset-slot`, `vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items).
+Writing these down has already helped a lot in coming up with fixes (e.g. `Unset-slot`, `Vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
 
 - it seems quite natural to represent a span of structs as e.g. `.field-names Span Field-names .field-values Span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
   The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
-  Honestly, the current "fold over one span and step through the rest with `span-start`"
+  Honestly, the current "fold over one span and step through the rest with `Span-start`"
   is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
   Additionally, this wastes memory for the duplicated memory and wastes computation for unnecessarily handling 
   
@@ -287,21 +287,21 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - introducing special syntax and crashing at runtime if lengths differ
     - only storing the length in one of multiple slices and documenting the expected length for the other start pointers
   
-  I think introducing `span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes a bunch of sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
+  I think introducing `Span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes a bunch of sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
   The sad thing is that this is positional and individual span slots then do not have an associated name.
-  Also, how would this work with existing vec APIs? Something like `vec2-opt-span-add`
+  Also, how would this work with existing vec APIs? Something like `Vec2-opt-span-add`
 - scattered sub-spans/slots in a persistent vec cannot be easily de-allocated/iterated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
   For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
   However, this would mean that slots and spans within the AST would not be owning.
-  One quasi-solution would be storing `vec<origin vec-originless<...>>` and introducing `-originless` versions of slot/span/vec. These would need to be checked at runtime, with the branch with unequal origins being in the cold path.
+  One quasi-solution would be storing `Vec<origin Vec-originless<...>>` and introducing `-originless` versions of slot/span/vec. These would need to be checked at runtime, with the branch with unequal origins being in the cold path.
   While this technically does solve the problem quite nicely, it's purely at runtime. Mistakes won't be caught early, runtime costs may add up, complexity increases, unnecessary error handling gets introduced.
-  → More complex type systems could solve this (e.g. :hand-wave: add type `origin-erase` that takes a function taking an origin and returning an element type, thus eliding a concrete origin from the vec type. Then you could call its wrapper to hide the origin and its unwrapper with a fresh origin whenever you need to access or modify the inards) but I'd like to stay simple
+  → More complex type systems could solve this (e.g. :hand-wave: add type `Origin-erase` that takes a function taking an origin and returning an element type, thus eliding a concrete origin from the vec type. Then you could call its wrapper to hide the origin and its unwrapper with a fresh origin whenever you need to access or modify the inards) but I'd like to stay simple
   → I need to investigate how other languages do this. E.g. [carbon's outer-self-other-field-place-referencing feature](https://chandlerc.blog/slides/2026-memory-safety-deep-3/#/51) may solve this (I'm not sure, but it's also not that simple).
-  (For temporary vecs, a possible solution could be `vec-slot-rid-without-vacating`, `vec-span-rid-without-vacating` and `vec-opt-span-rid-without-vacating` which would temporarily leak these slots and spans. This can be misused for persistent vecs but more importantly it does not solve the issue for persistent vecs)
+  (For temporary vecs, a possible solution could be `Vec-slot-rid-without-vacating`, `Vec-span-rid-without-vacating` and `Vec-opt-span-rid-without-vacating` which would temporarily leak these slots and spans. This can be misused for persistent vecs but more importantly it does not solve the issue for persistent vecs)
 - sometimes, you really own all the elements of a vec in one place (especially when the vec elements can be trivially copied).
-  Splitting it into `opt span`+`vec` is annoying and wastes a bit of space (length is carried twice and start is always 0).
+  Splitting it into `opt span`+`Vec` is annoying and wastes a bit of space (length is carried twice and start is always 0).
   Due to "can't easily recombine spans" it is also really annoying to access any elements in the owning vec.
-- by default, most passed arguments are quite fat on the stack (e.g. `vec` is 6 usize-wide and you may pass a bunch of them).
+- by default, most passed arguments are quite fat on the stack (e.g. `Vec` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
 - I don't like `:>` but `<` would probably be more confusing
@@ -317,9 +317,9 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add "add remaining query cases" code action
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions Vec _expressions, Expression _expressions _patterns _types` doesn't exactly roll easily over one's keyboard
 - add `Set _origin, _element` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _element` where key is derived from element) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
-  Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `vec` is fast enough
-- consider adding `vec-counting` and `slot` which can reference a slot that is already in use:
-  ```sloe
+  Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `Vec` is fast enough
+- consider adding `Vec-counting` and `slot` which can reference a slot that is already in use:
+  ```Sloe
   fn Vec-counting-slot-dup
       .vec Vec-counting _origin, _element
       .slot Slot _origin
@@ -377,8 +377,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - consider replacing kebab-case with camelCase/PascalCase.
   while I do much prefer the typing experience of kebab-case,
   camelCase is shorter (!!), think
-  `vecCharOptSpanAddStr` compared to
-  `vec-char-opt-span-add-str` (5 chars less, 20%!)
+  `VecCharOptSpanAddStr` compared to
+  `Vec-char-opt-span-add-str` (5 chars less, 20%!)
   and potentially more readable (?) due to clearer distinction to _ and 
   (this won't matter as much if call and construct syntax does not involve _).
   Take a bigger example, convert the case and see how it feels
@@ -430,13 +430,13 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   This is probably inefficient because:
     - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
     - most bytes are 3/4th 0s because ascii is so common. wasted space is bad for the cache and memory usage
-  If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `vec _ char` is a much nicer API to work with
+  If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `Vec _, char` is a much nicer API to work with
 - zig-only: store an allocator within an origin (but! what about unset_slice? That one should probably store an allocator, too, and re-allocate if the vec origin allocator reference differs. I think this can be slightly unintuitive for sloe users but should in practice be okay). This achieves that origins created from within sloe code are arena-allocated and origins from user code are (usually) not, choosing e.g. MemoryPool.Aligned (does that actually work even?)
 - (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
 - (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
-    - `vec Origin, .a A .b B` to `A·B<Vec<A>, Vec<B>>`
-    - for `vec Origin, |a A |b B` to either 
+    - `Vec Origin, .a A .b B` to `A·B<Vec<A>, Vec<B>>`
+    - for `Vec Origin, |a A |b B` to either 
         - `Tag·ValueIndex·A·B<Vec<A_or_B_Tag>, Vec<u32>, Vec<A>, Vec<B>>` (which also has ~2 hops but makes sense when sizes of A and B are different enough)
         - `A·B<Vec<A>, Vec<B>>` (which requires the index to hold both the tag and the value index, aka 64 bit instead of 32, which somewhat defeats the point of reducing padding of the variant when values get bigger. Potentially there could however be struct-of-arrays for individual variant values making this worth it: https://github.com/dist1ll/osmium & https://alic.dev/blog/dense-enums)
         - `A·B<Vec<A>, Map<u32, B>>` (which is inefficient, and wasteful if `B` is common, and also doesn't scale with more than 2 variants)
@@ -450,7 +450,7 @@ As a hobby language that deliberately cannot by itself interface with the operat
 - add special syntax `fn-once` that automatically assembles the environment from the used local variables.
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
   More info in "not coherently formulated thoughts"
-- add tuples: (* a * b * c). I dislike them conceptually but operations like `u32-add` or `u32-dup` are nicer with them. The field names `.a .b ` are just noise. Adding tuples might make for a nicer user interface when calling from rust
+- add tuples: (* a * b * c). I dislike them conceptually but operations like `U32-add` or `U32-dup` are nicer with them. The field names `.a .b ` are just noise. Adding tuples might make for a nicer user interface when calling from rust
 - consider allowing `origin name` at the project scope. This allows reducing the number of type parameters flying around in things like `Expression _expressions, _patterns, _types, _source, _cases, ...` if desired.
 It also makes initial_state much easier to call from the rust side (though we need to be careful how...).
   Rejected because this makes it more or less impossible to run multiple sloe instances from a single rust program
@@ -460,8 +460,8 @@ It also makes initial_state much easier to call from the rust side (though we ne
   And especially because having _many_ origin type variables is common, this sadly won't fly
 - adding function call syntax sugar similar to piping.
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
-- making `vec` etc store multiple kinds of data (heterogenous) and letting them give out `Slot origin, data-type` and `Span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
-  This makes the porpose of `vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression Expression _origin .data Vec _origin, ... :> .vec Vec _origin ... .end text-position`.
+- making `Vec` etc store multiple kinds of data (heterogenous) and letting them give out `Slot origin, data-type` and `Span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
+  This makes the porpose of `Vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression Expression _origin .data Vec _origin, ... :> .vec Vec _origin ... .end text-position`.
   This would also in theory enable a crazy representation of tagged unions as:
   ```sloe
   ty Expression-slot _origin
@@ -471,7 +471,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   ```
   This also means slices etc need to be stored separately in the origin vec.
   The issue currently is that it feels hard to optimally construct/query such a heterogenous structure.
-  Its structure _must_ be created at compile-time. Dynamically this doesn't fly: `vec origin = { bucket: Map<for type_byte_size: { key: type_byte_size, value: Vec<type_byte_size> }> }`.
+  Its structure _must_ be created at compile-time. Dynamically this doesn't fly: `Vec origin = { bucket: Map<for type_byte_size: { key: type_byte_size, value: Vec<type_byte_size> }> }`.
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
   ```sloe
   origin vec-origin
@@ -577,7 +577,7 @@ If you're looking to learn from sloe, maybe do not learn from these:
       Adding this bulk of nodes as an array is only natural and avoids so much noise.
   
   Well, what are the alternatives, then?
-    - simply provide `vec-opt-span-add2/3/4/5/6/7/8` etc. While it really doesn't feel good, it's not very far from solutions of production languages, see e.g. java's `list.of2/3/4/...`. (Though adding or removing elements means adjusting the number which is annoying, especially for the argument field names)
+    - simply provide `Vec-opt-span-add2/3/4/5/6/7/8` etc. While it really doesn't feel good, it's not very far from solutions of production languages, see e.g. java's `list.of2/3/4/...`. (Though adding or removing elements means adjusting the number which is annoying, especially for the argument field names)
     - provide and suggest better primitives and helpers. For example, instead of providing a list of modifiers, it may just make sense to e.g. provide a record of options or use builder-style helpers for the individual properties
     - introduce syntactical diabetis or macro-esque bullshit for repeated function calls
       ```sloe
@@ -622,30 +622,17 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- (not fully sure) add `vec-opt-unset-span-add-length-positive`, `vec-opt-unset-span-add-length`, `vec-unset-span-add-length`, `vec-unset-span-add-own-opt-span`
+- (not fully sure) add `Vec-opt-unset-span-add-length-positive`, `Vec-opt-unset-span-add-length`, `Vec-unset-span-add-length`, `Vec-unset-span-add-own-opt-span`
 
-- (not fully sure) add `vec-opt-span-add-repeat`, `vec-span-add-repeat`, `vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
+- (not fully sure) add `Vec-opt-span-add-repeat`, `Vec-span-add-repeat`, `Vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
 - add more math and maybe bit operations
-
-- add more functions for reaching into span elements, e.g. swapping two elemnts at indexes inside the span
-
-- change `_name argument` to `Name argument` in types and expressions.
-  In the same change, change type variables from `Upper` to `_lower` (quite neat, no?)
-  Also, calling function variables needs to be done via `Call .fn variable .in argument`.
-  
-  This means
-    - shorter and less confusing (much easier to remember compared to _call)
-    - definition and call sites are closer aligned
-    - adding/removing argument to a type is a little more confusing
-    - project fns can never overlap with variable names anymore (!)
-    - different-arity types are less likely to collide
 
 - change `str` to mean non-empty string. This is more annoying for FFI (needs a wrapper over str/[]u8) but I think overall this is okay especially since memory efficiency is the same
 
 - for simplicity, change `Function<..., ..., ...>` to `Function<...><...><...>` at call and project fn sites
 
-- rename `vec` to `buf`. `vec` is unintuitive (it's not a vector). buf is used by carbon and often for builders like StringBuffer
+- rename `Vec` to `Buf`. `Vec` is unintuitive (it's not a vector). buf is used by carbon and often for builders like StringBuffer
 
 - find a symbol to replace the `origin` keyword
 

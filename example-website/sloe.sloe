@@ -10,21 +10,21 @@ ty event
     |counter-clicked .
     |mouse-moved .x u32 .y u32
 
-fn initial-state mouse-trail-origin Origin _mouse-trail-origin :> State _mouse-trail-origin >
+fn Initial-state mouse-trail-origin Origin _mouse-trail-origin :> State _mouse-trail-origin >
     .count 0 u32
     .mouse-x 0 u32
     .mouse-y 0 u32
-    .mouse-trail _vec-empty<.x u32 .y u32> mouse-trail-origin
+    .mouse-trail Vec-empty<.x u32 .y u32> mouse-trail-origin
     .mouse-trail-span |no<Opt Span _mouse-trail-origin> .
 
-fn update
+fn Update
     .state state State _mouse-trail-origin
     .event event event
     :> State _mouse-trail-origin >
     ? event
     [|counter-clicked .] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
-        .count (_u32-add-clamp .a count .b 1 u32)
+        .count (U32-add-clamp .a count .b 1 u32)
         .mouse-x old-mouse-x
         .mouse-y old-mouse-y
         .mouse-trail mouse-trail
@@ -33,7 +33,7 @@ fn update
     [|mouse-moved .x new-mouse-x .y new-mouse-y] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
         ?
-            _vec-opt-span-add
+            Vec-opt-span-add
             .vec mouse-trail
             .span mouse-trail-span
             .new (.x old-mouse-x .y old-mouse-y)
@@ -42,10 +42,10 @@ fn update
         .mouse-x new-mouse-x
         .mouse-y new-mouse-y
         .mouse-trail mouse-trail
-        .mouse-trail-span _opt-yes mouse-trail-span
+        .mouse-trail-span Opt-yes mouse-trail-span
         )
 
-fn view
+fn View
     .state state State _mouse-trail-origin
     .htmls htmls Vec _htmls, Html _htmls, _modifiers, _chars
     .modifiers modifiers Vec _modifiers, Modifier event, _chars
@@ -59,21 +59,21 @@ fn view
     >
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
     ? .vec chars .span |no<Opt Span _chars> . [text]
-    ? _vec-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
-    ? _u32-dup mouse-x [.a mouse-x .b mouse-x-use]
-    ? _vec-char-opt-span-add-u32 .. text .new mouse-x-use [text]
-    ? _vec-char-span-add-str .. text .new " .y " [text]
-    ? _u32-dup mouse-y [.a mouse-y .b mouse-y-use]
-    ? _vec-char-span-add-u32 .. text .new mouse-y-use [.vec chars .span text-span]
+    ? Vec-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
+    ? U32-dup mouse-x [.a mouse-x .b mouse-x-use]
+    ? Vec-char-opt-span-add-u32 .. text .new mouse-x-use [text]
+    ? Vec-char-span-add-str .. text .new " .y " [text]
+    ? U32-dup mouse-y [.a mouse-y .b mouse-y-use]
+    ? Vec-char-span-add-u32 .. text .new mouse-y-use [.vec chars .span text-span]
     ?
-        _vec-add-array
+        Vec-add-array
         .vec htmls
         .new
-            ; |text-dynamic<Html _htmls, _modifiers, _chars> _opt-yes text-span
+            ; |text-dynamic<Html _htmls, _modifiers, _chars> Opt-yes text-span
             ; |text-static<Html _htmls, _modifiers, _chars> "hello"
     [.vec htmls .span div-subs]
     ?
-        _vec-add-array
+        Vec-add-array
         .vec modifiers
         .new
             ; |style-static<Modifier event, _chars> .key "height" .value "100vh"
@@ -86,8 +86,8 @@ fn view
     .html (
         |element<Html _htmls, _modifiers, _chars>
         .tag "main"
-        .modifiers _opt-yes main-modifiers
-        .subs _opt-yes div-subs
+        .modifiers Opt-yes main-modifiers
+        .subs Opt-yes div-subs
         )
     .htmls htmls
     .modifiers modifiers
