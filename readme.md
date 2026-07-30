@@ -14,16 +14,16 @@ Install with
 cargo install --git https://github.com/lue-bird/sloe sloe
 ```
 
-# concept: each value must be used used/consumed exctly once
+# concept: each value must be used used exctly once
 Matching a value? Consumes it. Passing a value as an argument? Consumes it.
-Even e.g. variables holding plain numbers have to be explicitly duplicated to use them in multiple places.
+Even variables holding plain numbers for example have to be explicitly duplicated to use them in multiple places.
 
 This allows
-- values know when they aren't used anymore at compile time. Their memory can be reclaimed without garbage collection or similar
+- values know when they aren't used anymore at compile time. Their memory is always explicitly reclaimed without garbage collection or similar
 - values can be mutated internally without mutation being detectable
 - representing things that should only be consumed once, like thread join handles
 - representing things that should be cleaned up in a specific way, like memory that should be freed from a specific origin
-- guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compile to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515)). [Some CPUs even seem to have an "aliasing predictor"](https://github.com/travisdowns/uarch-bench/wiki/Memory-Disambiguation-on-Skylake#summary)
+- guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compile to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515))
 
 This can feel annoying and clunky. Think e.g. `Span-length` which takes a span and gives back its size and the given span.
 Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `Vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
