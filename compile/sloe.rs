@@ -52,28 +52,33 @@ pub struct SyntaxComments {
 }
 #[derive(Clone, Debug)]
 pub struct TyParameters {
-    pub parameter0: WithStartPosition<Name>,
+    pub parameter0_underscore_start: lsp_types::Position,
+    pub parameter0: Name,
     pub parameter1_up: Vec<SyntaxTrailingTypeParameter>,
 }
 #[derive(Clone, Debug)]
 pub struct SyntaxAngledTypeParameters {
     pub open_angle_start: lsp_types::Position,
-    pub parameter0: Option<WithStartPosition<Name>>,
+    pub parameter0_underscore_start: Option<lsp_types::Position>,
+    pub parameter0: Name,
     pub parameter1_up: Vec<SyntaxTrailingTypeParameter>,
     pub closed_angle_start: Option<lsp_types::Position>,
 }
 #[derive(Clone, Debug)]
 pub struct SyntaxTrailingTypeParameter {
     pub comma_start: lsp_types::Position,
-    pub name: Option<WithStartPosition<Name>>,
+    pub underscore_start: Option<lsp_types::Position>,
+    pub name: Name,
 }
 #[derive(Debug)]
 pub enum SyntaxType<Types> {
-    Variable(WithStartPosition<Name>),
+    Variable {
+        underscore_start: lsp_types::Position,
+        name: Name,
+    },
     ConstructWithoutArguments(WithStartPosition<Name>),
     ConstructWithArguments {
-        underscore_start: lsp_types::Position,
-        name: Option<WithStartPosition<Name>>,
+        name: WithStartPosition<Name>,
         argument0: Option<core::Slot<Types>>,
         argument1_up: Vec<SyntaxTypeConstructTrailingArgument<Types>>,
     },
@@ -350,14 +355,16 @@ pub fn type_range<Types>(
 #[must_use]
 pub fn type_start<Types>(type_: &SyntaxType<Types>) -> lsp_types::Position {
     match type_ {
-        SyntaxType::Variable(name) => name.start,
-        SyntaxType::ConstructWithoutArguments(name) => name.start,
-        SyntaxType::ConstructWithArguments {
+        SyntaxType::Variable {
             underscore_start,
             name: _,
+        } => *underscore_start,
+        SyntaxType::ConstructWithoutArguments(name) => name.start,
+        SyntaxType::ConstructWithArguments {
+            name,
             argument0: _,
             argument1_up: _,
-        } => *underscore_start,
+        } => name.start,
         SyntaxType::Parenthesized {
             open_paren_start,
             inner: _,
@@ -382,10 +389,12 @@ pub fn type_end<Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     match type_ {
-        SyntaxType::Variable(name) => name_end(with_start_position_as_ref(name)),
+        SyntaxType::Variable {
+            underscore_start,
+            name,
+        } => position_add_characters(*underscore_start, 1 + name.len() as u32),
         SyntaxType::ConstructWithoutArguments(name) => name_end(with_start_position_as_ref(name)),
         SyntaxType::ConstructWithArguments {
-            underscore_start,
             name,
             argument0,
             argument1_up,
@@ -403,11 +412,7 @@ pub fn type_end<Types>(
                     .as_ref()
                     .map(|argument0| type_end(types.element(argument0), types))
             })
-            .or_else(|| {
-                name.as_ref()
-                    .map(|name| name_end(with_start_position_as_ref(name)))
-            })
-            .unwrap_or_else(|| symbol_end(*underscore_start, "_")),
+            .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxType::Parenthesized {
             open_paren_start,
             inner,
@@ -1217,9 +1222,15 @@ fn parse_project_ty<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let name = parse_sloe_lowercase_name_with_start(state);
-    parse_sloe_whitespace(state);
-    let parameters = parse_ty_parameters(state);
+    let (name, parameters) = match parse_sloe_lowercase_name_with_start(state) {
+        Some(name) => (Some(name), None),
+        None => {
+            let name = parse_sloe_uppercase_name_with_start(state);
+            parse_sloe_whitespace(state);
+            let parameters = parse_ty_parameters(state);
+            (name, parameters)
+        }
+    };
     parse_sloe_whitespace(state);
     let documentation = parse_sloe_comments(state);
     parse_sloe_whitespace(state);
@@ -1233,20 +1244,24 @@ fn parse_project_ty<Expressions, Patterns, Types>(
     })
 }
 fn parse_ty_parameters(state: &mut ParseState) -> Option<TyParameters> {
-    let Some(parameter0) = parse_sloe_uppercase_name_with_start(state) else {
+    let Some(parameter0_underscore_start) = parse_symbol_as_start(state, "_") else {
         return None;
     };
+    let parameter0 = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
     let mut parameter1_up = Vec::new();
     while let Some(comma_start) = parse_symbol_as_start(state, ",") {
         parse_sloe_whitespace(state);
-        let name = parse_sloe_uppercase_name_with_start(state);
+        let underscore_start = parse_symbol_as_start(state, "_");
+        let name = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
         parameter1_up.push(SyntaxTrailingTypeParameter {
             comma_start: comma_start,
+            underscore_start: underscore_start,
             name: name,
         });
         parse_sloe_whitespace(state);
     }
     Some(TyParameters {
+        parameter0_underscore_start: parameter0_underscore_start,
         parameter0: parameter0,
         parameter1_up: parameter1_up,
     })
@@ -1256,14 +1271,17 @@ fn parse_angled_type_parameters(state: &mut ParseState) -> Option<SyntaxAngledTy
         return None;
     };
     parse_sloe_whitespace(state);
-    let parameter0 = parse_sloe_uppercase_name_with_start(state);
+    let parameter0_underscore_start = parse_symbol_as_start(state, "_");
+    let parameter0 = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
     parse_sloe_whitespace(state);
     let mut parameter1_up = Vec::new();
     while let Some(comma_start) = parse_symbol_as_start(state, ",") {
         parse_sloe_whitespace(state);
-        let name = parse_sloe_uppercase_name_with_start(state);
+        let underscore_start = parse_symbol_as_start(state, "_");
+        let name = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
         parameter1_up.push(SyntaxTrailingTypeParameter {
             comma_start: comma_start,
+            underscore_start: underscore_start,
             name: name,
         });
         parse_sloe_whitespace(state);
@@ -1271,6 +1289,7 @@ fn parse_angled_type_parameters(state: &mut ParseState) -> Option<SyntaxAngledTy
     let closed_angle_start = parse_symbol_as_start(state, ">");
     Some(SyntaxAngledTypeParameters {
         open_angle_start: open_angle_start,
+        parameter0_underscore_start: parameter0_underscore_start,
         parameter0: parameter0,
         parameter1_up: parameter1_up,
         closed_angle_start: closed_angle_start,
@@ -1603,7 +1622,14 @@ pub fn parse_type_not_open_ended<Types>(
         .or_else(|| parse_type_parenthesized(state, types))
 }
 fn parse_type_variable<Types>(state: &mut ParseState) -> Option<SyntaxType<Types>> {
-    parse_sloe_uppercase_name_with_start(state).map(|name| SyntaxType::Variable(name))
+    let Some(underscore_start) = parse_symbol_as_start(state, "_") else {
+        return None;
+    };
+    let name = parse_sloe_lowercase_name(state);
+    Some(SyntaxType::Variable {
+        underscore_start: underscore_start,
+        name: name.unwrap_or(Name::EMPTY),
+    })
 }
 fn parse_type_parenthesized<Types>(
     state: &mut ParseState,
@@ -1722,10 +1748,9 @@ fn parse_type_construct_with_arguments<Types>(
     state: &mut ParseState,
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxType<Types>> {
-    let Some(underscore_start) = parse_symbol_as_start(state, "_") else {
+    let Some(name) = parse_sloe_uppercase_name_with_start(state) else {
         return None;
     };
-    let name = parse_sloe_lowercase_name_with_start(state);
     parse_sloe_whitespace(state);
     let argument0 = parse_type(state, types);
     parse_sloe_whitespace(state);
@@ -1740,7 +1765,6 @@ fn parse_type_construct_with_arguments<Types>(
         });
     }
     Some(SyntaxType::ConstructWithArguments {
-        underscore_start: underscore_start,
         name: name,
         argument0: argument0.map(|argument0| types.insert(argument0)),
         argument1_up: argument1_up,
@@ -2626,7 +2650,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
     type_graph: &mut strongly_connected_components::Graph,
 ) {
     match type_ {
-        SyntaxType::Variable(_) => {}
+        SyntaxType::Variable { .. } => {}
         SyntaxType::ConstructWithoutArguments(name) => {
             if let Some(referenced_type_graph_node) =
                 type_graph_node_by_name.get(name.value.as_str()).copied()
@@ -2638,14 +2662,12 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             }
         }
         SyntaxType::ConstructWithArguments {
-            underscore_start: _,
             name,
             argument0,
             argument1_up,
         } => {
-            if let Some(name) = name
-                && let Some(referenced_type_graph_node) =
-                    type_graph_node_by_name.get(name.value.as_str()).copied()
+            if let Some(referenced_type_graph_node) =
+                type_graph_node_by_name.get(name.value.as_str()).copied()
             {
                 type_graph.new_edge(
                     origin_type_declaration_graph_node,
@@ -3218,12 +3240,11 @@ fn project_type_alias_check<Types>(
                     .parameters
                     .iter()
                     .flat_map(|parameters| {
-                        std::iter::once(parameters.parameter0.value.clone()).chain(
+                        std::iter::once(parameters.parameter0.clone()).chain(
                             parameters
                                 .parameter1_up
                                 .iter()
-                                .filter_map(|parameter| parameter.name.as_ref())
-                                .map(|parameter_name| parameter_name.value.clone()),
+                                .map(|parameter| parameter.name.clone()),
                         )
                     })
                     .collect::<Vec<_>>(),
@@ -3247,12 +3268,11 @@ fn project_type_alias_check<Types>(
                         .parameters
                         .iter()
                         .flat_map(|parameters| {
-                            std::iter::once(parameters.parameter0.value.clone()).chain(
+                            std::iter::once(parameters.parameter0.clone()).chain(
                                 parameters
                                     .parameter1_up
                                     .iter()
-                                    .filter_map(|parameter| parameter.name.as_ref())
-                                    .map(|parameter_name| parameter_name.value.clone()),
+                                    .map(|parameter| parameter.name.clone()),
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -3266,11 +3286,16 @@ fn project_type_alias_check<Types>(
                         errors,
                         name_range(with_start_position_as_ref(project_type.name)),
                         project_type.parameters.iter().flat_map(|parameters| {
-                            std::iter::once(&parameters.parameter0).chain(
-                                parameters
-                                    .parameter1_up
-                                    .iter()
-                                    .filter_map(|parameter| parameter.name.as_ref()),
+                            std::iter::once((
+                                parameters.parameter0_underscore_start,
+                                &parameters.parameter0,
+                            ))
+                            .chain(
+                                parameters.parameter1_up.iter().filter_map(|parameter| {
+                                    parameter
+                                        .underscore_start
+                                        .map(|underscore_start| (underscore_start, &parameter.name))
+                                }),
                             )
                         }),
                         actually_used_type_variables,
@@ -3382,12 +3407,17 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
                 errors,
                 name_range(with_start_position_as_ref(project_fn.name)),
                 project_fn.type_parameters.iter().flat_map(|parameters| {
-                    parameters.parameter0.iter().chain(
-                        parameters
-                            .parameter1_up
-                            .iter()
-                            .filter_map(|parameter| parameter.name.as_ref()),
-                    )
+                    parameters
+                        .parameter0_underscore_start
+                        .into_iter()
+                        .map(|parameter0_underscore_start| {
+                            (parameter0_underscore_start, &parameters.parameter0)
+                        })
+                        .chain(parameters.parameter1_up.iter().filter_map(|parameter| {
+                            parameter
+                                .underscore_start
+                                .map(|underscore_start| (underscore_start, &parameter.name))
+                        }))
                 }),
                 type_variables_exclusively_used_in_result,
             );
@@ -3403,16 +3433,14 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
             documentation: None,
             type_parameters: match &project_fn.type_parameters {
                 None => vec![],
-                Some(type_parameters) => type_parameters
-                    .parameter0
-                    .iter()
+                Some(type_parameters) => std::iter::once(&type_parameters.parameter0)
                     .chain(
                         type_parameters
                             .parameter1_up
                             .iter()
-                            .filter_map(|parameter| parameter.name.as_ref()),
+                            .map(|parameter| &parameter.name),
                     )
-                    .map(|name| name.value.clone())
+                    .cloned()
                     .collect(),
             },
             parameter_type: maybe_parameter_type,
@@ -3698,7 +3726,10 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
     origins: &std::collections::HashMap<&Name, OriginInfo>,
 ) -> Option<Type> {
     match type_ {
-        SyntaxType::Variable(name) => Some(Type::Variable(name.value.clone())),
+        SyntaxType::Variable {
+            underscore_start: _,
+            name,
+        } => Some(Type::Variable(name.clone())),
         SyntaxType::Parenthesized {
             open_paren_start: _,
             inner,
@@ -3717,14 +3748,10 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
             }
         }
         SyntaxType::ConstructWithArguments {
-            underscore_start: _,
             name,
             argument0,
             argument1_up,
         } => {
-            let Some(name) = name else {
-                return None;
-            };
             if origins.contains_key(&name.value) {
                 Some(Type::Origin(name.value.clone()))
             } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
@@ -3833,7 +3860,10 @@ pub fn syntax_type_check<Types>(
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) -> Option<Type> {
     match type_ {
-        SyntaxType::Variable(name) => Some(Type::Variable(name.value.clone())),
+        SyntaxType::Variable {
+            underscore_start: _,
+            name,
+        } => Some(Type::Variable(name.clone())),
         SyntaxType::Parenthesized {
             open_paren_start,
             inner,
@@ -3886,18 +3916,10 @@ pub fn syntax_type_check<Types>(
             }
         }
         SyntaxType::ConstructWithArguments {
-            underscore_start,
             name,
             argument0,
             argument1_up,
         } => {
-            let Some(name) = name else {
-                errors.push(ErrorNode {
-                    range: symbol_range(*underscore_start, "_"),
-                    message : Box::from("missing type name after this underscore _ . An example of a valid type construct is _vec Origin, u32")
-                });
-                return None;
-            };
             if origins.contains_key(&name.value) {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
@@ -4326,17 +4348,23 @@ fn type_variables_into<'a>(
 fn parameters_check_if_different_to_actual_type_parameters<'a>(
     errors: &mut Vec<ErrorNode>,
     parent_name_range: lsp_types::Range,
-    parameters: impl Iterator<Item = &'a WithStartPosition<Name>>,
+    parameters: impl Iterator<Item = (/* underscore_start */ lsp_types::Position, &'a Name)>,
     mut actually_used_type_variables: std::collections::BTreeSet<&Name>,
 ) -> Vec<Name> {
     let mut actually_used_parameters = Vec::<Name>::with_capacity(parameters.size_hint().0);
     for parameter in parameters {
-        if actually_used_type_variables.remove(&parameter.value) {
-            actually_used_parameters.push(parameter.value.clone());
+        if actually_used_type_variables.remove(parameter.1) {
+            actually_used_parameters.push(parameter.1.clone());
         } else {
             errors.push(ErrorNode {
-                range: name_range(with_start_position_as_ref(parameter)),
-                message: Box::from("this type variable is not used. Remove it or use it"),
+                range: lsp_types::Range {
+                    start: parameter.0,
+                    end: position_add_characters(
+                        parameter.0,
+                        1 + parameter.1.encode_utf16().count() as u32,
+                    ),
+                },
+                message: Box::from("this type parameter is not used. Remove it or use it"),
             });
         }
     }
@@ -4344,7 +4372,7 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
         errors.push(ErrorNode {
             range: parent_name_range,
             message: format!(
-                "some type variables are used but not declared, namely {}. Add {}",
+                "some type parameters are used but not declared, namely {}. Add {}",
                 actually_used_type_variables
                     .iter()
                     .copied()
@@ -5987,7 +6015,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 if syntax_type_argument_count != project_fn_info.type_parameters.len() {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in _vec-empty<u32> origin, each type parenthesized if necessary.",
+                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Vec-empty<u32> origin, each type parenthesized if necessary.",
                             parameter_count = project_fn_info.type_parameters.len(),
                             parameter_pluralized = if project_fn_info.type_parameters.len() == 1 {
                                 "parameter"
@@ -6059,21 +6087,21 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some(name_value) = &name.value else {
                 errors.push(ErrorNode {
                     range: optional_variant_name_range(name),
-                    message: Box::from("missing variant name after this bar | . An example of a valid variant is |yes<_opt str> \"hi c:\""),
+                    message: Box::from("missing variant name after this bar | . An example of a valid variant is |yes<Opt str> \"hi c:\""),
                 });
                 return None;
             };
             let Some(syntax_type_argument) = type_ else {
                 errors.push(ErrorNode {
                     range: optional_variant_name_range(name),
-                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |yes<_opt str> \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
+                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |yes<Opt str> \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
                 });
                 return None;
             };
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_angle_start, "<"),
-                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |yes<_opt str> \"hi c:\""),
+                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |yes<Opt str> \"hi c:\""),
                 });
                 return None;
             };
@@ -8174,12 +8202,14 @@ pub fn syntax_type_variables_into<'a, Types>(
     types: &'a core::Vec<Types, SyntaxType<Types>>,
 ) {
     match type_ {
-        SyntaxType::Variable(name) => {
-            type_variables.insert(&name.value);
+        SyntaxType::Variable {
+            underscore_start: _,
+            name,
+        } => {
+            type_variables.insert(name);
         }
         SyntaxType::ConstructWithoutArguments(_) => {}
         SyntaxType::ConstructWithArguments {
-            underscore_start: _,
             name: _,
             argument0,
             argument1_up,
@@ -8357,15 +8387,15 @@ mod test_type_collect_variables_that_are_concrete_into {
             )
         }
         assert_eq!(
-            concrete_type_variables(&type_variable("A"), &type_u32,),
-            type_variables_from([("A", type_u32)])
+            concrete_type_variables(&type_variable("a"), &type_u32,),
+            type_variables_from([("a", type_u32)])
         );
         assert_eq!(
             concrete_type_variables(
-                &type_fn(type_variable("A"), type_variable("A")),
-                &type_fn(type_variable("A"), type_u32),
+                &type_fn(type_variable("a"), type_variable("a")),
+                &type_fn(type_variable("a"), type_u32),
             ),
-            type_variables_from([("A", type_u32)])
+            type_variables_from([("a", type_u32)])
         );
     }
 }
@@ -8730,13 +8760,13 @@ fn type_diff_into(formatted: &mut String, indent: usize, type_diff: &TypeDiff) {
             type_format(formatted, next_indent(indent), actual);
         }
         TypeDiff::Variable(name) => {
+            formatted.push('_');
             formatted.push_str(name);
         }
         TypeDiff::Origin(name) => {
             formatted.push_str(name);
         }
         TypeDiff::CoreConstruct { name, arguments } => {
-            formatted.push('_');
             formatted.push_str(name);
             let line_span: LineSpan = type_diff_line_span(type_diff);
             for argument in arguments {
@@ -8870,6 +8900,7 @@ fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
 pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
     match type_ {
         Type::Variable(name) => {
+            formatted.push('_');
             formatted.push_str(name);
         }
         Type::Origin(name) => {
@@ -8880,7 +8911,6 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
                 formatted.push_str(name);
             }
             [argument0, argument1_up @ ..] => {
-                formatted.push('_');
                 formatted.push_str(name);
                 let line_span: LineSpan = type_line_span(type_);
                 space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
@@ -9341,49 +9371,49 @@ const type_str: Type = Type::CoreConstruct {
 };
 fn type_origin(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("origin"),
+        name: Name::from_static("Origin"),
         arguments: vec![origin],
     }
 }
 fn type_vec(origin: Type, element: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("vec"),
+        name: Name::from_static("Vec"),
         arguments: vec![origin, element],
     }
 }
 fn type_slot(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("slot"),
+        name: Name::from_static("Slot"),
         arguments: vec![origin],
     }
 }
 fn type_unset_slot(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("unset-slot"),
+        name: Name::from_static("Unset-slot"),
         arguments: vec![origin],
     }
 }
 fn type_span(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("span"),
+        name: Name::from_static("Span"),
         arguments: vec![origin],
     }
 }
 fn type_unset_span(origin: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("unset-span"),
+        name: Name::from_static("Unset-span"),
         arguments: vec![origin],
     }
 }
 fn type_array(element: Type, record: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("array"),
+        name: Name::from_static("Array"),
         arguments: vec![element, record],
     }
 }
 fn type_unset_slice(element: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("unset-slice"),
+        name: Name::from_static("Unset-slice"),
         arguments: vec![element],
     }
 }
@@ -9509,10 +9539,10 @@ and round midpoint of a positive number to the higher neighbor.
 This is (I think) often the semantically correct mode for geometry, ui and similar use cases
 where behavior should be the same everywhere and e.g adding 1 should not change it.
 It's the default round operation implementation in e.g. [C](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=271), [rust](https://doc.rust-lang.org/std/primitive.f32.html#method.round), [zig](https://ziglang.org/documentation/master/#round), ([llvm](https://llvm.org/docs/LangRef.html#llvm-round-intrinsic)), python 2.
-However, it's slower than `f32-round-nearest-else-even` on most architectures.
+However, it's slower than `F32-round-nearest-else-even` on most architectures.
 ```sloe
-fn age . :> f32 >
-    f32-round-nearest-else-away-from-0 68.8 f32
+fn Age . :> f32 >
+    F32-round-nearest-else-away-from-0 68.8 f32
 ```",
                 type_parameters: vec![],
                 parameter_type: type_f32 ,
@@ -9523,7 +9553,7 @@ fn age . :> f32 >
                 documentation: r#"If not already equal to an integer value, find the closest neighboring integer.
 Round negative midpoint to the nearest even neighbor.
 This is sometimes called banker's rounding and is well-supported by architectures.
-An argument could be made that this is more "fair" than `f32-round-nearest-else-away-from-0`
+An argument could be made that this is more "fair" than `F32-round-nearest-else-away-from-0`
 when operating in a linear scale where numbers are distributed evenly (even numbers as likely as uneven in all cases)
 but as a result it can feel less predictable.
 If fairness is a real concern, the midpoint should be explicitly handled, e.g.
@@ -9566,39 +9596,39 @@ Often called truncate",
             },
             CoreFnInfo {
                 name: "f32-round-up-to-i32-clamp",
-                documentation: "`f32-round-up`, then clamp to within 32 bits",
+                documentation: "`F32-round-up`, then clamp to within 32 bits",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_i32,
             },
             CoreFnInfo {
                 name: "f32-round-down-to-i32-clamp",
-                documentation: "`f32-round-down`, then clamp to within 32 bits",
+                documentation: "`F32-round-down`, then clamp to within 32 bits",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_i32,
             },
             CoreFnInfo {
                 name: "f32-round-toward-0-to-i32-clamp",
-                documentation: "`f32-round-toward-0`, then clamp to within 32 bits",
+                documentation: "`F32-round-toward-0`, then clamp to within 32 bits",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_i32,
             },
             CoreFnInfo {
                 name: "f32-round-away-from-0-to-i32-clamp",
-                documentation: "`f32-round-away-from-0`, then clamp to within 32 bits",
+                documentation: "`F32-round-away-from-0`, then clamp to within 32 bits",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_i32,
             },
             CoreFnInfo {
                 name: "f32-round-nearest-else-away-from-0-to-i32-clamp",
-                documentation: "`f32-round-nearest-else-away-from-0`, then clamp to within 32 bits.
-In effect, `f32-round-toward-0-to-i32-clamp` truncates off at the decimal point:
+                documentation: "`F32-round-nearest-else-away-from-0`, then clamp to within 32 bits.
+In effect, `F32-round-toward-0-to-i32-clamp` truncates off at the decimal point:
 ```sloe
-fn age . :> f32 >
-    f32-round-toward-0-to-i32-clamp 68.8 f32
+fn Age . :> f32 >
+    F32-round-toward-0-to-i32-clamp 68.8 f32
 ```",
                 type_parameters: vec![],
                 parameter_type: type_f32 ,
@@ -9606,7 +9636,7 @@ fn age . :> f32 >
             },
             CoreFnInfo {
                 name: "f32-round-nearest-else-even-to-i32-clamp",
-                documentation: "`f32-round-nearest-else-even`, then clamp to within 32 bits",
+                documentation: "`F32-round-nearest-else-even`, then clamp to within 32 bits",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_i32,
@@ -9642,19 +9672,19 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             },
             CoreFnInfo {
                 name: "opt-yes",
-                documentation: "Shorthand for |yes<_opt ..value type..> value which kind of specifies the value type twice",
+                documentation: "Shorthand for |yes<Opt ..value type..> value which kind of specifies the value type twice",
                 type_parameters: vec![],
-                parameter_type: type_variable("Yes"),
-                result_type: type_opt(type_variable("Yes"))
+                parameter_type: type_variable("yes"),
+                result_type: type_opt(type_variable("yes"))
             },
             CoreFnInfo {
                 name: "fn-dup",
                 documentation: "Split the fn in two values with the same content",
                 type_parameters: vec![],
-                parameter_type: type_fn(type_variable("In"), type_variable("Out")),
+                parameter_type: type_fn(type_variable("in"), type_variable("out")),
                 result_type: type_record([
-                    ("a", type_fn(type_variable("In"), type_variable("Out"))),
-                    ("b", type_fn(type_variable("In"), type_variable("Out"))),
+                    ("a", type_fn(type_variable("in"), type_variable("out"))),
+                    ("b", type_fn(type_variable("in"), type_variable("out"))),
                 ]),
             },
             CoreFnInfo {
@@ -9662,40 +9692,40 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 documentation: "Mark the given fn value as \"won't be used anymore\".
 This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                 type_parameters: vec![],
-                parameter_type: type_fn(type_variable("In"), type_variable("Out")),
+                parameter_type: type_fn(type_variable("in"), type_variable("out")),
                 result_type: type_record([]),
             },
             CoreFnInfo {
                 name: "origin-rid",
                 documentation: "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case",
                 type_parameters: vec![],
-                parameter_type: type_origin(type_variable("Origin")),
+                parameter_type: type_origin(type_variable("origin")),
                 result_type: type_record([]),
             },
             CoreFnInfo {
                 name: "slot-to-span",
                 documentation: "Create a span covering just the one given slot",
                 type_parameters: vec![],
-                parameter_type: type_slot(type_variable("Origin")),
-                result_type: type_span(type_variable("Origin")),
+                parameter_type: type_slot(type_variable("origin")),
+                result_type: type_span(type_variable("origin")),
             },
             CoreFnInfo {
                 name: "unset-slot-to-span",
                 documentation: "Create an unset-span covering just the one given slot",
                 type_parameters: vec![],
-                parameter_type: type_unset_slot(type_variable("Origin")),
-                result_type: type_unset_span(type_variable("Origin")),
+                parameter_type: type_unset_slot(type_variable("origin")),
+                result_type: type_unset_span(type_variable("origin")),
             },
             CoreFnInfo {
                 name: "span-length",
                 documentation: "How many slots it spans",
                 type_parameters: vec![],
-                parameter_type: type_span(type_variable("Origin")),
+                parameter_type: type_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "span",
-                            type_span(type_variable("Origin"))
+                            type_span(type_variable("origin"))
                         ),
                         ("length", type_p32)
                     ]),
@@ -9704,12 +9734,12 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 name: "opt-span-length",
                 documentation: "How many slots it spans",
                 type_parameters: vec![],
-                parameter_type: type_opt(type_span(type_variable("Origin"))),
+                parameter_type: type_opt(type_span(type_variable("origin"))),
                 result_type:
                     type_record([
                         (
                             "span",
-                            type_opt(type_span(type_variable("Origin")))
+                            type_opt(type_span(type_variable("origin")))
                         ),
                         ("length", type_u32)
                     ]),
@@ -9717,30 +9747,30 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             CoreFnInfo {
                 name: "span-start",
                 documentation: "Split into the first slot and span after.
-To join disconnected slots and spans back together, use helpers like `vec-span-add-own-opt-span`",
+To join disconnected slots and spans back together, use helpers like `Vec-span-add-own-opt-span`",
                 type_parameters: vec![],
-                parameter_type: type_span(type_variable("Origin")),
+                parameter_type: type_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "start",
-                            type_slot(type_variable("Origin"))
+                            type_slot(type_variable("origin"))
                         ),
-                        ("after", type_opt(type_span(type_variable("Origin"))))
+                        ("after", type_opt(type_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
                 name: "span-end",
                 documentation: "Split into the last slot and span before",
                 type_parameters: vec![],
-                parameter_type: type_span(type_variable("Origin")),
+                parameter_type: type_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "end",
-                            type_slot(type_variable("Origin"))
+                            type_slot(type_variable("origin"))
                         ),
-                        ("before", type_opt(type_span(type_variable("Origin"))))
+                        ("before", type_opt(type_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
@@ -9748,48 +9778,48 @@ To join disconnected slots and spans back together, use helpers like `vec-span-a
                 documentation: "Split after a given length with the start half known to have positive length.
 If the length is greater than the given span's length, .start will be the existing span and .after will be empty.
 ```sloe
-fn span-slot-at
-    .span span _span Origin
+fn Span-slot-at
+    .span span Span _origin
     .index index u32
     :>
-    .before _opt _span Origin
-    .at _slot Origin
-    .after _opt _span Origin
+    .before Opt Span _origin
+    .at Slot _origin
+    .after Opt Span _origin
     >
     ?
-        _span-start-of-length-positive
+        Span-start-of-length-positive
         .span span
-        .length (_p32-add .p 1 p32 .u index)
+        .length (P32-add .p 1 p32 .u index)
     [.start start .after after]
-    ? _span-end start [.before before .end at]
+    ? Span-end start [.before before .end at]
     .before before .at at .after after
 ```
-See also `span-end-of-length-positive`, `span-start`.",
+See also `Span-end-of-length-positive`, `Span-start`.",
                 type_parameters: vec![],
-                parameter_type: type_span(type_variable("Origin")),
+                parameter_type: type_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "start",
-                            type_span(type_variable("Origin"))
+                            type_span(type_variable("origin"))
                         ),
-                        ("after", type_opt(type_span(type_variable("Origin"))))
+                        ("after", type_opt(type_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
                 name: "span-end-of-length-positive",
                 documentation: "Split before a given length from the end with the end half known to have positive length.
 If the length is greater than the given span's length, .end will be the existing span and .before will be empty.
-See also `span-start-of-length-positive`, `span-end`.",
+See also `Span-start-of-length-positive`, `Span-end`.",
                 type_parameters: vec![],
-                parameter_type: type_span(type_variable("Origin")),
+                parameter_type: type_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "end",
-                            type_span(type_variable("Origin"))
+                            type_span(type_variable("origin"))
                         ),
-                        ("before", type_opt(type_span(type_variable("Origin"))))
+                        ("before", type_opt(type_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
@@ -9800,33 +9830,33 @@ See also `span-start-of-length-positive`, `span-end`.",
                     type_record([
                         (
                             "span",
-                            type_span(type_variable("Origin"))
+                            type_span(type_variable("origin"))
                         ),
                         ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
-                        ("state", type_variable("State")),
+                        ("state", type_variable("state")),
                         (
                             "step",
                             type_fn(
                                 type_record([
-                                    ("slot", type_variable("Origin")),
-                                    ("state", type_slot(type_variable("State"))),
+                                    ("slot", type_variable("origin")),
+                                    ("state", type_slot(type_variable("state"))),
                                 ]),
-                                type_variable("State")
+                                type_variable("state")
                             )
                         )
                     ]),
-                result_type: type_variable("State"),
+                result_type: type_variable("state"),
             },
             CoreFnInfo {
                 name: "unset-span-length",
                 documentation: "How many slots it spans",
                 type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("Origin")),
+                parameter_type: type_unset_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "span",
-                            type_unset_span(type_variable("Origin"))
+                            type_unset_span(type_variable("origin"))
                         ),
                         ("length", type_p32)
                     ]),
@@ -9835,12 +9865,12 @@ See also `span-start-of-length-positive`, `span-end`.",
                 name: "opt-unset-span-length",
                 documentation: "How many slots it spans",
                 type_parameters: vec![],
-                parameter_type: type_opt(type_unset_span(type_variable("Origin"))),
+                parameter_type: type_opt(type_unset_span(type_variable("origin"))),
                 result_type:
                     type_record([
                         (
                             "span",
-                            type_opt(type_unset_span(type_variable("Origin")))
+                            type_opt(type_unset_span(type_variable("origin")))
                         ),
                         ("length", type_u32)
                     ]),
@@ -9849,28 +9879,28 @@ See also `span-start-of-length-positive`, `span-end`.",
                 name: "unset-span-start",
                 documentation: "Split into the first slot and span after",
                 type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("Origin")),
+                parameter_type: type_unset_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "start",
-                            type_slot(type_variable("Origin"))
+                            type_slot(type_variable("origin"))
                         ),
-                        ("after", type_opt(type_unset_span(type_variable("Origin"))))
+                        ("after", type_opt(type_unset_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
                 name: "unset-span-end",
                 documentation: "Split into the last slot and span before",
                 type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("Origin")),
+                parameter_type: type_unset_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "end",
-                            type_slot(type_variable("Origin"))
+                            type_slot(type_variable("origin"))
                         ),
-                        ("before", type_opt(type_unset_span(type_variable("Origin"))))
+                        ("before", type_opt(type_unset_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
@@ -9878,48 +9908,48 @@ See also `span-start-of-length-positive`, `span-end`.",
                 documentation: "Split after a given length with the start half known to have positive length.
 If the length is greater than the given span's length, .start will be the existing span and .after will be empty.
 ```sloe
-fn unset-span-slot-at
-    .span span _unset-span Origin
+fn Unset-span-slot-at
+    .span span Unset-span _origin
     .index index u32
     :>
-    .before _opt _unset-span Origin
-    .at _slot Origin
-    .after _opt _unset-span Origin
+    .before Opt Unset-span _origin
+    .at Slot _origin
+    .after Opt Unset-span _origin
     >
     ?
-        _unset-span-start-of-length-positive
+        Unset-span-start-of-length-positive
         .span span
-        .length (_p32-add .p 1 p32 .u index)
+        .length (P32-add .p 1 p32 .u index)
     [.start start .after after]
-    ? _unset-span-end start [.before before .end at]
+    ? Unset-span-end start [.before before .end at]
     .before before .at at .after after
 ```
-See also `unset-span-end-of-length-positive`, `unset-span-start`.",
+See also `Unset-span-end-of-length-positive`, `Inset-span-start`.",
                 type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("Origin")),
+                parameter_type: type_unset_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "start",
-                            type_unset_span(type_variable("Origin"))
+                            type_unset_span(type_variable("origin"))
                         ),
-                        ("after", type_opt(type_unset_span(type_variable("Origin"))))
+                        ("after", type_opt(type_unset_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
                 name: "unset-span-end-of-length-positive",
                 documentation: "Split before a given length from the end with the end half known to have positive length.
 If the length is greater than the given span's length, .end will be the existing span and .before will be empty.
-See also `unset-span-start-of-length-positive`, `unset-span-end`.",
+See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
                 type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("Origin")),
+                parameter_type: type_unset_span(type_variable("origin")),
                 result_type:
                     type_record([
                         (
                             "end",
-                            type_unset_span(type_variable("Origin"))
+                            type_unset_span(type_variable("origin"))
                         ),
-                        ("before", type_opt(type_unset_span(type_variable("Origin"))))
+                        ("before", type_opt(type_unset_span(type_variable("origin"))))
                     ]),
             },
             CoreFnInfo {
@@ -9930,345 +9960,345 @@ See also `unset-span-start-of-length-positive`, `unset-span-end`.",
                     type_record([
                         (
                             "span",
-                            type_unset_span(type_variable("Origin") )
+                            type_unset_span(type_variable("origin") )
                         ),
                         ("direction", type_choice([("up", type_record([])), ("down", type_record([]))])),
-                        ("state", type_variable("State")),
+                        ("state", type_variable("state")),
                         (
                             "step",
                             type_fn(
                                 type_record([
-                                    ("slot", type_variable("Origin")),
-                                    ("state", type_unset_slot(type_variable("State"))),
+                                    ("slot", type_variable("origin")),
+                                    ("state", type_unset_slot(type_variable("state"))),
                                 ]),
-                                type_variable("State")
+                                type_variable("state")
                             )
                         )
                     ]),
-                result_type: type_variable("State"),
+                result_type: type_variable("state"),
             },
             CoreFnInfo {
                 name: "vec-empty",
-                documentation: "Initialize a `vec` with 0 elements. Modify with `vec-pre-allocate-at-least`, `vec-add`, `vec-add-unset` etc.",
-                type_parameters: vec![Name::from_static("Element")],
-                parameter_type: type_origin(type_variable("Origin")),
-                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                documentation: "Initialize a `Vec` with 0 elements. Modify with `Vec-pre-allocate-at-least`, `Vec-add`, `Vec-add-unset` etc.",
+                type_parameters: vec![Name::from_static("element")],
+                parameter_type: type_origin(type_variable("origin")),
+                result_type: type_vec(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-reuse",
-                documentation: "Initialize a `vec` with 0 elements and spare allocated memory from an `unset-slice`.
+                documentation: "Initialize a `Vec` with 0 elements and spare allocated memory from an `Unset-slice`.
 This can be used to recycle vec memory from one vec with one origin into another vec with a different origin.
 ```sloe
-fn vec-recycle-empty-vec
-    .new-origin new-origin NewOrigin
-    .old old _vec OldOrigin, Element
-    :> _vec NewOrigin Element >
-    ? _vec-to-unset old [unset-slice]
-    _vec-reuse .origin new-origin .slice unset-slice
+fn Vec-recycle-empty-vec
+    .new-origin new-origin Origin _new-origin
+    .old old Vec _old-origin, _element
+    :> Vec _new-origin _element >
+    ? Vec-to-unset old [unset-slice]
+    Vec-reuse .origin new-origin .slice unset-slice
 ```",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("origin", type_origin(type_variable("Origin"))),
-                    ("slice", type_unset_slice(type_variable("Element"))),
+                    ("origin", type_origin(type_variable("origin"))),
+                    ("slice", type_unset_slice(type_variable("element"))),
                 ]),
-                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_vec(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-pre-allocate-at-least",
-                documentation: "Reserves spare capacity for at least `length` more elements to be added.
+                documentation: "Reserves spare capacity for at least `.length` more elements to be added.
 This can prevent frequent re-allocation of the underlying array.
 If you can guesstimate a lower bound of how many elements are ultimately added, this is always worth it!
-Equivalent to `vec-add-unset-length` followed by `vec-opt-span-rid`",
+Equivalent to `Vec-add-unset-length` followed by `Vec-opt-span-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
                     ("length", type_u32),
                 ]),
-                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_vec(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-pre-allocation-rid",
                 documentation: "Shrinks down spare capacity as much as possible.
 Some allocators may scrap and re-allocate the whole vec as a result.
 It's rarely useful but can reuce idle memory usage for vecs that are very unlikely to be added to in the future.
-You may also use it to adjust memory usage after `vec-reuse` when the given `unset-slice` was large",
+You may also use it to adjust memory usage after `Vec-reuse` when the given `Unset-slice` was large",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
-                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_vec(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-insert",
                 documentation: "Add a new element into the vec and keep a slot to it,
 reusing vacant space earlier in the vec when available.
-Use `vec-add` if you don't care about reuse.",
+Use `Vec-add` if you don't care about reuse.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("new", type_variable("Element")),
+                    ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_slot(type_variable("Origin"))),
+                    ("slot", type_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-insert-unset",
-                documentation: "Like `vec-insert` but without assigning a value just yet.
-This like initializing an element with `undefined` memory,
+                documentation: "Like `Vec-insert` but without assigning a value just yet.
+This like initializing an element with undefined memory,
 with the difference that you can't possibly access it :)
-Assign an unset-slot with `vec-set` or vacate it with `vec-vacate`",
+Assign an unset-slot with `Vec-set` or vacate it with `Vec-vacate`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
+                    ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-add",
                 documentation: "Add a new element to the end of the vec and keep a slot to it without trying to reuse already vacant slots.
-Can be faster than `vec-insert` when you expect no vacant elements or when all the storage gets scrapped soon anyway.",
+Can be faster than `Vec-insert` when you expect no vacant elements or when all the storage gets scrapped soon anyway.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("new", type_variable("Element")),
+                    ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_slot(type_variable("Origin"))),
+                    ("slot", type_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-add-unset",
-                documentation: "Like `vec-add` but without assigning a value just yet.
-Assign an unset-slot with `vec-set` or vacate it with `vec-vacate`",
+                documentation: "Like `Vec-add` but without assigning a value just yet.
+Assign an unset-slot with `Vec-set` or vacate it with `Vec-vacate`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
+                    ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-add-unset-length-positive",
                 documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `vec-span-rid` this has the same effect as `vec-pre-allocate-at-least` for example.",
+Combined with `Vec-span-rid` this has the same effect as `Vec-pre-allocate-at-least` for example.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
                     ("length", type_p32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_unset_span(type_variable("Origin"))),
+                    ("span", type_unset_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-add-unset-length",
                 documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `vec-opt-span-rid` this has the same effect as `vec-pre-allocate-at-least` for example.
-To get non-empty spans use `vec-add-length-positive`",
+Combined with `Vec-opt-span-rid` this has the same effect as `Vec-pre-allocate-at-least` for example.
+To get non-empty spans use `Vec-add-length-positive`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
                     ("length", type_u32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_unset_span(type_variable("Origin")))),
+                    ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-add-array",
-                documentation: "Add a given `array` of new elements to the end of the vec and keep a span to it without trying to reuse already vacant slots.
-Convenient equivalent to `vec-opt-span-add-array` with an empty span.",
+                documentation: "Add a given `Array` of new elements to the end of the vec and keep a span to it without trying to reuse already vacant slots.
+Convenient equivalent to `Vec-opt-span-add-array` with an empty span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("new", type_array(type_variable("Element"), type_variable("Record"))),
+                    ("new", type_array(type_variable("element"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-remove",
                 documentation: "Remove and retrieve an element from the vec at a given slot (the inverse of vec-insert/vec-add).
-Short for `vec-unset` followed by `vec-slot-rid`",
+Short for `Vec-unset` followed by `Vec-slot-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_slot(type_variable("Origin"))),
+                    ("slot", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("element", type_variable("Element")),
+                    ("element", type_variable("element")),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-unset",
                 documentation: "Retrieve an element from the vec at a given slot (the inverse of vec-set)
 ```sloe
-fn vec-copy-u32-at
-    .vec vec _vec Origin, u32
-    .slot slot _slot Origin
+fn Vec-copy-u32-at
+    .vec vec Vec _origin, u32
+    .slot slot Slot _origin
     :>
-    .vec vec _vec Origin, u32
-    .slot slot _slot Origin
+    .vec vec Vec _origin, u32
+    .slot slot Slot _origin
     .element u32
     >
     ? vec-unset .vec vec .slot slot
     [.vec vec .element element .slot unset-slot]
-    ? u32-dup element [.a element .b element-copied]
-    ? vec-set .vec vec .slot unset-slot .new element [.vec vec .slot slot]
+    ? U32-dup element [.a element .b element-copied]
+    ? Vec-set .vec vec .slot unset-slot .new element [.vec vec .slot slot]
     .vec vec .slot slot .element element-copied
 ```
 A little roundabout but it works.
-To remove the element entirely, use `vec-take`",
+To remove the element entirely, use `Vec-take`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("element",type_variable("Element") ),
-                    ("slot", type_slot(type_variable("Origin"))),
+                    ("element",type_variable("element") ),
+                    ("slot", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
-                    ("element", type_variable("Element")),
+                    ("slot", type_unset_slot(type_variable("origin"))),
+                    ("element", type_variable("element")),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-set",
-                documentation: "Put an element back into the given `unset-slot` (the inverse of vec-unset).
-To instead replace a `slot`, use `slot-replace`",
+                documentation: "Put an element back into the given `Unset-slot` (the inverse of vec-unset).
+To instead replace a `Slot`, use `Slot-replace`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
-                    ("new", type_slot(type_variable("Origin"))),
+                    ("slot", type_unset_slot(type_variable("origin"))),
+                    ("new", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
+                    ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-set",
-                documentation: "Put an element back into the given `unset-slot` (the inverse of vec-unset).
-To instead replace a `slot`, use `slot-replace`",
+                documentation: "Put an element back into the given `Unset-slot` (the inverse of vec-unset).
+To instead replace a `Slot`, use `Slot-replace`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
-                    ("new", type_slot(type_variable("Origin"))),
+                    ("slot", type_unset_slot(type_variable("origin"))),
+                    ("new", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
+                    ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-slot-rid",
-                documentation: "Return an `unset-slot` back to the vec for potential future reuse",
+                documentation: "Return an `Unset-slot` back to the vec for potential future reuse",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("Origin"))),
+                    ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
-                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_vec(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-span-rid",
-                documentation: "Return an `unset-span` back to the vec for potential future reuse",
+                documentation: "Return an `Unset-span` back to the vec for potential future reuse",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_unset_span(type_variable("Origin"))),
+                    ("span", type_unset_span(type_variable("origin"))),
                 ]),
-                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_vec(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-opt-span-rid",
-                documentation: "Return an `opt unset-span` back to the vec for potential future reuse",
+                documentation: "Return an `Opt Unset-span` back to the vec for potential future reuse",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_unset_span(type_variable("Origin")))),
+                    ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
-                result_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                result_type: type_vec(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-span-reverse",
@@ -10277,16 +10307,16 @@ To instead replace a `slot`, use `slot-replace`",
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10296,16 +10326,16 @@ To instead replace a `slot`, use `slot-replace`",
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
@@ -10315,17 +10345,17 @@ To instead replace a `slot`, use `slot-replace`",
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
-                    ("new", type_variable("Element")),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                    ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin")))
+                    ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
@@ -10335,59 +10365,59 @@ To instead replace a `slot`, use `slot-replace`",
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
-                    ("new", type_variable("Element")),
+                    ("span", type_span(type_variable("origin"))),
+                    ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin")))
+                    ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
                 name: "vec-span-add-array",
-                documentation: "Attach a given `array` of elements at the end of the span.
-This can remove a bunch of noise compared to chaining `vec-span-add` operations",
+                documentation: "Attach a given `Array` of elements at the end of the span.
+This can remove a bunch of noise compared to chaining `Vec-span-add` operations",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
-                    ("new", type_array(type_variable("Element"), type_variable("Record"))),
+                    ("span", type_span(type_variable("origin"))),
+                    ("new", type_array(type_variable("element"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin")))
+                    ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
                 name: "vec-opt-span-add-array",
-                documentation: "Attach a given `array` of elements at the end of the span.
-This can remove a bunch of noise compared to chaining `vec-span-add` operations",
+                documentation: "Attach a given `Array` of elements at the end of the span.
+This can remove a bunch of noise compared to chaining `Vec-span-add` operations",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
-                    ("new", type_array(type_variable("Element"), type_variable("Record"))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                    ("new", type_array(type_variable("element"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin")))
+                    ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
@@ -10397,17 +10427,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_str),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin"))))
+                    ("span", type_opt(type_span(type_variable("origin"))))
                 ]),
             },
             CoreFnInfo {
@@ -10417,17 +10447,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                     ("new", type_str),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10437,17 +10467,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                     ("new", type_u32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10457,17 +10487,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_u32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10477,17 +10507,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                     ("new", type_i32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10497,17 +10527,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_i32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10517,17 +10547,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                     ("new", type_f32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10537,17 +10567,17 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_f32),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_char),
+                        type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10557,16 +10587,16 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
@@ -10576,16 +10606,16 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10595,16 +10625,16 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10614,100 +10644,100 @@ This can remove a bunch of noise compared to chaining `vec-span-add` operations"
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-span-add-own-span",
                 documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
-As an example, you could implement `vec-span-add` in sloe itself as
+As an example, you could implement `Vec-span-add` in sloe itself as
 ```sloe
-fn vec-span-add
-    .vec vec _vec Origin, Element
-    .span span _span Origin
-    .new new Element
+fn Vec-span-add
+    .vec vec Vec _origin, _element
+    .span span Span _origin
+    .new new _element
     :>
-        .vec _vec Origin, Element
-        .span _span Origin
+    .vec Vec _origin, _element
+    .span Span _origin
     >
     # the first line is optional: it ensures that the new slot will actually be connected,
     # meaning the new element can stay at its position
-    ? _vec-span-move-to-end .vec vec .span span [.vec vec .span .span]
-    ? _vec-add .vec vec .new new [.vec vec .slot new-slot]
-    _vec-span-add-own-span
+    ? Vec-span-move-to-end .vec vec .span span [.vec vec .span .span]
+    ? Vec-add .vec vec .new new [.vec vec .slot new-slot]
+    Vec-span-add-own-span
     .vec vec
     .start span
-    .end _slot-to-span new-slot
+    .end Slot-to-span new-slot
 ```",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("start", type_span(type_variable("Origin"))),
-                    ("end", type_span(type_variable("Origin"))),
+                    ("start", type_span(type_variable("origin"))),
+                    ("end", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-span-add-own-opt-span",
                 documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
-The most common use case is re-combining spans that have been split up with e.g. `span-start` (see also `slot-to-span`)",
+The most common use case is re-combining spans that have been split up with e.g. `Span-start` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("start", type_opt(type_span(type_variable("Origin")))),
-                    ("end", type_span(type_variable("Origin"))),
+                    ("start", type_opt(type_span(type_variable("origin")))),
+                    ("end", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-opt-span-add-own-span",
                 documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
-The most common use case is re-combining spans that have been split up with e.g. `span-end` (see also `slot-to-span`)",
+The most common use case is re-combining spans that have been split up with e.g. `Span-end` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("start", type_opt(type_span(type_variable("Origin")))),
-                    ("end", type_span(type_variable("Origin"))),
+                    ("start", type_opt(type_span(type_variable("origin")))),
+                    ("end", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_span(type_variable("Origin"))),
+                    ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -10718,27 +10748,27 @@ If start and end spans are not already connected, both are appended at the end a
                 parameter_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("start", type_opt(type_span(type_variable("Origin")))),
-                    ("end", type_opt(type_span(type_variable("Origin")))),
+                    ("start", type_opt(type_span(type_variable("origin")))),
+                    ("end", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
                         "vec",
-                        type_vec(type_variable("Origin"), type_variable("Element")),
+                        type_vec(type_variable("origin"), type_variable("element")),
                     ),
-                    ("span", type_opt(type_span(type_variable("Origin")))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
                 name: "vec-to-unset",
                 documentation: "Extract the underlying slice that been used to store elements in including spare capacity.
-This `unset-slice` can if necessary be casted to a new element type with `unset-slice-cast-or-rid-and-allocate`.
-Finally, the allocation can be the base of a new vec with `vec-reuse` or be scrapped with `unset-slice-rid`",
+This `Unset-slice` can if necessary be casted to a new element type with `Unset-slice-cast-or-rid-and-allocate`.
+Finally, the allocation can be the base of a new vec with `Vec-reuse` or be scrapped with `Unset-slice-rid`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
-                result_type: type_unset_slice(type_variable("Element")),
+                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_unset_slice(type_variable("element")),
             },
             CoreFnInfo {
                 name: "vec-rid",
@@ -10746,26 +10776,26 @@ Finally, the allocation can be the base of a new vec with `vec-reuse` or be scra
 Used for temporary vecs at the end of their scope once all of their elements are used up.
 If any slots or spans are still floating around, you will not be able to get rid of them.
 This nicely forces you to handle all remaining elements before you can get rid of the vec.
-To reuse the underlying allocation, use `vec-to-unset`",
+To reuse the underlying allocation, use `Vec-to-unset`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("Origin"), type_variable("Element")),
+                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
                 result_type: type_record([]),
             },
             CoreFnInfo {
                 name: "unset-slice-allocate-length",
-                documentation: "Create a new `unset-slice` with a given length.
-There rarely is a need to use this except when a function expects an `unset-slice` as an argument",
-                type_parameters: vec![Name::from_static("Element")],
+                documentation: "Create a new `Unset-slice` with a given length.
+There rarely is a need to use this except when a function expects an `Unset-slice` as an argument",
+                type_parameters: vec![Name::from_static("element")],
                 parameter_type: type_u32,
-                result_type: type_unset_slice(type_variable("Element")),
+                result_type: type_unset_slice(type_variable("element")),
             },
             CoreFnInfo {
                 name: "unset-slice-length",
                 documentation: "How many elements could fit",
                 type_parameters: vec![],
-                parameter_type: type_unset_slice(type_variable("Element")),
+                parameter_type: type_unset_slice(type_variable("element")),
                 result_type: type_record([
-                    ("slice", type_unset_slice(type_variable("Element"))),
+                    ("slice", type_unset_slice(type_variable("element"))),
                     ("length", type_u32),
                 ]),
             },
@@ -10776,7 +10806,7 @@ This only works when the new element type has the same "size" (byte count includ
 and equal "alignment" (byte count of the biggest field).
 For example, `u32` consists of 4 bytes, just like `i32`, so they can be reinterpreted.
 Similarly `.x f32 .y f32` can be reinterpreted as `.width i32 .height i32` and so forth.
-If the types are incompatible, this function calls `unset-slice-rid` on the old slice
+If the types are incompatible, this function calls `Unset-slice-rid` on the old slice
 and allocates a new one with the same length as the scrapped one.
 
 Note: This difference in behavior does not get reported at compile-time
@@ -10791,19 +10821,19 @@ which is a bit of a stinker. The reasons are:
   For growing alignments, this is only possible at runtime
   when the slice pointer happens to align correctly
 - sloe has a simple type system so I'm happy such a compromise can exist at all"#,
-                type_parameters: vec![Name::from_static("NewElement")],
-                parameter_type: type_unset_slice(type_variable("Element")),
-                result_type: type_unset_slice(type_variable("NewElement"))
+                type_parameters: vec![Name::from_static("new-element")],
+                parameter_type: type_unset_slice(type_variable("element")),
+                result_type: type_unset_slice(type_variable("new-element"))
             },
             CoreFnInfo {
                 name: "unset-slice-rid",
-                documentation: "Deallocate an `unset-slice` in full. Very rarely useful.
+                documentation: "Deallocate an `Unset-slice` in full. Very rarely useful.
 ```sloe
-fn hand-warmer-in-debug-mode . :> . >
-    _unset-slice-rid _unset-slice-allocate-length 9999999
+fn Hand-warmer-in-debug-mode . :> . >
+    Unset-slice-rid Unset-slice-allocate-length 9999999
 ```",
                 type_parameters: vec![],
-                parameter_type: type_unset_slice(type_variable("Element")),
+                parameter_type: type_unset_slice(type_variable("element")),
                 result_type: type_record([]),
             },
         ].map(|core_fn_info| {
@@ -10830,8 +10860,8 @@ pub static core_type_aliases: std::sync::LazyLock<
                 documentation: Some(Box::from(
                     r"A natural number >= 1 (positive integer) with 32 bits.
 ```sloe
-fn answer . :> p32 >
-    _p32-add .p 2 p32 .u 40 u32
+fn Answer . :> p32 >
+    P32-add .p 2 p32 .u 40 u32
 ```",
                 )),
                 parameters: vec![],
@@ -10845,8 +10875,8 @@ fn answer . :> p32 >
                 documentation: Some(Box::from(
                     r"A natural number >= 0 (unsigned integer) with 32 bits.
 ```sloe
-fn answer . :> u32 >
-    _u32-add .a 2 u32 .b 40 u32
+fn Answer . :> u32 >
+    U32-add-clamp .a 2 u32 .b 40 u32
 ```",
                 )),
                 parameters: vec![],
@@ -10860,8 +10890,8 @@ fn answer . :> u32 >
                 documentation: Some(Box::from(
                     r"A signed whole number (integer) with 32 bits.
 ```sloe
-fn answer . :> i32 >
-    _i32-add .a -8 i32 .b 50 i32
+fn Answer . :> i32 >
+    I32-add-clamp .a -8 i32 .b 50 i32
 ```",
                 )),
                 parameters: vec![],
@@ -10876,8 +10906,8 @@ fn answer . :> i32 >
                     r"A signed decimal number (floating-point) with 32 bit precision.
 Does not allow infinities or NaN. If you need these error states, explicitly model them with a choice type.
 ```sloe
-fn answer . :> f32 >
-    _f32-add .a -8.5 f32 .b 50.5 f32
+fn Answer . :> f32 >
+    F32-add-clamp .a -8.5 f32 .b 50.5 f32
 ```",
                 )),
                 parameters: vec![],
@@ -10892,7 +10922,7 @@ fn answer . :> f32 >
                     r#"A unicode scalar like `'a'` or `'👀'` or `'\u{2665}'` (hex code for ♥).
 Keep in mind that a human-readable visual symbol can be composed of multiple such unicode scalars (forming a grapheme cluster), For example:
 ```sloe
-_str-start "🇺🇸"
+Str-start "🇺🇸"
 # = |yes .start '\u{1F1FA}' .after "\u{1F1F8}"
 #                   Indicator U        Indicator S
 ```
@@ -10909,170 +10939,170 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
                 documentation: Some(Box::from(
                     r#"Text valid for the entire program like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""` (`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
-When building strings, use functions like `vec-char-opt-span-add-str`."#,
+When building strings, use functions like `Vec-char-opt-span-add-str`."#,
                 )),
                 parameters: vec![],
                 type_: Some(type_str),
             },
         ),
         (
-            Name::from_static("opt"),
+            Name::from_static("Opt"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    r"Either you have some value or you have nothing.",
+                    "Either you have some value (yes) or you have nothing (no).",
                 )),
-                parameters: vec![Name::from_static("A")],
-                type_: Some(type_opt(type_variable("A"))),
+                parameters: vec![Name::from_static("yes")],
+                type_: Some(type_opt(type_variable("yes"))),
             },
         ),
         (
-            Name::from_static("origin"),
+            Name::from_static("Origin"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "Each variable created with `origin some-origin expression` is of this type.
 Origins can not be arbitrary values because values like `u32` could be duplicated leading to different collections with the same origin type.
-This is not possible for values of type `origin`.
-The type argument to an `origin` is the type that also gets created with `origin some-origin expression`.
+This is not possible for values of type `Origin`.
+The type argument to an `Origin` is the type that also gets created with `origin some-origin expression`.
 This type argument is also used in slot, span, arena, vec as the first type argument."
                 )),
-                parameters: vec![Name::from_static("LocalOrigin")],
-                type_: Some(type_origin(type_variable("LocalOrigin"))),
+                parameters: vec![Name::from_static("local-origin")],
+                type_: Some(type_origin(type_variable("local-origin"))),
             },
         ),
         (
-            Name::from_static("vec"),
+            Name::from_static("Vec"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A grow- and shrinkable array of elements. Arrays have constant time access and update and constant time add.
 ```sloe
-fn use-a-vec . u32
+fn Use-a-vec . :> u32 >
     origin my-elements-origin
-    ? _vec-empty<u32> my-elements-origin [my-elements]
-    ? _vec-add .vec my-elements .element 609 u32 [.vec my-elements .slot first-element-slot]
-    ? _vec-remove .vec my-elements .slot first-element-slot [.vec my-elements .element first-element]
-    ? vec-rid my-elements [.]
+    ? Vec-empty<u32> my-elements-origin [my-elements]
+    ? Vec-add .vec my-elements .element 609 u32 [.vec my-elements .slot first-element-slot]
+    ? Vec-remove .vec my-elements .slot first-element-slot [.vec my-elements .element first-element]
+    ? Vec-rid my-elements [.]
     first-element # = 609 u32
 ```"
                 )),
-                parameters: vec![Name::from_static("Origin"), Name::from_static("Element")],
-                type_: Some(type_vec(type_variable("Origin"), type_variable("Element"))),
+                parameters: vec![Name::from_static("origin"), Name::from_static("element")],
+                type_: Some(type_vec(type_variable("origin"), type_variable("element"))),
             },
         ),
         (
-            Name::from_static("slot"),
+            Name::from_static("Slot"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A valid position of an element in a collection.
 This works because each collection has a unique origin and only gives out one slot for each position.
-For consecutive `slot`s, check out `span`."
+For consecutive `Slot`s, check out `Span`."
                 )),
-                parameters: vec![Name::from_static("Origin")],
-                type_: Some(type_slot(type_variable("Origin"))),
+                parameters: vec![Name::from_static("origin")],
+                type_: Some(type_slot(type_variable("origin"))),
             },
         ),
         (
-            Name::from_static("span"),
+            Name::from_static("Span"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A range of ≥1 consecutive valid positions in a collection.
 This works because each collection has a unique origin and only gives out one span for each range.
-For potentially 0-length spans, use `_opt _span Origin`"
+For potentially 0-length spans, use `Opt Span`"
                 )),
-                parameters: vec![Name::from_static("Origin")],
-                type_: Some(type_span(type_variable("Origin"))),
+                parameters: vec![Name::from_static("origin")],
+                type_: Some(type_span(type_variable("origin"))),
             },
         ),
         (
-            Name::from_static("unset-slot"),
+            Name::from_static("Unset-slot"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Like `slot` but referencing an unoccupied position.
+                    "Like `Slot` but referencing an unoccupied position.
 It's similar to what languages use uninitialized memory/undefined for.
 As this prevents another element from filling this position, you shouldn't keep it around for too long."
                 )),
-                parameters: vec![Name::from_static("Origin")],
-                type_: Some(type_unset_slot(type_variable("Origin"))),
+                parameters: vec![Name::from_static("origin")],
+                type_: Some(type_unset_slot(type_variable("origin"))),
             },
         ),
         (
-            Name::from_static("unset-span"),
+            Name::from_static("Unset-span"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Like `span` but referencing an unoccupied range.
+                    "Like `Span` but referencing an unoccupied range.
 It's similar to what languages use uninitialized memory/undefined for.
 As this prevents other elements from filling these positions, you shouldn't keep it around for too long."
                 )),
-                parameters: vec![Name::from_static("Origin")],
-                type_: Some(type_unset_span(type_variable("Origin"))),
+                parameters: vec![Name::from_static("origin")],
+                type_: Some(type_unset_span(type_variable("origin"))),
             },
         ),
         (
-            Name::from_static("array"),
+            Name::from_static("Array"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A stack-allocated array of known, positive length.
 Arrays make adding multiple elements of the same type much less cumbersome,
-see `vec-add-array`/`vec-span-add-array`/`vec-opt-span-add-array`.
+see `Vec-add-array`/`Vec-span-add-array`/`Vec-opt-span-add-array`.
 This is a very bare-bones feature because of sloe's simple type system.
 
 How does arry work then? The second record argument is set to an equivalent record
 that the runtime knows how to interpret as an actual array.
 ```sloe
-fn example-array . :> _array u32, .e0 u32 .e1 u32 >
+fn Example-array . :> Array u32, .e0 u32 .e1 u32 >
     ; 6 u32 ; 9 u32
 ```
 This is quite cursed!
-It is _not_ recommended or useful to use an `_array` with a non-variable record type argument _ever_.
+It is _not_ recommended or useful to use an `Array` with a non-variable record type argument _ever_.
 Use a regular record instead!"
                 )),
-                parameters: vec![Name::from_static("Element"), Name::from_static("Record")],
-                type_: Some(type_array(type_variable("Element"), type_variable("Record"))),
+                parameters: vec![Name::from_static("element"), Name::from_static("record")],
+                type_: Some(type_array(type_variable("element"), type_variable("record"))),
             },
         ),
         (
-            Name::from_static("unset-slice"),
+            Name::from_static("Unset-slice"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "A heap-allocated array with unknown length and undefined contents.
 Can be constructed manually or as an intermediate type when recycling the allocated space of a collection,
-see `vec-to-unset`.
+see `Vec-to-unset`.
 Since you can't read from it, you can also safely attempt to reuse this allocation for a different element type,
-see `unset-slice-cast-or-rid-and-allocate`.
-Note that `unset-slice` does not have a dup function to make heap allocation explicit.
-Use `unset-slice-length` and `unset-slice-allocate-length` to achieve the same effect."
+see `Unset-slice-cast-or-rid-and-allocate`.
+Note that `Unset-slice` does not have a dup function to make heap allocation explicit.
+Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same effect."
                 )),
-                parameters: vec![Name::from_static("Origin")],
-                type_: Some(type_unset_span(type_variable("Origin"))),
+                parameters: vec![Name::from_static("origin")],
+                type_: Some(type_unset_span(type_variable("origin"))),
             },
         ),
         (
-            Name::from_static("fn"),
+            Name::from_static("Fn"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A transformation from In to Out.
+                    "A transformation from _in to _out.
 It cannot access local variables from the outside; everything must be passed in and out explicitly.
 The parameter pattern must always have a known type.
-Functions, even local ones are called as `_function argument`.
-Functions values can be copied with `fn-dup` and scrapped with `fn-rid`.
+Project functions are called as `Function argument`.
+Functions values can be copied with `Fn-dup` and scrapped with `Fn-rid`.
 This is only possible because functions do not have access to variables from the outside.
 ```sloe
-fn three . :> . >
-    ? ([n u32] _u32-add-clamp .a n .b 1 u32) [increment]
-    _increment 2
+fn Three . :> . >
+    ? ([n u32] U32-add-clamp .a n .b 1 u32) [increment]
+    Call .fn increment .in 2
 ```"
                 )),
-                parameters: vec![Name::from_static("In"), Name::from_static("Out")],
-                type_: Some(type_fn(type_variable("In"), type_variable("Out"))),
+                parameters: vec![Name::from_static("in"), Name::from_static("out")],
+                type_: Some(type_fn(type_variable("in"), type_variable("out"))),
             },
         ),
     ])
@@ -11241,19 +11271,30 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 type_,
             } => {
                 formatted.push_str("ty ");
-                if let Some(name) = name {
-                    formatted.push_str(&name.value);
-                }
-                if let Some(parameters) = parameters {
-                    formatted.push(' ');
-                    formatted.push_str(&parameters.parameter0.value);
-                    for parameter in parameters
-                        .parameter1_up
-                        .iter()
-                        .filter_map(|parameter| parameter.name.as_ref())
-                    {
-                        formatted.push_str(", ");
-                        formatted.push_str(&parameter.value);
+                match parameters {
+                    Some(parameters) => {
+                        if let Some(name) = name {
+                            let mut name_chars = name.value.chars();
+                            if let Some(name_first_char) = name_chars.next() {
+                                formatted.push(name_first_char.to_ascii_uppercase());
+                            }
+                            formatted.extend(name_chars);
+                        }
+                        formatted.push_str(" _");
+                        formatted.push_str(&parameters.parameter0);
+                        for parameter in parameters
+                            .parameter1_up
+                            .iter()
+                            .map(|parameter| &parameter.name)
+                        {
+                            formatted.push_str(", _");
+                            formatted.push_str(parameter);
+                        }
+                    }
+                    None => {
+                        if let Some(name) = name {
+                            formatted.push_str(&name.value);
+                        }
                     }
                 }
                 match documentation {
@@ -11391,18 +11432,18 @@ fn syntax_angled_type_parameters_format(
     formatted: &mut String,
     angled_type_parameters: &SyntaxAngledTypeParameters,
 ) {
-    formatted.push('<');
-    let mut names = angled_type_parameters.parameter0.iter().chain(
+    formatted.push_str("<_");
+    let mut names = std::iter::once(&angled_type_parameters.parameter0).chain(
         angled_type_parameters
             .parameter1_up
             .iter()
-            .filter_map(|parameter| parameter.name.as_ref()),
+            .map(|parameter| &parameter.name),
     );
     if let Some(name0) = names.next() {
-        formatted.push_str(&name0.value);
+        formatted.push_str(name0);
         for name in names {
-            formatted.push_str(", ");
-            formatted.push_str(&name.value);
+            formatted.push_str(", _");
+            formatted.push_str(name);
         }
     }
     formatted.push('>');
@@ -12544,7 +12585,7 @@ fn syntax_type_open_end<Types>(
     types: &core::Vec<Types, SyntaxType<Types>>,
 ) -> OpenEndKinds {
     match type_ {
-        SyntaxType::Variable(_) => no_open_end_kinds,
+        SyntaxType::Variable { .. } => no_open_end_kinds,
         SyntaxType::RecordEmpty { dot_start: _ } => no_open_end_kinds,
         SyntaxType::Record {
             field0_name: _,
@@ -12589,7 +12630,6 @@ fn syntax_type_open_end<Types>(
         }
         SyntaxType::ConstructWithoutArguments(_) => no_open_end_kinds,
         SyntaxType::ConstructWithArguments {
-            underscore_start: _,
             name: _,
             argument0,
             argument1_up,
@@ -12622,27 +12662,22 @@ fn syntax_type_unparenthesized_format<Types>(
     type_: &SyntaxType<Types>,
 ) {
     match type_ {
-        SyntaxType::Variable(name) => {
-            formatted.push_str(&name.value);
+        SyntaxType::Variable {
+            underscore_start: _,
+            name,
+        } => {
+            formatted.push('_');
+            formatted.push_str(name);
         }
         SyntaxType::ConstructWithoutArguments(name) => {
             formatted.push_str(&name.value);
         }
         SyntaxType::ConstructWithArguments {
-            underscore_start,
             name,
             argument0,
             argument1_up,
         } => {
-            formatted.push('_');
-            match name {
-                None => {
-                    formatted.push(' ');
-                }
-                Some(name) => {
-                    formatted.push_str(&name.value);
-                }
-            }
+            formatted.push_str(&name.value);
             let line_span = range_line_span(type_range(type_, types));
             let argument_count = 1 + argument1_up.len();
             match argument0 {
@@ -12661,7 +12696,7 @@ fn syntax_type_unparenthesized_format<Types>(
                         |open_end| open_end.type_construct,
                         argument_count,
                         0,
-                        *underscore_start,
+                        name.start,
                         type_range(argument0, types),
                     );
                 }
@@ -12921,27 +12956,35 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
             parameters
                 .as_ref()
                 .and_then(|parameters| {
-                    std::iter::once(&parameters.parameter0)
-                        .chain(
-                            parameters
-                                .parameter1_up
-                                .iter()
-                                .filter_map(|parameter| parameter.name.as_ref()),
-                        )
-                        .find_map(|parameter_name| {
-                            if range_includes_position(
-                                name_range(with_start_position_as_ref(parameter_name)),
-                                position,
-                            ) {
-                                Some(SyntaxSymbol::TypeVariable {
-                                    name: &parameter_name.value,
-                                    use_start: parameter_name.start,
-                                    scope: element,
-                                })
-                            } else {
-                                None
-                            }
-                        })
+                    std::iter::once((
+                        parameters.parameter0_underscore_start,
+                        &parameters.parameter0,
+                    ))
+                    .chain(parameters.parameter1_up.iter().filter_map(|parameter| {
+                        parameter
+                            .underscore_start
+                            .map(|underscore_start| (underscore_start, &parameter.name))
+                    }))
+                    .find_map(|(underscore_start, name)| {
+                        if range_includes_position(
+                            lsp_types::Range {
+                                start: underscore_start,
+                                end: position_add_characters(
+                                    underscore_start,
+                                    1 + name.len() as u32,
+                                ),
+                            },
+                            position,
+                        ) {
+                            Some(SyntaxSymbol::TypeVariable {
+                                name,
+                                use_start: position_add_characters(underscore_start, 1),
+                                scope: element,
+                            })
+                        } else {
+                            None
+                        }
+                    })
                 })
                 .or_else(|| {
                     type_.as_ref().and_then(|value| {
@@ -13874,11 +13917,20 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
         return None;
     }
     match type_ {
-        SyntaxType::Variable(name) => {
-            if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
+        SyntaxType::Variable {
+            underscore_start,
+            name,
+        } => {
+            if range_includes_position(
+                lsp_types::Range {
+                    start: *underscore_start,
+                    end: position_add_characters(*underscore_start, 1 + name.len() as u32),
+                },
+                position,
+            ) {
                 Some(SyntaxSymbol::TypeVariable {
-                    name: &name.value,
-                    use_start: name.start,
+                    name: name,
+                    use_start: position_add_characters(*underscore_start, 1),
                     scope: scope,
                 })
             } else {
@@ -13898,20 +13950,11 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             },
         }),
         SyntaxType::ConstructWithArguments {
-            underscore_start,
             name,
             argument0,
             argument1_up,
         } => {
-            if let Some(name) = name
-                && range_includes_position(
-                    lsp_types::Range {
-                        start: *underscore_start,
-                        end: name_end(with_start_position_as_ref(name)),
-                    },
-                    position,
-                )
-            {
+            if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
                 return Some(SyntaxSymbol::ProjectTypeOrUnknown {
                     name: with_start_position_as_ref(name),
                     construct_info: if argument0.is_some() || !argument1_up.is_empty() {
@@ -13974,19 +14017,35 @@ fn angled_type_parameters_symbol_at_position<'a, Expressions, Patterns, Types>(
     scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     angled_type_parameters
-        .parameter0
-        .iter()
+        .parameter0_underscore_start
+        .map(|parameter0_underscore_start| {
+            (
+                parameter0_underscore_start,
+                &angled_type_parameters.parameter0,
+            )
+        })
+        .into_iter()
         .chain(
             angled_type_parameters
                 .parameter1_up
                 .iter()
-                .filter_map(|parameter| parameter.name.as_ref()),
+                .filter_map(|parameter| {
+                    parameter
+                        .underscore_start
+                        .map(|underscore_start| (underscore_start, &parameter.name))
+                }),
         )
-        .find_map(|name| {
-            if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
+        .find_map(|(underscore_start, name)| {
+            if range_includes_position(
+                lsp_types::Range {
+                    start: underscore_start,
+                    end: position_add_characters(underscore_start, 1 + name.len() as u32),
+                },
+                position,
+            ) {
                 Some(SyntaxSymbol::TypeVariable {
-                    name: &name.value,
-                    use_start: name.start,
+                    name: name,
+                    use_start: position_add_characters(underscore_start, 1),
                     scope: scope,
                 })
             } else {
@@ -14066,20 +14125,26 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 documentation: _,
                 type_: _,
             } => parameters.as_ref().and_then(|parameters| {
-                std::iter::once(&parameters.parameter0)
-                    .chain(
-                        parameters
-                            .parameter1_up
-                            .iter()
-                            .filter_map(|parameter| parameter.name.as_ref()),
-                    )
-                    .find_map(|parameter| {
-                        if &parameter.value == symbol_name {
-                            Some(name_range(with_start_position_as_ref(parameter)))
-                        } else {
-                            None
-                        }
-                    })
+                std::iter::once((
+                    parameters.parameter0_underscore_start,
+                    &parameters.parameter0,
+                ))
+                .into_iter()
+                .chain(parameters.parameter1_up.iter().filter_map(|parameter| {
+                    parameter
+                        .underscore_start
+                        .map(|underscore_start| (underscore_start, &parameter.name))
+                }))
+                .find_map(|(underscore_start, name)| {
+                    if name == symbol_name {
+                        Some(lsp_types::Range {
+                            start: position_add_characters(underscore_start, 1),
+                            end: position_add_characters(underscore_start, 1 + name.len() as u32),
+                        })
+                    } else {
+                        None
+                    }
+                })
             }),
             SyntaxProjectElement::Fn {
                 fn_keyword_start: _,
@@ -14093,17 +14158,30 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 result: _,
             } => type_parameters.as_ref().and_then(|type_parameters| {
                 type_parameters
-                    .parameter0
-                    .iter()
+                    .parameter0_underscore_start
+                    .map(|parameter0_underscore_start| {
+                        (parameter0_underscore_start, &type_parameters.parameter0)
+                    })
+                    .into_iter()
                     .chain(
                         type_parameters
                             .parameter1_up
                             .iter()
-                            .filter_map(|parameter| parameter.name.as_ref()),
+                            .filter_map(|parameter| {
+                                parameter
+                                    .underscore_start
+                                    .map(|underscore_start| (underscore_start, &parameter.name))
+                            }),
                     )
-                    .find_map(|parameter| {
-                        if &parameter.value == symbol_name {
-                            Some(name_range(with_start_position_as_ref(parameter)))
+                    .find_map(|(underscore_start, name)| {
+                        if name == symbol_name {
+                            Some(lsp_types::Range {
+                                start: position_add_characters(underscore_start, 1),
+                                end: position_add_characters(
+                                    underscore_start,
+                                    1 + name.len() as u32,
+                                ),
+                            })
                         } else {
                             None
                         }
@@ -14401,15 +14479,21 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
     origins: &std::collections::HashSet<&Name>,
 ) {
     match type_ {
-        SyntaxType::Variable(name) => {
+        SyntaxType::Variable {
+            underscore_start,
+            name,
+        } => {
             if let &SyntaxSymbol::TypeVariable {
                 name: symbol_name,
                 use_start: _,
                 scope: _,
             } = symbol
-                && &name.value == symbol_name
+                && name == symbol_name
             {
-                uses.push(name_range(with_start_position_as_ref(name)));
+                uses.push(lsp_types::Range {
+                    start: *underscore_start,
+                    end: position_add_characters(*underscore_start, 1 + name.len() as u32),
+                });
             }
         }
         SyntaxType::RecordEmpty { dot_start: _ } => {}
@@ -14457,17 +14541,15 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxType::ConstructWithArguments {
-            underscore_start: _,
             name,
             argument0,
             argument1_up,
         } => {
-            if let Some(name) = name
-                && let SyntaxSymbol::ProjectTypeOrUnknown {
-                    name: symbol_name,
-                    construct_info: _,
-                    origins: _,
-                } = symbol
+            if let SyntaxSymbol::ProjectTypeOrUnknown {
+                name: symbol_name,
+                construct_info: _,
+                origins: _,
+            } = symbol
                 && &name.value == symbol_name.value
             {
                 uses.push(name_range(with_start_position_as_ref(name)));
@@ -15008,10 +15090,12 @@ fn syntax_type_rid<Types>(
     types: &mut core::Vec<Types, SyntaxType<Types>>,
 ) {
     match type_ {
-        SyntaxType::Variable(_) => {}
+        SyntaxType::Variable {
+            underscore_start: _,
+            name: _,
+        } => {}
         SyntaxType::ConstructWithoutArguments(_) => {}
         SyntaxType::ConstructWithArguments {
-            underscore_start: _,
             name: _,
             argument0,
             argument1_up,

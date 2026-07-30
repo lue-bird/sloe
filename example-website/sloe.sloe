@@ -1,26 +1,26 @@
 
-ty state Mouse-trail-origin
+ty State _mouse-trail-origin
     .count u32
     .mouse-x u32
     .mouse-y u32
-    .mouse-trail (_vec Mouse-trail-origin, .x u32 .y u32)
-    .mouse-trail-span _opt _span Mouse-trail-origin
+    .mouse-trail (Vec _mouse-trail-origin, .x u32 .y u32)
+    .mouse-trail-span Opt Span _mouse-trail-origin
 
 ty event
     |counter-clicked .
     |mouse-moved .x u32 .y u32
 
-fn initial-state mouse-trail-origin _origin Mouse-trail-origin :> _state Mouse-trail-origin >
+fn initial-state mouse-trail-origin Origin _mouse-trail-origin :> State _mouse-trail-origin >
     .count 0 u32
     .mouse-x 0 u32
     .mouse-y 0 u32
     .mouse-trail _vec-empty<.x u32 .y u32> mouse-trail-origin
-    .mouse-trail-span |no<_opt _span Mouse-trail-origin> .
+    .mouse-trail-span |no<Opt Span _mouse-trail-origin> .
 
 fn update
-    .state state _state Mouse-trail-origin
+    .state state State _mouse-trail-origin
     .event event event
-    :> _state Mouse-trail-origin >
+    :> State _mouse-trail-origin >
     ? event
     [|counter-clicked .] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
@@ -46,19 +46,19 @@ fn update
         )
 
 fn view
-    .state state _state Mouse-trail-origin
-    .htmls htmls _vec Htmls, _html Htmls, Modifiers, Chars
-    .modifiers modifiers _vec Modifiers, _modifier event, Chars
-    .chars chars _vec Chars, char
+    .state state State _mouse-trail-origin
+    .htmls htmls Vec _htmls, Html _htmls, _modifiers, _chars
+    .modifiers modifiers Vec _modifiers, Modifier event, _chars
+    .chars chars Vec _chars, char
     :>
-    .state _state Mouse-trail-origin
-    .html _html Htmls, Modifiers, Chars
-    .htmls _vec Htmls, _html Htmls, Modifiers, Chars
-    .modifiers _vec Modifiers, _modifier event, Chars
-    .chars _vec Chars, char
+    .state State _mouse-trail-origin
+    .html Html _htmls, _modifiers, _chars
+    .htmls Vec _htmls, Html _htmls, _modifiers, _chars
+    .modifiers Vec _modifiers, Modifier event, _chars
+    .chars Vec _chars, char
     >
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
-    ? .vec chars .span |no<_opt _span Chars> . [text]
+    ? .vec chars .span |no<Opt Span _chars> . [text]
     ? _vec-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
     ? _u32-dup mouse-x [.a mouse-x .b mouse-x-use]
     ? _vec-char-opt-span-add-u32 .. text .new mouse-x-use [text]
@@ -69,22 +69,22 @@ fn view
         _vec-add-array
         .vec htmls
         .new
-            ; |text-dynamic<_html Htmls, Modifiers, Chars> _opt-yes text-span
-            ; |text-static<_html Htmls, Modifiers, Chars> "hello"
+            ; |text-dynamic<Html _htmls, _modifiers, _chars> _opt-yes text-span
+            ; |text-static<Html _htmls, _modifiers, _chars> "hello"
     [.vec htmls .span div-subs]
     ?
         _vec-add-array
         .vec modifiers
         .new
-            ; |style-static<_modifier event, Chars> .key "height" .value "100vh"
-            ; |style-static<_modifier event, Chars> .key "width" .value "100vw"
+            ; |style-static<Modifier event, _chars> .key "height" .value "100vh"
+            ; |style-static<Modifier event, _chars> .key "width" .value "100vw"
             ;
-                |on-mouse-move<_modifier event, Chars>
+                |on-mouse-move<Modifier event, _chars>
                 [mouse-position .x u32 .y u32] |mouse-moved<event> mouse-position
     [.vec modifiers .span main-modifiers]
     .state (.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span)
     .html (
-        |element<_html Htmls, Modifiers, Chars>
+        |element<Html _htmls, _modifiers, _chars>
         .tag "main"
         .modifiers _opt-yes main-modifiers
         .subs _opt-yes div-subs
@@ -93,26 +93,26 @@ fn view
     .modifiers modifiers
     .chars chars
 
-ty html Htmls, Modifiers, Chars
+ty Html _htmls, _modifiers, _chars
     # for namespace, use xmlns attribute
     |element
         .tag str
-        .modifiers _opt _span Modifiers
-        .subs _opt _span Htmls
-    |text-dynamic _opt _span Chars
+        .modifiers Opt Span _modifiers
+        .subs Opt Span _htmls
+    |text-dynamic Opt Span _chars
     |text-static str
 
-ty modifier Event, Chars
+ty Modifier _event, _chars
     |style-static .key str .value str
-    |style-dynamic .key str .value _opt _span Chars
+    |style-dynamic .key str .value Opt Span _chars
     |attribute-static .key str .value str
-    |attribute-dynamic .key str .value _opt _span Chars
-    |property .key str .value _modifier-property-value Chars
-    |on-mouse-move _fn .x u32 .y u32, Event
+    |attribute-dynamic .key str .value Opt Span _chars
+    |property .key str .value Modifier-property-value _chars
+    |on-mouse-move Fn .x u32 .y u32, _event
 
-ty modifier-property-value Chars
+ty Modifier-property-value _chars
     |true .
     |false .
     |int i32
-    |string _opt _span Chars
+    |string Opt Span _chars
 

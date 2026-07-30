@@ -1,32 +1,32 @@
 
-ty stack Origin, Element
+ty Stack _origin, _element
     # a singly-linked list. Since it is backed by a vec,
     # adjacent nodes are likely close together in memory. Who doesn't love that.
     # (note that it's still noticeably worse than a simple vec most of the time)
     |empty .
-    |stacked .head Element .tail _slot Origin
+    |stacked .head _element .tail Slot _origin
 
 fn stack-cons
-    .nodes nodes _vec Origin, _stack Origin, Element
-    .stack tail _stack Origin, Element
-    .new new-head Element
+    .nodes nodes Vec _origin, Stack _origin, _element
+    .stack tail Stack _origin, _element
+    .new new-head _element
     :>
-    .nodes _vec Origin, _stack Origin, Element
-    .stack _stack Origin, Element
+    .nodes Vec _origin, Stack _origin, _element
+    .stack Stack _origin, _element
     >
     ? _vec-insert .vec nodes .new tail [.vec nodes .slot tail-slot]
     .nodes nodes
-    .stack (|stacked<_stack Origin, Element> .head new-head .tail tail-slot)
+    .stack (|stacked<Stack _origin, _element> .head new-head .tail tail-slot)
 
 fn stack-pop
-    .nodes nodes _vec Origin, _stack Origin, Element
-    .stack stack _stack Origin, Element
+    .nodes nodes Vec _origin, Stack _origin, _element
+    .stack stack Stack _origin, _element
     :>
-    .nodes _vec Origin, _stack Origin, Element
+    .nodes Vec _origin, Stack _origin, _element
     .element (
-        _opt
-        .head Element
-        .tail _stack Origin, Element
+        Opt
+        .head _element
+        .tail Stack _origin, _element
         )
     >
     ? stack
@@ -34,9 +34,9 @@ fn stack-pop
         .nodes nodes
         .element
             |no<
-                _opt
-                .head Element
-                .tail _stack Origin, Element
+                Opt
+                .head _element
+                .tail Stack _origin, _element
                 >
             .
     [|stacked .head head .tail tail-slot] (
@@ -46,13 +46,13 @@ fn stack-pop
         )
 
 fn stack-fold
-    .nodes nodes _vec Origin, _stack Origin, Element
-    .stack stack _stack Origin, Element
-    .state state State
-    .reduce reduce _fn .state State .element Element, State
+    .nodes nodes Vec _origin, Stack _origin, _element
+    .stack stack Stack _origin, _element
+    .state state _state
+    .reduce reduce Fn .state _state .element _element, _state
     :>
-    .nodes _vec Origin, _stack Origin, Element
-    .state State
+    .nodes Vec _origin, Stack _origin, _element
+    .state _state
     >
     ? stack
     [|empty .] (
@@ -72,8 +72,8 @@ fn stack-fold
 fn example . :> u32 >
     origin example-stack-origin
     ?
-        .nodes _vec-empty<_stack example-stack-origin, u32> example-stack-origin
-        .stack |empty<_stack example-stack-origin, u32> .
+        .nodes _vec-empty<Stack example-stack-origin, u32> example-stack-origin
+        .stack |empty<Stack example-stack-origin, u32> .
     [example-stack]
     ? _stack-cons .. example-stack .new 39 u32 [example-stack]
     ? _stack-cons .. example-stack .new 3 u32 [example-stack]

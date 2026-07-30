@@ -27,10 +27,12 @@ export default grammar({
     type_alias: ($) =>
       seq(
         $.keyword_ty,
-        $.type_name,
-        optional(seq($.type_variable, repeat(seq(",", $.type_variable)))),
+        choice(
+          $.lower_name,
+          seq($.upper_name, $.type_variable, repeat(seq(",", $.type_variable))),
+        ),
         repeat($.comment),
-        $.type_not_variable,
+        $.type,
       ),
 
     project_fn: ($) =>
@@ -314,37 +316,18 @@ export default grammar({
       choice(
         $.type_parenthesized,
         $.type_variable,
-        $.type_name,
+        $.type_without_arguments,
         $.type_choice_empty,
         $.type_record_empty,
         $.type_construct_with_arguments,
         $.type_record,
         $.type_choice,
-      ),
-    type_not_variable: ($) =>
-      choice(
-        $.type_parenthesized,
-        $.type_name,
-        $.type_choice_empty,
-        $.type_record_empty,
-        $.type_construct_with_arguments,
-        $.type_record,
-        $.type_choice,
-      ),
-    type_not_open_ended: ($) =>
-      choice(
-        $.type_parenthesized,
-        $.type_variable,
-        $.type_name,
-        $.type_choice_empty,
-        $.type_record_empty,
-        $.type_construct_with_argument_not_open_ended,
       ),
     type_not_open_ending_in_construct: ($) =>
       choice(
         $.type_parenthesized,
         $.type_variable,
-        $.type_name,
+        $.type_without_arguments,
         $.type_choice_empty,
         $.type_record_empty,
         $.type_record_not_open_ending_in_construct,
@@ -354,7 +337,7 @@ export default grammar({
       choice(
         $.type_parenthesized,
         $.type_variable,
-        $.type_name,
+        $.type_without_arguments,
         $.type_choice_empty,
         $.type_record_empty,
         $.type_construct_with_arguments_not_open_ending_in_record,
@@ -364,34 +347,25 @@ export default grammar({
       choice(
         $.type_parenthesized,
         $.type_variable,
-        $.type_name,
+        $.type_without_arguments,
         $.type_choice_empty,
         $.type_record_empty,
         $.type_construct_with_arguments_not_open_ending_in_choice,
         $.type_record_not_open_ending_in_choice,
       ),
     type_parenthesized: ($) => seq("(", $.type, ")"),
-    type_variable: ($) => $.upper_name,
-    type_construct_with_argument_not_open_ended: ($) =>
-      seq($.symbol_type_construct_underscore, $.type_name, $.type_not_open_ended),
+    type_variable: ($) => seq("_", $.lower_name),
     type_construct_with_arguments: ($) =>
-      seq(
-        $.symbol_type_construct_underscore,
-        $.type_name,
-        repeat(seq($.type_not_open_ending_in_construct, ",")),
-        $.type,
-      ),
+      seq($.upper_name, repeat(seq($.type_not_open_ending_in_construct, ",")), $.type),
     type_construct_with_arguments_not_open_ending_in_record: ($) =>
       seq(
-        $.symbol_type_construct_underscore,
-        $.type_name,
+        $.upper_name,
         repeat(seq($.type_not_open_ending_in_construct, ",")),
         $.type_not_open_ending_in_record,
       ),
     type_construct_with_arguments_not_open_ending_in_choice: ($) =>
       seq(
-        $.symbol_type_construct_underscore,
-        $.type_name,
+        $.upper_name,
         repeat(seq($.type_not_open_ending_in_construct, ",")),
         $.type_not_open_ending_in_choice,
       ),
@@ -445,8 +419,8 @@ export default grammar({
         choice($.key_symbol_spread_fields, $.field_name),
         $.type_not_open_ending_in_construct,
       ),
+    type_without_arguments: ($) => $.lower_name,
 
-    type_name: ($) => $.lower_name,
     char: ($) => seq("'", choice("\\\\", "\\'", /[^']/), "'"),
     string: ($) => $.string_quoted,
     string_quoted: ($) => seq('"', repeat(choice("\\\\", '\\"', /[^"]/)), '"'),
@@ -463,6 +437,5 @@ export default grammar({
     key_symbol_arrow: ($) => ":>",
     key_symbol_spread_fields: ($) => "..",
     symbol_call_underscore: ($) => "_",
-    symbol_type_construct_underscore: ($) => "_",
   },
 });

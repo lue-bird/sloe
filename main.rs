@@ -284,10 +284,10 @@ fn present_pattern_variable_markdown(type_: Option<&sloe::Type>) -> String {
 }
 fn angled_type_parameters_format(formatted: &mut String, type_parameters: &[sloe::Name]) {
     if let Some((type_parameter0, type_parameter1_up)) = type_parameters.split_first() {
-        formatted.push('<');
+        formatted.push_str("<_");
         formatted.push_str(type_parameter0);
         for type_parameter in type_parameter1_up {
-            formatted.push_str(", ");
+            formatted.push_str(", _");
             formatted.push_str(type_parameter);
         }
         formatted.push('>');
@@ -1537,16 +1537,16 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                     highlight_state_add_token_with_start_and_length(
                         state,
                         lsp_types::SemanticTokenTypes::TypeParameter,
-                        parameters.parameter0.start,
-                        parameters.parameter0.value.len(),
+                        parameters.parameter0_underscore_start,
+                        1 + parameters.parameter0.encode_utf16().count(),
                     );
                     for parameter in &parameters.parameter1_up {
-                        if let Some(parameter_name) = &parameter.name {
+                        if let Some(parameter_underscore_start) = parameter.underscore_start {
                             highlight_state_add_token_with_start_and_length(
                                 state,
                                 lsp_types::SemanticTokenTypes::TypeParameter,
-                                parameter_name.start,
-                                parameter_name.value.len(),
+                                parameter_underscore_start,
+                                1 + parameter.name.encode_utf16().count(),
                             );
                         }
                     }
@@ -1630,19 +1630,21 @@ fn sloe_angled_type_parameters_highlight(
     state: &mut HighlightState,
     angled_type_parameters: &sloe::SyntaxAngledTypeParameters,
 ) {
-    if let Some(parameter0) = &angled_type_parameters.parameter0 {
-        sloe_syntax_name_highlight(
+    if let Some(parameter0_underscore_start) = angled_type_parameters.parameter0_underscore_start {
+        highlight_state_add_token_with_start_and_length(
             state,
-            parameter0,
             lsp_types::SemanticTokenTypes::TypeParameter,
+            parameter0_underscore_start,
+            1 + angled_type_parameters.parameter0.encode_utf16().count(),
         );
     }
     for parameter in &angled_type_parameters.parameter1_up {
-        if let Some(parameter_name) = &parameter.name {
-            sloe_syntax_name_highlight(
+        if let Some(parameter_underscore_start) = parameter.underscore_start {
+            highlight_state_add_token_with_start_and_length(
                 state,
-                parameter_name,
                 lsp_types::SemanticTokenTypes::TypeParameter,
+                parameter_underscore_start,
+                1 + parameter.name.encode_utf16().count(),
             );
         }
     }
@@ -1785,27 +1787,26 @@ fn sloe_syntax_type_highlight<Types>(
     type_: &sloe::SyntaxType<Types>,
 ) {
     match type_ {
-        sloe::SyntaxType::Variable(name) => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::TypeParameter);
+        sloe::SyntaxType::Variable {
+            underscore_start,
+            name,
+        } => {
+            highlight_state_add_token_with_start_and_length(
+                state,
+                lsp_types::SemanticTokenTypes::TypeParameter,
+                *underscore_start,
+                1 + name.encode_utf16().count(),
+            );
         }
         sloe::SyntaxType::ConstructWithoutArguments(name) => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Type);
         }
         sloe::SyntaxType::ConstructWithArguments {
-            underscore_start,
             name,
             argument0,
             argument1_up,
         } => {
-            symbol_highlight(
-                state,
-                ".",
-                *underscore_start,
-                lsp_types::SemanticTokenTypes::Type,
-            );
-            if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Type);
-            }
+            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
             if let Some(argument0) = argument0 {
                 sloe_syntax_type_highlight(state, types, types.element(argument0));
             }
@@ -2179,6 +2180,15 @@ fn lsp_position_positive_delta(
         }),
     }
 }
+fn lsp_position_add_characters(
+    position: lsp_types::Position,
+    additional_characters: u32,
+) -> lsp_types::Position {
+    lsp_types::Position {
+        line: position.line,
+        character: position.character + additional_characters,
+    }
+}
 fn lsp_position_to_string(lsp_position: lsp_types::Position) -> String {
     format!("{}:{}", lsp_position.line, lsp_position.character)
 }
@@ -2262,7 +2272,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                 [] => None,
                                 [parameter0, parameter1_up @ ..] => {
                                     let mut inserted_text = String::new();
-                                    inserted_text.push_str("(_");
+                                    inserted_text.push('(');
                                     inserted_text.push_str(type_alias_name);
                                     inserted_text.push(' ');
                                     inserted_text.push_str(parameter0);
@@ -2272,11 +2282,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                     }
                                     inserted_text.push(')');
                                     Some(lsp_types::CompletionItem {
-                                        label: if type_alias_info.parameters.is_empty() {
-                                            type_alias_name.to_string()
-                                        } else {
-                                            format!("_{}", type_alias_name)
-                                        },
+                                        label: type_alias_name.to_string(),
                                         kind: Some(lsp_types::CompletionItemKind::Struct),
                                         documentation: Some(lsp_documentation_markdown(
                                             present_type_alias_markdown(
@@ -2301,18 +2307,21 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .filter_map(|(type_alias_name, type_alias_info)| {
                             match type_alias_info.parameters.as_slice() {
                                 [] => None,
-                                [_, ..] => Some(lsp_types::CompletionItem {
-                                    label: format!("_{}", type_alias_name),
-                                    kind: Some(lsp_types::CompletionItemKind::Struct),
-                                    documentation: Some(lsp_documentation_markdown(
-                                        present_type_alias_markdown(
-                                            type_alias_name,
-                                            type_alias_info,
-                                        ),
-                                    )),
-                                    insert_text: Some(format!("_{}", type_alias_name)),
-                                    ..lsp_types::CompletionItem::default()
-                                }),
+                                [_, ..] => {
+                                    // improvement possibility: add commas
+                                    Some(lsp_types::CompletionItem {
+                                        label: format!("{}", type_alias_name),
+                                        kind: Some(lsp_types::CompletionItemKind::Struct),
+                                        documentation: Some(lsp_documentation_markdown(
+                                            present_type_alias_markdown(
+                                                type_alias_name,
+                                                type_alias_info,
+                                            ),
+                                        )),
+                                        insert_text: Some(format!("{}", type_alias_name)),
+                                        ..lsp_types::CompletionItem::default()
+                                    })
+                                }
                             }
                         })
                         .collect(),
@@ -2335,16 +2344,21 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     type_: _,
                 } => {
                     if let Some(parameters) = parameters {
-                        for parameter in std::iter::once(&parameters.parameter0).chain(
-                            parameters
-                                .parameter1_up
-                                .iter()
-                                .filter_map(|parameter| parameter.name.as_ref()),
+                        for (underscore_start, name) in std::iter::once((
+                            parameters.parameter0_underscore_start,
+                            &parameters.parameter0,
+                        ))
+                        .chain(
+                            parameters.parameter1_up.iter().filter_map(|parameter| {
+                                parameter
+                                    .underscore_start
+                                    .map(|underscore_start| (underscore_start, &parameter.name))
+                            }),
                         ) {
-                            if parameter.start == use_start {
+                            if lsp_position_add_characters(underscore_start, 1) == use_start {
                                 return None;
                             }
-                            available_existing_variables.insert(&parameter.value);
+                            available_existing_variables.insert(name);
                         }
                     }
                 }
@@ -2360,16 +2374,22 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     result: _,
                 } => {
                     if let Some(type_parameters) = type_parameters {
-                        for type_parameter in type_parameters.parameter0.iter().chain(
-                            type_parameters
-                                .parameter1_up
-                                .iter()
-                                .filter_map(|type_parameter| type_parameter.name.as_ref()),
-                        ) {
-                            if type_parameter.start == use_start {
+                        for (underscore_start, name) in type_parameters
+                            .parameter0_underscore_start
+                            .map(|underscore_start| (underscore_start, &type_parameters.parameter0))
+                            .into_iter()
+                            .chain(type_parameters.parameter1_up.iter().filter_map(
+                                |type_parameter| {
+                                    type_parameter.underscore_start.map(|underscore_start| {
+                                        (underscore_start, &type_parameter.name)
+                                    })
+                                },
+                            ))
+                        {
+                            if lsp_position_add_characters(underscore_start, 1) == use_start {
                                 return None;
                             }
-                            available_existing_variables.insert(&type_parameter.value);
+                            available_existing_variables.insert(name);
                         }
                     }
                     if let Some(parameter) = parameter {
@@ -2395,7 +2415,8 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 available_existing_variables
                     .into_iter()
                     .map(|available_existing_variable| lsp_types::CompletionItem {
-                        label: available_existing_variable.to_string(),
+                        label: format!("_{}", available_existing_variable),
+                        insert_text: Some(available_existing_variable.to_string()),
                         kind: Some(lsp_types::CompletionItemKind::TypeParameter),
                         documentation: Some(lsp_documentation_markdown(
                             "type variable".to_string(),

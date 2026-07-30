@@ -57,16 +57,16 @@ Every created collection has a correlated origin.
 A value whose type contains an origin can't escape the scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```sloe
-fn some-vec . :> _vec ??origin cannot even be annotated??, u32 >
+fn Some-vec . :> Vec ??origin cannot even be annotated??, u32 >
     origin vec-origin
-    ? _vec-empty<u32> vec-origin [vec]
-    ? _vec-add .vec vec .new 123 u32 [.vec vec .slot slot]
+    ? Vec-empty<u32> vec-origin [vec]
+    ? Vec-add .vec vec .new 123 u32 [.vec vec .slot slot]
     ...
     vec
 
 # compiles
-fn add-some-values<Origin> vec _vec Origin, u32 :> _vec Origin, u32 >
-    ? _vec-add .vec vec .new 123 u32 [.vec vec .slot slot]
+fn Add-some-values vec Vec _origin, u32 :> Vec _origin, u32 >
+    ? Vec-add .vec vec .new 123 u32 [.vec vec .slot slot]
     ...
     vec
 ```
@@ -90,26 +90,26 @@ In my opinion this isn't quite a solved problem and if you have other ideas, I w
 Like every other sloe value, an origin type can only be used once, so only for one collection.
 ```sloe
 # use a temporary collection contained within a scope
-fn use-vec . :> u32 >
+fn Use-vec . :> u32 >
     origin vec-origin
-  	? _vec-empty<u32> vec-origin [vec]
-  	? _vec-add .vec vec .new 123 u32 [.vec vec .slot first-slot]
-  	? _vec-remove .vec vec .slot first-slot [.vec vec .element first]
-  	? _vec-add-array .vec vec .new ; 456 u32 ; 789 u32 [.vec vec .span after-first]
+  	? Vec-empty<u32> vec-origin [vec]
+  	? Vec-add .vec vec .new 123 u32 [.vec vec .slot first-slot]
+  	? Vec-remove .vec vec .slot first-slot [.vec vec .element first]
+  	? Vec-add-array .vec vec .new ; 456 u32 ; 789 u32 [.vec vec .span after-first]
     ...
   	first # = 123 u32
 
 # different branches, different scopes
-fn use-opt opt _opt u32 :> ... >
+fn Use-opt opt Opt u32 :> ... >
     # this won't compile as their origins come from different branches
     ? (
         ? opt
         [|no .]
             origin vec-origin
-            _vec-empty<u32> vec-origin
+            Vec-empty<u32> vec-origin
         [|yes number] (
             origin vec-origin
-            ? _vec-one .origin vec-origin .element number [.vec vec .slot slot]
+            ? Vec-one .origin vec-origin .element number [.vec vec .slot slot]
             ...
             vec
             )
@@ -120,9 +120,9 @@ fn use-opt opt _opt u32 :> ... >
     ? (
         :opt
         [|no .]
-            _vec-empty<u32> vec-origin
+            Vec-empty<u32> vec-origin
         [|yes number] (
-            ? _vec-one .origin vec-origin .element number [.vec vec .slot slot]
+            ? Vec-one .origin vec-origin .element number [.vec vec .slot slot]
             ...
             vec
             )
@@ -131,36 +131,36 @@ fn use-opt opt _opt u32 :> ... >
     ...
 
 # tree structure. every slot and span exclusively belongs to that expression
-ty expression Expressions-origin Patterns-origin Str-origin
+ty Expression _expressions-origin, _patterns-origin, Chars-origin
     |int i32
-    |string _opt _span Str-origin
-    |vec _opt _span Expressions-origin
+    |string Opt Span Chars-origin
+    |vec Opt Span _expressions-origin
     |call
-        .function _slot Expressions-origin
-        .arguments _span Expressions-origin
+        .function Slot _expressions-origin
+        .arguments Span _expressions-origin
     |lambda
-        .parameters _span Patterns-origin
-        .result _slot Expressions-origin
+        .parameters Span _patterns-origin
+        .result Slot _expressions-origin
 
-ty state Expressions-origin
+ty State _expressions-origin
     # ...patterns, strings, positions etc
-    .expressions _vec Expressions-origin, _expression Expressions-origin
-    .root-expression _expression Expressions-origin
+    .expressions Vec _expressions-origin, Expression _expressions-origin
+    .root-expression Expression _expressions-origin
 
-fn initial-state
-    .expressions-origin expressions-origin _origin Expressions-origin
-    :> _state Expressions-origin >
-    .expressions _vec-empty<_expression Expressions-origin, ...> expressions-origin
+fn Initial-state
+    .expressions-origin expressions-origin Origin _expressions-origin
+    :> State _expressions-origin >
+    .expressions Vec-empty<Expression _expressions-origin, ...> expressions-origin
     .root-expression (..do parsing..)
 
-fn state-to-interfaces-into
-    .interfaces interfaces _vec Interfaces-origin, _interface _state Expressions-origin
-    .state state _state Expressions-origin
-    :> _vec Interfaces-origin, _interface _state Expressions-origin >
+fn State-to-interfaces-into
+    .interfaces interfaces Vec _interfaces-origin, Interface State _expressions-origin
+    .state state State _expressions-origin
+    :> Vec Interfaces-origin, _interface State _expressions-origin >
     ? (
-        vec-one
+        Vec-one
         .origin interfaces-origin
-        .element |console-log<_interface _state Expressions-origin> "hello"
+        .element |console-log<Interface State _expressions-origin> "hello"
         )
     [.slot slot .vec interfaces]
     ...
@@ -170,7 +170,7 @@ fn state-to-interfaces-into
 ## pass in origins or collections from the outside
 
 ```sloe
-fn vec-empty<Element> origin _origin Origin :> _vec Origin, Element
+fn Vec-empty<_element> origin Origin _origin :> Vec _origin, _element
 ```
 Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection that you want to edit.
@@ -231,50 +231,53 @@ some-variable some-type
 ? value [first-case-pattern] first-result [second-case-pattern] second-result
 
 # introduce a new origin. The given name can be used as a variable and type
-origin new-origin-name expression-that uses the-origin
+origin new-origin-name expression-that uses new-origin-name
 
 # project function declaration.
 # For type variables in the result that aren't used in the input,
 # functions require appended space-separated type parameters: <...>
-fn function-name<Potential, Type-Arguments, Only-Used-In-The-Result>
-    parameter-pattern-usually-wrapped-in-parens
-    :> result-type-usually-wrapped-in-parens >
+fn Function-name<_potential, _type-arguments, _only-used-in-the-result>
+    parameter-pattern-with-types
+    :> result-type >
     # optional documentation
     # comment
     result-expression
 
-# type name without arguments
+# type name without arguments. Lowercase
 u32
 
-# type with multiple arguments.
+# type with multiple arguments. Uppercase name.
 # Arguments before the last must be parenthesized if they end in a type with arguments
-_span Origin
-_my-function Env, Input, Output
+Span origin
+My-function-type env, input, output
 
 # project type which is an alias for an existing type.
 # Here a "choice type" that can come in different shapes ("variants")
 # which each have a unique name and one associated value.
-ty type-name Potential Type-Parameters
-    |first-option .
-    |second-option _vec Potential, u32
-    |third-option _type-name-alias Potential, Type-Arguments
+ty point .x i32 .y i32
 
-# creating a variant. Note that the type could refer to a type alias or be a choice type directly <|... ...>
+# project type with parameters
+ty Type-name _potential, _type-Parameters
+    |first-option .
+    |second-option Vec _potential, u32
+    |third-option Type-name-alias _potential, _type-Arguments
+
+# creating a variant. Note that the type could refer to a type alias
+# or a choice type directly <|... ...>
 |some-variant<its-choice-type> its value
 
 # variant pattern
 |some-variant its value
 ```
-(This list might be incomplete, examples show more)
 
-> As a user of sloe you can stop reading here. The rest is mostly for developers and those interested in language design.
+> As a user of sloe you can stop reading here. The rest is mostly for developers and those interested in language design
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
 Writing these down has already helped a lot in coming up with fixes (e.g. `unset-slot`, `vec-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
 
-- it seems quite natural to represent a span of structs as e.g. `.field-names _span Field-names .field-values _span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
+- it seems quite natural to represent a span of structs as e.g. `.field-names Span Field-names .field-values Span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
   The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
   Honestly, the current "fold over one span and step through the rest with `span-start`"
   is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
@@ -312,28 +315,28 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 # potential improvements in the future
 - add field and variant rename and references
 - add "add remaining query cases" code action
-- suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions vec Expressions, expression Expressions Patterns Types` doesn't exactly roll easily over one's keyboard
-- add `set Origin, Element` along with add something like `map Origin, Key, Value` (or just `map Origin, Element` where key is derived from element) which still gives out `slot Origin`s for each entry but can be queried by key or similar. `map-empty` will require providing a `_fn .a Key .b Key, .a Key .b Key .order order` or similar.
+- suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions Vec _expressions, Expression _expressions _patterns _types` doesn't exactly roll easily over one's keyboard
+- add `Set _origin, _element` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _element` where key is derived from element) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
   Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `vec` is fast enough
 - consider adding `vec-counting` and `slot` which can reference a slot that is already in use:
   ```sloe
-  fn vec-counting-slot-dup
-      .vec _vec-counting Origin, Element
-      .slot slot _slot Origin
+  fn Vec-counting-slot-dup
+      .vec Vec-counting _origin, _element
+      .slot Slot _origin
       :>
-      .vec _vec-counting Origin, Element
-      .a _slot Origin
-      .b _slot Origin
+      .vec Vec-counting _origin, _element
+      .a Slot _origin
+      .b Slot _origin
       >
   # what about spans?
   ```
-  In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `set-counting`) etc.
+  In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `Set-counting`) etc.
   Things I dislike with this design:
-    - access via `vec-counting-unset` which does not guarantee seems maybe too difficult (first un-occupy all known slots and even then there is no guarantee). `vec-counting-update` should work nicely, especially for copiable types at the cost of: cannot access the vec at the same time and spooky action at a distance
+    - access via `Vec-counting-unset` which does not guarantee seems maybe too difficult (first un-occupy all known slots and even then there is no guarantee). `Vec-counting-update` should work nicely, especially for copiable types at the cost of: cannot access the vec at the same time and spooky action at a distance
     - _every_ element is reference-counted. A slot to a known single-reference element cannot be represented. This is not a biggie because I don't know if there is a use for this
-    - TODO maybe also -counting versions of map/set etc.
+    - maybe also -counting versions of map/set etc.
   
-  The alternative is of course to do `slot-weak` and generational indexes. However, this is un-usable for e.g. inlined string storage and also comes with overhead and even less guarantees.
+  The alternative is of course to do `Slot-weak` and generational indexes. However, this is un-usable for e.g. inlined string storage and also comes with overhead and even less guarantees.
   
   Open question of representation:
     - `Vec<{ count: u32/16, element: Element }>`:
@@ -355,8 +358,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 
   I think I prefer not storing counts in ranges, as for example for string interning, you could store counted spans in separate collections:
   ```sloe
-  chars # of type _vec Chars, char
-  names # of type _vec-counting Names, _span Chars
+  chars # of type Vec _chars, char
+  names # of type Vec-counting _names, Span _chars
   ..other vecs pointing into chars, e.g. for number literals..
   ```
   This is likely the better option anyway (even though it "hops twice")
@@ -371,6 +374,14 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   The disadvantage is that "overplacing" a variable step-wise doesn't work anymore
   if not wrapped somehow. Maybe a small price to pay
   And where no `Length` field can be instantiated
+- consider replacing kebab-case with camelCase/PascalCase.
+  while I do much prefer the typing experience of kebab-case,
+  camelCase is shorter (!!), think
+  `vecCharOptSpanAddStr` compared to
+  `vec-char-opt-span-add-str` (5 chars less, 20%!)
+  and potentially more readable (?) due to clearer distinction to _ and 
+  (this won't matter as much if call and construct syntax does not involve _).
+  Take a bigger example, convert the case and see how it feels
 - (not fully sure) Add explicit field punning syntax:
   Add pattern syntax `_` (untyped) / `_ value-type` (typed) (and maybe expression syntax `_`) where `_` behaves like a variable with the name of the parent.
   So e.g. `.field (_ value-type)` would introduce a variable named `field`.
@@ -385,30 +396,30 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
 - rust does not support (in std) a way to split/resize/drain a Box<[]> which is a shame IMO because this could e.g. allow reusing a bigger allocation for smaller parts. Think this API:
   ```sloe
-  fn unset-slice-rid-end
-      .slice _unset-slice Element .length u32 :> _unset-slice Element
-  fn unset-slice-rid-start
-      .slice _unset-slice Element .length u32 :> _unset-slice Element
-  fn unset-slice-start
-      .slice _unset-slice Element .length u32
-      :> .start _unset-slice Element .after _unset-slice Element
-  fn vec-pre-allocated-to-slice
-      _vec Origin, Element
-      :> .vec _vec Origin, Element .slice _unset-slice Element
+  fn Unset-slice-rid-end
+      .slice Unset-slice _element .length u32 :> Unset-slice _element
+  fn Unset-slice-rid-start
+      .slice Unset-slice _element .length u32 :> Unset-slice _element
+  fn Unset-slice-start
+      .slice Unset-slice _element .length u32
+      :> .start Unset-slice _element .after Unset-slice _element
+  fn Vec-pre-allocated-to-slice
+      Vec _origin, _element
+      :> .vec Vec _origin, _element .slice Unset-slice _element
   ```
 - when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
 - add typescript backend or similar web support
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different vecs have the same origin_ but their slots can't intermix.
   ```sloe
-  fn recurse
-      .consume-origin consume-origin Consume-origin
-      .result-origin result-origin Result-origin
-      :> _vec Result-origin, u32 >
+  fn Recurse
+      .consume-origin consume-origin _consume-origin
+      .result-origin result-origin _result-origin
+      :> Vec _result-origin, u32 >
       origin local-origin
-      ? _vec-empty<u32> consume-origin [temporary]
-      ? _recurse local-origin result-origin [result]
-      ? _vec-add .vec temporary .new 1 u32 [.slot slot .vec temporary]
+      ? Vec-empty<u32> consume-origin [temporary]
+      ? Recurse local-origin result-origin [result]
+      ? Vec-add .vec temporary .new 1 u32 [.slot slot .vec temporary]
       ...
       result
   ```
@@ -440,7 +451,7 @@ As a hobby language that deliberately cannot by itself interface with the operat
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
   More info in "not coherently formulated thoughts"
 - add tuples: (* a * b * c). I dislike them conceptually but operations like `u32-add` or `u32-dup` are nicer with them. The field names `.a .b ` are just noise. Adding tuples might make for a nicer user interface when calling from rust
-- consider allowing `origin name` at the project scope. This allows reducing the number of type parameters flying around in things like `_expression Expressions, Patterns, Types, Source, Cases, ...` if desired.
+- consider allowing `origin name` at the project scope. This allows reducing the number of type parameters flying around in things like `Expression _expressions, _patterns, _types, _source, _cases, ...` if desired.
 It also makes initial_state much easier to call from the rust side (though we need to be careful how...).
   Rejected because this makes it more or less impossible to run multiple sloe instances from a single rust program
   Issue is that in general single-return-continuation is rare in sloe
@@ -449,13 +460,13 @@ It also makes initial_state much easier to call from the rust side (though we ne
   And especially because having _many_ origin type variables is common, this sadly won't fly
 - adding function call syntax sugar similar to piping.
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
-- making `vec` etc store multiple kinds of data (heterogenous) and letting them give out `_slot origin, data-type` and `_span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
-  This makes the porpose of `vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression _expression Origin .data _vec Origin, ... :> .vec _vec Origin ... .end text-position`.
+- making `vec` etc store multiple kinds of data (heterogenous) and letting them give out `Slot origin, data-type` and `Span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
+  This makes the porpose of `vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression Expression _origin .data Vec _origin, ... :> .vec Vec _origin ... .end text-position`.
   This would also in theory enable a crazy representation of tagged unions as:
   ```sloe
-  ty expression-slot Origin
-      |int _slot Origin, i32
-      |plus _slot Origin, .left _expression-slot Origin .right _expression-slot Origin
+  ty Expression-slot _origin
+      |int Slot _origin, i32
+      |plus Slot _origin, .left Expression-slot _origin .right Expression-slot _origin
       ...
   ```
   This also means slices etc need to be stored separately in the origin vec.
@@ -464,9 +475,9 @@ It also makes initial_state much easier to call from the rust side (though we ne
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
   ```sloe
   origin vec-origin
-  ? _vec-empty<.expression expression .pattern pattern vec-origin> vec-origin [vec]
-  ? _vec-add .vec vec .new some-expression [.vec vec slot some-expression-slot]
-  ? _vec-add .vec vec .new some-pattern  [.vec vec .slot some-pattern-slot]
+  ? Vec-empty<.expression expression .pattern pattern vec-origin> vec-origin [vec]
+  ? Vec-add .vec vec .new some-expression [.vec vec slot some-expression-slot]
+  ? Vec-add .vec vec .new some-pattern  [.vec vec .slot some-pattern-slot]
   ...
   ```
   This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
@@ -487,7 +498,7 @@ While seemingly convenient and magnitudes better than regular mutable pointers,
 - it's less obvious than passing values through
 - there's no easy way to change the name of a resulting value that represents something different now
 - there's no way to "reconstruct" a different out value. Especially for non-trivial edits the &mut approach can get messy or it's straight up impossible and parts will need to get cloned unnecessarily
-- there's no way to change the type (e.g. from `span` to `span-filled`)
+- there's no way to change the type (e.g. from `Opt Span` to `Span`)
 - there's no there's two ways to specify most conversions, with usually no clear method of converting one to the other
 - it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn .context context ... :> |exit found |go-on context` where found contains some parts of the context). This isn't modelled well with `&mut`
 - `&mut` means the resulting changed collection is not returned, making use as the input to another function impossible. This almost necessarily results in the classic procedural-style statement form as opposed to the functional-style expression form. Minor gripe: especially in languages that don't allow local scopes with local returns (far, far too many) this basically makes it impossible to locally introduce a value, change it and implant it somewhere; instead you have to move the variable up to the top level.
@@ -534,8 +545,8 @@ a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly
 - it's tough (usually) to annotate a function whose arguments and argument types are unknown. E.g. what would `fn-dup`'s type be?
 - positional arguments (usually) means no passing in bulk
   ```sloe
-  fn u32-square natural u32 :> u32 >
-      _u32-add _u32-dup natural
+  fn U32-square-clamp natural u32 :> u32 >
+      U32-add-clamp U32-dup natural
   ```
 
 "Positionality" in general is pretty much absent in sloe. E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
@@ -548,13 +559,15 @@ If you're looking to learn from sloe, maybe do not learn from these:
 - record spread. It provides an alternative syntax sugar for something that could already be expressed. I originally introduced it to make builders like string builers less jarring
   but I'm not so sure this worked.
   I'm on the fence; if you have complaints I'll remove this feature
+
 - nested pattern matching.
   It's existence makes compilation, exhaustiveness-checking, error messages and flow-typing-like matching (e.g. matching |a in <|a|b|c> leaving |b|c) harder.
   It also creates a "two modes of matching" problem: You e.g. can't match on numbers, chars, strings, span start and lengths etc. And so you sometimes need an extra step, leading to nested matches anyway (does not feel consistent).
   It also "takes control from the user int othe magic hands of the compiler" and thus it may run checks etc. in a different order than you have.
-  I originally introduced it to make e.g. matching on multiple `opt`s easier.
+  I originally introduced it to make e.g. matching on multiple `Opt`s easier.
   It helps keep context clear and visible like "if the left sub is empty and the right sub is a branch with an empty left side, do this".
   Honestly I should not have been so hasty to add this feature
+
 - stack-allocated array syntax. It provides an alternative syntax sugar for something that could already be expressed as repeated queried function calls.
   I'm convinced that a feature like this would be very asked for if it didn't exist.
   Adding a bulk of elements to a vec seems very useful on first sight because
@@ -564,7 +577,7 @@ If you're looking to learn from sloe, maybe do not learn from these:
       Adding this bulk of nodes as an array is only natural and avoids so much noise.
   
   Well, what are the alternatives, then?
-    - simply provide `vec-opt-span-add2/3/4/5/6/7/8` etc. While it really doesn't feel good, it's not very far from solutions of production languages, see e.g. java's `list.of2/3/4/...`
+    - simply provide `vec-opt-span-add2/3/4/5/6/7/8` etc. While it really doesn't feel good, it's not very far from solutions of production languages, see e.g. java's `list.of2/3/4/...`. (Though adding or removing elements means adjusting the number which is annoying, especially for the argument field names)
     - provide and suggest better primitives and helpers. For example, instead of providing a list of modifiers, it may just make sense to e.g. provide a record of options or use builder-style helpers for the individual properties
     - introduce syntactical diabetis or macro-esque bullshit for repeated function calls
       ```sloe
@@ -576,7 +589,7 @@ If you're looking to learn from sloe, maybe do not learn from these:
       ```
       (the above is obviously insane in a bad way, but there may be a middle-ground)
   
-  So yeah, these aren't amazing either, but arrays are similarly not amazing as well.
+  So yeah, these aren't amazing either.
 
 
 # general quetions you might have
@@ -630,7 +643,7 @@ cargo install --offline --debug --path . sloe
 
 - change `str` to mean non-empty string. This is more annoying for FFI (needs a wrapper over str/[]u8) but I think overall this is okay especially since memory efficiency is the same
 
-- for simplicity, change `_function<..., ..., ...>` to `_function<...><...><...>` at call and project fn sites
+- for simplicity, change `Function<..., ..., ...>` to `Function<...><...><...>` at call and project fn sites
 
 - rename `vec` to `buf`. `vec` is unintuitive (it's not a vector). buf is used by carbon and often for builders like StringBuffer
 
@@ -638,15 +651,7 @@ cargo install --offline --debug --path . sloe
 
 - strongly consider replacing `<>` to `{}` because it it more easily recognized as parens
 
-- honestly think about replacing kebab-case with camelCase/PascalCase.
-  while I do much prefer the typing experience of kebab-case,
-  camelCase is shorter (!!), think
-  `vecCharOptSpanAddStr` compared to
-  `vec-char-opt-span-add-str` (5 chars less, 20%!)
-  and potentially more readable (?) due to clearer distinction to _ and spaces.
-  Take a bigger example, convert the case and see how it feels
-
-- (not sure, maybe not actually) allow field and variant names to start with digit, upper-case and -, like `fn char-dup char char :> .0 char .1 char`.
+- (not sure, maybe not actually) allow field and variant names to start with digit, upper-case and -, like `fn Char-dup char char :> .0 char .1 char`.
   The nice thing is that this matches what most language use as field names for tuples.
   This is also a little bit confusing but you don't have to use it.
   Use cases are e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`
@@ -688,16 +693,16 @@ cargo install --offline --debug --path . sloe
     - type aliases may only need to take a single origin type parameter
       for spans/slots with connected lifetimes, e.g.
       ```sloe
-      ty expression Origin
+      ty Expression _origin
           |int i32
-          |string _opt (_span .str Origin)
-          |vec _opt (_span .expression Origin)
+          |string (Opt Span .str _origin)
+          |vec (Opt Span .expression _origin)
           |call
-              .function (_slot .expression Origin)
-              .arguments (_span .expression Origin)
+              .function (Slot .expression _origin)
+              .arguments (Span .expression _origin)
           |lambda
-              .parameters (_span .pattern Origin)
-              .result (_slot .expression Origin)
+              .parameters (Span .pattern _origin)
+              .result (Slot .expression _origin)
       ```
       I think baking origin deriving syntax into the language is the easiest solution:
       ```sloe
@@ -711,10 +716,10 @@ cargo install --offline --debug --path . sloe
       
       In theory, the same effect could be achieved without syntax additions:
       ```sloe
-      origin-dup origin _origin Local :> .a _origin (.a Local) .b _origin (.b Local)
-      ty str-origin Origin .a Origin
-      ty expression-origin .b .a Origin
-      ty pattern-origin .b .b Origin
+      fn Origin-dup origin Origin _local :> .a Origin (.a _local) .b Origin (.b _local)
+      ty Str-origin _origin .a _origin
+      ty Expression-origin _origin .b .a _origin
+      ty Pattern-origin _origin .b .b _origin
       ```
       However, notice that annotating an origin like that is very undescriptive.
       The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
@@ -730,7 +735,7 @@ This relationship is flipped on it's head in sloe: All elements of collections a
 Honestly this idea seems "obviously" useful and it's surprising I can't find other languages that lean into it (there is rust which at least enables it in userland).
 I assume one reason is that linear types are required in some part to avoid leaks all over the place.
 
-One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `_vec ... _span str-origin` + `_str str-origin`
+One way this helps is that nested collections aren't segmented: what is usually `Vec<Box<str>>` aka n separate memory pieces can be e.g. `Vec ... Span str-origin` + `_str str-origin`
 (in rust there are I think crates like oroborus for this)
 
 ## on shadowing
