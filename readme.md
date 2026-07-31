@@ -1,6 +1,6 @@
 Small, fast programming language where indexes are valid and values can't be shared.
 
-The goal is representing tree-like data structures without segmented, non-pre-allocatable memory or plain index integers (along with the need to handle failure and generations).
+The goal is representing tree-like data structures without segmented, non-pre-allocatable memory or plain integer indexes (along with the need to handle failure and generations).
 Sloe offers a safe, infallible way to refer to elements and slices stored in consecutive memory.
 
 [skip to examples](#examples)
@@ -23,15 +23,15 @@ This allows
 - values can be mutated internally without mutation being detectable
 - representing things that should only be consumed once, like thread join handles
 - representing things that should be cleaned up in a specific way, like memory that should be freed from a specific origin
-- guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compile to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515))
+- guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compiles to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515))
 
 This can feel annoying and clunky. Think e.g. `Span-length` which takes a span and gives back its size and the given span.
 Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `Vec-occupied-count` could return a changed vec (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
-Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral programming language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
-Initially, sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit (unrelated, I love how this somewhat mirrors the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!)
+Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
+Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
 # concept: consecutive memory collection `Vec`
 A collection which can mark some ranges within itself as vacant without moving existing elemnts around.
@@ -492,6 +492,11 @@ It also makes initial_state much easier to call from the rust side (though we ne
   The benefit is that the question above is answered (single field = single variant).
   Overall this is "more correct" than the current solution.
   Rejected because this is harder to type (and would require a change of type variable syntax)
+- (rejection not final for all eternity. If you have a good use case, I'll support it) allow field and variant names to start with digit, upper-case and -, like `fn Char-dup char char :> .0 char .1 char`.
+  One nice thing is that this matches what most language use as field names for tuples.
+  This is also a little bit confusing but you don't have to use it.
+  Use cases are e.g. `ty bit |0 . |1 .`, `type board-pin |0 . |1 . |3 . |10 .` and nicer array records.
+  Not included currently for consistency and simplicity.
 
 ## why no `&mut`/`inout`
 While seemingly convenient and magnitudes better than regular mutable pointers,
@@ -622,6 +627,8 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- rename `Vec` to `Buf`. `Vec` is unintuitive (it's not a vector). buf is used by carbon and often for builders like StringBuffer
+
 - (not fully sure) add `Vec-opt-unset-span-add-length-positive`, `Vec-opt-unset-span-add-length`, `Vec-unset-span-add-length`, `Vec-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Vec-opt-span-add-repeat`, `Vec-span-add-repeat`, `Vec-opt-span-add-repeat-for-length-positive`, maybe even unfold
@@ -630,16 +637,9 @@ cargo install --offline --debug --path . sloe
 
 - for simplicity, change `Function<..., ..., ...>` to `Function<...><...><...>` at call and project fn sites
 
-- rename `Vec` to `Buf`. `Vec` is unintuitive (it's not a vector). buf is used by carbon and often for builders like StringBuffer
+- find a symbol to replace the `origin` keyword. Maybe ^ as a visual "place anchor"
 
-- find a symbol to replace the `origin` keyword
-
-- strongly consider replacing `<>` to `{}` because it it more easily recognized as parens
-
-- (not sure, maybe not actually) allow field and variant names to start with digit, upper-case and -, like `fn Char-dup char char :> .0 char .1 char`.
-  The nice thing is that this matches what most language use as field names for tuples.
-  This is also a little bit confusing but you don't have to use it.
-  Use cases are e.g. `ty bit |0 . |1 .` or `type board-pin |0 . |1 . |3 . |10 .`
+- strongly consider replacing `<>` by `{}` because it is more easily recognized as parens
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
@@ -725,3 +725,6 @@ One way this helps is that nested collections aren't segmented: what is usually 
 
 ## on shadowing
 since each variable can be used at most once, most introduced names that would traditionally be considered "shadowed" are aready out of scope in sloe. When their scopes actually overlap though, you'll get an error
+
+## on defer
+I love how linear types somewhat mirror the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!

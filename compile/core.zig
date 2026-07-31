@@ -238,6 +238,8 @@ pub const P32 = struct {
 pub const U32 = u32;
 pub const I32 = i32;
 pub const F32 = f32;
+/// assumed to be a valid utf8 codepoint. Should probably be a wrapper instead.
+/// Would be nice if zig had one in std.unicode
 pub const Char = u21;
 pub const Str = struct {
     /// assumed to contain at least one codepoint. Using "" can lead to UB.
@@ -245,15 +247,44 @@ pub const Str = struct {
     /// checked utf8 char wrappers in zig
     utf8: std.unicode.Utf8View,
 
-    pub fn fromComptime(comptime @"%str": []const u8) Str {
-        const utf8_view = std.unicode.Utf8View.initComptime(@"%str");
-        comptime {
-            var @"%codepoint_iterator" = utf8_view.iterator();
-            if (@"%codepoint_iterator".nextCodepoint()) {} else {
-                @compileError("Str must contain at least one codepoint");
+    pub fn fromComptime(comptime @"%bytes": []const u8) Str {
+        return comptime str: {
+            const @"%utf8_view" = std.unicode.Utf8View.initComptime(@"%bytes");
+            break :str if (Str.fromUtf8View(@"%utf8_view")) |@"%str"| @"%str" else @compileError("Str must contain at least one codepoint");
+        };
+    }
+    pub fn fromUtf8View(@"%utf8_view": std.unicode.Utf8View) ?Str {
+        return if (@"%utf8_view".bytes.len >= 1)
+            .{ .utf8 = @"%utf8_view" }
+        else
+            null;
+    }
+    pub fn splitStart(@"%str": Str) struct { start: Char, after: std.unicode.Utf8View } {
+        var @"%codepoint_iterator" = @"%str".utf8.iterator();
+        const @"%start_codepoint" = @"%codepoint_iterator".nextCodepoint().?;
+        return .{
+            .start = @"%start_codepoint",
+            .after = std.unicode.Utf8View.initUnchecked(@"%str".utf8.bytes[@"%codepoint_iterator".i..]),
+        };
+    }
+    pub fn splitEnd(@"%str": Str) struct { before: std.unicode.Utf8View, end: Char } {
+        var @"%i" = @"%str".utf8.bytes.len;
+        while (@"%i" >= 1) {
+            @"%i" -= 1;
+            if (std.unicode.utf8ByteSequenceLength(@"%str".utf8.bytes[@"%i"])) |_| {
+                var @"%last_codepoint_iterator" = std.unicode.Utf8View.initUnchecked(@"%str".utf8.bytes[@"%i"..]).iterator();
+                const @"%end_codepoint" = @"%last_codepoint_iterator".nextCodepoint().?;
+                return .{
+                    .end = @"%end_codepoint",
+                    .before = std.unicode.Utf8View.initUnchecked(@"%str".utf8.bytes[0..@"%i"]),
+                };
+            } else |@"%not_start_byte"| {
+                switch (@"%not_start_byte") {
+                    error.Utf8InvalidStartByte => {},
+                }
             }
         }
-        return .{ .utf8 = utf8_view };
+        unreachable;
     }
 };
 pub fn Fn(@"%In": type, @"%Out": type) type {
@@ -1182,6 +1213,20 @@ pub fn str_rid(_: Str) error{OutOfMemory}!void {}
 pub fn str_dup(@"%str": Str) error{OutOfMemory}!@".a.b"(Str, Str) {
     return .{ .a = @"%str", .b = @"%str" };
 }
+pub fn str_start(@"%str": Str) error{OutOfMemory}!@".after.start"(Opt(Str), Char) {
+    const @"%split" = @"%str".splitStart();
+    return .{
+        .start = @"%split".start,
+        .after = if (Str.fromUtf8View(@"%split".after)) |@"%after"| .{ .yes = @"%after" } else .{ .no = {} },
+    };
+}
+pub fn str_end(@"%str": Str) error{OutOfMemory}!@".before.end"(Opt(Str), Char) {
+    const @"%split" = @"%str".splitEnd();
+    return .{
+        .end = @"%split".end,
+        .before = if (Str.fromUtf8View(@"%split".before)) |@"%before"| .{ .yes = @"%before" } else .{ .no = {} },
+    };
+}
 
 pub fn fn_rid(@"%In": type, @"%Out": type, _: Fn(@"%In", @"%Out")) error{OutOfMemory}!void {}
 pub fn fn_dup(@"%In": type, @"%Out": type, @"%function": Fn(@"%In", @"%Out")) error{OutOfMemory}!@".a.b"(Fn(@"%In", @"%Out"), Fn(@"%In", @"%Out")) {
@@ -1557,7 +1602,7 @@ pub fn vec_char_span_add_u32(
     return vec_char_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
-        .new = @"%buffer"[0..@"%buffer_exclusive_end"],
+        .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
     });
 }
 pub fn vec_char_opt_span_add_u32(
@@ -1570,9 +1615,9 @@ pub fn vec_char_opt_span_add_u32(
     const @"%combined" = try vec_char_opt_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
-        .new = @"%buffer"[0..@"%buffer_exclusive_end"],
+        .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
     });
-    return .{ .vec = @"%combined".vec, .span = @"%combined".span.yes };
+    return .{ .vec = @"%combined".vec, .span = @"%combined".span };
 }
 // is there a more correct way?
 const i32_max_print_len = @max(
@@ -1589,7 +1634,7 @@ pub fn vec_char_span_add_i32(
     return vec_char_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
-        .new = @"%buffer"[0..@"%buffer_exclusive_end"],
+        .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
     });
 }
 pub fn vec_char_opt_span_add_i32(
@@ -1602,7 +1647,7 @@ pub fn vec_char_opt_span_add_i32(
     const @"%combined" = try vec_char_opt_span_add_str(Char, @"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
-        .new = @"%buffer"[0..@"%buffer_exclusive_end"],
+        .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
     });
     return .{ .vec = @"%combined".vec, .span = @"%combined".span.yes };
 }
@@ -1622,7 +1667,7 @@ pub fn vec_char_span_add_f32(
     return vec_char_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
-        .new = @"%used_buffer_slice",
+        .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%used_buffer_slice")).?,
     });
 }
 pub fn vec_char_opt_span_add_f32(
@@ -1639,7 +1684,7 @@ pub fn vec_char_opt_span_add_f32(
     const @"%combined" = try vec_char_opt_span_add_str(@"%Origin", @"%allocator", .{
         .vec = @"%".vec,
         .span = @"%".span,
-        .new = @"%used_buffer_slice",
+        .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%used_buffer_slice")).?,
     });
     return .{ .vec = @"%combined".vec, .span = @"%combined".span.yes };
 }

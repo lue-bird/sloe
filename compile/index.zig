@@ -7,7 +7,7 @@ test "various trivial" {
     try core.i32_rid(-11);
     try core.f32_rid(-1.1);
     try core.char_rid('?');
-    try core.str_rid("moin");
+    try core.str_rid(core.Str.fromComptime("moin"));
     try core.fn_rid(i32, i32, core.i32_negate_clamp);
     {
         const example_origin: core.Origin(enum { example }) = .example;
@@ -34,8 +34,8 @@ test "various trivial" {
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ '?', '?' });
     }
     {
-        const duped = try core.str_dup("moin");
-        try std.testing.expectEqual(.{ duped.a, duped.b }, .{ "moin", "moin" });
+        const duped = try core.str_dup(core.Str.fromComptime("moin"));
+        try std.testing.expectEqual(.{ duped.a.utf8.bytes, duped.b.utf8.bytes }, .{ "moin", "moin" });
     }
     {
         const duped = try core.fn_dup(i32, i32, core.i32_negate_clamp);
@@ -123,6 +123,46 @@ test "f32_round_nearest_else_even_to_i32_clamp" {
     try std.testing.expectEqual(1, try core.f32_round_nearest_else_even_to_i32_clamp(1.4));
     try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.5));
     try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.6));
+}
+test "str_start more after start" {
+    const split = try core.str_start(core.Str.fromComptime("abcde"));
+    try std.testing.expectEqual('a', split.start);
+    try std.testing.expectEqualStrings("bcde", split.after.yes.utf8.bytes);
+}
+test "str_start more after start (length 2 bytes)" {
+    const split = try core.str_start(core.Str.fromComptime("Ճbcde"));
+    try std.testing.expectEqual('Ճ', split.start);
+    try std.testing.expectEqualStrings("bcde", split.after.yes.utf8.bytes);
+}
+test "str_start more after start (length 3 bytes)" {
+    const split = try core.str_start(core.Str.fromComptime("ໆbcde"));
+    try std.testing.expectEqual('ໆ', split.start);
+    try std.testing.expectEqualStrings("bcde", split.after.yes.utf8.bytes);
+}
+test "str_start empty after start" {
+    const split = try core.str_start(core.Str.fromComptime("a"));
+    try std.testing.expectEqual('a', split.start);
+    try std.testing.expectEqual(core.Opt(core.Str){ .no = {} }, split.after);
+}
+test "str_end more before end" {
+    const split = try core.str_end(core.Str.fromComptime("abcde"));
+    try std.testing.expectEqual('e', split.end);
+    try std.testing.expectEqualStrings("abcd", split.before.yes.utf8.bytes);
+}
+test "str_end more before end (length 2 bytes)" {
+    const split = try core.str_end(core.Str.fromComptime("abcdՃ"));
+    try std.testing.expectEqual('Ճ', split.end);
+    try std.testing.expectEqualStrings("abcd", split.before.yes.utf8.bytes);
+}
+test "str_end more before end (length 3 bytes)" {
+    const split = try core.str_end(core.Str.fromComptime("abcdໆ"));
+    try std.testing.expectEqual('ໆ', split.end);
+    try std.testing.expectEqualStrings("abcd", split.before.yes.utf8.bytes);
+}
+test "str_end empty before end" {
+    const split = try core.str_end(core.Str.fromComptime("a"));
+    try std.testing.expectEqual('a', split.end);
+    try std.testing.expectEqual(core.Opt(core.Str){ .no = {} }, split.before);
 }
 test "simple slot and span queries" {
     const ExampleOrigin = enum { vec };
@@ -363,20 +403,20 @@ test "vec add strs" {
     const with_abcd = try core.vec_char_opt_span_add_str(
         VecOrigin,
         allocator,
-        .{ .vec = vec, .span = .{ .no = {} }, .new = "abcd" },
+        .{ .vec = vec, .span = .{ .no = {} }, .new = core.Str.fromComptime("abcd") },
     );
-    try std.testing.expectEqual(4, with_abcd.span.yes.length.positive);
+    try std.testing.expectEqual(4, with_abcd.span.length.positive);
     const with_wrenches = try core.vec_char_opt_span_add_str(
         VecOrigin,
         allocator,
-        .{ .vec = with_abcd.vec, .span = with_abcd.span, .new = "🔧🔧🔧" },
+        .{ .vec = with_abcd.vec, .span = .{ .yes = with_abcd.span }, .new = core.Str.fromComptime("🔧🔧🔧") },
     );
     try std.testing.expectEqualSlices(
         core.Char,
         &.{ 'a', 'b', 'c', 'd', '🔧', '🔧', '🔧' },
-        with_wrenches.vec.optSpanSlice(with_wrenches.span),
+        with_wrenches.vec.spanSlice(with_wrenches.span),
     );
-    try std.testing.expectEqual(7, with_wrenches.span.yes.length.positive);
+    try std.testing.expectEqual(7, with_wrenches.span.length.positive);
     with_wrenches.vec.rid(allocator);
 }
 test "vec char add numbers" {
@@ -571,18 +611,18 @@ test "anonymous struct" {
     // This is very annoying: Zig just recently used to have real anonymous structs
     // which were removed from the language because their implementation was buggy.
     // Curiously, anonymous tuples still exist so I wonder what gives?
-    const one = core.@"record.a.b"(@as(core.Str, ""), @as(core.Str, ""));
-    const two = core.@"record.a.b"(@as(core.Str, ""), @as(core.Str, ""));
+    const one = core.@"record.a.b"(core.Str.fromComptime("a"), core.Str.fromComptime("a"));
+    const two = core.@"record.a.b"(core.Str.fromComptime("a"), core.Str.fromComptime("a"));
     rid_both(core.@".a.b"(core.Str, core.Str), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
 test "anonymous union(enum)" {
     // below would not type-check
-    // const one = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "" });
-    // const two = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "" });
+    // const one = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "a" });
+    // const two = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "a" });
     // rid_both(union(enum) { no: void, yes: core.Str }, one, two);
-    const one = @as(core.@"|no|yes"(void, core.Str), .{ .yes = "" });
-    const two = @as(core.@"|no|yes"(void, core.Str), .{ .yes = "" });
+    const one = @as(core.@"|no|yes"(void, core.Str), .{ .yes = core.Str.fromComptime("a") });
+    const two = @as(core.@"|no|yes"(void, core.Str), .{ .yes = core.Str.fromComptime("a") });
     rid_both(core.@"|no|yes"(void, core.Str), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
