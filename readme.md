@@ -304,7 +304,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - by default, most passed arguments are quite fat on the stack (e.g. `Vec` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
-- I don't like `:>` but `<` would probably be more confusing
 - the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
   Sloe is most likely not the right vehicle to explore this space,
   still it seems like a warning sign for a supposed "general-purpose language"
@@ -460,7 +459,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   And especially because having _many_ origin type variables is common, this sadly won't fly
 - adding function call syntax sugar similar to piping.
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
-- making `Vec` etc store multiple kinds of data (heterogenous) and letting them give out `Slot origin, data-type` and `Span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to.
+- (rejected, but interesting in theory) making `Vec` etc store multiple kinds of data (heterogenous) and letting them give out `Slot origin, data-type` and `Span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to. Similarly, only one vec needs to be passed around.
   This makes the porpose of `Vec` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression Expression _origin .data Vec _origin, ... :> .vec Vec _origin ... .end text-position`.
   This would also in theory enable a crazy representation of tagged unions as:
   ```sloe
@@ -639,7 +638,19 @@ cargo install --offline --debug --path . sloe
 
 - find a symbol to replace the `origin` keyword. Maybe ^ as a visual "place anchor"
 
+- consider changing `|variant-name<type> value` to `|<type>variant-name value`. This allows better autocomplete
+  Example: before
+  ```sloe
+  |text-dynamic<Html _htmls, _modifiers, _chars> Opt-yes text-span
+  ```
+  after
+  ```sloe
+  |<Html _htmls, _modifiers, _chars>text-dynamic Opt-yes text-span
+  ```
+
 - strongly consider replacing `<>` by `{}` because it is more easily recognized as parens
+
+- change `fn :> result-type >` to `fn : result-type =` purely for a familiarty bonus. It also aligns more nicely and is faster to type.
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements

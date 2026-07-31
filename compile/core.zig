@@ -259,6 +259,15 @@ pub const Str = struct {
         else
             null;
     }
+    pub fn utf8_byte_count_p32(@"%str": Str) error{OutOfMemory}!P32 {
+        return P32.fromU32(try std.math.cast(u32, @"%str".utf8.bytes.len) orelse error.OutOfMemory).?;
+    }
+    pub fn codepoint_count_p32(@"%str": Str) error{OutOfMemory}!P32 {
+        return P32.fromU32(try std.math.cast(
+            u32,
+            std.unicode.utf8CountCodepoints(@"%str".utf8.bytes) catch unreachable,
+        ) orelse error.OutOfMemory).?;
+    }
     pub fn splitStart(@"%str": Str) struct { start: Char, after: std.unicode.Utf8View } {
         var @"%codepoint_iterator" = @"%str".utf8.iterator();
         const @"%start_codepoint" = @"%codepoint_iterator".nextCodepoint().?;
@@ -453,10 +462,10 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             var @"%state" = @"%initial_state";
             switch (@"%direction") {
                 .up => {
-                    for (@"%span".start.index..(try @"%span".length.addOrOutOfMem(@"%span".start.index)).positive) |index| {
+                    for (@"%span".start.index..(try @"%span".length.addOrOutOfMem(@"%span".start.index)).positive) |@"%index"| {
                         @"%state" = try @"%step"(.{
                             .state = @"%state",
-                            .slot = .{ .index = std.math.lossyCast(u32, index) },
+                            .slot = .{ .index = @intCast(@"%index") },
                         });
                     }
                 },
@@ -466,7 +475,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                     while (@"%index" >= @"%span".start.index) {
                         @"%state" = try @"%step"(.{
                             .state = @"%state",
-                            .slot = .{ .index = std.math.lossyCast(u32, @"%index") },
+                            .slot = .{ .index = @"%index" },
                         });
                         @"%index" -= 1;
                     }
@@ -494,7 +503,7 @@ pub fn Unset_slice(@"%Element": type) type {
             return .{ .undefined_items = try @"%allocator".alloc(@"%Element", @"%length") };
         }
         pub fn length(@"%unset_slice": @This()) u32 {
-            return std.math.lossyCast(u32, @"%unset_slice".undefined_items.len);
+            return @intCast(@"%unset_slice".undefined_items.len);
         }
         /// the given unset slice is invalid after
         pub fn castOrRidAndAllocate(
@@ -582,7 +591,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%new_element": @"%Element",
         ) error{OutOfMemory}!Slot(@"%Origin") {
             const @"%new_slot" = Slot(@"%Origin"){
-                .index = std.math.lossyCast(u32, @"%vec".elements.items.len),
+                .index = try (std.math.cast(u32, @"%vec".elements.items.len) orelse error.OutOfMemory),
             };
             try @"%vec".elements.append(@"%allocator", @"%new_element");
             return @"%new_slot";
@@ -592,7 +601,7 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
         ) error{OutOfMemory}!Unset_slot(@"%Origin") {
             const @"%new_slot" = Unset_slot(@"%Origin"){
-                .index = std.math.lossyCast(u32, @"%vec".elements.items.len),
+                .index = try (std.math.cast(u32, @"%vec".elements.items.len) orelse error.OutOfMemory),
             };
             try @"%vec".elements.append(@"%allocator", undefined);
             return @"%new_slot";
@@ -614,10 +623,10 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
             @"%length": P32,
         ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            const @"%start" = @"%vec".elements.items.len;
+            const @"%start" = try (std.math.cast(u32, @"%vec".elements.items.len) orelse error.OutOfMemory);
             try @"%vec".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%vec".elements.items.len, @"%length".positive));
             return Unset_span(@"%Origin"){
-                .start = .{ .index = try (std.math.cast(u32, @"%start") orelse error.OutOfMemory) },
+                .start = .{ .index = @"%start" },
                 .length = @"%length",
             };
         }
@@ -920,10 +929,9 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
             while (@"%next_element"(&@"%new_elements_iterator")) |@"%new_element"| {
                 try @"%vec".elements.append(@"%allocator", @"%new_element");
             }
-            return if (P32.fromU32(try (std.math.cast(
-                u32,
-                @"%vec".elements.items.len - @"%length_before_add",
-            ) orelse error.OutOfMemory))) |@"%new_length"|
+            return if (P32.fromU32(
+                try (std.math.cast(u32, @"%vec".elements.items.len - @"%length_before_add") orelse error.OutOfMemory),
+            )) |@"%new_length"|
                 .{ .yes = .{
                     .start = .{
                         .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
@@ -945,10 +953,9 @@ pub fn Vec(@"%Origin": type, @"%Element": type) type {
                 .start = .{
                     .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
                 },
-                .length = P32.fromU32(try (std.math.cast(
-                    u32,
-                    @"%vec".elements.items.len - @"%length_before_add",
-                ) orelse error.OutOfMemory)) orelse unreachable,
+                .length = P32.fromU32(
+                    try (std.math.cast(u32, @"%vec".elements.items.len - @"%length_before_add") orelse error.OutOfMemory),
+                ).?,
             };
         }
         pub fn optSpanAdd(
@@ -1212,6 +1219,9 @@ pub fn char_dup(@"%n": Char) error{OutOfMemory}!@".a.b"(Char, Char) {
 pub fn str_rid(_: Str) error{OutOfMemory}!void {}
 pub fn str_dup(@"%str": Str) error{OutOfMemory}!@".a.b"(Str, Str) {
     return .{ .a = @"%str", .b = @"%str" };
+}
+pub fn str_byte_count(@"%str": Str) error{OutOfMemory}!P32 {
+    return @"%str".utf8_byte_count_p32();
 }
 pub fn str_start(@"%str": Str) error{OutOfMemory}!@".after.start"(Opt(Str), Char) {
     const @"%split" = @"%str".splitStart();

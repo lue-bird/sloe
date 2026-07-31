@@ -498,6 +498,14 @@ impl Str {
     pub const fn as_str(self) -> &'static str {
         self.str
     }
+    pub fn byte_len(self) -> std::num::NonZeroUsize {
+        unsafe { std::num::NonZeroUsize::new_unchecked(self.str.len()) }
+    }
+    pub fn char_count(self) -> std::num::NonZeroUsize {
+        unsafe {
+            std::num::NonZeroUsize::new_unchecked(std::iter::Iterator::count(self.str.chars()))
+        }
+    }
     pub fn split_start(self) -> (char, &'static str) {
         let mut chars = self.str.chars();
         (
@@ -1717,11 +1725,11 @@ pub fn str_dup(str: Str) -> Record·a·b<Str, Str> {
     Record·a·b { a: str, b: str }
 }
 pub fn str_rid(_: Str) -> Record {}
-pub fn str_byte_count(str: Str) -> u32 {
-    str.str.len() as u32
+pub fn str_byte_count(str: Str) -> P32 {
+    <P32 as std::convert::TryFrom<std::num::NonZeroUsize>>::try_from(str.byte_len()).unwrap()
 }
-pub fn str_char_count(str: Str) -> u32 {
-    std::iter::Iterator::count(str.str.chars()) as u32
+pub fn str_char_count(str: Str) -> P32 {
+    <P32 as std::convert::TryFrom<std::num::NonZeroUsize>>::try_from(str.char_count()).unwrap()
 }
 pub fn str_start(str: Str) -> Record·after·start<Opt<Str>, Char> {
     let (start, after) = str.split_start();
