@@ -24,11 +24,11 @@ pub fn @".p.u"(@"%P": type, @"%U": type) type {
 pub fn @"record.p.u"(@"%p": anytype, @"%u": anytype) @".p.u"(@TypeOf(@"%p"), @TypeOf(@"%u")) {
     return .{ .p = @"%p", .u = @"%u" };
 }
-pub fn @".fn_.in"(@"%Fn": type, @"%In": type) type {
-    return struct { fn_: @"%Fn", n: @"%In" };
+pub fn @".fn.in"(@"%Fn": type, @"%In": type) type {
+    return struct { @"fn": @"%Fn", n: @"%In" };
 }
-pub fn @"record.fn_.in"(@"%fn_": anytype, @"%in": anytype) @".fn_.in"(@TypeOf(@"%fn_"), @TypeOf(@"%in")) {
-    return .{ .fn_ = @"%fn_", .in = @"%in" };
+pub fn @"record.fn_.in"(@"%fn_": anytype, @"%in": anytype) @".fn.in"(@TypeOf(@"%fn_"), @TypeOf(@"%in")) {
+    return .{ .@"fn" = @"%fn_", .in = @"%in" };
 }
 pub fn @".end.start"(@"%End": type, @"%Start": type) type {
     return struct { end: @"%End", start: @"%Start" };
@@ -239,9 +239,23 @@ pub const U32 = u32;
 pub const I32 = i32;
 pub const F32 = f32;
 pub const Char = u21;
-/// assumed to be valid (!) UTF-8.
-/// This means using e.g. "\xff\xfe" might lead to UB
-pub const Str = []const u8;
+pub const Str = struct {
+    /// assumed to contain at least one codepoint. Using "" can lead to UB.
+    /// Splitting this into a first u21 and the rest would be no safer because there are no
+    /// checked utf8 char wrappers in zig
+    utf8: std.unicode.Utf8View,
+
+    pub fn fromComptime(comptime @"%str": []const u8) Str {
+        const utf8_view = std.unicode.Utf8View.initComptime(@"%str");
+        comptime {
+            var @"%codepoint_iterator" = utf8_view.iterator();
+            if (@"%codepoint_iterator".nextCodepoint()) {} else {
+                @compileError("Str must contain at least one codepoint");
+            }
+        }
+        return .{ .utf8 = utf8_view };
+    }
+};
 pub fn Fn(@"%In": type, @"%Out": type) type {
     return *const fn (@"%In") error{OutOfMemory}!@"%Out";
 }
@@ -1165,8 +1179,8 @@ pub fn char_dup(@"%n": Char) error{OutOfMemory}!@".a.b"(Char, Char) {
 }
 
 pub fn str_rid(_: Str) error{OutOfMemory}!void {}
-pub fn str_dup(@"%n": Str) error{OutOfMemory}!@".a.b"(Str, Str) {
-    return .{ .a = @"%n", .b = @"%n" };
+pub fn str_dup(@"%str": Str) error{OutOfMemory}!@".a.b"(Str, Str) {
+    return .{ .a = @"%str", .b = @"%str" };
 }
 
 pub fn fn_rid(@"%In": type, @"%Out": type, _: Fn(@"%In", @"%Out")) error{OutOfMemory}!void {}
@@ -1176,9 +1190,9 @@ pub fn fn_dup(@"%In": type, @"%Out": type, @"%function": Fn(@"%In", @"%Out")) er
 pub fn call(
     @"%In": type,
     @"%Out": type,
-    @"%": @".fn_.in"(Fn(@"%In", @"%Out"), @"%In"),
+    @"%": @".fn.in"(Fn(@"%In", @"%Out"), @"%In"),
 ) error{OutOfMemory}!@"%Out" {
-    return @"%".fn_(@"%".in);
+    return @"%".@"fn"(@"%".in);
 }
 
 pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
@@ -1507,15 +1521,15 @@ pub fn vec_char_opt_span_add_str(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": @".new.span.vec"(Str, Opt(Span(@"%Origin")), Vec(@"%Origin", Char)),
-) error{OutOfMemory}!@".span.vec"(Opt(Span(@"%Origin")), Vec(@"%Origin", Char)) {
+) error{OutOfMemory}!@".span.vec"(Span(@"%Origin"), Vec(@"%Origin", Char)) {
     var @"%vec" = @"%".vec;
     const @"%combined_span" = try @"%vec".optSpanAddIterator(
         @"%allocator",
         @"%".span,
-        std.unicode.Utf8View.initUnchecked(@"%".new).iterator(),
+        @"%".new.utf8.iterator(),
         std.unicode.Utf8Iterator.nextCodepoint,
     );
-    return .{ .span = @"%combined_span", .vec = @"%vec" };
+    return .{ .span = @"%combined_span".yes, .vec = @"%vec" };
 }
 pub fn vec_char_span_add_str(
     @"%Origin": type,
@@ -1526,7 +1540,7 @@ pub fn vec_char_span_add_str(
     const @"%combined_span" = try @"%vec".spanAddIterator(
         @"%allocator",
         @"%".span,
-        std.unicode.Utf8View.initUnchecked(@"%".new).iterator(),
+        @"%".new.utf8.iterator(),
         std.unicode.Utf8Iterator.nextCodepoint,
     );
     return .{ .span = @"%combined_span", .vec = @"%vec" };

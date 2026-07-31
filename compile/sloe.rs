@@ -5821,11 +5821,28 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             Some(_) => Some(type_char),
         },
         SyntaxExpression::Str {
-            open_quote_start: _,
-            content: _,
-            content_end: _,
-            closed_quote_exists: _,
-        } => Some(type_str),
+            open_quote_start,
+            content,
+            content_end,
+            closed_quote_exists,
+        } => {
+            if content.is_empty() {
+                errors.push(ErrorNode {
+                    range: lsp_types::Range {
+                        start: *open_quote_start,
+                        end: if *closed_quote_exists {
+                            symbol_end(*content_end, "\"")
+                        } else {
+                            *content_end
+                        },
+                    },
+                    message: Box::from("missing characters between the double quotes \"here\". A `Str` always needs at least one char, otherwise switch to an Opt Str"),
+                });
+                None
+            } else {
+                Some(type_str)
+            }
+        }
         SyntaxExpression::Variable(name) => {
             if let Some(_origin_info) = origins.get(&name.value) {
                 let maybe_existing_origin_variable_use_start =
@@ -7118,10 +7135,30 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             content,
             content_end: _,
             closed_quote_exists: _,
-        } => syn::Expr::Lit(syn::ExprLit {
-            attrs: vec![],
-            lit: syn::Lit::Str(syn::LitStr::new(content, syn_span())),
-        }),
+        } => {
+            if content.is_empty() {
+                syn_expr_todo()
+            } else {
+                syn::Expr::Struct(syn::ExprStruct {
+                    attrs: vec![],
+                    qself: None,
+                    path: syn_path_reference(["Str"]),
+                    brace_token: syn::token::Brace(syn_span()),
+                    fields: std::iter::once(syn::FieldValue {
+                        attrs: vec![],
+                        member: syn::Member::Named(syn_ident("str")),
+                        colon_token: Some(syn::token::Colon(syn_span())),
+                        expr: syn::Expr::Lit(syn::ExprLit {
+                            attrs: vec![],
+                            lit: syn::Lit::Str(syn::LitStr::new(content, syn_span())),
+                        }),
+                    })
+                    .collect(),
+                    dot2_token: None,
+                    rest: None,
+                })
+            }
+        }
         SyntaxExpression::Variable(name) => {
             if let Some(_origin_info) = origins.get(&name.value) {
                 syn_expr_reference([&name_to_lowercase_rust(&name.value)])
@@ -10429,7 +10466,7 @@ This can remove a bunch of noise compared to chaining `Vec-span-add` operations"
                         "vec",
                         type_vec(type_variable("origin"), type_char),
                     ),
-                    ("span", type_opt(type_span(type_variable("origin"))))
+                    ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
@@ -10929,9 +10966,11 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    r#"Text valid for the entire program like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""` (`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
+                    r#"A positive-length piece of a known text which is valid for the entire program,
+like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""`
+(`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
-When building strings, use functions like `Vec-char-opt-span-add-str`."#,
+When building new strings at runtime, use functions like `Vec-char-opt-span-add-str`."#,
                 )),
                 parameters: vec![],
                 type_: Some(type_str),

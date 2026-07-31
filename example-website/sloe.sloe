@@ -61,7 +61,7 @@ fn View
     ? .vec chars .span |no<Opt Span _chars> . [text]
     ? Vec-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
     ? U32-dup mouse-x [.a mouse-x .b mouse-x-use]
-    ? Vec-char-opt-span-add-u32 .. text .new mouse-x-use [text]
+    ? Vec-char-span-add-u32 .. text .new mouse-x-use [text]
     ? Vec-char-span-add-str .. text .new " .y " [text]
     ? U32-dup mouse-y [.a mouse-y .b mouse-y-use]
     ? Vec-char-span-add-u32 .. text .new mouse-y-use [.vec chars .span text-span]

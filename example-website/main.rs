@@ -64,9 +64,9 @@ fn sloe_dom_node_to_sauron<Htmls, Modifiers: 'static, Chars: 'static>(
     chars: &sloe::Vec<Chars, char>,
 ) -> sauron::Node<sloe::Event> {
     match sloe_dom_node {
-        sloe::Html::Text_static(text) => {
-            sauron::Node::Leaf(sauron::vdom::Leaf::Text(std::borrow::Cow::Borrowed(text)))
-        }
+        sloe::Html::Text_static(text) => sauron::Node::Leaf(sauron::vdom::Leaf::Text(
+            std::borrow::Cow::Borrowed(text.as_str()),
+        )),
         sloe::Html::Text_dynamic(text) => sauron::text(
             chars
                 .opt_span_slice(text.as_ref())
@@ -75,7 +75,7 @@ fn sloe_dom_node_to_sauron<Htmls, Modifiers: 'static, Chars: 'static>(
         ),
         sloe::Html::Element(element) => sauron::vdom::Node::Element(sauron::vdom::Element::new(
             None,
-            element.tag,
+            element.tag.as_str(),
             modifiers
                 .opt_span_slice(element.modifiers.as_ref())
                 .iter()
@@ -95,14 +95,14 @@ fn sloe_dom_modifier_to_sauron<Chars: 'static>(
     match sloe_dom_modifier {
         sloe::Modifier::Attribute_static(attribute) => sauron::Attribute {
             namespace: None,
-            name: attribute.key,
+            name: attribute.key.as_str(),
             value: vec![sauron::AttributeValue::Simple(sauron::Value::Cow(
-                std::borrow::Cow::Borrowed(attribute.value),
+                std::borrow::Cow::Borrowed(attribute.value.as_str()),
             ))],
         },
         sloe::Modifier::Attribute_dynamic(attribute) => sauron::Attribute {
             namespace: None,
-            name: attribute.key,
+            name: attribute.key.as_str(),
             value: vec![sauron::AttributeValue::Simple(sauron::Value::Cow(
                 std::borrow::Cow::Owned(
                     chars
@@ -116,15 +116,15 @@ fn sloe_dom_modifier_to_sauron<Chars: 'static>(
             namespace: None,
             name: "style",
             value: vec![sauron::AttributeValue::Style(vec![sauron::vdom::Style {
-                name: std::borrow::Cow::Borrowed(style.key),
-                value: sauron::Value::Cow(std::borrow::Cow::Borrowed(style.value)),
+                name: std::borrow::Cow::Borrowed(style.key.as_str()),
+                value: sauron::Value::Cow(std::borrow::Cow::Borrowed(style.value.as_str())),
             }])],
         },
         sloe::Modifier::Style_dynamic(style) => sauron::Attribute {
             namespace: None,
             name: "style",
             value: vec![sauron::AttributeValue::Style(vec![sauron::vdom::Style {
-                name: std::borrow::Cow::Borrowed(style.key),
+                name: std::borrow::Cow::Borrowed(style.key.as_str()),
                 value: sauron::Value::Cow(std::borrow::Cow::Owned(
                     chars
                         .opt_span_slice(style.value.as_ref())
@@ -135,7 +135,7 @@ fn sloe_dom_modifier_to_sauron<Chars: 'static>(
         },
         sloe::Modifier::Property(property) => sauron::Attribute {
             namespace: None,
-            name: property.key,
+            name: property.key.as_str(),
             value: vec![sauron::AttributeValue::Simple(
                 sloe_modifier_property_value_to_sauron(&property.value, chars),
             )],

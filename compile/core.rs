@@ -40,9 +40,9 @@ pub struct Record·by·n<By, N> {
     pub n: N,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·fn·in<Fn, In> {
-    pub fn_: Fn,
-    pub in_: In,
+pub struct Record·fnø·inø<Fn, In> {
+    pub fnø: Fn,
+    pub inø: In,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·max·min<Max, Min> {
@@ -252,7 +252,23 @@ pub type U32 = u32;
 pub type I32 = i32;
 pub type F32 = f32;
 pub type Char = char;
-pub type Str = &'static str;
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    std::cmp::PartialEq,
+    std::cmp::Eq,
+    std::cmp::PartialOrd,
+    std::cmp::Ord,
+    std::hash::Hash,
+)]
+#[non_exhaustive]
+pub struct Str {
+    /// known to contain at least 1 char
+    // I already tried to split it into start:char, after:&str
+    // but then it can't be passed to functions, Cow, etc. that expect a single consecutive &str
+    pub str: &'static str,
+}
 pub type Fn<In, Out> = fn(In) -> Out;
 pub type Opt<Yes> = Choice·No·Yes<Record, Yes>;
 
@@ -468,6 +484,33 @@ impl<'a, Element> std::iter::DoubleEndedIterator for OwnedSliceIterator<'a, Elem
         self.ref_mut_iterator.next_back().map(|element_ref| unsafe {
             std::ptr::NonNull::read(std::ptr::NonNull::from_ref(element_ref))
         })
+    }
+}
+
+impl Str {
+    pub const fn from_str(static_str: &'static str) -> std::option::Option<Str> {
+        if static_str.is_empty() {
+            std::option::Option::None
+        } else {
+            std::option::Option::Some(Str { str: static_str })
+        }
+    }
+    pub const fn as_str(self) -> &'static str {
+        self.str
+    }
+    pub fn split_start(self) -> (char, &'static str) {
+        let mut chars = self.str.chars();
+        (
+            unsafe { std::iter::Iterator::next(&mut chars).unwrap_unchecked() },
+            chars.as_str(),
+        )
+    }
+    pub fn split_end(self) -> (char, &'static str) {
+        let mut chars = self.str.chars();
+        (
+            unsafe { std::iter::DoubleEndedIterator::next_back(&mut chars).unwrap_unchecked() },
+            chars.as_str(),
+        )
     }
 }
 
@@ -908,6 +951,23 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             }),
         }
     }
+    pub fn add_one_then_iterator(
+        &mut self,
+        new_start: Element,
+        new_after: impl std::iter::Iterator<Item = Element>,
+    ) -> Span<LocalOrigin> {
+        let length_before_new = self.elements.len();
+        self.elements.push(std::mem::MaybeUninit::new(new_start));
+        std::iter::Extend::extend(
+            &mut self.elements,
+            new_after.map(std::mem::MaybeUninit::new),
+        );
+        Span {
+            start: Slot::from_index(length_before_new as u32),
+            length: std::num::NonZeroU32::MIN
+                .saturating_add((self.elements.len() - (length_before_new + 1)) as u32),
+        }
+    }
     // invariant! new_element_count must equal new_elements.count()
     fn add_iterator_filled(
         &mut self,
@@ -1074,6 +1134,16 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             length: moved_span
                 .length
                 .saturating_add((self.elements.len() - length_before_extend) as u32),
+        }
+    }
+    pub fn opt_span_add_iterator(
+        &mut self,
+        span: Opt<Span<LocalOrigin>>,
+        new_elements: impl std::iter::Iterator<Item = Element>,
+    ) -> Opt<Span<LocalOrigin>> {
+        match span {
+            Opt::No(()) => self.add_iterator(new_elements),
+            Opt::Yes(span) => Opt::Yes(self.span_add_iterator(span, new_elements)),
         }
     }
     pub fn span_add_array<Record>(
@@ -1307,25 +1377,15 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     }
 }
 impl<Origin> Vec<Origin, Char> {
-    /// try to avoid using
-    pub fn insert_str(&mut self, new_str: &str) -> Opt<Span<Origin>> {
-        self.insert_iterator_without_known_size(new_str.chars())
+    pub fn add_str(&mut self, new_str: Str) -> Span<Origin> {
+        let (new_start, new_after) = new_str.split_start();
+        self.add_one_then_iterator(new_start, new_after.chars())
     }
-    pub fn add_str(&mut self, new_str: &str) -> Opt<Span<Origin>> {
-        self.add_iterator(new_str.chars())
-    }
-    pub fn opt_span_add_str(
-        &mut self,
-        span: Opt<Span<Origin>>,
-        new_str: &str,
-    ) -> Opt<Span<Origin>> {
+    pub fn opt_span_add_str(&mut self, span: Opt<Span<Origin>>, new_str: Str) -> Span<Origin> {
         match span {
             Opt::No(()) => self.add_str(new_str),
-            Opt::Yes(span) => Opt::Yes(self.span_add_str(span, new_str)),
+            Opt::Yes(span) => self.span_add_iterator(span, new_str.str.chars()),
         }
-    }
-    pub fn span_add_str(&mut self, span: Span<Origin>, new_str: &str) -> Span<Origin> {
-        self.span_add_iterator(span, new_str.chars())
     }
 }
 
@@ -1638,8 +1698,8 @@ pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> Record·a·b<Fn<In, Out>, Fn<In, Out
     Record·a·b { a: fn_, b: fn_ }
 }
 pub fn fn_rid<In, Out>(_: Fn<In, Out>) -> Record {}
-pub fn call<In, Out>(to_call: Record·fn·in<Fn<In, Out>, In>) -> Out {
-    (to_call.fn_)(to_call.in_)
+pub fn call<In, Out>(to_call: Record·fnø·inø<Fn<In, Out>, In>) -> Out {
+    (to_call.fnø)(to_call.inø)
 }
 
 pub fn char_dup(char: Char) -> Record·a·b<Char, Char> {
@@ -1658,30 +1718,24 @@ pub fn str_dup(str: Str) -> Record·a·b<Str, Str> {
 }
 pub fn str_rid(_: Str) -> Record {}
 pub fn str_byte_count(str: Str) -> u32 {
-    str.len() as u32
+    str.str.len() as u32
 }
 pub fn str_char_count(str: Str) -> u32 {
-    std::iter::Iterator::count(str.chars()) as u32
+    std::iter::Iterator::count(str.str.chars()) as u32
 }
-pub fn str_start(str: Str) -> Opt<Record·after·start<Str, Char>> {
-    let mut chars = str.chars();
-    Opt::from_option(
-        std::iter::Iterator::next(&mut chars).map(|c| Record·after·start {
-            start: c,
-            after: chars.as_str(),
-        }),
-    )
+pub fn str_start(str: Str) -> Record·after·start<Opt<Str>, Char> {
+    let (start, after) = str.split_start();
+    Record·after·start {
+        start: start,
+        after: Opt::from_option(Str::from_str(after)),
+    }
 }
-pub fn str_end(str: Str) -> Opt<Record·before·end<Str, Char>> {
-    let mut chars = str.chars();
-    Opt::from_option(
-        std::iter::Iterator::next(&mut std::iter::Iterator::rev(&mut chars)).map(|c| {
-            Record·before·end {
-                end: c,
-                before: chars.as_str(),
-            }
-        }),
-    )
+pub fn str_end(str: Str) -> Record·before·end<Opt<Str>, Char> {
+    let (end, before) = str.split_end();
+    Record·before·end {
+        end: end,
+        before: Opt::from_option(Str::from_str(before)),
+    }
 }
 pub fn str_chars_fold<State>(
     Record·direction·state·step·str {
@@ -1696,7 +1750,7 @@ pub fn str_chars_fold<State>(
         Str,
     >,
 ) -> State {
-    iterator_fold_in_direction(str.chars(), direction, initial_state, |state, char| {
+    iterator_fold_in_direction(str.str.chars(), direction, initial_state, |state, char| {
         step(Record·char·state {
             state: state,
             char: char,
@@ -1743,7 +1797,7 @@ pub fn str_chars_fold_while<Exit, GoOn>(
     >,
 ) -> Choice·Exit·Go_on<Exit, GoOn> {
     Choice·Exit·Go_on::from_control_flow(iterator_try_fold_in_direction(
-        str.chars(),
+        str.str.chars(),
         direction,
         initial_state,
         |state, char| {
@@ -2141,24 +2195,12 @@ pub fn vec_insert_vec_span<Origin, SourceOrigin, Element>(
         span: new_span,
     }
 }
-pub fn vec_char_insert_str<Origin>(
-    Record·new·vec {
-        mut vec,
-        new: new_str,
-    }: Record·new·vec<Str, Vec<Origin, Char>>,
-) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Char>> {
-    let new_span = vec.insert_str(new_str);
-    Record·span·vec {
-        vec: vec,
-        span: new_span,
-    }
-}
 pub fn vec_char_add_str<Origin>(
     Record·new·vec {
         mut vec,
         new: new_str,
     }: Record·new·vec<Str, Vec<Origin, Char>>,
-) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Char>> {
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     let new_span = vec.add_str(new_str);
     Record·span·vec {
         vec: vec,
@@ -2262,7 +2304,7 @@ pub fn vec_char_opt_span_add_str<Origin>(
         span,
         new: new_str,
     }: Record·new·span·vec<Str, Opt<Span<Origin>>, Vec<Origin, Char>>,
-) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Char>> {
+) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     let combined_span = vec.opt_span_add_str(span, new_str);
     Record·span·vec {
         vec: vec,
@@ -2276,7 +2318,7 @@ pub fn vec_char_span_add_str<Origin>(
         new: new_str,
     }: Record·new·span·vec<Str, Span<Origin>, Vec<Origin, Char>>,
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
-    let combined_span = vec.span_add_str(span, new_str);
+    let combined_span = vec.span_add_iterator(span, new_str.str.chars());
     Record·span·vec {
         vec: vec,
         span: combined_span,
@@ -2291,7 +2333,7 @@ pub fn vec_char_span_add_u32<Origin>(
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.span_add_str(span, &new_as_string);
+    let combined_span = vec.span_add_iterator(span, new_as_string.chars());
     Record·span·vec {
         vec: vec,
         span: combined_span,
@@ -2306,7 +2348,7 @@ pub fn vec_char_opt_span_add_u32<Origin>(
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.opt_span_add_str(span, &new_as_string);
+    let combined_span = vec.opt_span_add_iterator(span, new_as_string.chars());
     Record·span·vec {
         vec: vec,
         span: {
@@ -2324,7 +2366,7 @@ pub fn vec_char_span_add_i32<Origin>(
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.span_add_str(span, &new_as_string);
+    let combined_span = vec.span_add_iterator(span, new_as_string.chars());
     Record·span·vec {
         vec: vec,
         span: combined_span,
@@ -2339,7 +2381,7 @@ pub fn vec_char_opt_span_add_i32<Origin>(
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.opt_span_add_str(span, &new_as_string);
+    let combined_span = vec.opt_span_add_iterator(span, new_as_string.chars());
     Record·span·vec {
         vec: vec,
         span: {
@@ -2357,7 +2399,7 @@ pub fn vec_char_span_add_f32<Origin>(
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{:.}", new);
-    let combined_span = vec.span_add_str(span, &new_as_string);
+    let combined_span = vec.span_add_iterator(span, new_as_string.chars());
     Record·span·vec {
         vec: vec,
         span: combined_span,
@@ -2372,7 +2414,7 @@ pub fn vec_char_opt_span_add_f32<Origin>(
 ) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{:.}", new);
-    let combined_span = vec.opt_span_add_str(span, &new_as_string);
+    let combined_span = vec.opt_span_add_iterator(span, new_as_string.chars());
     Record·span·vec {
         vec: vec,
         span: {

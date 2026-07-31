@@ -628,8 +628,6 @@ cargo install --offline --debug --path . sloe
 
 - add more math and maybe bit operations
 
-- change `str` to mean non-empty string. This is more annoying for FFI (needs a wrapper over str/[]u8) but I think overall this is okay especially since memory efficiency is the same
-
 - for simplicity, change `Function<..., ..., ...>` to `Function<...><...><...>` at call and project fn sites
 
 - rename `Vec` to `Buf`. `Vec` is unintuitive (it's not a vector). buf is used by carbon and often for builders like StringBuffer
