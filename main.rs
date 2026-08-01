@@ -239,7 +239,7 @@ fn present_project_fn_with_complete_type_markdown(
         "```sloe
 fn {}{}
     {}
-    :>
+    :
     {}
 ```
 {}
@@ -1563,9 +1563,9 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                 name,
                 type_parameters,
                 parameter,
-                arrow_start,
+                colon_start,
                 result_type,
-                angle_right_start,
+                equals_start,
                 documentation,
                 result,
             } => {
@@ -1584,14 +1584,14 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                 if let Some(parameter) = parameter {
                     sloe_syntax_pattern_highlight(state, patterns, types, parameter);
                 }
-                if let Some(arrow_start) = arrow_start {
-                    keyword_highlight(state, ":>", *arrow_start);
+                if let Some(colon_start) = colon_start {
+                    keyword_highlight(state, ":", *colon_start);
                 }
                 if let Some(result_type) = result_type {
                     sloe_syntax_type_highlight(state, types, result_type);
                 }
-                if let Some(angle_right_start) = angle_right_start {
-                    keyword_highlight(state, ">", *angle_right_start);
+                if let Some(equals_start) = equals_start {
+                    keyword_highlight(state, "=", *equals_start);
                 }
                 if let Some(documentation) = documentation {
                     sloe_syntax_comments_highlight(state, documentation);
@@ -2358,9 +2358,9 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     name: _,
                     type_parameters,
                     parameter,
-                    arrow_start: _,
+                    colon_start: _,
                     result_type,
-                    angle_right_start: _,
+                    equals_start: _,
                     documentation: _,
                     result: _,
                 } => {
@@ -2699,9 +2699,9 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                     name,
                     type_parameters: _,
                     parameter: _,
-                    arrow_start: _,
+                    colon_start: _,
                     result_type: _,
-                    angle_right_start: _,
+                    equals_start: _,
                     documentation: _,
                     result: maybe_result,
                 } => {

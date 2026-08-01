@@ -1059,11 +1059,6 @@
     }
   },
   {
-    "type": "key_symbol_angle_right",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "pattern_field_not_open_ending_in_record_typed",
     "named": true,
     "fields": {},
@@ -1451,11 +1446,11 @@
           "named": true
         },
         {
-          "type": "key_symbol_angle_right",
+          "type": "key_symbol_colon",
           "named": true
         },
         {
-          "type": "key_symbol_arrow",
+          "type": "key_symbol_equals",
           "named": true
         },
         {
@@ -2212,7 +2207,11 @@
     "named": true
   },
   {
-    "type": "key_symbol_arrow",
+    "type": "key_symbol_colon",
+    "named": true
+  },
+  {
+    "type": "key_symbol_equals",
     "named": true
   },
   {

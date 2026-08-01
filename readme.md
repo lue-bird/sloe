@@ -57,7 +57,7 @@ Every created collection has a correlated origin.
 A value whose type contains an origin can't escape the scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```sloe
-fn Some-buf . :> Buf ??origin cannot even be annotated??, u32 >
+fn Some-buf . : Buf ??origin cannot even be annotated??, u32 =
     origin buf-origin
     ? Buf-empty<u32> buf-origin [buf]
     ? Buf-add .buf buf .new 123 u32 [.buf buf .slot slot]
@@ -65,7 +65,7 @@ fn Some-buf . :> Buf ??origin cannot even be annotated??, u32 >
     buf
 
 # compiles
-fn Add-some-values buf Buf _origin, u32 :> Buf _origin, u32 >
+fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
     ? Buf-add .buf buf .new 123 u32 [.buf buf .slot slot]
     ...
     buf
@@ -90,7 +90,7 @@ In my opinion this isn't quite a solved problem and if you have other ideas, I w
 Like every other sloe value, an origin type can only be used once, so only for one collection.
 ```sloe
 # use a temporary collection contained within a scope
-fn Use-buf . :> u32 >
+fn Use-buf . : u32 =
     origin buf-origin
   	? Buf-empty<u32> buf-origin [buf]
   	? Buf-add .buf buf .new 123 u32 [.buf buf .slot first-slot]
@@ -100,7 +100,7 @@ fn Use-buf . :> u32 >
   	first # = 123 u32
 
 # different branches, different scopes
-fn Use-opt opt Opt u32 :> ... >
+fn Use-opt opt Opt u32 : ... =
     # this won't compile as their origins come from different branches
     ? (
         ? opt
@@ -149,14 +149,14 @@ ty State _expressions-origin
 
 fn Initial-state
     .expressions-origin expressions-origin Origin _expressions-origin
-    :> State _expressions-origin >
+    : State _expressions-origin =
     .expressions Buf-empty<Expression _expressions-origin, ...> expressions-origin
     .root-expression (..do parsing..)
 
 fn State-to-interfaces-into
     .interfaces interfaces Buf _interfaces-origin, Interface State _expressions-origin
     .state state State _expressions-origin
-    :> Buf Interfaces-origin, _interface State _expressions-origin >
+    : Buf Interfaces-origin, _interface State _expressions-origin =
     ? (
         Buf-one
         .origin interfaces-origin
@@ -170,7 +170,7 @@ fn State-to-interfaces-into
 ## pass in origins or collections from the outside
 
 ```sloe
-fn Buf-empty<_element> origin Origin _origin :> Buf _origin, _element
+fn Buf-empty<_element> origin Origin _origin : Buf _origin, _element
 ```
 Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection that you want to edit.
@@ -238,7 +238,7 @@ origin new-origin-name expression-that uses new-origin-name
 # functions require appended space-separated type parameters: <...>
 fn Function-name<_potential, _type-arguments, _only-used-in-the-result>
     parameter-pattern-with-types
-    :> result-type >
+    : result-type =
     # optional documentation
     # comment
     result-expression
@@ -322,11 +322,11 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Buf-counting-slot-dup
       .buf Buf-counting _origin, _element
       .slot Slot _origin
-      :>
+      :
       .buf Buf-counting _origin, _element
       .a Slot _origin
       .b Slot _origin
-      >
+      =
   # what about spans?
   ```
   In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `Set-counting`) etc.
@@ -401,7 +401,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Recurse
       .consume-origin consume-origin _consume-origin
       .result-origin result-origin _result-origin
-      :> Buf _result-origin, u32 >
+      : Buf _result-origin, u32 =
       origin local-origin
       ? Buf-empty<u32> consume-origin [temporary]
       ? Recurse local-origin result-origin [result]
@@ -447,7 +447,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
 - adding function call syntax sugar similar to piping.
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
 - (rejected, but interesting in theory) making `Buf` etc store multiple kinds of data (heterogenous) and letting them give out `Slot origin, data-type` and `Span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to. Similarly, only one buf needs to be passed around.
-  This makes the porpose of `Buf` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression Expression _origin .data Buf _origin, ... :> .buf Buf _origin ... .end text-position`.
+  This makes the porpose of `Buf` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression Expression _origin .data Buf _origin, ... : .buf Buf _origin ... .end text-position`.
   This would also in theory enable a crazy representation of tagged unions as:
   ```sloe
   ty Expression-slot _origin
@@ -478,7 +478,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   The benefit is that the question above is answered (single field = single variant).
   Overall this is "more correct" than the current solution.
   Rejected because this is harder to type (and would require a change of type variable syntax)
-- (rejection not final for all eternity. If you have a good use case, I'll support it) allow field and variant names to start with digit, upper-case and -, like `fn Char-dup char char :> .0 char .1 char`.
+- (rejection not final for all eternity. If you have a good use case, I'll support it) allow field and variant names to start with digit, upper-case and -, like `fn Char-dup char char : .0 char .1 char`.
   One nice thing is that this matches what most language use as field names for tuples.
   This is also a little bit confusing but you don't have to use it.
   Use cases are e.g. `ty bit |0 . |1 .`, `type board-pin |0 . |1 . |3 . |10 .` and nicer array records.
@@ -491,7 +491,7 @@ While seemingly convenient and magnitudes better than regular mutable pointers,
 - there's no way to "reconstruct" a different out value. Especially for non-trivial edits the &mut approach can get messy or it's straight up impossible and parts will need to get cloned unnecessarily
 - there's no way to change the type (e.g. from `Opt Span` to `Span`)
 - there's no there's two ways to specify most conversions, with usually no clear method of converting one to the other
-- it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn .context context ... :> |exit found |go-on context` where found contains some parts of the context). This isn't modelled well with `&mut`
+- it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn .context context ... : |exit found |go-on context` where found contains some parts of the context). This isn't modelled well with `&mut`
 - `&mut` means the resulting changed collection is not returned, making use as the input to another function impossible. This almost necessarily results in the classic procedural-style statement form as opposed to the functional-style expression form. Minor gripe: especially in languages that don't allow local scopes with local returns (far, far too many) this basically makes it impossible to locally introduce a value, change it and implant it somewhere; instead you have to move the variable up to the top level.
 - returning `.` (like returning `Unit` in gleam) feels super awkward to my brain. Most often, languages then automatically return void/... in the absence of a return and introduce all kinds of constructs like re-assignable variables, additional constructs for looping and branching that all can only return void/... . To my brain, this just confuses matters; it loves simple to follow flow of state!
 - &mut usually comes with the need to check for non-overlapping references to the same parts of data. This isn't possible with owned data passing in the first place
@@ -536,7 +536,7 @@ a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly
 - it's tough (usually) to annotate a function whose arguments and argument types are unknown. E.g. what would `fn-dup`'s type be?
 - positional arguments (usually) means no passing in bulk
   ```sloe
-  fn U32-square-clamp natural u32 :> u32 >
+  fn U32-square-clamp natural u32 : u32 =
       U32-add-clamp U32-dup natural
   ```
 
@@ -635,8 +635,6 @@ cargo install --offline --debug --path . sloe
 
 - strongly consider replacing `<>` by `{}` because it is more easily recognized as parens
 
-- change `fn :> result-type >` to `fn : result-type =` purely for a familiarty bonus. It also aligns more nicely and is faster to type.
-
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
     - zig actually doesn't have the concept of anonymous structs and union(enum)s anymore. This can be worked around but I want to ask others for ideas that are more ergonomic.
@@ -697,7 +695,7 @@ cargo install --offline --debug --path . sloe
       
       In theory, the same effect could be achieved without syntax additions:
       ```sloe
-      fn Origin-dup origin Origin _local :> .a Origin (.a _local) .b Origin (.b _local)
+      fn Origin-dup origin Origin _local : .a Origin (.a _local) .b Origin (.b _local)
       ty Str-origin _origin .a _origin
       ty Expression-origin _origin .b .a _origin
       ty Pattern-origin _origin .b .b _origin

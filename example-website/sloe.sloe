@@ -10,7 +10,7 @@ ty event
     |counter-clicked .
     |mouse-moved .x u32 .y u32
 
-fn Initial-state mouse-trail-origin Origin _mouse-trail-origin :> State _mouse-trail-origin >
+fn Initial-state mouse-trail-origin Origin _mouse-trail-origin : State _mouse-trail-origin =
     .count 0 u32
     .mouse-x 0 u32
     .mouse-y 0 u32
@@ -20,7 +20,7 @@ fn Initial-state mouse-trail-origin Origin _mouse-trail-origin :> State _mouse-t
 fn Update
     .state state State _mouse-trail-origin
     .event event event
-    :> State _mouse-trail-origin >
+    : State _mouse-trail-origin =
     ? event
     [|counter-clicked .] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
@@ -50,13 +50,13 @@ fn View
     .htmls htmls Buf _htmls, Html _htmls, _modifiers, _chars
     .modifiers modifiers Buf _modifiers, Modifier event, _chars
     .chars chars Buf _chars, char
-    :>
+    :
     .state State _mouse-trail-origin
     .html Html _htmls, _modifiers, _chars
     .htmls Buf _htmls, Html _htmls, _modifiers, _chars
     .modifiers Buf _modifiers, Modifier event, _chars
     .chars Buf _chars, char
-    >
+    =
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
     ? .buf chars .span |no<Opt Span _chars> . [text]
     ? Buf-char-opt-span-add-str .. text .new "your mouse is at .x " [text]

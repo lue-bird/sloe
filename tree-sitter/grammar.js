@@ -45,9 +45,9 @@ export default grammar({
         $.project_fn_name,
         optional($.angled_type_parameters),
         $.pattern_typed,
-        $.key_symbol_arrow,
+        $.key_symbol_colon,
         $.type,
-        $.key_symbol_angle_right,
+        $.key_symbol_equals,
         // no repeat($.comment), these can already be prepended to the resulting expression
         // which is syntactically equivalent
         $.expression,
@@ -439,8 +439,8 @@ export default grammar({
     keyword_fn: ($) => "fn",
     keyword_ty: ($) => "ty",
     key_symbol_question_mark: ($) => "?",
-    key_symbol_angle_right: ($) => ">",
-    key_symbol_arrow: ($) => ":>",
+    key_symbol_equals: ($) => "=",
+    key_symbol_colon: ($) => ":",
     key_symbol_spread_fields: ($) => "..",
   },
 });

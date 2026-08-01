@@ -33,9 +33,9 @@ pub enum SyntaxProjectElement<Expressions, Patterns, Types> {
         name: Option<WithStartPosition<Name>>,
         type_parameters: Option<SyntaxAngledTypeParameters>,
         parameter: Option<SyntaxPattern<Patterns, Types>>,
-        arrow_start: Option<lsp_types::Position>,
+        colon_start: Option<lsp_types::Position>,
         result_type: Option<SyntaxType<Types>>,
-        angle_right_start: Option<lsp_types::Position>,
+        equals_start: Option<lsp_types::Position>,
         documentation: Option<SyntaxComments>,
         result: Option<SyntaxExpression<Expressions, Patterns, Types>>,
     },
@@ -1304,11 +1304,11 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     parse_sloe_whitespace(state);
     let parameter = parse_pattern_typed(state, patterns, types);
     parse_sloe_whitespace(state);
-    let arrow_start = parse_symbol_as_start(state, ":>");
+    let colon_start = parse_symbol_as_start(state, ":");
     parse_sloe_whitespace(state);
     let result_type = parse_type(state, types);
     parse_sloe_whitespace(state);
-    let angle_right_start = parse_symbol_as_start(state, ">");
+    let equals_start = parse_symbol_as_start(state, "=");
     parse_sloe_whitespace(state);
     let documentation = parse_sloe_comments(state);
     parse_sloe_whitespace(state);
@@ -1318,9 +1318,9 @@ fn parse_project_fn<Expressions, Patterns, Types>(
         name: name,
         type_parameters: type_parameters,
         parameter: parameter,
-        arrow_start: arrow_start,
+        colon_start: colon_start,
         result_type: result_type,
-        angle_right_start: angle_right_start,
+        equals_start: equals_start,
         documentation: documentation,
         result: result,
     })
@@ -2318,7 +2318,7 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
                     range: *unknown_range,
                     message: format!("unrecognized syntax. {}
 If you wanted to start a project declaration, try one of:
-  - fn some-fn-name some-parameter some-parameter-type :> some result type > some result value
+  - fn some-fn-name some-parameter some-parameter-type : some result type = some result value
   - ty some-type-name some type",
                     if unknown_source
                         .starts_with(|c: char| c.is_ascii_lowercase())
@@ -2389,9 +2389,9 @@ If you wanted to start a project declaration, try one of:
                 name: maybe_name,
                 type_parameters,
                 parameter,
-                arrow_start: _,
+                colon_start: _,
                 result_type,
-                angle_right_start: _,
+                equals_start: _,
                 documentation,
                 result: maybe_result,
             } => match maybe_name {
@@ -9554,7 +9554,7 @@ where behavior should be the same everywhere and e.g adding 1 should not change 
 It's the default round operation implementation in e.g. [C](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf#page=271), [rust](https://doc.rust-lang.org/std/primitive.f32.html#method.round), [zig](https://ziglang.org/documentation/master/#round), ([llvm](https://llvm.org/docs/LangRef.html#llvm-round-intrinsic)), python 2.
 However, it's slower than `F32-round-nearest-else-even` on most architectures.
 ```sloe
-fn Age . :> f32 >
+fn Age . : f32 =
     F32-round-nearest-else-away-from-0 68.8 f32
 ```",
                 type_parameters: vec![],
@@ -9640,7 +9640,7 @@ Often called truncate",
                 documentation: "`F32-round-nearest-else-away-from-0`, then clamp to within 32 bits.
 In effect, `F32-round-toward-0-to-i32-clamp` truncates off at the decimal point:
 ```sloe
-fn Age . :> f32 >
+fn Age . : f32 =
     F32-round-toward-0-to-i32-clamp 68.8 f32
 ```",
                 type_parameters: vec![],
@@ -9712,7 +9712,7 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 name: "Call",
                 documentation: "Run a function which is passed by value.
 ```sloe
-fn Three . :> . >
+fn Three . : . =
     ? ([n u32] U32-add-clamp .a n .b 1 u32) [increment]
     Call .fn increment .in 2
 ```
@@ -9810,11 +9810,11 @@ If the length is greater than the given span's length, .start will be the existi
 fn Span-slot-at
     .span span Span _origin
     .index index u32
-    :>
+    :
     .before Opt Span _origin
     .at Slot _origin
     .after Opt Span _origin
-    >
+    =
     ?
         Span-start-of-length-positive
         .span span
@@ -9940,11 +9940,11 @@ If the length is greater than the given span's length, .start will be the existi
 fn Unset-span-slot-at
     .span span Unset-span _origin
     .index index u32
-    :>
+    :
     .before Opt Unset-span _origin
     .at Slot _origin
     .after Opt Unset-span _origin
-    >
+    =
     ?
         Unset-span-start-of-length-positive
         .span span
@@ -10021,7 +10021,7 @@ This can be used to recycle `Buf` memory from one `Buf` with one origin into ano
 fn Buf-recycle-empty
     .new-origin new-origin Origin _new-origin
     .old old Buf _old-origin, _element
-    :> Buf _new-origin _element >
+    : Buf _new-origin _element =
     ? Buf-to-unset old [unset-slice]
     Buf-reuse .origin new-origin .slice unset-slice
 ```",
@@ -10217,11 +10217,11 @@ Short for `Buf-unset` followed by `Buf-slot-rid`",
 fn Buf-copy-u32-at
     .buf buf Buf _origin, u32
     .slot slot Slot _origin
-    :>
+    :
     .buf buf Buf _origin, u32
     .slot slot Slot _origin
     .element u32
-    >
+    =
     ? Buf-unset .buf buf .slot slot
     [.buf buf .element element .slot unset-slot]
     ? U32-dup element [.a element .b element-copied]
@@ -10693,10 +10693,10 @@ fn Buf-span-add
     .buf buf Buf _origin, _element
     .span span Span _origin
     .new new _element
-    :>
+    :
     .buf Buf _origin, _element
     .span Span _origin
-    >
+    =
     # the first line is optional: it ensures that the new slot will actually be connected,
     # meaning the new element can stay at its position
     ? Buf-span-move-to-end .buf buf .span span [.buf buf .span .span]
@@ -10856,7 +10856,7 @@ which is a bit of a stinker. The reasons are:
                 name: "Unset-slice-rid",
                 documentation: "Deallocate an `Unset-slice` in full. Very rarely useful.
 ```sloe
-fn Hand-warmer-in-debug-mode . :> . >
+fn Hand-warmer-in-debug-mode . : . =
     Unset-slice-rid Unset-slice-allocate-length 9999999
 ```",
                 type_parameters: vec![],
@@ -10887,7 +10887,7 @@ pub static core_type_aliases: std::sync::LazyLock<
                 documentation: Some(Box::from(
                     r"A natural number >= 1 (positive integer) with 32 bits.
 ```sloe
-fn Answer . :> p32 >
+fn Answer . : p32 =
     P32-add-clamp .p 2 p32 .u 40 u32
 ```",
                 )),
@@ -10902,7 +10902,7 @@ fn Answer . :> p32 >
                 documentation: Some(Box::from(
                     r"A natural number >= 0 (unsigned integer) with 32 bits.
 ```sloe
-fn Answer . :> u32 >
+fn Answer . : u32 =
     U32-add-clamp .a 2 u32 .b 40 u32
 ```",
                 )),
@@ -10917,7 +10917,7 @@ fn Answer . :> u32 >
                 documentation: Some(Box::from(
                     r"A signed whole number (integer) with 32 bits.
 ```sloe
-fn Answer . :> i32 >
+fn Answer . : i32 =
     I32-add-clamp .a -8 i32 .b 50 i32
 ```",
                 )),
@@ -10933,7 +10933,7 @@ fn Answer . :> i32 >
                     r"A signed decimal number (floating-point) with 32 bit precision.
 Does not allow infinities or NaN. If you need these error states, explicitly model them with a choice type.
 ```sloe
-fn Answer . :> f32 >
+fn Answer . : f32 =
     F32-add-clamp .a -8.5 f32 .b 50.5 f32
 ```",
                 )),
@@ -11007,7 +11007,7 @@ This type argument is also used in `Slot`, `Span`, `Buf`, `Unset-slot`, `Unset-s
                 documentation: Some(Box::from(
                     "A grow- and shrinkable buffered array of elements. Arrays have constant time access and update and constant time add.
 ```sloe
-fn Use-a-buf . :> u32 >
+fn Use-a-buf . : u32 =
     origin my-elements-origin
     ? Buf-empty<u32> my-elements-origin [my-elements]
     ? Buf-add .buf my-elements .element 609 u32 [.buf my-elements .slot first-element-slot]
@@ -11086,7 +11086,7 @@ This is a very bare-bones feature because of sloe's simple type system.
 How does arry work then? The second record argument is set to an equivalent record
 that the runtime knows how to interpret as an actual array.
 ```sloe
-fn Example-array . :> Array u32, .e0 u32 .e1 u32 >
+fn Example-array . : Array u32, .e0 u32 .e1 u32 =
     ; 6 u32 ; 9 u32
 ```
 This is quite cursed!
@@ -11126,7 +11126,7 @@ Project functions are called as `Function argument`.
 Functions values can be copied with `Fn-dup` and scrapped with `Fn-rid`.
 This is only possible because functions do not have access to variables from the outside.
 ```sloe
-fn Three . :> . >
+fn Three . : . =
     ? ([n u32] U32-add-clamp .a n .b 1 u32) [increment]
     Call .fn increment .in 2
 ```"
@@ -11359,9 +11359,9 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 name,
                 type_parameters,
                 parameter,
-                arrow_start: _,
+                colon_start: _,
                 result_type,
-                angle_right_start: _,
+                equals_start: _,
                 documentation,
                 result,
             } => {
@@ -11399,7 +11399,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                     );
                 }
                 space_or_linebreak_indented_into(&mut formatted, header_line_span, next_indent(0));
-                formatted.push_str(":>");
+                formatted.push_str(":");
                 match result_type {
                     Some(result_type) => {
                         let result_type_lne_span = range_line_span(type_range(result_type, types));
@@ -11429,7 +11429,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                     }
                 }
 
-                formatted.push('>');
+                formatted.push('=');
                 if let Some(documentation) = documentation {
                     linebreak_indented_into(&mut formatted, next_indent(0));
                     syntax_comments_format(&mut formatted, next_indent(0), documentation);
@@ -13028,9 +13028,9 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
             name,
             type_parameters,
             parameter,
-            arrow_start: _,
+            colon_start: _,
             result_type,
-            angle_right_start: _,
+            equals_start: _,
             documentation: _,
             result,
         } => {
@@ -14167,9 +14167,9 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 name: _,
                 type_parameters,
                 parameter: _,
-                arrow_start: _,
+                colon_start: _,
                 result_type: _,
-                angle_right_start: _,
+                equals_start: _,
                 documentation: _,
                 result: _,
             } => type_parameters.as_ref().and_then(|type_parameters| {
@@ -14217,9 +14217,9 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 name: Some(fn_name),
                 type_parameters: _,
                 parameter: _,
-                arrow_start: _,
+                colon_start: _,
                 result_type: _,
-                angle_right_start: _,
+                equals_start: _,
                 documentation: _,
                 result: _,
             } if &fn_name.value == symbol_name.value => {
@@ -14292,9 +14292,9 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                 name: _,
                 type_parameters: _,
                 parameter,
-                arrow_start: _,
+                colon_start: _,
                 result_type,
-                angle_right_start: _,
+                equals_start: _,
                 documentation: _,
                 result,
             } => {
@@ -14359,9 +14359,9 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                         name: _,
                         type_parameters: _,
                         parameter,
-                        arrow_start: _,
+                        colon_start: _,
                         result_type,
-                        angle_right_start: _,
+                        equals_start: _,
                         documentation: _,
                         result,
                     } => {
@@ -14426,10 +14426,10 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                         fn_keyword_start: _,
                         name: _,
                         type_parameters: _,
-                        arrow_start: _,
+                        colon_start: _,
                         parameter,
                         result_type,
-                        angle_right_start: _,
+                        equals_start: _,
                         documentation: _,
                         result,
                     } => {
@@ -15068,9 +15068,9 @@ pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
             name: _,
             type_parameters: _,
             parameter,
-            arrow_start: _,
+            colon_start: _,
             result_type,
-            angle_right_start: _,
+            equals_start: _,
             documentation: _,
             result,
         } => {

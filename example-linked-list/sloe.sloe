@@ -10,10 +10,10 @@ fn Stack-cons
     .nodes nodes Buf _origin, Stack _origin, _element
     .stack tail Stack _origin, _element
     .new new-head _element
-    :>
+    :
     .nodes Buf _origin, Stack _origin, _element
     .stack Stack _origin, _element
-    >
+    =
     ? Buf-insert .buf nodes .new tail [.buf nodes .slot tail-slot]
     .nodes nodes
     .stack (|stacked<Stack _origin, _element> .head new-head .tail tail-slot)
@@ -21,14 +21,14 @@ fn Stack-cons
 fn Stack-pop
     .nodes nodes Buf _origin, Stack _origin, _element
     .stack stack Stack _origin, _element
-    :>
+    :
     .nodes Buf _origin, Stack _origin, _element
     .element (
         Opt
         .head _element
         .tail Stack _origin, _element
         )
-    >
+    =
     ? stack
     [|empty .]
         .nodes nodes
@@ -50,10 +50,10 @@ fn Stack-fold
     .stack stack Stack _origin, _element
     .state state _state
     .reduce reduce Fn .state _state .element _element, _state
-    :>
+    :
     .nodes Buf _origin, Stack _origin, _element
     .state _state
-    >
+    =
     ? stack
     [|empty .] (
         ? Fn-rid reduce [.]
@@ -69,7 +69,7 @@ fn Stack-fold
     .reduce reduce-b
     .state elements-nodes
 
-fn Example . :> u32 >
+fn Example . : u32 =
     origin example-stack-origin
     ?
         .nodes Buf-empty<Stack example-stack-origin, u32> example-stack-origin
