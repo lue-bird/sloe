@@ -602,6 +602,13 @@ test "anonymous struct fresh core.record works even through anonymous default st
     rid_both(core.Record(struct { a: core.Str, b: core.Str }), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
+test "anonymous struct fresh core.record works even through anonymous default struct type, equal types" {
+    const one = core.record(.{ .a = "a", .b = "a" });
+    const two_default = .{ .a = "a", .b = "a" };
+    const two = core.record(two_default);
+    try std.testing.expectEqual(@TypeOf(one), @TypeOf(two));
+    try std.testing.expectEqual(@TypeOf(one), core.Record(struct { a: *const [1:0]u8, b: *const [1:0]u8 }));
+}
 test "anonymous struct fresh core.record from different origins" {
     const one = core.record(.{ .a = core.Str.fromComptime("a"), .b = core.Str.fromComptime("a") });
     const two = try core.str_dup(core.Str.fromComptime("a"));

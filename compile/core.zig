@@ -22,7 +22,14 @@ fn RecordWithFieldNames(comptime @"%field_names": []const []const u8) type {
 }
 /// be aware: different field order means different type
 pub fn Record(@"%struct_type": type) type {
-    // potential improvement: check field names are sorted
+    // uncomment to verify field names are sorted
+    // if (!std.sort.isSorted([]const u8, @typeInfo(@"%struct_type").@"struct".field_names, {}, struct {
+    //     fn f(_: void, a: []const u8, b: []const u8) bool {
+    //         return std.mem.order(u8, a, b) == .lt;
+    //     }
+    // }.f)) {
+    //     @compileError("fields must be sorted");
+    // }
     return RecordWithFieldNames(@typeInfo(@"%struct_type").@"struct".field_names).WithFieldValueTypesOf(@"%struct_type");
 }
 /// be aware: different field order means different type
