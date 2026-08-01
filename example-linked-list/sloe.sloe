@@ -1,28 +1,28 @@
 
 ty Stack _origin, _element
-    # a singly-linked list. Since it is backed by a vec,
+    # a singly-linked list. Since it is backed by a buf,
     # adjacent nodes are likely close together in memory. Who doesn't love that.
-    # (note that it's still noticeably worse than a simple vec most of the time)
+    # (note that it's still noticeably worse than a simple buf most of the time)
     |empty .
     |stacked .head _element .tail Slot _origin
 
 fn Stack-cons
-    .nodes nodes Vec _origin, Stack _origin, _element
+    .nodes nodes Buf _origin, Stack _origin, _element
     .stack tail Stack _origin, _element
     .new new-head _element
     :>
-    .nodes Vec _origin, Stack _origin, _element
+    .nodes Buf _origin, Stack _origin, _element
     .stack Stack _origin, _element
     >
-    ? Vec-insert .vec nodes .new tail [.vec nodes .slot tail-slot]
+    ? Buf-insert .buf nodes .new tail [.buf nodes .slot tail-slot]
     .nodes nodes
     .stack (|stacked<Stack _origin, _element> .head new-head .tail tail-slot)
 
 fn Stack-pop
-    .nodes nodes Vec _origin, Stack _origin, _element
+    .nodes nodes Buf _origin, Stack _origin, _element
     .stack stack Stack _origin, _element
     :>
-    .nodes Vec _origin, Stack _origin, _element
+    .nodes Buf _origin, Stack _origin, _element
     .element (
         Opt
         .head _element
@@ -40,18 +40,18 @@ fn Stack-pop
                 >
             .
     [|stacked .head head .tail tail-slot] (
-        ? Vec-remove .vec nodes .slot tail-slot [.vec nodes .element tail]
+        ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .element tail]
         .nodes nodes
         .element (Opt-yes .head head .tail tail)
         )
 
 fn Stack-fold
-    .nodes nodes Vec _origin, Stack _origin, _element
+    .nodes nodes Buf _origin, Stack _origin, _element
     .stack stack Stack _origin, _element
     .state state _state
     .reduce reduce Fn .state _state .element _element, _state
     :>
-    .nodes Vec _origin, Stack _origin, _element
+    .nodes Buf _origin, Stack _origin, _element
     .state _state
     >
     ? stack
@@ -60,7 +60,7 @@ fn Stack-fold
         .nodes nodes .state state
         )
     [|stacked .head head .tail tail-slot]
-    ? Vec-remove .vec nodes .slot tail-slot [.vec nodes .element tail]
+    ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .element tail]
     ? Fn-dup reduce [.a reduce-a .b reduce-b]
     ? Call .fn reduce-a .in (.state state .element head) [elements-nodes]
     Stack-fold
@@ -72,7 +72,7 @@ fn Stack-fold
 fn Example . :> u32 >
     origin example-stack-origin
     ?
-        .nodes Vec-empty<Stack example-stack-origin, u32> example-stack-origin
+        .nodes Buf-empty<Stack example-stack-origin, u32> example-stack-origin
         .stack |empty<Stack example-stack-origin, u32> .
     [example-stack]
     ? Stack-cons .. example-stack .new 39 u32 [example-stack]
@@ -86,6 +86,6 @@ fn Example . :> u32 >
             U32-add-clamp .a state .b element
             )
     [.nodes example-stack-nodes .state result]
-    ? Vec-rid example-stack-nodes [.]
+    ? Buf-rid example-stack-nodes [.]
     result
 
