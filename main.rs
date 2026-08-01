@@ -5,9 +5,9 @@ use sloe_compile as sloe;
 struct State<Expressions, Patterns, Types> {
     projects: std::collections::HashMap<lsp_types::Uri, ProjectState<Expressions, Patterns, Types>>,
     syntax_expressions:
-        sloe::core::Vec<Expressions, sloe::SyntaxExpression<Expressions, Patterns, Types>>,
-    syntax_patterns: sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    syntax_types: sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+        sloe::core::Buf<Expressions, sloe::SyntaxExpression<Expressions, Patterns, Types>>,
+    syntax_patterns: sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    syntax_types: sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
 }
 struct ProjectState<Expressions, Patterns, Types> {
     source: String,
@@ -415,9 +415,9 @@ fn check_main(maybe_input_file_path: Option<&std::path::Path>) -> Result<(), ()>
     sloe::core::origin_new!(expressions, Expressions);
     sloe::core::origin_new!(patterns, Patterns);
     sloe::core::origin_new!(types, Types);
-    let mut syntax_expressions = sloe::core::vec_empty(expressions);
-    let mut syntax_patterns = sloe::core::vec_empty(patterns);
-    let mut syntax_types = sloe::core::vec_empty(types);
+    let mut syntax_expressions = sloe::core::Buf::new(expressions);
+    let mut syntax_patterns = sloe::core::Buf::new(patterns);
+    let mut syntax_types = sloe::core::Buf::new(types);
     let syntax_project = sloe::parse_project(
         &mut syntax_expressions,
         &mut syntax_patterns,
@@ -483,9 +483,9 @@ For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
             sloe::core::origin_new!(expressions, Expressions);
             sloe::core::origin_new!(patterns, Patterns);
             sloe::core::origin_new!(types, Types);
-            let mut syntax_expressions = sloe::core::vec_empty(expressions);
-            let mut syntax_patterns = sloe::core::vec_empty(patterns);
-            let mut syntax_types = sloe::core::vec_empty(types);
+            let mut syntax_expressions = sloe::core::Buf::new(expressions);
+            let mut syntax_patterns = sloe::core::Buf::new(patterns);
+            let mut syntax_types = sloe::core::Buf::new(types);
             let syntax_project = sloe::parse_project(
                 &mut syntax_expressions,
                 &mut syntax_patterns,
@@ -575,9 +575,9 @@ fn initial_state<Expressions, Patterns, Types>(
 ) -> State<Expressions, Patterns, Types> {
     State {
         projects: std::collections::HashMap::with_capacity(1),
-        syntax_expressions: sloe::core::vec_empty(expressions),
-        syntax_patterns: sloe::core::vec_empty(patterns),
-        syntax_types: sloe::core::vec_empty(types),
+        syntax_expressions: sloe::core::Buf::new(expressions),
+        syntax_patterns: sloe::core::Buf::new(patterns),
+        syntax_types: sloe::core::Buf::new(types),
     }
 }
 fn server_capabilities() -> lsp_types::ServerCapabilities {
@@ -932,7 +932,7 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
             );
         }
         if project_count == 1 {
-            fn vec_should_be_empty<Origin, Element>(vec: &sloe::core::Vec<Origin, Element>) {
+            fn vec_should_be_empty<Origin, Element>(vec: &sloe::core::Buf<Origin, Element>) {
                 if !vec.maybe_uninit_elements().is_empty() || !vec.vacant_spans().is_empty() {
                     eprintln!(
                         "vec not empty after rid step. remaining vacant spans: {:?}, remaining elements ({} including vacant) maybe uninit: {:?}",
@@ -970,12 +970,12 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
 fn initialize_project_state_from_source<Expressions, Patterns, Types>(
     connection: &lsp_server::Connection,
     uri: lsp_types::Uri,
-    expressions: &mut sloe::core::Vec<
+    expressions: &mut sloe::core::Buf<
         Expressions,
         sloe::SyntaxExpression<Expressions, Patterns, Types>,
     >,
-    patterns: &mut sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    types: &mut sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    patterns: &mut sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &mut sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
     source: String,
 ) -> ProjectState<Expressions, Patterns, Types> {
     let parsed_project = sloe::parse_project(expressions, patterns, types, &source);
@@ -1505,12 +1505,12 @@ fn keyword_highlight(
 fn sloe_project_highlight<Expressions, Patterns, Types>(
     state: &mut HighlightState,
     project: &sloe::SyntaxProject<Expressions, Patterns, Types>,
-    expressions: &sloe::core::Vec<
+    expressions: &sloe::core::Buf<
         Expressions,
         sloe::SyntaxExpression<Expressions, Patterns, Types>,
     >,
-    patterns: &sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    patterns: &sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
 ) {
     for element in &project.elements {
         match element {
@@ -1651,7 +1651,7 @@ fn sloe_angled_type_parameters_highlight(
 }
 fn sloe_angled_type_arguments_highlight<Types>(
     state: &mut HighlightState,
-    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
     angled_type_arguments: &sloe::SyntaxAngledTypeArguments<Types>,
 ) {
     if let Some(argument0) = &angled_type_arguments.argument0 {
@@ -1719,8 +1719,8 @@ fn sloe_syntax_optional_variant_name_highlight(
 }
 fn sloe_syntax_pattern_highlight<Patterns, Types>(
     state: &mut HighlightState,
-    patterns: &sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    patterns: &sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
     pattern: &sloe::SyntaxPattern<Patterns, Types>,
 ) {
     match pattern {
@@ -1783,7 +1783,7 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
 }
 fn sloe_syntax_type_highlight<Types>(
     state: &mut HighlightState,
-    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
     type_: &sloe::SyntaxType<Types>,
 ) {
     match type_ {
@@ -1862,12 +1862,12 @@ fn sloe_syntax_type_highlight<Types>(
 }
 fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
     state: &mut HighlightState,
-    expressions: &sloe::core::Vec<
+    expressions: &sloe::core::Buf<
         Expressions,
         sloe::SyntaxExpression<Expressions, Patterns, Types>,
     >,
-    patterns: &sloe::core::Vec<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    types: &sloe::core::Vec<Types, sloe::SyntaxType<Types>>,
+    patterns: &sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
+    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
     expression: &sloe::SyntaxExpression<Expressions, Patterns, Types>,
 ) {
     match expression {

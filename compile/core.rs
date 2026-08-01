@@ -110,43 +110,36 @@ pub struct Record·exit·remaining<Exit, Remaining> {
     pub remaining: Remaining,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·length·vec<Length, Vec> {
+pub struct Record·buf·length<Buf, Length> {
+    pub buf: Buf,
     pub length: Length,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·slot·vec<Slot, Vec> {
+pub struct Record·buf·slot<Buf, Slot> {
+    pub buf: Buf,
     pub slot: Slot,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·new·vec<New, Vec> {
+pub struct Record·buf·new<Buf, New> {
+    pub buf: Buf,
     pub new: New,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·new·slot·vec<New, Slot, Vec> {
+pub struct Record·buf·new·slot<Buf, New, Slot> {
+    pub buf: Buf,
     pub new: New,
     pub slot: Slot,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·in_·slot·update·vec<In, Slot, Update, Vec> {
-    pub in_: In,
-    pub slot: Slot,
-    pub update: Update,
-    pub vec: Vec,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Record·span·vec<Span, Vec> {
+pub struct Record·buf·span<Buf, Span> {
+    pub buf: Buf,
     pub span: Span,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·new·span·vec<New, Span, Vec> {
+pub struct Record·buf·new·span<Buf, New, Span> {
+    pub buf: Buf,
     pub new: New,
     pub span: Span,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·new·span<New, Span> {
@@ -154,17 +147,17 @@ pub struct Record·new·span<New, Span> {
     pub span: Span,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·source·source_span·span·vec<Source, Source_span, Span, Vec> {
+pub struct Record·buf·source·source_span·span<Buf, Source, Source_span, Span> {
+    pub buf: Buf,
     pub source: Source,
     pub source_span: Source_span,
     pub span: Span,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·out·slot·vec<Out, Slot, Vec> {
+pub struct Record·buf·out·slot<Buf, Out, Slot> {
+    pub buf: Buf,
     pub out: Out,
     pub slot: Slot,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·out·span<Out, Span> {
@@ -172,27 +165,27 @@ pub struct Record·out·span<Out, Span> {
     pub span: Span,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·end·start·vec<End, Start, Vec> {
+pub struct Record·buf·end·start<Buf, End, Start> {
+    pub buf: Buf,
     pub end: End,
     pub start: Start,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·element·vec<Element, Vec> {
+pub struct Record·buf·element<Buf, Element> {
+    pub buf: Buf,
     pub element: Element,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·element·slot·vec<Element, Slot, Vec> {
+pub struct Record·buf·element·slot<Buf, Element, Slot> {
+    pub buf: Buf,
     pub element: Element,
     pub slot: Slot,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·old·slot·vec<Old_element, Slot, Vec> {
+pub struct Record·buf·old·slot<Buf, Old_element, Slot> {
+    pub buf: Buf,
     pub old: Old_element,
     pub slot: Slot,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·direction·state·step·str<Direction, State, Step, Str> {
@@ -202,11 +195,11 @@ pub struct Record·direction·state·step·str<Direction, State, Step, Str> {
     pub str: Str,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·direction·state·step·vec<Direction, State, Step, Vec> {
+pub struct Record·buf·direction·state·step<Buf, Direction, State, Step> {
+    pub buf: Buf,
     pub direction: Direction,
     pub state: State,
     pub step: Step,
-    pub vec: Vec,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·direction·span·state·step<Direction, Span, State, Step> {
@@ -276,7 +269,7 @@ pub type Opt<Yes> = Choice·No·Yes<Record, Yes>;
 pub struct Origin<LocalOrigin>(LocalOrigin);
 pub struct Unset_slice<Element>(std::boxed::Box<[std::mem::MaybeUninit<Element>]>);
 #[derive(Debug)]
-pub struct Vec<LocalOrigin, Element> {
+pub struct Buf<LocalOrigin, Element> {
     // invariants (in addition to the invariants of (Unset_)slot/span):
     // - no `Unset_span`s in `.vacant` are connected
     //   (and thus could be combined into one larger consecutive span)
@@ -286,14 +279,14 @@ pub struct Vec<LocalOrigin, Element> {
     //
     // -------
     // `.elements` contains `std::mem::MaybeUninit<Element>` because
-    // - functions like `vec.add_unset` explicitly require uninitialized memory.
+    // - functions like `buf.add_unset` explicitly require uninitialized memory.
     //   creating uninitialized memory of type `Element` out of thin air is UB
     // - it matches well semantically: access is inherently unsafe.
     //   vec::Vec<Element> makes it appear safe
     // - drawbacks (like the removal of niches) do not have an impact here
     // - it prevents drop from being called on elements
     //   which could double-free on already vacated elements.
-    //   Vec<_,_> originally implemented a custom Drop as
+    //   Buf originally implemented a custom Drop as
     //   `for e in self.elements.drain(..) { std::mem::forget(e); }`
     //   with the following documentation:
     //     At this point, all elements are either
@@ -303,7 +296,7 @@ pub struct Vec<LocalOrigin, Element> {
     //     - occupied (only possible from rust code).
     //
     //     If we used the regular Drop implementation, elements that were already vacated
-    //     or temporarily extracted (where e.g. the resulting `Unset_slot` from `vec.element()` was dropped)
+    //     or temporarily extracted (where e.g. the resulting `Unset_slot` from `buf.unset()` was dropped)
     //     could be freed twice (!).
     //     So the only thing that can realistically be done is to "leak" all remaining elements.
     //
@@ -312,17 +305,17 @@ pub struct Vec<LocalOrigin, Element> {
     //     This is not as bad as you might think:
     //     - dropping a `Slot`/`Unset_slot` is always a leak
     //       but it cannot reasonably prevented in rust. It's the cost of doing business
-    //     - in a `Vec<Origin, Element>`, the element type will realistically not be a type that
-    //       directly points to the heap. In fact in sloe you cannot even put more than one vec inside of
-    //       another vec as each vec has a different origin!
+    //     - in a `Buf<Origin, Element>`, the element type will realistically not be a type that
+    //       directly points to the heap. In fact in sloe you cannot even put more than one buf inside of
+    //       another buf as each buf has a different origin!
     //
     //   However, just overwriting the Drop implementation is far from enough
-    //   as many Vec functions somewhat willy-nilly drop elements if you're not careful.
+    //   as many Buf functions somewhat willy-nilly drop elements if you're not careful.
     //   An example is `truncate` which is used in `span_rid`.
     elements: std::vec::Vec<std::mem::MaybeUninit<Element>>,
     // Performance assumption:
     // Neighboring elements are way more likely to be vacated together.
-    // Think e.g. vec_span_add_vec_span but also
+    // Think e.g. buf_span_add_buf_span but also
     // regular chunks of nested individual slots which were likely allocated close to their neighbors.
     //
     // It is also assumed that there won't be a large amount of these vacant spans
@@ -344,9 +337,6 @@ pub type Unset_span<LocalOrigin> = Span_with_occupancy<LocalOrigin, UccupancyUns
 #[non_exhaustive]
 pub struct Span_with_occupancy<LocalOrigin, Occupancy> {
     pub start: Slot_with_occupancy<LocalOrigin, Occupancy>,
-    // consider instead: end_index: NonZeroU32.
-    // This makes combining 2 opt_spans and converting to ops::Range a bit faster,
-    // at the cost of other operations like checking a vec's occupied count
     pub length: std::num::NonZeroU32,
 }
 pub enum UccupancyUnset {}
@@ -543,22 +533,22 @@ impl<Element> Unset_slice<Element> {
     pub fn allocate_length(length: u32) -> Self {
         Unset_slice(std::boxed::Box::new_uninit_slice(length as usize))
     }
-    pub fn from_vec_maybe_uninit(
-        mut maybe_uninit_vec: std::vec::Vec<std::mem::MaybeUninit<Element>>,
+    pub fn from_buf_maybe_uninit(
+        mut maybe_uninit_buf: std::vec::Vec<std::mem::MaybeUninit<Element>>,
     ) -> Self {
         // This is the closest approximation for `vec.ptr[..vec.capacity]` I could find in safe rust.
-        // The first part should optimize to maybe_uninit_vec.set_len(maybe_uninit_vec.capacity())
+        // The first part should optimize to maybe_uninit_buf.set_len(maybe_uninit_buf.capacity())
         // If it doesn't, change to that unsafe operation.
         // Preferably there would be something like `vec.clear(); vec.into_spare_capacity()`
-        let spare_capacity = maybe_uninit_vec.spare_capacity_mut().len();
+        let spare_capacity = maybe_uninit_buf.spare_capacity_mut().len();
         std::iter::Extend::extend(
-            &mut maybe_uninit_vec,
+            &mut maybe_uninit_buf,
             std::iter::Iterator::take(
                 std::iter::repeat_with(|| std::mem::MaybeUninit::uninit()),
                 spare_capacity,
             ),
         );
-        Unset_slice(maybe_uninit_vec.into_boxed_slice())
+        Unset_slice(maybe_uninit_buf.into_boxed_slice())
     }
     pub fn as_slice(&self) -> &[std::mem::MaybeUninit<Element>] {
         &self.0
@@ -611,12 +601,12 @@ impl<Element> Unset_slice<Element> {
         // vec.into_iter().map(|_| unsafe { std::hint::unreachable_unchecked() }).collect()
         // ```
         // combined with asserting equal size to reuse memory (in release mode)
-        let (vec_ptr, vec_length, vec_capacity) = vec.into_raw_parts();
+        let (buf_ptr, buf_length, buf_capacity) = vec.into_raw_parts();
         unsafe {
-            std::vec::Vec::from_raw_parts(vec_ptr.cast::<Element>(), vec_length, vec_capacity)
+            std::vec::Vec::from_raw_parts(buf_ptr.cast::<Element>(), buf_length, buf_capacity)
         }
     }
-    pub fn into_vec_maybe_uninit(self) -> std::vec::Vec<std::mem::MaybeUninit<Element>> {
+    pub fn into_buf_maybe_uninit(self) -> std::vec::Vec<std::mem::MaybeUninit<Element>> {
         let mut vec: std::vec::Vec<std::mem::MaybeUninit<Element>> =
             self.into_boxed_slice().into_vec();
         vec.clear();
@@ -627,16 +617,16 @@ impl<Element> Unset_slice<Element> {
     }
 }
 
-impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
+impl<LocalOrigin, Element> Buf<LocalOrigin, Element> {
     pub fn new(_: Origin<LocalOrigin>) -> Self {
-        Vec::<LocalOrigin, Element> {
+        Buf::<LocalOrigin, Element> {
             elements: std::vec::Vec::new(),
             vacant: std::vec::Vec::new(),
         }
     }
     pub fn reuse(_: Origin<LocalOrigin>, allocation: Unset_slice<Element>) -> Self {
-        Vec::<LocalOrigin, Element> {
-            elements: allocation.into_vec_maybe_uninit(),
+        Buf::<LocalOrigin, Element> {
+            elements: allocation.into_buf_maybe_uninit(),
             vacant: std::vec::Vec::new(),
         }
     }
@@ -1033,9 +1023,9 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             ),
         }
     }
-    pub fn insert_vec_span<SourceOrigin>(
+    pub fn insert_buf_span<SourceOrigin>(
         &mut self,
-        source: &mut Vec<SourceOrigin, Element>,
+        source: &mut Buf<SourceOrigin, Element>,
         source_span: Span<SourceOrigin>,
     ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
         let (source_span_start_index, source_span_length) =
@@ -1050,9 +1040,9 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             new_span,
         )
     }
-    pub fn add_vec_span<SourceOrigin>(
+    pub fn add_buf_span<SourceOrigin>(
         &mut self,
-        source: &mut Vec<SourceOrigin, Element>,
+        source: &mut Buf<SourceOrigin, Element>,
         source_span: Span<SourceOrigin>,
     ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
         let (source_span_start_index, source_span_length) =
@@ -1067,10 +1057,10 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             new_span,
         )
     }
-    pub fn span_add_vec_span<SourceOrigin>(
+    pub fn span_add_buf_span<SourceOrigin>(
         &mut self,
         span: Span<LocalOrigin>,
-        source: &mut Vec<SourceOrigin, Element>,
+        source: &mut Buf<SourceOrigin, Element>,
         source_span: Span<SourceOrigin>,
     ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
         let (source_span_start_index, source_span_length) =
@@ -1085,43 +1075,43 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
             new_span,
         )
     }
-    pub fn span_add_vec_opt_span<SourceOrigin>(
+    pub fn span_add_buf_opt_span<SourceOrigin>(
         &mut self,
         span: Span<LocalOrigin>,
-        source: &mut Vec<SourceOrigin, Element>,
+        source: &mut Buf<SourceOrigin, Element>,
         source_span: Opt<Span<SourceOrigin>>,
     ) -> (Opt<Unset_span<SourceOrigin>>, Span<LocalOrigin>) {
         match source_span {
             Opt::No(()) => (Opt::No(()), span),
             Opt::Yes(source_span) => {
                 let (source_span, combined_span) =
-                    self.span_add_vec_span(span, source, source_span);
+                    self.span_add_buf_span(span, source, source_span);
                 (Opt::Yes(source_span), combined_span)
             }
         }
     }
-    pub fn opt_span_add_vec_span<SourceOrigin>(
+    pub fn opt_span_add_buf_span<SourceOrigin>(
         &mut self,
         span: Opt<Span<LocalOrigin>>,
-        source: &mut Vec<SourceOrigin, Element>,
+        source: &mut Buf<SourceOrigin, Element>,
         source_span: Span<SourceOrigin>,
     ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
         match span {
-            Opt::No(()) => self.add_vec_span(source, source_span),
-            Opt::Yes(span) => self.span_add_vec_span(span, source, source_span),
+            Opt::No(()) => self.add_buf_span(source, source_span),
+            Opt::Yes(span) => self.span_add_buf_span(span, source, source_span),
         }
     }
-    pub fn opt_span_add_vec_opt_span<SourceOrigin>(
+    pub fn opt_span_add_buf_opt_span<SourceOrigin>(
         &mut self,
         span: Opt<Span<LocalOrigin>>,
-        source: &mut Vec<SourceOrigin, Element>,
+        source: &mut Buf<SourceOrigin, Element>,
         source_span: Opt<Span<SourceOrigin>>,
     ) -> (Opt<Unset_span<SourceOrigin>>, Opt<Span<LocalOrigin>>) {
         match source_span {
             Opt::No(()) => (Opt::No(()), span),
             Opt::Yes(source_span) => {
                 let (source_span, combined_span) =
-                    self.opt_span_add_vec_span(span, source, source_span);
+                    self.opt_span_add_buf_span(span, source, source_span);
                 (Opt::Yes(source_span), Opt::Yes(combined_span))
             }
         }
@@ -1381,10 +1371,10 @@ impl<LocalOrigin, Element> Vec<LocalOrigin, Element> {
     /// The raw allocation. Can be used to create new Vecs or even
     /// to drop the memory in a separate thread
     pub fn into_unset_slice(self) -> Unset_slice<Element> {
-        Unset_slice::from_vec_maybe_uninit(self.elements)
+        Unset_slice::from_buf_maybe_uninit(self.elements)
     }
 }
-impl<Origin> Vec<Origin, Char> {
+impl<Origin> Buf<Origin, Char> {
     pub fn add_str(&mut self, new_str: Str) -> Span<Origin> {
         let (new_start, new_after) = new_str.split_start();
         self.add_one_then_iterator(new_start, new_after.chars())
@@ -2038,684 +2028,658 @@ pub fn opt_unset_span_fold<Origin, State>(
 
 pub fn origin_rid<LocalOrigin>(_: Origin<LocalOrigin>) -> Record {}
 
-pub fn vec_empty<LocalOrigin, Element>(origin: Origin<LocalOrigin>) -> Vec<LocalOrigin, Element> {
-    Vec::<LocalOrigin, Element>::new(origin)
+pub fn buf_empty<LocalOrigin, Element>(origin: Origin<LocalOrigin>) -> Buf<LocalOrigin, Element> {
+    Buf::<LocalOrigin, Element>::new(origin)
 }
-pub fn vec_pre_allocate_at_least<Element, Origin>(
-    Record·length·vec {
-        vec: mut vec,
+pub fn buf_pre_allocate_at_least<Element, Origin>(
+    Record·buf·length {
+        mut buf,
         length: min_pre_allocated_length,
-    }: Record·length·vec<u32, Vec<Origin, Element>>,
-) -> Vec<Origin, Element> {
-    vec.pre_allocate_at_least(min_pre_allocated_length);
-    vec
+    }: Record·buf·length<Buf<Origin, Element>, u32>,
+) -> Buf<Origin, Element> {
+    buf.pre_allocate_at_least(min_pre_allocated_length);
+    buf
 }
-pub fn vec_pre_allocation_rid<Element, Origin>(
-    mut vec: Vec<Origin, Element>,
-) -> Vec<Origin, Element> {
-    vec.pre_allocation_rid();
-    vec
+pub fn buf_pre_allocation_rid<Element, Origin>(
+    mut buf: Buf<Origin, Element>,
+) -> Buf<Origin, Element> {
+    buf.pre_allocation_rid();
+    buf
 }
-pub fn vec_remove<Element, Origin>(
-    Record·slot·vec { mut vec, slot }: Record·slot·vec<Slot<Origin>, Vec<Origin, Element>>,
-) -> Record·element·vec<Element, Vec<Origin, Element>> {
-    let element = vec.remove(slot);
-    Record·element·vec {
+pub fn buf_remove<Element, Origin>(
+    Record·buf·slot { mut buf, slot }: Record·buf·slot<Buf<Origin, Element>, Slot<Origin>>,
+) -> Record·buf·element<Buf<Origin, Element>, Element> {
+    let element = buf.remove(slot);
+    Record·buf·element {
+        buf: buf,
         element: element,
-        vec: vec,
     }
 }
-pub fn vec_unset<Element, Origin>(
-    Record·slot·vec { mut vec, slot }: Record·slot·vec<Slot<Origin>, Vec<Origin, Element>>,
-) -> Record·element·slot·vec<Element, Unset_slot<Origin>, Vec<Origin, Element>> {
-    let element = vec.unset(slot);
-    Record·element·slot·vec {
+pub fn buf_unset<Element, Origin>(
+    Record·buf·slot { mut buf, slot }: Record·buf·slot<Buf<Origin, Element>, Slot<Origin>>,
+) -> Record·buf·element·slot<Buf<Origin, Element>, Element, Unset_slot<Origin>> {
+    let element = buf.unset(slot);
+    Record·buf·element·slot {
+        buf: buf,
         element: element.element,
         slot: element.slot,
-        vec: vec,
     }
 }
-pub fn vec_set<Element, Origin>(
-    Record·new·slot·vec {
-        mut vec,
+pub fn buf_set<Element, Origin>(
+    Record·buf·new·slot {
+        mut buf,
         slot,
         new: element,
-    }: Record·new·slot·vec<Element, Unset_slot<Origin>, Vec<Origin, Element>>,
-) -> Record·slot·vec<Slot<Origin>, Vec<Origin, Element>> {
-    let set_slot = vec.set(slot, element);
-    Record·slot·vec {
-        vec: vec,
+    }: Record·buf·new·slot<Buf<Origin, Element>, Element, Unset_slot<Origin>>,
+) -> Record·buf·slot<Buf<Origin, Element>, Slot<Origin>> {
+    let set_slot = buf.set(slot, element);
+    Record·buf·slot {
+        buf: buf,
         slot: set_slot,
     }
 }
-pub fn vec_slot_rid<Element, Origin>(
-    Record·slot·vec {
+pub fn buf_slot_rid<Element, Origin>(
+    Record·buf·slot {
+        mut buf,
         slot: slot_to_vacate,
-        mut vec,
-    }: Record·slot·vec<Unset_slot<Origin>, Vec<Origin, Element>>,
-) -> Vec<Origin, Element> {
-    vec.slot_rid(slot_to_vacate);
-    vec
+    }: Record·buf·slot<Buf<Origin, Element>, Unset_slot<Origin>>,
+) -> Buf<Origin, Element> {
+    buf.slot_rid(slot_to_vacate);
+    buf
 }
-pub fn vec_span_rid<Element, Origin>(
-    Record·span·vec {
+pub fn buf_span_rid<Element, Origin>(
+    Record·buf·span {
         span: span_to_vacate,
-        mut vec,
-    }: Record·span·vec<Unset_span<Origin>, Vec<Origin, Element>>,
-) -> Vec<Origin, Element> {
-    vec.span_rid(span_to_vacate);
-    vec
+        mut buf,
+    }: Record·buf·span<Buf<Origin, Element>, Unset_span<Origin>>,
+) -> Buf<Origin, Element> {
+    buf.span_rid(span_to_vacate);
+    buf
 }
-pub fn vec_opt_span_rid<Element, Origin>(
-    Record·span·vec {
+pub fn buf_opt_span_rid<Element, Origin>(
+    Record·buf·span {
         span: span_to_vacate,
-        mut vec,
-    }: Record·span·vec<Opt<Unset_span<Origin>>, Vec<Origin, Element>>,
-) -> Vec<Origin, Element> {
-    vec.opt_span_rid(span_to_vacate);
-    vec
+        mut buf,
+    }: Record·buf·span<Buf<Origin, Element>, Opt<Unset_span<Origin>>>,
+) -> Buf<Origin, Element> {
+    buf.opt_span_rid(span_to_vacate);
+    buf
 }
-pub fn vec_rid<Element, Origin>(_: Vec<Origin, Element>) -> Record {}
-pub fn vec_insert<Element, Origin>(
-    Record·new·vec {
-        mut vec,
+pub fn buf_rid<Element, Origin>(_: Buf<Origin, Element>) -> Record {}
+pub fn buf_insert<Element, Origin>(
+    Record·buf·new {
+        mut buf,
         new: new_element,
-    }: Record·new·vec<Element, Vec<Origin, Element>>,
-) -> Record·slot·vec<Slot<Origin>, Vec<Origin, Element>> {
-    let slot = vec.insert(new_element);
-    Record·slot·vec {
-        vec: vec,
+    }: Record·buf·new<Buf<Origin, Element>, Element>,
+) -> Record·buf·slot<Buf<Origin, Element>, Slot<Origin>> {
+    let slot = buf.insert(new_element);
+    Record·buf·slot {
+        buf: buf,
         slot: slot,
     }
 }
-pub fn vec_add<Element, Origin>(
-    Record·new·vec {
-        mut vec,
+pub fn buf_add<Element, Origin>(
+    Record·buf·new {
+        mut buf,
         new: new_element,
-    }: Record·new·vec<Element, Vec<Origin, Element>>,
-) -> Record·slot·vec<Slot<Origin>, Vec<Origin, Element>> {
-    let slot = vec.add(new_element);
-    Record·slot·vec {
-        vec: vec,
+    }: Record·buf·new<Buf<Origin, Element>, Element>,
+) -> Record·buf·slot<Buf<Origin, Element>, Slot<Origin>> {
+    let slot = buf.add(new_element);
+    Record·buf·slot {
+        buf: buf,
         slot: slot,
     }
 }
-pub fn vec_insert_unset<Element, Origin>(
-    mut vec: Vec<Origin, Element>,
-) -> Record·slot·vec<Unset_slot<Origin>, Vec<Origin, Element>> {
-    let slot = vec.insert_unset();
-    Record·slot·vec {
-        vec: vec,
+pub fn buf_insert_unset<Element, Origin>(
+    mut buf: Buf<Origin, Element>,
+) -> Record·buf·slot<Buf<Origin, Element>, Unset_slot<Origin>> {
+    let slot = buf.insert_unset();
+    Record·buf·slot {
+        buf: buf,
         slot: slot,
     }
 }
-pub fn vec_add_unset<Element, Origin>(
-    mut vec: Vec<Origin, Element>,
-) -> Record·slot·vec<Unset_slot<Origin>, Vec<Origin, Element>> {
-    let slot = vec.add_unset();
-    Record·slot·vec {
-        vec: vec,
+pub fn buf_add_unset<Element, Origin>(
+    mut buf: Buf<Origin, Element>,
+) -> Record·buf·slot<Buf<Origin, Element>, Unset_slot<Origin>> {
+    let slot = buf.add_unset();
+    Record·buf·slot {
+        buf: buf,
         slot: slot,
     }
 }
-pub fn vec_add_unset_length<Element, Origin>(
-    Record·length·vec { length, mut vec }: Record·length·vec<U32, Vec<Origin, Element>>,
-) -> Record·span·vec<Opt<Unset_span<Origin>>, Vec<Origin, Element>> {
-    let span = vec.add_unset_length(length);
-    Record·span·vec {
-        vec: vec,
+pub fn buf_add_unset_length<Element, Origin>(
+    Record·buf·length { length, mut buf }: Record·buf·length<Buf<Origin, Element>, U32>,
+) -> Record·buf·span<Buf<Origin, Element>, Opt<Unset_span<Origin>>> {
+    let span = buf.add_unset_length(length);
+    Record·buf·span {
+        buf: buf,
         span: span,
     }
 }
-pub fn vec_add_unset_length_positive<Element, Origin>(
-    Record·length·vec { length, mut vec }: Record·length·vec<P32, Vec<Origin, Element>>,
-) -> Record·span·vec<Unset_span<Origin>, Vec<Origin, Element>> {
-    let span = vec.add_unset_length_positive(length);
-    Record·span·vec {
-        vec: vec,
+pub fn buf_add_unset_length_positive<Element, Origin>(
+    Record·buf·length { length, mut buf }: Record·buf·length<Buf<Origin, Element>, P32>,
+) -> Record·buf·span<Buf<Origin, Element>, Unset_span<Origin>> {
+    let span = buf.add_unset_length_positive(length);
+    Record·buf·span {
+        buf: buf,
         span: span,
     }
 }
-pub fn vec_add_array<Element, Origin, Record>(
-    Record·new·vec { mut vec, new }: Record·new·vec<Array<Element, Record>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let span = vec.add_array(new);
-    Record·span·vec {
-        vec: vec,
+pub fn buf_add_array<Element, Origin, Record>(
+    Record·buf·new { mut buf, new }: Record·buf·new<Buf<Origin, Element>, Array<Element, Record>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let span = buf.add_array(new);
+    Record·buf·span {
+        buf: buf,
         span: span,
     }
 }
-pub fn vec_insert_vec_span<Origin, SourceOrigin, Element>(
-    mut vec: Vec<Origin, Element>,
-    mut source: Vec<SourceOrigin, Element>,
-    source_span: Span<SourceOrigin>,
-) -> Record·source·source_span·span·vec<
-    Vec<SourceOrigin, Element>,
-    Unset_span<SourceOrigin>,
-    Span<Origin>,
-    Vec<Origin, Element>,
-> {
-    let (source_span, new_span) = vec.insert_vec_span(&mut source, source_span);
-    Record·source·source_span·span·vec {
-        vec: vec,
-        source: source,
-        source_span: source_span,
-        span: new_span,
-    }
-}
-pub fn vec_char_add_str<Origin>(
-    Record·new·vec {
-        mut vec,
+pub fn buf_char_add_str<Origin>(
+    Record·buf·new {
+        mut buf,
         new: new_str,
-    }: Record·new·vec<Str, Vec<Origin, Char>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
-    let new_span = vec.add_str(new_str);
-    Record·span·vec {
-        vec: vec,
+    }: Record·buf·new<Buf<Origin, Char>, Str>,
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
+    let new_span = buf.add_str(new_str);
+    Record·buf·span {
+        buf: buf,
         span: new_span,
     }
 }
-pub fn vec_replace<Element, Origin>(
-    Record·new·slot·vec {
-        mut vec,
-        mut slot,
-        new: new_element,
-    }: Record·new·slot·vec<Element, Slot<Origin>, Vec<Origin, Element>>,
-) -> Record·old·slot·vec<Element, Slot<Origin>, Vec<Origin, Element>> {
-    let old_element = std::mem::replace(vec.element_mut(&mut slot), new_element);
-    Record·old·slot·vec {
-        vec: vec,
-        old: old_element,
-        slot: slot,
+pub fn buf_opt_span_reverse<Element, Origin>(
+    Record·buf·span { mut buf, mut span }: Record·buf·span<
+        Buf<Origin, Element>,
+        Opt<Span<Origin>>,
+    >,
+) -> Record·buf·span<Buf<Origin, Element>, Opt<Span<Origin>>> {
+    buf.opt_span_slice_mut(&mut span).reverse();
+    Record·buf·span {
+        buf: buf,
+        span: span,
     }
 }
-pub fn vec_opt_span_reverse<Element, Origin>(
-    Record·span·vec { mut vec, mut span }: Record·span·vec<
-        Opt<Span<Origin>>,
-        Vec<Origin, Element>,
-    >,
-) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
-    vec.opt_span_slice_mut(&mut span).reverse();
-    Record·span·vec { vec: vec, span }
-}
-pub fn vec_span_reverse<Element, Origin>(
-    Record·span·vec { mut vec, mut span }: Record·span·vec<Span<Origin>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    vec.span_slice_mut(&mut span).reverse();
-    Record·span·vec { vec: vec, span }
+pub fn buf_span_reverse<Element, Origin>(
+    Record·buf·span { mut buf, mut span }: Record·buf·span<Buf<Origin, Element>, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    buf.span_slice_mut(&mut span).reverse();
+    Record·buf·span {
+        buf: buf,
+        span: span,
+    }
 }
 
-pub fn vec_opt_span_add<Element, Origin>(
-    Record·new·span·vec {
-        mut vec,
+pub fn buf_opt_span_add<Element, Origin>(
+    Record·buf·new·span {
+        mut buf,
         span,
         new: new_element,
-    }: Record·new·span·vec<Element, Opt<Span<Origin>>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
+    }: Record·buf·new·span<Buf<Origin, Element>, Element, Opt<Span<Origin>>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
     match span {
         Opt::No(()) => {
-            let new_slot = vec.insert(new_element);
-            Record·span·vec {
-                vec: vec,
+            let new_slot = buf.insert(new_element);
+            Record·buf·span {
+                buf: buf,
                 span: slot_to_span(new_slot),
             }
         }
-        Opt::Yes(span) => vec_span_add(Record·new·span·vec {
-            vec: vec,
+        Opt::Yes(span) => buf_span_add(Record·buf·new·span {
+            buf: buf,
             span: span,
             new: new_element,
         }),
     }
 }
-pub fn vec_span_add<Element, Origin>(
-    Record·new·span·vec {
-        mut vec,
+pub fn buf_span_add<Element, Origin>(
+    Record·buf·new·span {
+        mut buf,
         span,
         new: new_element,
-    }: Record·new·span·vec<Element, Span<Origin>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.span_add(span, new_element);
-    Record·span·vec {
-        vec: vec,
+    }: Record·buf·new·span<Buf<Origin, Element>, Element, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let combined_span = buf.span_add(span, new_element);
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_span_add_array<Element, Origin, Record>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+pub fn buf_span_add_array<Element, Origin, Record>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Element>,
         Array<Element, Record>,
         Span<Origin>,
-        Vec<Origin, Element>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.span_add_array(span, new);
-    Record·span·vec {
-        vec: vec,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let combined_span = buf.span_add_array(span, new);
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_opt_span_add_array<Element, Origin, Record>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+pub fn buf_opt_span_add_array<Element, Origin, Record>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Element>,
         Array<Element, Record>,
         Opt<Span<Origin>>,
-        Vec<Origin, Element>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.opt_span_add_array(span, new);
-    Record·span·vec {
-        vec: vec,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let combined_span = buf.opt_span_add_array(span, new);
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_char_opt_span_add_str<Origin>(
-    Record·new·span·vec {
-        mut vec,
+pub fn buf_char_opt_span_add_str<Origin>(
+    Record·buf·new·span {
+        mut buf,
         span,
         new: new_str,
-    }: Record·new·span·vec<Str, Opt<Span<Origin>>, Vec<Origin, Char>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
-    let combined_span = vec.opt_span_add_str(span, new_str);
-    Record·span·vec {
-        vec: vec,
+    }: Record·buf·new·span<Buf<Origin, Char>, Str, Opt<Span<Origin>>>,
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
+    let combined_span = buf.opt_span_add_str(span, new_str);
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_char_span_add_str<Origin>(
-    Record·new·span·vec {
-        mut vec,
+pub fn buf_char_span_add_str<Origin>(
+    Record·buf·new·span {
+        mut buf,
         span,
         new: new_str,
-    }: Record·new·span·vec<Str, Span<Origin>, Vec<Origin, Char>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
-    let combined_span = vec.span_add_iterator(span, new_str.str.chars());
-    Record·span·vec {
-        vec: vec,
+    }: Record·buf·new·span<Buf<Origin, Char>, Str, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
+    let combined_span = buf.span_add_iterator(span, new_str.str.chars());
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_char_span_add_u32<Origin>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+pub fn buf_char_span_add_u32<Origin>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Char>,
         U32,
         Span<Origin>,
-        Vec<Origin, Char>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.span_add_iterator(span, new_as_string.chars());
-    Record·span·vec {
-        vec: vec,
+    let combined_span = buf.span_add_iterator(span, new_as_string.chars());
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_char_opt_span_add_u32<Origin>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+pub fn buf_char_opt_span_add_u32<Origin>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Char>,
         U32,
         Opt<Span<Origin>>,
-        Vec<Origin, Char>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.opt_span_add_iterator(span, new_as_string.chars());
-    Record·span·vec {
-        vec: vec,
+    let combined_span = buf.opt_span_add_iterator(span, new_as_string.chars());
+    Record·buf·span {
+        buf: buf,
         span: {
             // new_as_string has .len() >= 1 because a formatted number is never ""
             unsafe { combined_span.into_option().unwrap_unchecked() }
         },
     }
 }
-pub fn vec_char_span_add_i32<Origin>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
-        I32,
+pub fn buf_char_span_add_i32<Origin>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Char>,
+        U32,
         Span<Origin>,
-        Vec<Origin, Char>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.span_add_iterator(span, new_as_string.chars());
-    Record·span·vec {
-        vec: vec,
+    let combined_span = buf.span_add_iterator(span, new_as_string.chars());
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_char_opt_span_add_i32<Origin>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+pub fn buf_char_opt_span_add_i32<Origin>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Char>,
         I32,
         Opt<Span<Origin>>,
-        Vec<Origin, Char>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{}", new);
-    let combined_span = vec.opt_span_add_iterator(span, new_as_string.chars());
-    Record·span·vec {
-        vec: vec,
+    let combined_span = buf.opt_span_add_iterator(span, new_as_string.chars());
+    Record·buf·span {
+        buf: buf,
         span: {
             // new_as_string has .len() >= 1 because a formatted number is never ""
             unsafe { combined_span.into_option().unwrap_unchecked() }
         },
     }
 }
-pub fn vec_char_span_add_f32<Origin>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
-        F32,
+pub fn buf_char_span_add_f32<Origin>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Char>,
+        I32,
         Span<Origin>,
-        Vec<Origin, Char>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{:.}", new);
-    let combined_span = vec.span_add_iterator(span, new_as_string.chars());
-    Record·span·vec {
-        vec: vec,
+    let combined_span = buf.span_add_iterator(span, new_as_string.chars());
+    Record·buf·span {
+        buf: buf,
         span: combined_span,
     }
 }
-pub fn vec_char_opt_span_add_f32<Origin>(
-    Record·new·span·vec { mut vec, span, new }: Record·new·span·vec<
+pub fn buf_char_opt_span_add_f32<Origin>(
+    Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
+        Buf<Origin, Char>,
         F32,
         Opt<Span<Origin>>,
-        Vec<Origin, Char>,
     >,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Char>> {
+) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
     // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
     let new_as_string = std::format!("{:.}", new);
-    let combined_span = vec.opt_span_add_iterator(span, new_as_string.chars());
-    Record·span·vec {
-        vec: vec,
+    let combined_span = buf.opt_span_add_iterator(span, new_as_string.chars());
+    Record·buf·span {
+        buf: buf,
         span: {
             // new_as_string has .len() >= 1 because a formatted number is never ""
             unsafe { combined_span.into_option().unwrap_unchecked() }
         },
     }
 }
-pub fn vec_opt_span_add_vec_opt_span<Origin, SourceOrigin, Element>(
-    Record·source·source_span·span·vec {
+pub fn buf_opt_span_add_buf_opt_span<Origin, SourceOrigin, Element>(
+    Record·buf·source·source_span·span {
         mut source,
         source_span,
         span,
-        mut vec,
-    }: Record·source·source_span·span·vec<
-        Vec<SourceOrigin, Element>,
+        mut buf,
+    }: Record·buf·source·source_span·span<
+        Buf<Origin, Element>,
+        Buf<SourceOrigin, Element>,
         Opt<Span<SourceOrigin>>,
         Opt<Span<Origin>>,
-        Vec<Origin, Element>,
     >,
-) -> Record·source·source_span·span·vec<
-    Vec<SourceOrigin, Element>,
+) -> Record·buf·source·source_span·span<
+    Buf<Origin, Element>,
+    Buf<SourceOrigin, Element>,
     Opt<Unset_span<SourceOrigin>>,
     Opt<Span<Origin>>,
-    Vec<Origin, Element>,
 > {
     let (source_span, combined_span) =
-        vec.opt_span_add_vec_opt_span(span, &mut source, source_span);
-    Record·source·source_span·span·vec {
-        source: source,
-        source_span,
-        span: combined_span,
-        vec: vec,
-    }
-}
-pub fn vec_span_add_vec_opt_span<Origin, SourceOrigin, Element>(
-    Record·source·source_span·span·vec {
-        mut source,
-        source_span,
-        span,
-        mut vec,
-    }: Record·source·source_span·span·vec<
-        Vec<SourceOrigin, Element>,
-        Opt<Span<SourceOrigin>>,
-        Span<Origin>,
-        Vec<Origin, Element>,
-    >,
-) -> Record·source·source_span·span·vec<
-    Vec<SourceOrigin, Element>,
-    Opt<Unset_span<SourceOrigin>>,
-    Span<Origin>,
-    Vec<Origin, Element>,
-> {
-    let (source_span, combined_span) = vec.span_add_vec_opt_span(span, &mut source, source_span);
-    Record·source·source_span·span·vec {
-        source: source,
-        source_span,
-        span: combined_span,
-        vec: vec,
-    }
-}
-pub fn vec_opt_span_add_vec_span<Origin, SourceOrigin, Element>(
-    Record·source·source_span·span·vec {
-        mut source,
-        source_span,
-        span,
-        mut vec,
-    }: Record·source·source_span·span·vec<
-        Vec<SourceOrigin, Element>,
-        Span<SourceOrigin>,
-        Opt<Span<Origin>>,
-        Vec<Origin, Element>,
-    >,
-) -> Record·source·source_span·span·vec<
-    Vec<SourceOrigin, Element>,
-    Unset_span<SourceOrigin>,
-    Span<Origin>,
-    Vec<Origin, Element>,
-> {
-    let (source_span, combined_span) = vec.opt_span_add_vec_span(span, &mut source, source_span);
-    Record·source·source_span·span·vec {
-        source: source,
-        source_span,
-        span: combined_span,
-        vec: vec,
-    }
-}
-pub fn vec_span_add_vec_span<Origin, SourceOrigin, Element>(
-    Record·source·source_span·span·vec {
-        mut source,
-        source_span,
-        span,
-        mut vec,
-    }: Record·source·source_span·span·vec<
-        Vec<SourceOrigin, Element>,
-        Span<SourceOrigin>,
-        Span<Origin>,
-        Vec<Origin, Element>,
-    >,
-) -> Record·source·source_span·span·vec<
-    Vec<SourceOrigin, Element>,
-    Unset_span<SourceOrigin>,
-    Span<Origin>,
-    Vec<Origin, Element>,
-> {
-    let (source_span, combined_span) = vec.span_add_vec_span(span, &mut source, source_span);
-    Record·source·source_span·span·vec {
+        buf.opt_span_add_buf_opt_span(span, &mut source, source_span);
+    Record·buf·source·source_span·span {
         source: source,
         source_span: source_span,
         span: combined_span,
-        vec: vec,
+        buf: buf,
+    }
+}
+pub fn buf_span_add_buf_opt_span<Origin, SourceOrigin, Element>(
+    Record·buf·source·source_span·span {
+        mut source,
+        source_span,
+        span,
+        mut buf,
+    }: Record·buf·source·source_span·span<
+        Buf<Origin, Element>,
+        Buf<SourceOrigin, Element>,
+        Opt<Span<SourceOrigin>>,
+        Span<Origin>,
+    >,
+) -> Record·buf·source·source_span·span<
+    Buf<Origin, Element>,
+    Buf<SourceOrigin, Element>,
+    Opt<Unset_span<SourceOrigin>>,
+    Span<Origin>,
+> {
+    let (source_span, combined_span) = buf.span_add_buf_opt_span(span, &mut source, source_span);
+    Record·buf·source·source_span·span {
+        source: source,
+        source_span: source_span,
+        span: combined_span,
+        buf: buf,
+    }
+}
+pub fn buf_opt_span_add_buf_span<Origin, SourceOrigin, Element>(
+    Record·buf·source·source_span·span {
+        mut source,
+        source_span,
+        span,
+        mut buf,
+    }: Record·buf·source·source_span·span<
+        Buf<Origin, Element>,
+        Buf<SourceOrigin, Element>,
+        Span<SourceOrigin>,
+        Opt<Span<Origin>>,
+    >,
+) -> Record·buf·source·source_span·span<
+    Buf<Origin, Element>,
+    Buf<SourceOrigin, Element>,
+    Unset_span<SourceOrigin>,
+    Span<Origin>,
+> {
+    let (source_span, combined_span) = buf.opt_span_add_buf_span(span, &mut source, source_span);
+    Record·buf·source·source_span·span {
+        source: source,
+        source_span: source_span,
+        span: combined_span,
+        buf: buf,
+    }
+}
+pub fn buf_span_add_buf_span<Origin, SourceOrigin, Element>(
+    Record·buf·source·source_span·span {
+        mut source,
+        source_span,
+        span,
+        mut buf,
+    }: Record·buf·source·source_span·span<
+        Buf<Origin, Element>,
+        Buf<SourceOrigin, Element>,
+        Span<SourceOrigin>,
+        Span<Origin>,
+    >,
+) -> Record·buf·source·source_span·span<
+    Buf<Origin, Element>,
+    Buf<SourceOrigin, Element>,
+    Unset_span<SourceOrigin>,
+    Span<Origin>,
+> {
+    let (source_span, combined_span) = buf.span_add_buf_span(span, &mut source, source_span);
+    Record·buf·source·source_span·span {
+        source: source,
+        source_span: source_span,
+        span: combined_span,
+        buf: buf,
     }
 }
 
-pub fn vec_span_add_own_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_span_add_own_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<Span<Origin>, Span<Origin>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.span_add_own_span(start, end);
-    Record·span·vec {
+        mut buf,
+    }: Record·buf·end·start<Buf<Origin, Element>, Span<Origin>, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let combined_span = buf.span_add_own_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_span_add_own_opt_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_span_add_own_opt_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<Opt<Span<Origin>>, Span<Origin>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.span_add_own_opt_span(start, end);
-    Record·span·vec {
+        mut buf,
+    }: Record·buf·end·start<Buf<Origin, Element>, Opt<Span<Origin>>, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let combined_span = buf.span_add_own_opt_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_opt_span_add_own_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_opt_span_add_own_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<Span<Origin>, Opt<Span<Origin>>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.opt_span_add_own_span(start, end);
-    Record·span·vec {
+        mut buf,
+    }: Record·buf·end·start<Buf<Origin, Element>, Span<Origin>, Opt<Span<Origin>>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let combined_span = buf.opt_span_add_own_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_opt_span_add_own_opt_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_opt_span_add_own_opt_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<Opt<Span<Origin>>, Opt<Span<Origin>>, Vec<Origin, Element>>,
-) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
-    let combined_span = vec.opt_span_add_own_opt_span(start, end);
-    Record·span·vec {
+        mut buf,
+    }: Record·buf·end·start<Buf<Origin, Element>, Opt<Span<Origin>>, Opt<Span<Origin>>>,
+) -> Record·buf·span<Buf<Origin, Element>, Opt<Span<Origin>>> {
+    let combined_span = buf.opt_span_add_own_opt_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_unset_span_add_own_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_unset_span_add_own_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<Unset_span<Origin>, Unset_span<Origin>, Vec<Origin, Element>>,
-) -> Record·span·vec<Unset_span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.unset_span_add_own_span(start, end);
-    Record·span·vec {
+        mut buf,
+    }: Record·buf·end·start<Buf<Origin, Element>, Unset_span<Origin>, Unset_span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Unset_span<Origin>> {
+    let combined_span = buf.unset_span_add_own_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_unset_span_add_own_opt_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_unset_span_add_own_opt_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<
+        mut buf,
+    }: Record·buf·end·start<
+        Buf<Origin, Element>,
         Opt<Unset_span<Origin>>,
         Unset_span<Origin>,
-        Vec<Origin, Element>,
     >,
-) -> Record·span·vec<Unset_span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.unset_span_add_own_opt_span(start, end);
-    Record·span·vec {
+) -> Record·buf·span<Buf<Origin, Element>, Unset_span<Origin>> {
+    let combined_span = buf.unset_span_add_own_opt_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_opt_unset_span_add_own_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_opt_unset_span_add_own_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<
+        mut buf,
+    }: Record·buf·end·start<
+        Buf<Origin, Element>,
         Unset_span<Origin>,
         Opt<Unset_span<Origin>>,
-        Vec<Origin, Element>,
     >,
-) -> Record·span·vec<Unset_span<Origin>, Vec<Origin, Element>> {
-    let combined_span = vec.opt_unset_span_add_own_span(start, end);
-    Record·span·vec {
+) -> Record·buf·span<Buf<Origin, Element>, Unset_span<Origin>> {
+    let combined_span = buf.opt_unset_span_add_own_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_opt_unset_span_add_own_opt_span<Element, Origin>(
-    Record·end·start·vec {
+pub fn buf_opt_unset_span_add_own_opt_span<Element, Origin>(
+    Record·buf·end·start {
         end,
         start,
-        mut vec,
-    }: Record·end·start·vec<
+        mut buf,
+    }: Record·buf·end·start<
+        Buf<Origin, Element>,
         Opt<Unset_span<Origin>>,
         Opt<Unset_span<Origin>>,
-        Vec<Origin, Element>,
     >,
-) -> Record·span·vec<Opt<Unset_span<Origin>>, Vec<Origin, Element>> {
-    let combined_span = vec.opt_unset_span_add_own_opt_span(start, end);
-    Record·span·vec {
+) -> Record·buf·span<Buf<Origin, Element>, Opt<Unset_span<Origin>>> {
+    let combined_span = buf.opt_unset_span_add_own_opt_span(start, end);
+    Record·buf·span {
         span: combined_span,
-        vec: vec,
+        buf: buf,
     }
 }
 
-pub fn vec_span_move_to_vacant<Element, Origin>(
-    Record·span·vec { span, mut vec }: Record·span·vec<Span<Origin>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let moved_span = vec.span_move_to_vacant(span);
-    Record·span·vec {
+pub fn buf_span_move_to_vacant<Element, Origin>(
+    Record·buf·span { span, mut buf }: Record·buf·span<Buf<Origin, Element>, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let moved_span = buf.span_move_to_vacant(span);
+    Record·buf·span {
         span: moved_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_opt_span_move_to_vacant<Element, Origin>(
-    Record·span·vec { span, mut vec }: Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>>,
-) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
+pub fn buf_opt_span_move_to_vacant<Element, Origin>(
+    Record·buf·span { span, mut buf }: Record·buf·span<Buf<Origin, Element>, Opt<Span<Origin>>>,
+) -> Record·buf·span<Buf<Origin, Element>, Opt<Span<Origin>>> {
     match span {
-        Opt::No(()) => Record·span·vec {
+        Opt::No(()) => Record·buf·span {
             span: Opt::No(()),
-            vec: vec,
+            buf: buf,
         },
         Opt::Yes(span) => {
-            let moved_span = vec.span_move_to_vacant(span);
-            Record·span·vec {
+            let moved_span = buf.span_move_to_vacant(span);
+            Record·buf·span {
                 span: Opt::Yes(moved_span),
-                vec: vec,
+                buf: buf,
             }
         }
     }
 }
-pub fn vec_span_move_to_end<Element, Origin>(
-    Record·span·vec { span, mut vec }: Record·span·vec<Span<Origin>, Vec<Origin, Element>>,
-) -> Record·span·vec<Span<Origin>, Vec<Origin, Element>> {
-    let moved_span = vec.span_move_to_end(span);
-    Record·span·vec {
+pub fn buf_span_move_to_end<Element, Origin>(
+    Record·buf·span { span, mut buf }: Record·buf·span<Buf<Origin, Element>, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Span<Origin>> {
+    let moved_span = buf.span_move_to_end(span);
+    Record·buf·span {
         span: moved_span,
-        vec: vec,
+        buf: buf,
     }
 }
-pub fn vec_opt_span_move_to_end<Element, Origin>(
-    Record·span·vec { span, mut vec }: Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>>,
-) -> Record·span·vec<Opt<Span<Origin>>, Vec<Origin, Element>> {
+pub fn buf_opt_span_move_to_end<Element, Origin>(
+    Record·buf·span { span, mut buf }: Record·buf·span<Buf<Origin, Element>, Opt<Span<Origin>>>,
+) -> Record·buf·span<Buf<Origin, Element>, Opt<Span<Origin>>> {
     match span {
-        Opt::No(()) => Record·span·vec {
+        Opt::No(()) => Record·buf·span {
             span: Opt::No(()),
-            vec: vec,
+            buf: buf,
         },
         Opt::Yes(span) => {
-            let moved_span = vec.span_move_to_end(span);
-            Record·span·vec {
+            let moved_span = buf.span_move_to_end(span);
+            Record·buf·span {
                 span: Opt::Yes(moved_span),
-                vec: vec,
+                buf: buf,
             }
         }
     }
 }
-pub fn vec_to_unset<Element, Origin>(vec: Vec<Origin, Element>) -> Unset_slice<Element> {
-    vec.into_unset_slice()
+pub fn buf_to_unset<Element, Origin>(buf: Buf<Origin, Element>) -> Unset_slice<Element> {
+    buf.into_unset_slice()
 }
-pub fn vec_reuse<LocalOrigin, Element>(
+pub fn buf_reuse<LocalOrigin, Element>(
     Record·origin·slice { origin, slice }: Record·origin·slice<
         Origin<LocalOrigin>,
         Unset_slice<Element>,
     >,
-) -> Vec<LocalOrigin, Element> {
-    Vec::<LocalOrigin, Element>::reuse(origin, slice)
+) -> Buf<LocalOrigin, Element> {
+    Buf::<LocalOrigin, Element>::reuse(origin, slice)
 }
 
 pub fn unset_slice_rid<Element>(_: Unset_slice<Element>) -> Record {}
@@ -2743,10 +2707,10 @@ mod core_test {
     #[test]
     fn add_remove_stress_test() {
         origin_new!(origin, Origin);
-        let mut vec = crate::core::Vec::new(origin);
+        let mut buf = crate::core::Buf::new(origin);
         let mut slots = std::iter::Iterator::collect::<std::vec::Vec<_>>(std::iter::Iterator::map(
             0..100,
-            |i| vec.add(i),
+            |i| buf.add(i),
         ));
         // a bit of fake dumb noise.
         // once rust gains std:: fuzzing/randomness we should use that
@@ -2755,11 +2719,11 @@ mod core_test {
         slots.swap(12, 88);
         slots.swap(34, 39);
         for slot in slots {
-            vec.remove(slot);
+            buf.remove(slot);
         }
-        std::assert_eq!(vec.vacant_spans().len(), 0);
-        std::assert_eq!(vec.maybe_uninit_elements().len(), 0);
-        crate::core::vec_rid(vec);
+        std::assert_eq!(buf.vacant_spans().len(), 0);
+        std::assert_eq!(buf.maybe_uninit_elements().len(), 0);
+        crate::core::buf_rid(buf);
     }
     #[test]
     fn unset_slice_cast_or_rid_and_allocate_u64_to_i64() {
@@ -2772,15 +2736,15 @@ mod core_test {
             unset_slice_u64_address
         );
         crate::core::origin_new!(origin, Origin);
-        let vec = crate::core::Vec::reuse(origin, unset_slice_i64);
-        crate::core::vec_rid(vec);
+        let buf = crate::core::Buf::reuse(origin, unset_slice_i64);
+        crate::core::buf_rid(buf);
     }
     #[test]
     fn unset_slice_cast_or_rid_and_allocate_u64_to_tuple_u32_u32() {
         let unset_slice_u64 = crate::core::Unset_slice::<u64>::allocate_length(20);
         let unset_slice_tuple_u32_u32 = unset_slice_u64.cast_or_rid_and_allocate::<(u32, u32)>();
         crate::core::origin_new!(origin, Origin);
-        let vec = crate::core::Vec::reuse(origin, unset_slice_tuple_u32_u32);
-        crate::core::vec_rid(vec);
+        let buf = crate::core::Buf::reuse(origin, unset_slice_tuple_u32_u32);
+        crate::core::buf_rid(buf);
     }
 }

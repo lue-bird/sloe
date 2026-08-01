@@ -344,7 +344,7 @@ pub fn optional_field_name_range(field_name: &WithStartPosition<Option<Name>>) -
 }
 pub fn type_range<Types>(
     type_: &SyntaxType<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Range {
     lsp_types::Range {
         start: type_start(type_),
@@ -385,7 +385,7 @@ pub fn type_start<Types>(type_: &SyntaxType<Types>) -> lsp_types::Position {
 }
 pub fn type_end<Types>(
     type_: &SyntaxType<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     match type_ {
         SyntaxType::Variable {
@@ -456,7 +456,7 @@ pub fn type_end<Types>(
 }
 pub fn type_trailing_variant_end<Types>(
     variant: &SyntaxTypeTrailingVariant<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     variant
         .value
@@ -467,8 +467,8 @@ pub fn type_trailing_variant_end<Types>(
 
 pub fn pattern_range<Patterns, Types>(
     pattern: &SyntaxPattern<Patterns, Types>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Range {
     lsp_types::Range {
         start: pattern_start(pattern),
@@ -499,8 +499,8 @@ pub fn pattern_start<Patterns, Types>(
 }
 pub fn pattern_end<Patterns, Types>(
     pattern: &SyntaxPattern<Patterns, Types>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => type_
@@ -563,7 +563,7 @@ pub fn trailing_field_end<Value>(
 }
 pub fn angled_type_arguments_range<Types>(
     type_arguments: &SyntaxAngledTypeArguments<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Range {
     lsp_types::Range {
         start: type_arguments.open_angle_start,
@@ -572,7 +572,7 @@ pub fn angled_type_arguments_range<Types>(
 }
 pub fn angled_type_argument_end<Types>(
     type_arguments: &SyntaxAngledTypeArgument<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     type_arguments
         .closed_angle_start
@@ -587,7 +587,7 @@ pub fn angled_type_argument_end<Types>(
 }
 pub fn angled_type_arguments_end<Types>(
     type_arguments: &SyntaxAngledTypeArguments<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     type_arguments
         .closed_angle_start
@@ -604,9 +604,9 @@ pub fn angled_type_arguments_end<Types>(
 }
 pub fn expression_range<Expressions, Patterns, Types>(
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Range {
     lsp_types::Range {
         start: expression_start(expression),
@@ -689,9 +689,9 @@ fn expression_record_part_start<Expressions>(
 }
 pub fn expression_end<Expressions, Patterns, Types>(
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     match expression {
         SyntaxExpression::Number { value, type_ } => type_
@@ -853,9 +853,9 @@ fn comments_end(comments: &SyntaxComments) -> lsp_types::Position {
 }
 pub fn expression_record_part_end<Expressions, Patterns, Types>(
     part: &SyntaxRecordPart<Expressions>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     match part {
         SyntaxRecordPart::Field { name, value } => value
@@ -873,9 +873,9 @@ pub fn expression_record_part_end<Expressions, Patterns, Types>(
 }
 fn expression_query_case_end<Expressions, Patterns, Types>(
     case: &SyntaxExpressionQueryCase<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     case.result
         .as_ref()
@@ -1136,9 +1136,9 @@ fn parse_field_name(state: &mut ParseState) -> Option<WithStartPosition<Option<N
 }
 
 pub fn parse_project<Expressions, Patterns, Types>(
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
     project_source: &str,
 ) -> SyntaxProject<Expressions, Patterns, Types> {
     // entirely unscientific lower estimates c:
@@ -1199,9 +1199,9 @@ pub fn parse_project<Expressions, Patterns, Types>(
 
 fn parse_project_element<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
     parse_project_fn(state, expressions, patterns, types)
         .or_else(|| parse_project_ty(state, types))
@@ -1209,7 +1209,7 @@ fn parse_project_element<Expressions, Patterns, Types>(
 }
 fn parse_project_ty<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
     let Some(ty_keyword_start) = parse_symbol_as_start(state, "ty") else {
         return None;
@@ -1290,9 +1290,9 @@ fn parse_angled_type_parameters(state: &mut ParseState) -> Option<SyntaxAngledTy
 }
 fn parse_project_fn<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
     let Some(fn_keyword_start) = parse_symbol_as_start(state, "fn") else {
         return None;
@@ -1327,8 +1327,8 @@ fn parse_project_fn<Expressions, Patterns, Types>(
 }
 pub fn parse_pattern_typed<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     parse_pattern_variable_typed(state, types)
         .or_else(|| parse_pattern_variant_typed(state, patterns, types))
@@ -1337,8 +1337,8 @@ pub fn parse_pattern_typed<Patterns, Types>(
 }
 pub fn parse_pattern_untyped<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     parse_pattern_variable_untyped(state)
         .or_else(|| parse_pattern_variant_untyped(state, patterns, types))
@@ -1347,7 +1347,7 @@ pub fn parse_pattern_untyped<Patterns, Types>(
 }
 fn parse_pattern_variable_typed<Patterns, Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     let Some(name) = parse_sloe_lowercase_name_with_start(state) else {
         return None;
@@ -1369,8 +1369,8 @@ fn parse_pattern_variable_untyped<Patterns, Types>(
 }
 fn parse_pattern_parenthesized_typed<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     let Some(open_paren_start) = parse_symbol_as_start(state, "(") else {
         return None;
@@ -1387,8 +1387,8 @@ fn parse_pattern_parenthesized_typed<Patterns, Types>(
 }
 fn parse_pattern_parenthesized_untyped<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     let Some(open_paren_start) = parse_symbol_as_start(state, "(") else {
         return None;
@@ -1405,8 +1405,8 @@ fn parse_pattern_parenthesized_untyped<Patterns, Types>(
 }
 fn parse_pattern_variant_typed<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     let Some(name) = parse_variant_name(state) else {
         return None;
@@ -1420,8 +1420,8 @@ fn parse_pattern_variant_typed<Patterns, Types>(
 }
 fn parse_pattern_variant_untyped<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     let Some(name) = parse_variant_name(state) else {
         return None;
@@ -1435,7 +1435,7 @@ fn parse_pattern_variant_untyped<Patterns, Types>(
 }
 fn parse_type_argument<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxAngledTypeArgument<Types>> {
     let Some(open_angle_start) = parse_symbol_as_start(state, "<") else {
         return None;
@@ -1452,7 +1452,7 @@ fn parse_type_argument<Types>(
 }
 fn parse_type_arguments<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxAngledTypeArguments<Types>> {
     let Some(open_angle_start) = parse_symbol_as_start(state, "<") else {
         return None;
@@ -1480,8 +1480,8 @@ fn parse_type_arguments<Types>(
 }
 fn parse_pattern_record_typed<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     let part0 = if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
         parse_sloe_whitespace(state);
@@ -1521,8 +1521,8 @@ fn parse_pattern_record_typed<Patterns, Types>(
 }
 fn parse_pattern_record_part_typed<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxRecordPart<Patterns>> {
     if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
         parse_sloe_whitespace(state);
@@ -1544,8 +1544,8 @@ fn parse_pattern_record_part_typed<Patterns, Types>(
 }
 fn parse_pattern_record_untyped<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
     let Some(field0_name) = parse_field_name(state) else {
         return None;
@@ -1579,8 +1579,8 @@ fn parse_pattern_record_untyped<Patterns, Types>(
 }
 fn parse_pattern_field_untyped<Patterns, Types>(
     state: &mut ParseState,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxTrailingField<SyntaxPattern<Patterns, Types>>> {
     let Some(name) = parse_field_name(state) else {
         return None;
@@ -1595,7 +1595,7 @@ fn parse_pattern_field_untyped<Patterns, Types>(
 
 pub fn parse_type<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxType<Types>> {
     parse_type_variable(state)
         .or_else(|| parse_type_construct_without_arguments(state))
@@ -1606,7 +1606,7 @@ pub fn parse_type<Types>(
 }
 pub fn parse_type_not_open_ended<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxType<Types>> {
     parse_type_variable(state)
         .or_else(|| parse_type_construct_without_arguments(state))
@@ -1626,7 +1626,7 @@ fn parse_type_variable<Types>(state: &mut ParseState) -> Option<SyntaxType<Types
 }
 fn parse_type_parenthesized<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxType<Types>> {
     let Some(open_paren_start) = parse_symbol_as_start(state, "(") else {
         return None;
@@ -1648,7 +1648,7 @@ fn parse_type_record_empty<Types>(state: &mut ParseState) -> Option<SyntaxType<T
 }
 fn parse_type_record<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxType<Types>> {
     let Some(field0_name) = parse_field_name(state) else {
         return None;
@@ -1677,7 +1677,7 @@ fn parse_type_record<Types>(
 }
 fn parse_type_field<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxTrailingField<SyntaxType<Types>>> {
     let Some(name) = parse_field_name(state) else {
         return None;
@@ -1696,7 +1696,7 @@ fn parse_type_choice_empty<Types>(state: &mut ParseState) -> Option<SyntaxType<T
 }
 fn parse_type_choice<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxType<Types>> {
     let Some(variant0_name) = parse_variant_name(state) else {
         return None;
@@ -1725,7 +1725,7 @@ fn parse_type_choice<Types>(
 }
 fn parse_type_variant<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxTypeTrailingVariant<Types>> {
     let Some(name) = parse_variant_name(state) else {
         return None;
@@ -1739,7 +1739,7 @@ fn parse_type_variant<Types>(
 }
 fn parse_type_construct_with_arguments<Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxType<Types>> {
     let Some(name) = parse_sloe_uppercase_name_with_start(state) else {
         return None;
@@ -1773,9 +1773,9 @@ fn parse_type_construct_without_arguments<Types>(
 }
 pub fn parse_expression<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     // fn and origin must be checked before variable or call
     parse_expression_number(state, types)
@@ -1794,9 +1794,9 @@ pub fn parse_expression<Expressions, Patterns, Types>(
 }
 fn parse_expression_record<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let part0 = if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
         parse_sloe_whitespace(state);
@@ -1839,9 +1839,9 @@ fn parse_expression_record<Expressions, Patterns, Types>(
 }
 fn parse_expression_record_part<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxRecordPart<Expressions>> {
     if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
         parse_sloe_whitespace(state);
@@ -1863,9 +1863,9 @@ fn parse_expression_record_part<Expressions, Patterns, Types>(
 }
 fn parse_expression_array<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(semicolon_start) = parse_symbol_as_start(state, ";") else {
         return None;
@@ -1891,7 +1891,7 @@ fn parse_expression_array<Expressions, Patterns, Types>(
 }
 fn parse_expression_number<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let start = state.position;
     let Some(value) = parse_number(state) else {
@@ -2054,9 +2054,9 @@ fn parse_text_content_char(state: &mut ParseState) -> Option<char> {
 }
 fn parse_expression_parenthesized<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(open_paren_start) = parse_symbol_as_start(state, "(") else {
         return None;
@@ -2073,9 +2073,9 @@ fn parse_expression_parenthesized<Expressions, Patterns, Types>(
 }
 fn parse_expression_commented<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(comments) = parse_sloe_comments(state) else {
         return None;
@@ -2097,9 +2097,9 @@ fn parse_expression_variable<Expressions, Patterns, Types>(
 }
 fn parse_expression_call<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(name) = parse_sloe_uppercase_name_with_start(state) else {
         return None;
@@ -2116,9 +2116,9 @@ fn parse_expression_call<Expressions, Patterns, Types>(
 }
 fn parse_expression_variant<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(name) = parse_variant_name(state) else {
         return None;
@@ -2135,9 +2135,9 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
 }
 fn parse_expression_fn<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(open_bracket_start) = parse_symbol_as_start(state, "[") else {
         return None;
@@ -2157,9 +2157,9 @@ fn parse_expression_fn<Expressions, Patterns, Types>(
 }
 fn parse_expression_origin<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(origin_keyword_start) = parse_sloe_keyword_as_start(state, "origin") else {
         return None;
@@ -2176,9 +2176,9 @@ fn parse_expression_origin<Expressions, Patterns, Types>(
 }
 fn parse_expression_query<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     let Some(question_mark_start) = parse_symbol_as_start(state, "?") else {
         return None;
@@ -2200,9 +2200,9 @@ fn parse_expression_query<Expressions, Patterns, Types>(
 }
 fn parse_expression_query_case<Expressions, Patterns, Types>(
     state: &mut ParseState,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpressionQueryCase<Expressions, Patterns, Types>> {
     let Some(open_bracket_start) = parse_symbol_as_start(state, "[") else {
         return None;
@@ -2266,9 +2266,9 @@ pub struct CheckedProjectFn {
 pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     syntax_project: &SyntaxProject<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> CompiledProject {
     let project_info = syntax_project_check(errors, syntax_project, expressions, patterns, types);
     checked_project_to_rust(project_info, expressions, patterns, types)
@@ -2276,9 +2276,9 @@ pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
 pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     syntax_project: &'a SyntaxProject<Expressions, Patterns, Types>,
-    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
 ) -> CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     let mut type_graph: strongly_connected_components::Graph =
         strongly_connected_components::Graph::new();
@@ -2594,7 +2594,7 @@ pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
 fn syntax_project_type_connect_type_names_in_graph_from<Types>(
     origin_project_type_graph_node: strongly_connected_components::Node,
     type_graph_node_by_name: &std::collections::HashMap<&str, strongly_connected_components::Node>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     project_type_info: SyntaxProjectTypeInfo<Types>,
     type_graph: &mut strongly_connected_components::Graph,
 ) {
@@ -2614,9 +2614,9 @@ fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Typ
         &Name,
         strongly_connected_components::Node,
     >,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     project_fn: &SyntaxProjectFnInfo<'_, Expressions, Patterns, Types>,
     project_fn_graph: &mut strongly_connected_components::Graph,
 ) {
@@ -2635,7 +2635,7 @@ fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Typ
 fn syntax_type_connect_type_names_in_graph_from<Types>(
     origin_type_declaration_graph_node: strongly_connected_components::Node,
     type_graph_node_by_name: &std::collections::HashMap<&str, strongly_connected_components::Node>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     type_: &SyntaxType<Types>,
     type_graph: &mut strongly_connected_components::Graph,
 ) {
@@ -2761,9 +2761,9 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         &Name,
         strongly_connected_components::Node,
     >,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
     project_fn_graph: &mut strongly_connected_components::Graph,
 ) {
@@ -3024,9 +3024,9 @@ fn checked_project_to_rust<Expressions, Patterns, Types>(
         checked_queries,
         checked_spread_records,
     }: CheckedSyntaxProject<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> CompiledProject {
     let mut rust_items: Vec<syn::Item> =
         Vec::with_capacity(type_graph.len() * 3 + project_fn_graph.len());
@@ -3201,7 +3201,7 @@ fn syntax_record_to_rust(used_choice_variants: &[Name]) -> syn::Item {
 fn project_type_alias_check<Types>(
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     project_type: SyntaxProjectTypeInfo<Types>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
@@ -3341,8 +3341,8 @@ fn project_type_alias_to_rust(
 fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     project_fn: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
@@ -3441,9 +3441,9 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     project_fn: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
     checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &mut std::collections::HashMap<lsp_types::Position, CheckedQuery>,
@@ -3601,9 +3601,9 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     project_fn_name: &Name,
     project_fn_documentation: Option<&str>,
     parameter_type: &Type,
@@ -3710,7 +3710,7 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
 pub fn syntax_type_to_type<Types, OriginInfo>(
     type_: &SyntaxType<Types>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, OriginInfo>,
 ) -> Option<Type> {
     match type_ {
@@ -3842,7 +3842,7 @@ pub fn syntax_type_check<Types>(
     type_: &SyntaxType<Types>,
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
@@ -4860,8 +4860,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
@@ -5301,8 +5301,8 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
     introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
     recombine_statements: &mut Vec<syn::Stmt>,
 ) -> Option<syn::Pat> {
@@ -5653,9 +5653,9 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
-    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     used_pattern_variables: &mut std::collections::HashMap<
         &'a Name,
@@ -5894,7 +5894,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
         } => {
             let Some(syntax_argument) = syntax_argument else {
                 errors.push(ErrorNode {
-                        message: Box::from("missing function call argument after this function name. An example of a function call is U32-dup 2 u32. Some functions like Vec-empty just take . (the empty record) as an argument, so try putting . after the name and then check for potential type errors"),
+                        message: Box::from("missing function call argument after this function name. An example of a function call is U32-dup 2 u32. Some functions like Buf-empty just take . (the empty record) as an argument, so try putting . after the name and then check for potential type errors"),
                         range: name_range(with_start_position_as_ref(name)),
                     });
                 return None;
@@ -6012,7 +6012,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 if syntax_type_argument_count != project_fn_info.type_parameters.len() {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Vec-empty<u32> origin, each type parenthesized if necessary.",
+                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Buf-empty<u32> origin, each type parenthesized if necessary.",
                             parameter_count = project_fn_info.type_parameters.len(),
                             parameter_pluralized = if project_fn_info.type_parameters.len() == 1 {
                                 "parameter"
@@ -7026,9 +7026,9 @@ pub struct CheckedLocalFn {
 fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
-    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<
@@ -8212,7 +8212,7 @@ fn type_references_origin(type_: &Type, origin: &Name) -> bool {
 pub fn syntax_type_variables_into<'a, Types>(
     type_variables: &mut std::collections::HashSet<&'a Name>,
     type_: &'a SyntaxType<Types>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
 ) {
     match type_ {
         SyntaxType::Variable {
@@ -8280,8 +8280,8 @@ pub fn syntax_type_variables_into<'a, Types>(
 pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
     type_variables: &mut std::collections::HashSet<&'a Name>,
     pattern: &'a SyntaxPattern<Patterns, Types>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
 ) {
     match pattern {
         SyntaxPattern::Variable { name: _, type_ } => {
@@ -9388,9 +9388,9 @@ fn type_origin(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
-fn type_vec(origin: Type, element: Type) -> Type {
+fn type_buf(origin: Type, element: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("Vec"),
+        name: Name::from_static("Buf"),
         arguments: vec![origin, element],
     }
 }
@@ -9776,7 +9776,7 @@ fn Three . :> . >
             CoreFnInfo {
                 name: "Span-start",
                 documentation: "Split into the first slot and span after.
-To join disconnected slots and spans back together, use helpers like `Vec-span-add-own-opt-span`",
+To join disconnected slots and spans back together, use helpers like `Buf-span-add-own-opt-span`",
                 type_parameters: vec![],
                 parameter_type: type_span(type_variable("origin")),
                 result_type:
@@ -10007,807 +10007,805 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
                 result_type: type_variable("state"),
             },
             CoreFnInfo {
-                name: "Vec-empty",
-                documentation: "Initialize a `Vec` with 0 elements. Modify with `Vec-pre-allocate-at-least`, `Vec-add`, `Vec-add-unset` etc.",
+                name: "Buf-empty",
+                documentation: "Initialize a `Buf` with 0 elements. Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-unset` etc.",
                 type_parameters: vec![Name::from_static("element")],
                 parameter_type: type_origin(type_variable("origin")),
-                result_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-reuse",
-                documentation: "Initialize a `Vec` with 0 elements and spare allocated memory from an `Unset-slice`.
-This can be used to recycle vec memory from one vec with one origin into another vec with a different origin.
+                name: "Buf-reuse",
+                documentation: "Initialize a `Buf` with 0 elements and spare allocated memory from an `Unset-slice`.
+This can be used to recycle `Buf` memory from one `Buf` with one origin into another `Buf` with a different origin.
 ```sloe
-fn Vec-recycle-empty-vec
+fn Buf-recycle-empty
     .new-origin new-origin Origin _new-origin
-    .old old Vec _old-origin, _element
-    :> Vec _new-origin _element >
-    ? Vec-to-unset old [unset-slice]
-    Vec-reuse .origin new-origin .slice unset-slice
+    .old old Buf _old-origin, _element
+    :> Buf _new-origin _element >
+    ? Buf-to-unset old [unset-slice]
+    Buf-reuse .origin new-origin .slice unset-slice
 ```",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("origin", type_origin(type_variable("origin"))),
                     ("slice", type_unset_slice(type_variable("element"))),
                 ]),
-                result_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-pre-allocate-at-least",
+                name: "Buf-pre-allocate-at-least",
                 documentation: "Reserves spare capacity for at least `.length` more elements to be added.
 This can prevent frequent re-allocation of the underlying array.
 If you can guesstimate a lower bound of how many elements are ultimately added, this is always worth it!
-Equivalent to `Vec-add-unset-length` followed by `Vec-opt-span-rid`",
+Equivalent to `Buf-add-unset-length` followed by `Buf-opt-span-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("length", type_u32),
                 ]),
-                result_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-pre-allocation-rid",
+                name: "Buf-pre-allocation-rid",
                 documentation: "Shrinks down spare capacity as much as possible.
-Some allocators may scrap and re-allocate the whole vec as a result.
-It's rarely useful but can reuce idle memory usage for vecs that are very unlikely to be added to in the future.
-You may also use it to adjust memory usage after `Vec-reuse` when the given `Unset-slice` was large",
+Some allocators may scrap and re-allocate the whole `Buf` as a result.
+It's rarely useful but can reuce idle memory usage for `Buf`s that are very unlikely to be added to in the future.
+You may also use it to adjust memory usage after `Buf-reuse` when the given `Unset-slice` was large",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
-                result_type: type_vec(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-insert",
-                documentation: "Add a new element into the vec and keep a slot to it,
-reusing vacant space earlier in the vec when available.
-Use `Vec-add` if you don't care about reuse.",
+                name: "Buf-insert",
+                documentation: "Add a new element into the `Buf` and keep a slot to it,
+reusing vacant space earlier in the `Buf` when available.
+Use `Buf-add` if you don't care about reuse.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-insert-unset",
-                documentation: "Like `Vec-insert` but without assigning a value just yet.
+                name: "Buf-insert-unset",
+                documentation: "Like `Buf-insert` but without assigning a value just yet.
 This like initializing an element with undefined memory,
 with the difference that you can't possibly access it :)
-Assign an unset-slot with `Vec-set` or vacate it with `Vec-vacate`",
+Assign an unset-slot with `Buf-set` or vacate it with `Buf-vacate`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-add",
-                documentation: "Add a new element to the end of the vec and keep a slot to it without trying to reuse already vacant slots.
-Can be faster than `Vec-insert` when you expect no vacant elements or when all the storage gets scrapped soon anyway.",
+                name: "Buf-add",
+                documentation: "Add a new element to the end of the `Buf` and keep a slot to it without trying to reuse already vacant slots.
+Can be faster than `Buf-insert` when you expect no vacant elements or when all the storage gets scrapped soon anyway.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-add-unset",
-                documentation: "Like `Vec-add` but without assigning a value just yet.
-Assign an unset-slot with `Vec-set` or vacate it with `Vec-vacate`",
+                name: "Buf-add-unset",
+                documentation: "Like `Buf-add` but without assigning a value just yet.
+Assign an unset-slot with `Buf-set` or vacate it with `Buf-vacate`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-add-unset-length-positive",
+                name: "Buf-add-unset-length-positive",
                 documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `Vec-span-rid` this has the same effect as `Vec-pre-allocate-at-least` for example.",
+Combined with `Buf-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("length", type_p32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_unset_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-add-unset-length",
+                name: "Buf-add-unset-length",
                 documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `Vec-opt-span-rid` this has the same effect as `Vec-pre-allocate-at-least` for example.
-To get non-empty spans use `Vec-add-length-positive`",
+Combined with `Buf-opt-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.
+To get non-empty spans use `Buf-add-length-positive`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("length", type_u32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-add-array",
-                documentation: "Add a given `Array` of new elements to the end of the vec and keep a span to it without trying to reuse already vacant slots.
-Convenient equivalent to `Vec-opt-span-add-array` with an empty span.",
+                name: "Buf-add-array",
+                documentation: "Add a given `Array` of new elements to the end of the `Buf` and keep a span to it without trying to reuse already vacant slots.
+Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("new", type_array(type_variable("element"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-remove",
-                documentation: "Remove and retrieve an element from the vec at a given slot (the inverse of vec-insert/vec-add).
-Short for `Vec-unset` followed by `Vec-slot-rid`",
+                name: "Buf-remove",
+                documentation: "Vacate and retrieve an element from the `Buf` at a given slot (the inverse of `Buf-insert`/`Buf-add`).
+Short for `Buf-unset` followed by `Buf-slot-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("element", type_variable("element")),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-unset",
-                documentation: "Retrieve an element from the vec at a given slot (the inverse of vec-set)
+                name: "Buf-unset",
+                documentation: "Retrieve an element from the `Buf` at a given slot (the inverse of `Buf-set`)
 ```sloe
-fn Vec-copy-u32-at
-    .vec vec Vec _origin, u32
+fn Buf-copy-u32-at
+    .buf buf Buf _origin, u32
     .slot slot Slot _origin
     :>
-    .vec vec Vec _origin, u32
+    .buf buf Buf _origin, u32
     .slot slot Slot _origin
     .element u32
     >
-    ? vec-unset .vec vec .slot slot
-    [.vec vec .element element .slot unset-slot]
+    ? Buf-unset .buf buf .slot slot
+    [.buf buf .element element .slot unset-slot]
     ? U32-dup element [.a element .b element-copied]
-    ? Vec-set .vec vec .slot unset-slot .new element [.vec vec .slot slot]
-    .vec vec .slot slot .element element-copied
+    ? Buf-set .buf buf .slot unset-slot .new element [.buf buf .slot slot]
+    .buf buf .slot slot .element element-copied
 ```
 A little roundabout but it works.
-To remove the element entirely, use `Vec-take`",
+To remove the element entirely, use `Buf-take`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("element",type_variable("element") ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                     ("element", type_variable("element")),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-set",
-                documentation: "Put an element back into the given `Unset-slot` (the inverse of vec-unset).
-To instead replace a `Slot`, use `Slot-replace`",
+                name: "Buf-set",
+                documentation: "Put an element back into the given `Unset-slot` (the inverse of `Buf-unset`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                     ("new", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-set",
-                documentation: "Put an element back into the given `Unset-slot` (the inverse of vec-unset).
-To instead replace a `Slot`, use `Slot-replace`",
+                name: "Buf-set",
+                documentation: "Put an element back into the given `Unset-slot` (the inverse of `Buf-unset`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                     ("new", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-slot-rid",
-                documentation: "Return an `Unset-slot` back to the vec for potential future reuse",
+                name: "Buf-slot-rid",
+                documentation: "Return an `Unset-slot` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
-                result_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-span-rid",
-                documentation: "Return an `Unset-span` back to the vec for potential future reuse",
+                name: "Buf-span-rid",
+                documentation: "Return an `Unset-span` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_unset_span(type_variable("origin"))),
                 ]),
-                result_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-opt-span-rid",
-                documentation: "Return an `Opt Unset-span` back to the vec for potential future reuse",
+                name: "Buf-opt-span-rid",
+                documentation: "Return an `Opt Unset-span` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
-                result_type: type_vec(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-span-reverse",
+                name: "Buf-span-reverse",
                 documentation: "Order the referenced elements such that the previously last is now first, second last is second etc.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-opt-span-reverse",
+                name: "Buf-opt-span-reverse",
                 documentation: "Order the referenced elements such that the previously last is now first, second last is second etc.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-opt-span-add",
+                name: "Buf-opt-span-add",
                 documentation: "Attach a given element at the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-span-add",
+                name: "Buf-span-add",
                 documentation: "Attach a given element at the end of the span",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                     ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-span-add-array",
+                name: "Buf-span-add-array",
                 documentation: "Attach a given `Array` of elements at the end of the span.
-This can remove a bunch of noise compared to chaining `Vec-span-add` operations",
+This can remove a bunch of noise compared to chaining `Buf-span-add` operations",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                     ("new", type_array(type_variable("element"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-opt-span-add-array",
+                name: "Buf-opt-span-add-array",
                 documentation: "Attach a given `Array` of elements at the end of the span.
-This can remove a bunch of noise compared to chaining `Vec-span-add` operations",
+This can remove a bunch of noise compared to chaining `Buf-span-add` operations",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_array(type_variable("element"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-opt-span-add-str",
+                name: "Buf-char-opt-span-add-str",
                 documentation: "Attach a given `str` at the end of the span",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_str),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-span-add-str",
+                name: "Buf-char-span-add-str",
                 documentation: "Attach a given `str` to the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                     ("new", type_str),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-span-add-u32",
+                name: "Buf-char-span-add-u32",
                 documentation: "Print a given `u32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                     ("new", type_u32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-opt-span-add-u32",
+                name: "Buf-char-opt-span-add-u32",
                 documentation: "Print a given `u32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_u32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-span-add-i32",
+                name: "Buf-char-span-add-i32",
                 documentation: "Print a given `i32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                     ("new", type_i32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-opt-span-add-i32",
+                name: "Buf-char-opt-span-add-i32",
                 documentation: "Print a given `i32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_i32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-span-add-f32",
+                name: "Buf-char-span-add-f32",
                 documentation: "Print a given `f32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                     ("new", type_f32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-char-opt-span-add-f32",
+                name: "Buf-char-opt-span-add-f32",
                 documentation: "Print a given `f32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("new", type_f32),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_char),
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-move-opt-span-to-vacant",
+                name: "Buf-move-opt-span-to-vacant",
                 documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-move-span-to-vacant",
+                name: "Buf-move-span-to-vacant",
                 documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-move-span-to-end",
+                name: "Buf-move-span-to-end",
                 documentation: "Move the given span to after all existing elements if necessary.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-move-opt-span-to-end",
+                name: "Buf-move-opt-span-to-end",
                 documentation: "Move the given span to after all existing elements if necessary.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-span-add-own-span",
+                name: "Buf-span-add-own-span",
                 documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
-As an example, you could implement `Vec-span-add` in sloe itself as
+As an example, you could implement `Buf-span-add` in sloe itself as
 ```sloe
-fn Vec-span-add
-    .vec vec Vec _origin, _element
+fn Buf-span-add
+    .buf buf Buf _origin, _element
     .span span Span _origin
     .new new _element
     :>
-    .vec Vec _origin, _element
+    .buf Buf _origin, _element
     .span Span _origin
     >
     # the first line is optional: it ensures that the new slot will actually be connected,
     # meaning the new element can stay at its position
-    ? Vec-span-move-to-end .vec vec .span span [.vec vec .span .span]
-    ? Vec-add .vec vec .new new [.vec vec .slot new-slot]
-    Vec-span-add-own-span
-    .vec vec
+    ? Buf-span-move-to-end .buf buf .span span [.buf buf .span .span]
+    ? Buf-add .buf buf .new new [.buf buf .slot new-slot]
+    Buf-span-add-own-span
+    .buf buf
     .start span
     .end Slot-to-span new-slot
 ```",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("start", type_span(type_variable("origin"))),
                     ("end", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-span-add-own-opt-span",
+                name: "Buf-span-add-own-opt-span",
                 documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
 The most common use case is re-combining spans that have been split up with e.g. `Span-start` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("start", type_opt(type_span(type_variable("origin")))),
                     ("end", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-opt-span-add-own-span",
+                name: "Buf-opt-span-add-own-span",
                 documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
 The most common use case is re-combining spans that have been split up with e.g. `Span-end` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("start", type_opt(type_span(type_variable("origin")))),
                     ("end", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-opt-span-add-own-opt-span",
+                name: "Buf-opt-span-add-own-opt-span",
                 documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("start", type_opt(type_span(type_variable("origin")))),
                     ("end", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
-                        "vec",
-                        type_vec(type_variable("origin"), type_variable("element")),
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
-                name: "Vec-to-unset",
+                name: "Buf-to-unset",
                 documentation: "Extract the underlying slice that been used to store elements in including spare capacity.
 This `Unset-slice` can if necessary be casted to a new element type with `Unset-slice-cast-or-rid-and-allocate`.
-Finally, the allocation can be the base of a new vec with `Vec-reuse` or be scrapped with `Unset-slice-rid`",
+Finally, the allocation can be the base of a new `Buf` with `Buf-reuse` or be scrapped with `Unset-slice-rid`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
                 result_type: type_unset_slice(type_variable("element")),
             },
             CoreFnInfo {
-                name: "Vec-rid",
-                documentation: "Mark the given vec value as \"won't be used anymore\".
-Used for temporary vecs at the end of their scope once all of their elements are used up.
+                name: "Buf-rid",
+                documentation: "Mark the given `Buf` value as \"won't be used anymore\".
+Used for temporary `Buf`s at the end of their scope once all of their elements are used up.
 If any slots or spans are still floating around, you will not be able to get rid of them.
-This nicely forces you to handle all remaining elements before you can get rid of the vec.
-To reuse the underlying allocation, use `Vec-to-unset`",
+This nicely forces you to handle all remaining elements before you can get rid of the `Buf`.
+To reuse the underlying allocation, use `Buf-to-unset`",
                 type_parameters: vec![],
-                parameter_type: type_vec(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
                 result_type: type_record([]),
             },
             CoreFnInfo {
@@ -10890,7 +10888,7 @@ pub static core_type_aliases: std::sync::LazyLock<
                     r"A natural number >= 1 (positive integer) with 32 bits.
 ```sloe
 fn Answer . :> p32 >
-    P32-add .p 2 p32 .u 40 u32
+    P32-add-clamp .p 2 p32 .u 40 u32
 ```",
                 )),
                 parameters: vec![],
@@ -10970,7 +10968,7 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
 like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""`
 (`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
-When building new strings at runtime, use functions like `Vec-char-opt-span-add-str`."#,
+When building new strings at runtime, use functions like `Buf-char-opt-span-add-str`."#,
                 )),
                 parameters: vec![],
                 type_: Some(type_str),
@@ -10996,30 +10994,31 @@ When building new strings at runtime, use functions like `Vec-char-opt-span-add-
 Origins can not be arbitrary values because values like `u32` could be duplicated leading to different collections with the same origin type.
 This is not possible for values of type `Origin`.
 The type argument to an `Origin` is the type that also gets created with `origin some-origin expression`.
-This type argument is also used in slot, span, arena, vec as the first type argument."
+This type argument is also used in `Slot`, `Span`, `Buf`, `Unset-slot`, `Unset-span` as the first type argument."
                 )),
                 parameters: vec![Name::from_static("local-origin")],
                 type_: Some(type_origin(type_variable("local-origin"))),
             },
         ),
         (
-            Name::from_static("Vec"),
+            Name::from_static("Buf"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A grow- and shrinkable array of elements. Arrays have constant time access and update and constant time add.
+                    "A grow- and shrinkable buffered array of elements. Arrays have constant time access and update and constant time add.
 ```sloe
-fn Use-a-vec . :> u32 >
+fn Use-a-buf . :> u32 >
     origin my-elements-origin
-    ? Vec-empty<u32> my-elements-origin [my-elements]
-    ? Vec-add .vec my-elements .element 609 u32 [.vec my-elements .slot first-element-slot]
-    ? Vec-remove .vec my-elements .slot first-element-slot [.vec my-elements .element first-element]
-    ? Vec-rid my-elements [.]
+    ? Buf-empty<u32> my-elements-origin [my-elements]
+    ? Buf-add .buf my-elements .element 609 u32 [.buf my-elements .slot first-element-slot]
+    ? Buf-remove .buf my-elements .slot first-element-slot
+    [.buf my-elements .element first-element]
+    ? Buf-rid my-elements [.]
     first-element # = 609 u32
 ```"
                 )),
                 parameters: vec![Name::from_static("origin"), Name::from_static("element")],
-                type_: Some(type_vec(type_variable("origin"), type_variable("element"))),
+                type_: Some(type_buf(type_variable("origin"), type_variable("element"))),
             },
         ),
         (
@@ -11040,7 +11039,7 @@ For consecutive `Slot`s, check out `Span`."
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A range of ≥1 consecutive valid positions in a collection.
+                    "A range of ≥1 consecutive valid slots in a collection.
 This works because each collection has a unique origin and only gives out one span for each range.
 For potentially 0-length spans, use `Opt Span`"
                 )),
@@ -11081,7 +11080,7 @@ As this prevents other elements from filling these positions, you shouldn't keep
                 documentation: Some(Box::from(
                     "A stack-allocated array of known, positive length.
 Arrays make adding multiple elements of the same type much less cumbersome,
-see `Vec-add-array`/`Vec-span-add-array`/`Vec-opt-span-add-array`.
+see `Buf-add-array`/`Buf-span-add-array`/`Buf-opt-span-add-array`.
 This is a very bare-bones feature because of sloe's simple type system.
 
 How does arry work then? The second record argument is set to an equivalent record
@@ -11105,7 +11104,7 @@ Use a regular record instead!"
                 documentation: Some(Box::from(
                     "A heap-allocated array with unknown length and undefined contents.
 Can be constructed manually or as an intermediate type when recycling the allocated space of a collection,
-see `Vec-to-unset`.
+see `Buf-to-unset`.
 Since you can't read from it, you can also safely attempt to reuse this allocation for a different element type,
 see `Unset-slice-cast-or-rid-and-allocate`.
 Note that `Unset-slice` does not have a dup function to make heap allocation explicit.
@@ -11285,9 +11284,9 @@ fn syntax_comments_format(formatted: &mut String, indent: usize, comments: &Synt
 pub fn syntax_project_format<Expressions, Patterns, Types>(
     project: &SyntaxProject<Expressions, Patterns, Types>,
     _source: &str,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> String {
     let mut formatted = String::with_capacity(project.elements.len() * 128);
     formatted.push('\n');
@@ -11549,8 +11548,8 @@ const no_open_end_kinds: OpenEndKinds = OpenEndKinds {
 };
 fn syntax_expression_open_end<Expressions, Patterns, Types>(
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> OpenEndKinds {
     match expression {
         SyntaxExpression::Number { value: _, type_ } => match type_ {
@@ -11717,9 +11716,9 @@ fn field_name_format(formatted: &mut String, field_name: &Name) {
 fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
     formatted: &mut String,
     indent: usize,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
 ) {
     match expression {
@@ -12123,9 +12122,9 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
 fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
     formatted: &mut String,
     indent: usize,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     record_part_count: usize,
     record_part: &SyntaxRecordPart<Expressions>,
     record_part_index: usize,
@@ -12210,9 +12209,9 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
 fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
     formatted: &mut String,
     indent: usize,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     case_count: usize,
     case_index: usize,
     case: &SyntaxExpressionQueryCase<Expressions, Patterns, Types>,
@@ -12350,8 +12349,8 @@ fn parenthesize_if_open_ended_whitespace_then_element_format(
 }
 fn syntax_pattern_open_end<Patterns, Types>(
     pattern: &SyntaxPattern<Patterns, Types>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> OpenEndKinds {
     match pattern {
         SyntaxPattern::Variable { name: _, type_ } => match type_ {
@@ -12399,8 +12398,8 @@ fn syntax_pattern_open_end<Patterns, Types>(
 fn syntax_pattern_unparenthesized_format<Types, Patterns>(
     formatted: &mut String,
     indent: usize,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     pattern: &SyntaxPattern<Patterns, Types>,
 ) {
     match pattern {
@@ -12463,8 +12462,8 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
 fn syntax_pattern_record_part_unparenthesized_format<Types, Patterns>(
     formatted: &mut String,
     indent: usize,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     part_count: usize,
     part: &SyntaxRecordPart<Patterns>,
     part_index: usize,
@@ -12530,7 +12529,7 @@ fn syntax_pattern_record_part_unparenthesized_format<Types, Patterns>(
 fn syntax_angled_type_arguments_format<Types>(
     formatted: &mut String,
     indent: usize,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     angled_type_arguments: &SyntaxAngledTypeArguments<Types>,
 ) {
     formatted.push('<');
@@ -12608,7 +12607,7 @@ fn syntax_angled_type_arguments_format<Types>(
 }
 fn syntax_type_open_end<Types>(
     type_: &SyntaxType<Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> OpenEndKinds {
     match type_ {
         SyntaxType::Variable { .. } => no_open_end_kinds,
@@ -12684,7 +12683,7 @@ fn syntax_type_open_end<Types>(
 fn syntax_type_unparenthesized_format<Types>(
     formatted: &mut String,
     indent: usize,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     type_: &SyntaxType<Types>,
 ) {
     match type_ {
@@ -12957,9 +12956,9 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     position: lsp_types::Position,
-    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     // TODO strongly consider binary search
     project.elements.iter().find_map(|element| match element {
@@ -13131,9 +13130,9 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
     scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
     pattern_variables: &mut std::collections::HashMap<
         &'a Name,
@@ -13511,9 +13510,9 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    expressions: &'a core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
     scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
     pattern_variables: &mut std::collections::HashMap<
         &'a Name,
@@ -13589,7 +13588,7 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     state: State,
     reduce: &mut impl FnMut(State, WithStartPosition<&'a Name>, Option<&'a SyntaxType<Types>>) -> State,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
 ) -> State {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
@@ -13653,7 +13652,7 @@ fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
     state: State,
     reduce: &mut impl FnMut(State, WithStartPosition<&'a Name>, Option<Type>) -> State,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
 ) -> State {
     match pattern {
         SyntaxPattern::Variable { name, type_: _ } => reduce(
@@ -13767,8 +13766,8 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
     position: lsp_types::Position,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    patterns: &'a core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
     project_element_scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
     expression_scope: Option<&'a SyntaxExpression<Expressions, Patterns, Types>>,
     origins: &mut std::collections::HashMap<
@@ -13923,7 +13922,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
 fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
     type_: &'a SyntaxType<Types>,
     position: lsp_types::Position,
-    types: &'a core::Vec<Types, SyntaxType<Types>>,
+    types: &'a core::Buf<Types, SyntaxType<Types>>,
     scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
     origins: &mut std::collections::HashMap<
         &'a Name,
@@ -14242,9 +14241,9 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
 pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
     project: &SyntaxProject<Expressions, Patterns, Types>,
     symbol: &SyntaxSymbol<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> Vec<lsp_types::Range> {
     let mut uses = Vec::new();
     match symbol {
@@ -14492,7 +14491,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
     uses: &mut Vec<lsp_types::Range>,
     type_: &SyntaxType<Types>,
     symbol: &SyntaxSymbol<Expressions, Patterns, Types>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashSet<&Name>,
 ) {
     match type_ {
@@ -14598,8 +14597,8 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
     uses: &mut Vec<lsp_types::Range>,
     pattern: &SyntaxPattern<Patterns, Types>,
     symbol: &SyntaxSymbol<Expressions, Patterns, Types>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashSet<&Name>,
 ) {
     match pattern {
@@ -14682,9 +14681,9 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
     uses: &mut Vec<lsp_types::Range>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
     symbol: &SyntaxSymbol<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     pattern_variables: &std::collections::HashSet<&Name>,
     origins: &std::collections::HashSet<&Name>,
 ) {
@@ -15006,9 +15005,9 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
     uses: &mut Vec<lsp_types::Range>,
     part: &SyntaxRecordPart<Expressions>,
     symbol: &SyntaxSymbol<Expressions, Patterns, Types>,
-    expressions: &core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Vec<Types, SyntaxType<Types>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
     pattern_variables: &std::collections::HashSet<&Name>,
     origins: &std::collections::HashSet<&Name>,
 ) {
@@ -15048,9 +15047,9 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
 }
 pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
     element: SyntaxProjectElement<Expressions, Patterns, Types>,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) {
     match element {
         SyntaxProjectElement::TypeAlias {
@@ -15094,7 +15093,7 @@ pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
 }
 fn syntax_type_rid<Types>(
     type_: SyntaxType<Types>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) {
     match type_ {
         SyntaxType::Variable {
@@ -15163,8 +15162,8 @@ fn syntax_type_rid<Types>(
 }
 fn syntax_pattern_rid<Patterns, Types>(
     pattern: SyntaxPattern<Patterns, Types>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) {
     match pattern {
         SyntaxPattern::Variable { name: _, type_ } => {
@@ -15210,9 +15209,9 @@ fn syntax_pattern_rid<Patterns, Types>(
 }
 fn syntax_expression_rid<Expressions, Patterns, Types>(
     expression: SyntaxExpression<Expressions, Patterns, Types>,
-    expressions: &mut core::Vec<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &mut core::Vec<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &mut core::Vec<Types, SyntaxType<Types>>,
+    expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) {
     match expression {
         SyntaxExpression::Number { value: _, type_ } => {
