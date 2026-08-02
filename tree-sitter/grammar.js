@@ -43,7 +43,7 @@ export default grammar({
       seq(
         $.keyword_fn,
         $.project_fn_name,
-        optional($.angled_type_parameters),
+        repeat($.angled_type_parameter),
         $.pattern_typed,
         $.key_symbol_colon,
         $.type,
@@ -145,38 +145,36 @@ export default grammar({
       ),
     expression_origin_not_open_ending_in_array: ($) =>
       seq($.keyword_origin, $.expression_variable, $.expression_not_open_ending_in_array),
-    expression_variant: ($) => seq($.variant_name, "<", $.type, ">", $.expression),
+    expression_variant: ($) => seq($.variant_name, $.angled_type_argument, $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
-      seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_query),
+      seq($.variant_name, $.angled_type_argument, $.expression_not_open_ending_in_query),
     expression_variant_not_open_ending_in_record: ($) =>
-      seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_record),
+      seq($.variant_name, $.angled_type_argument, $.expression_not_open_ending_in_record),
     expression_variant_not_open_ending_in_array: ($) =>
-      seq($.variant_name, "<", $.type, ">", $.expression_not_open_ending_in_array),
+      seq($.variant_name, $.angled_type_argument, $.expression_not_open_ending_in_array),
     expression_variable: ($) => $.lower_name,
     expression_call: ($) =>
-      seq($.project_fn_name, optional($.angled_type_arguments), $.expression),
+      seq($.project_fn_name, repeat($.angled_type_argument), $.expression),
     expression_call_not_open_ending_in_query: ($) =>
       seq(
         $.project_fn_name,
-        optional($.angled_type_arguments),
+        repeat($.angled_type_argument),
         $.expression_not_open_ending_in_query,
       ),
     expression_call_not_open_ending_in_record: ($) =>
       seq(
         $.project_fn_name,
-        optional($.angled_type_arguments),
+        repeat($.angled_type_argument),
         $.expression_not_open_ending_in_record,
       ),
     expression_call_not_open_ending_in_array: ($) =>
       seq(
         $.project_fn_name,
-        optional($.angled_type_arguments),
+        repeat($.angled_type_argument),
         $.expression_not_open_ending_in_array,
       ),
-    angled_type_arguments: ($) =>
-      seq("<", repeat(seq($.type_not_open_ending_in_construct, ",")), $.type, ">"),
-    angled_type_parameters: ($) =>
-      seq("<", repeat(seq($.type_variable, ",")), $.type_variable, ">"),
+    angled_type_argument: ($) => seq("<", $.type, ">"),
+    angled_type_parameter: ($) => seq("<", $.type_variable, ">"),
     expression_query: ($) =>
       seq(
         $.key_symbol_question_mark,

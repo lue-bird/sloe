@@ -121,16 +121,11 @@
           "name": "project_fn_name"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "angled_type_parameters"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "angled_type_parameter"
+          }
         },
         {
           "type": "SYMBOL",
@@ -557,16 +552,8 @@
           "name": "variant_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
-        },
-        {
           "type": "SYMBOL",
-          "name": "type"
-        },
-        {
-          "type": "STRING",
-          "value": ">"
+          "name": "angled_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -582,16 +569,8 @@
           "name": "variant_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
-        },
-        {
           "type": "SYMBOL",
-          "name": "type"
-        },
-        {
-          "type": "STRING",
-          "value": ">"
+          "name": "angled_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -607,16 +586,8 @@
           "name": "variant_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
-        },
-        {
           "type": "SYMBOL",
-          "name": "type"
-        },
-        {
-          "type": "STRING",
-          "value": ">"
+          "name": "angled_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -632,16 +603,8 @@
           "name": "variant_name"
         },
         {
-          "type": "STRING",
-          "value": "<"
-        },
-        {
           "type": "SYMBOL",
-          "name": "type"
-        },
-        {
-          "type": "STRING",
-          "value": ">"
+          "name": "angled_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -661,16 +624,11 @@
           "name": "project_fn_name"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "angled_type_arguments"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "angled_type_argument"
+          }
         },
         {
           "type": "SYMBOL",
@@ -686,16 +644,11 @@
           "name": "project_fn_name"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "angled_type_arguments"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "angled_type_argument"
+          }
         },
         {
           "type": "SYMBOL",
@@ -711,16 +664,11 @@
           "name": "project_fn_name"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "angled_type_arguments"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "angled_type_argument"
+          }
         },
         {
           "type": "SYMBOL",
@@ -736,16 +684,11 @@
           "name": "project_fn_name"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "angled_type_arguments"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "angled_type_argument"
+          }
         },
         {
           "type": "SYMBOL",
@@ -753,28 +696,12 @@
         }
       ]
     },
-    "angled_type_arguments": {
+    "angled_type_argument": {
       "type": "SEQ",
       "members": [
         {
           "type": "STRING",
           "value": "<"
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "type_not_open_ending_in_construct"
-              },
-              {
-                "type": "STRING",
-                "value": ","
-              }
-            ]
-          }
         },
         {
           "type": "SYMBOL",
@@ -786,28 +713,12 @@
         }
       ]
     },
-    "angled_type_parameters": {
+    "angled_type_parameter": {
       "type": "SEQ",
       "members": [
         {
           "type": "STRING",
           "value": "<"
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "type_variable"
-              },
-              {
-                "type": "STRING",
-                "value": ","
-              }
-            ]
-          }
         },
         {
           "type": "SYMBOL",

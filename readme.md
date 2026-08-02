@@ -191,22 +191,22 @@ Sloe is a very explicit language, so any extra verbosity is not tolerable.
 'a'
 
 # most identifiers
-some-variable-or-field-or-type-without-parameters-or-variant-name-2012
+some-variable-or-field-or-variant-or-type-without-parameters-2012
 
 # constructor name
-Some-type-with-parameters-or-function-name
+Some-function-name-or-type-with-parameters
 
 # function call.
-# Rarely functions may require appended comma-separated type arguments: <...>.
-# Any function is of type `fn` and always requires an argument (which does not need to be parenthesized)
-Some-function<type, arguments> Inner-call-as-the-argument inner-inner-argument
+# Rarely functions may require type arguments: <...>.
+# Any function is of type `Fn` and always requires an argument (which does not need to be parenthesized)
+Some-function<type><arguments> Inner-call-as-the-argument inner-inner-argument
 
 # record. if values are open-ended they need to be parenthesized.
 # The last field value can end in a record without needing to be parenthesized
 .first-field first-value .second-field second-value
 
 # "empty record", like void/unit.
-# commonly used for variants "without a value", empty state
+# commonly used for variants "without a value", empty state/context
 # or as the result of functions like u32-rid
 .
 
@@ -235,8 +235,8 @@ origin new-origin-name expression-that uses new-origin-name
 
 # project function declaration.
 # For type variables in the result that aren't used in the input,
-# functions require appended space-separated type parameters: <...>
-fn Function-name<_potential, _type-arguments, _only-used-in-the-result>
+# functions require appended type parameters: <...>
+fn Function-name<_potential><_type-arguments><_only-used-in-the-result>
     parameter-pattern-with-types
     : result-type =
     # optional documentation
@@ -249,7 +249,7 @@ u32
 # type with multiple arguments. Uppercase name.
 # Arguments before the last must be parenthesized if they end in a type with arguments
 Span origin
-My-function-type env, input, output
+My-function-type-alias env, input, output
 
 # project type which is an alias for an existing type.
 # Here a "choice type" that can come in different shapes ("variants")
@@ -257,10 +257,10 @@ My-function-type env, input, output
 ty point .x i32 .y i32
 
 # project type with parameters
-ty Type-name _potential, _type-Parameters
+ty Type-name _potential, _type-parameters
     |first-option .
     |second-option Buf _potential, u32
-    |third-option Type-name-alias _potential, _type-Arguments
+    |third-option Type-name-alias _potential, _type-parameters
 
 # creating a variant. Note that the type could refer to a type alias
 # or a choice type directly <|... ...>
@@ -618,8 +618,6 @@ cargo install --offline --debug --path . sloe
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
 - add more math and maybe bit operations
-
-- for simplicity, change `Function<..., ..., ...>` to `Function<...><...><...>` at call and project fn sites
 
 - find a symbol to replace the `origin` keyword. Maybe ^ as a visual "place anchor"
 

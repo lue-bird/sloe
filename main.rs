@@ -1578,8 +1578,21 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                         name.value.len(),
                     );
                 }
-                if let Some(type_parameters) = type_parameters {
-                    sloe_angled_type_parameters_highlight(state, type_parameters);
+                for sloe::SyntaxAngledTypeParameter {
+                    open_angle_start: _,
+                    underscore_start,
+                    name: type_parameter_name,
+                    closed_angle_start: _,
+                } in type_parameters
+                {
+                    if let &Some(parameter_underscore_start) = underscore_start {
+                        highlight_state_add_token_with_start_and_length(
+                            state,
+                            lsp_types::SemanticTokenTypes::TypeParameter,
+                            parameter_underscore_start,
+                            1 + type_parameter_name.encode_utf16().count(),
+                        );
+                    }
                 }
                 if let Some(parameter) = parameter {
                     sloe_syntax_pattern_highlight(state, patterns, types, parameter);
@@ -1625,43 +1638,6 @@ fn sloe_syntax_name_highlight(
         name.start,
         name.value.encode_utf16().count(),
     );
-}
-fn sloe_angled_type_parameters_highlight(
-    state: &mut HighlightState,
-    angled_type_parameters: &sloe::SyntaxAngledTypeParameters,
-) {
-    if let Some(parameter0_underscore_start) = angled_type_parameters.parameter0_underscore_start {
-        highlight_state_add_token_with_start_and_length(
-            state,
-            lsp_types::SemanticTokenTypes::TypeParameter,
-            parameter0_underscore_start,
-            1 + angled_type_parameters.parameter0.encode_utf16().count(),
-        );
-    }
-    for parameter in &angled_type_parameters.parameter1_up {
-        if let Some(parameter_underscore_start) = parameter.underscore_start {
-            highlight_state_add_token_with_start_and_length(
-                state,
-                lsp_types::SemanticTokenTypes::TypeParameter,
-                parameter_underscore_start,
-                1 + parameter.name.encode_utf16().count(),
-            );
-        }
-    }
-}
-fn sloe_angled_type_arguments_highlight<Types>(
-    state: &mut HighlightState,
-    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
-    angled_type_arguments: &sloe::SyntaxAngledTypeArguments<Types>,
-) {
-    if let Some(argument0) = &angled_type_arguments.argument0 {
-        sloe_syntax_type_highlight(state, types, argument0);
-    }
-    for argument in &angled_type_arguments.argument1_up {
-        if let Some(argument_type) = &argument.type_ {
-            sloe_syntax_type_highlight(state, types, argument_type);
-        }
-    }
 }
 fn sloe_syntax_trailing_field_highlight<Value>(
     state: &mut HighlightState,
@@ -1919,8 +1895,15 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             argument,
         } => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
-            if let Some(type_arguments) = type_arguments {
-                sloe_angled_type_arguments_highlight(state, types, type_arguments);
+            for sloe::SyntaxAngledTypeArgument {
+                open_angle_start: _,
+                type_,
+                closed_angle_start: _,
+            } in type_arguments
+            {
+                if let Some(type_) = type_ {
+                    sloe_syntax_type_highlight(state, types, type_);
+                }
             }
             if let Some(argument) = argument {
                 sloe_syntax_expression_highlight(
@@ -2364,23 +2347,12 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                     documentation: _,
                     result: _,
                 } => {
-                    if let Some(type_parameters) = type_parameters {
-                        for (underscore_start, name) in type_parameters
-                            .parameter0_underscore_start
-                            .map(|underscore_start| (underscore_start, &type_parameters.parameter0))
-                            .into_iter()
-                            .chain(type_parameters.parameter1_up.iter().filter_map(
-                                |type_parameter| {
-                                    type_parameter.underscore_start.map(|underscore_start| {
-                                        (underscore_start, &type_parameter.name)
-                                    })
-                                },
-                            ))
-                        {
+                    for type_parameter in type_parameters {
+                        if let Some(underscore_start) = type_parameter.underscore_start {
                             if lsp_position_add_characters(underscore_start, 1) == use_start {
                                 return None;
                             }
-                            available_existing_variables.insert(name);
+                            available_existing_variables.insert(&type_parameter.name);
                         }
                     }
                     if let Some(parameter) = parameter {

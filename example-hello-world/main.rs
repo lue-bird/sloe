@@ -9,7 +9,7 @@ fn main() {
     print!(
         "{}",
         greeting
-            .vec
+            .buf
             .span_slice(&greeting.span)
             .iter()
             .copied()

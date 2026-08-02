@@ -1,29 +1,25 @@
 [
   {
-    "type": "angled_type_arguments",
+    "type": "angled_type_argument",
     "named": true,
     "fields": {},
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "type",
-          "named": true
-        },
-        {
-          "type": "type_not_open_ending_in_construct",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "angled_type_parameters",
+    "type": "angled_type_parameter",
     "named": true,
     "fields": {},
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
@@ -171,7 +167,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_arguments",
+          "type": "angled_type_argument",
           "named": true
         },
         {
@@ -194,7 +190,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_arguments",
+          "type": "angled_type_argument",
           "named": true
         },
         {
@@ -217,7 +213,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_arguments",
+          "type": "angled_type_argument",
           "named": true
         },
         {
@@ -240,7 +236,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_arguments",
+          "type": "angled_type_argument",
           "named": true
         },
         {
@@ -975,11 +971,11 @@
       "required": true,
       "types": [
         {
-          "type": "expression",
+          "type": "angled_type_argument",
           "named": true
         },
         {
-          "type": "type",
+          "type": "expression",
           "named": true
         },
         {
@@ -998,11 +994,11 @@
       "required": true,
       "types": [
         {
-          "type": "expression_not_open_ending_in_array",
+          "type": "angled_type_argument",
           "named": true
         },
         {
-          "type": "type",
+          "type": "expression_not_open_ending_in_array",
           "named": true
         },
         {
@@ -1021,11 +1017,11 @@
       "required": true,
       "types": [
         {
-          "type": "expression_not_open_ending_in_query",
+          "type": "angled_type_argument",
           "named": true
         },
         {
-          "type": "type",
+          "type": "expression_not_open_ending_in_query",
           "named": true
         },
         {
@@ -1044,11 +1040,11 @@
       "required": true,
       "types": [
         {
-          "type": "expression_not_open_ending_in_record",
+          "type": "angled_type_argument",
           "named": true
         },
         {
-          "type": "type",
+          "type": "expression_not_open_ending_in_record",
           "named": true
         },
         {
@@ -1438,7 +1434,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_parameters",
+          "type": "angled_type_parameter",
           "named": true
         },
         {
