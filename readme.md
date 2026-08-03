@@ -1035,14 +1035,14 @@ ty Eraser _origin
 #     .origin-derive Fn _origin _derived-origin
 #     : Eraser _derived-origin
 
-fn Slot-erase-origin
+fn Slot-origin-erase
     .slot Slot _origin
     .eraser Eraser _origin
     :
     .slot Slot erased
     .eraser Eraser _origin
 # ... same for Span and Unset-slot/-span
-fn Buf-erase-origin
+fn Buf-origin-erase
     .buf Buf _origin, _element
     .eraser Eraser _origin
     .element-erase (
@@ -1051,20 +1051,20 @@ fn Buf-erase-origin
         , .element _erased-element .eraser Eraser _origin
         )
     :
-    .buf Buf erased, _erased-element
-    .eraser Eraser _origin
+    Buf erased, _erased-element
 
 ty Uneraser _origin
-fn Uneraser-map
-    .uneraser Uneraser _origin
-    .origin-derive Fn _origin, _derived-origin
-    : Uneraser _derived-origin
+# not included due to lack of usefulness:
+# fn Uneraser-map
+#     .uneraser Uneraser _origin
+#     .origin-derive Fn _origin, _derived-origin
+#     : Uneraser _derived-origin
     
 fn Slot-unerase
     .slot Slot origin-erased .uneraser Uneraser _origin
     : Slot _origin
 # same for Span and Unset-slot/-span
-fn Buf-unerase
+fn Buf-origin-unerase
     .buf Buf origin-erased, _element
     .uneraser Uneraser _origin
     .element-unerase (
@@ -1098,8 +1098,7 @@ fn Unerase
     :
     _unerased-value
 ```
-TODO Open issue: With  possible to smuggle out a Buf with derived origin-erased.
-This must be forbidden. An immediate solution is to instead rely on `Erased2/3/4/5` but I want to avoid this if at all possible.
+TODO find a better name for uneraser and be extra clear in all the erase-named types and functions that an origin is erased.
 
 This is so much simpler than anticipated; lucky me!
 The tricks:
@@ -1113,11 +1112,12 @@ The tricks:
       This actually makes the idea moot :(
     - an Uneraser with the same origin is required to be used
 
+Note: With introducing eraser and uneraser map it would be possible to smuggle out a Buf with derived origin-erased.
+This must be forbidden. An immediate solution is to instead rely on `Erased2/3/4/5` but I want to avoid this if at all possible.
+
 Consider introducing "origin-parent" types. Think
 ```sloe
 ty origin-sub
 Origin-parent .expressions origin-sub .patterns origin-sub .types origin-sub
 ```
 basically some API where a record can be split up into its fields, one origin/eraser/uneraser for each.
-
-Also find a better name for uneraser and be extra clear in all the erase-named types that an origin is erased
