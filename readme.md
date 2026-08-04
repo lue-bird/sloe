@@ -230,8 +230,12 @@ some-variable some-type
 # The last case result does not need to be parenthesized
 ? value [first-case-pattern] first-result [second-case-pattern] second-result
 
-# introduce a new origin. The given name can be used as a variable and type
-origin new-origin-name expression-that uses new-origin-name
+# introduce a new origin (describes which collection slots and spans point into).
+# The given name can be used as a variable and type
+^new-origin-name   expression-that uses new-origin-name
+
+# advanced: create an origin that ties multiple sub-origins to a common origin type
+^ .new .origin .sub .origins new-origin-name   expression-that uses new-origin-name
 
 # project function declaration.
 # For type variables in the result that aren't used in the input,
@@ -274,7 +278,7 @@ ty Type-name _potential, _type-parameters
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
-Writing these down has already helped a lot in coming up with fixes (e.g. `Unset-slot`, `Buf-span-add-own-span` etc. did not exist at one point but were created in response to a now deleted list items).
+Writing these down has already helped a lot in coming up with fixes (e.g. `Unset-slot`, `Buf-span-add-own-span`, `Origin-erased` etc. did not exist at one point but were created in response to a now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
 
 - it seems quite natural to represent a span of structs as e.g. `.field-names Span Field-names .field-values Span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
@@ -290,14 +294,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   I think introducing `Span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes a bunch of sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
   The sad thing is that this is positional and individual span slots then do not have an associated name.
   Also, how would this work with existing buf APIs? Something like `Buf2-opt-span-add`
-- scattered sub-spans/slots in a persistent buf cannot be easily de-allocated/iterated in bulk (so without walking the whole tree and removing spans and slots one by one, aka pointer chasing).
-  For example, preferably expressions etc. would be stored in different spans per module, each with their own origin for bulk de-allocation and new allocation.
-  However, this would mean that slots and spans within the AST would not be owning.
-  One quasi-solution would be storing `Buf<origin Buf-originless<...>>` and introducing `-originless` versions of slot/span/buf. These would need to be checked at runtime, with the branch with unequal origins being in the cold path.
-  While this technically does solve the problem quite nicely, it's purely at runtime. Mistakes won't be caught early, runtime costs may add up, complexity increases, unnecessary error handling gets introduced.
-  → More complex type systems could solve this (e.g. :hand-wave: add type `erase` that takes a function taking an origin and returning an element type, thus eliding a concrete origin from the buf type. Then you could call its wrapper to hide the origin and its unwrapper with a fresh origin whenever you need to access or modify the inards) but I'd like to stay simple
-  → I need to investigate how other languages do this. E.g. [carbon's outer-self-other-field-place-referencing feature](https://chandlerc.blog/slides/2026-memory-safety-deep-3/#/51) may solve this (I'm not sure, but it's also not that simple).
-  (For temporary bufs, a possible solution could be `Buf-slot-rid-without-vacating`, `Buf-span-rid-without-vacating` and `Buf-opt-span-rid-without-vacating` which would temporarily leak these slots and spans. This can be misused for persistent bufs but more importantly it does not solve the issue for persistent bufs)
 - sometimes, you really own all the elements of a buf in one place (especially when the buf elements can be trivially copied).
   Splitting it into `opt span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0).
   Due to "can't easily recombine spans" it is also really annoying to access any elements in the owning buf.
@@ -619,8 +615,6 @@ cargo install --offline --debug --path . sloe
 
 - add more math and maybe bit operations
 
-- find a symbol to replace the `origin` keyword. Maybe ^ as a visual "place anchor"
-
 - consider changing `|variant-name<type> value` to `|<type>variant-name value`. This allows better autocomplete
   Example: before
   ```sloe
@@ -632,6 +626,16 @@ cargo install --offline --debug --path . sloe
   ```
 
 - strongly consider replacing `<>` by `{}` because it is more easily recognized as parens
+
+- chnage and add origin syntax
+  ```sloe
+  ^just-like-after-the-origin-keyword-previously
+  ^ .expressions .patterns .types parent-origin
+  # → parent is of type
+  # Origin parent-origin, .part (.expressions .) .and .part (.patterns .) .and (.types .)
+  # alternatively:
+  # Origin parent-origin, Part-and .expressions ., Part-and .patterns ., .types .
+  ```
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
@@ -664,43 +668,6 @@ cargo install --offline --debug --path . sloe
       (basically nested switches on the original value as a variable and temporaries, both field-accessed if necessary. Finally returning all pattern variables in an anonymous struct)
       and then consider switching to manually generated decision-tree-like code with nested switches if the former doesn't optimize well (it kinda should, though)
 
-- (hmm...) think of a way to "split an origin":
-    - creating initial state in sloe code, without needing to pass
-      an unknown amount of origins in from the outside.
-    - type aliases may only need to take a single origin type parameter
-      for spans/slots with connected lifetimes, e.g.
-      ```sloe
-      ty Expression _origin
-          |int i32
-          |string (Opt Span .str _origin)
-          |buf (Opt Span .expression _origin)
-          |call
-              .function (Slot .expression _origin)
-              .arguments (Span .expression _origin)
-          |lambda
-              .parameters (Span .pattern _origin)
-              .result (Slot .expression _origin)
-      ```
-      I think baking origin deriving syntax into the language is the easiest solution:
-      ```sloe
-      origin .derived-origin-0 .derived-origin-1 original-origin
-      # derived-origin-0 is of type _origin (.derived-origin-0 original-origin)
-      # derived-origin-1 is of type _origin (.derived-origin-1 original-origin)
-      # the original-origin variable is consumed
-      result-expression
-      ```
-      Syntax to be decided.
-      
-      In theory, the same effect could be achieved without syntax additions:
-      ```sloe
-      fn Origin-dup origin Origin _local : .a Origin (.a _local) .b Origin (.b _local)
-      ty Str-origin _origin .a _origin
-      ty Expression-origin _origin .b .a _origin
-      ty Pattern-origin _origin .b .b _origin
-      ```
-      However, notice that annotating an origin like that is very undescriptive.
-      The problem is that these `*-origin` type aliases are very brittle and could be applied to any origin, even one which does not have this specific derived origin.
-
 - fix bugs and TODOs
 
 
@@ -726,398 +693,3 @@ I love how linear types somewhat mirror the functionality of `defer ...getRidOfI
 That in combination with binary/interpolation search could be a nice alternative to set and map collections.
 Imagine `Buf-span-sorted-insert`... mhh... tasty (issue: implement via binary search? interpolation search?)
 and `Buf-span-sort` (issue: how to implement in rust).
-
-## how to do vec<vec<inner_origin_unique_per_index>>
-(I'll clean these findings up, just wanted to save them temporarily)
-Here's a (too) restricted API sketch:
-```sloe
-ty origin-erased
-
-ty Eraser _origin
-fn Eraser-rid Eraser _origin
-fn Eraser-dup Eraser _origin : .a Eraser _origin .b Eraser _origin
-fn Eraser-map
-    .eraser Eraser _origin
-    .change Fn _origin, _new-origin
-    : Eraser _new-origin
-
-fn Slot-erase-origin
-    .slot Slot _origin
-    .eraser Eraser _origin
-    :
-    .slot Slot erased
-    .eraser Eraser _origin
-fn Buf-erase-origin
-    .buf Buf _origin, _element
-    .eraser Eraser _origin
-    :
-    .buf Buf erased, _element
-    .eraser Eraser _origin
-# ... same for span and unset-*
-
-# wrapper which has the restriction that its value can never be accessed again.
-# It can only be updated! This means that erased types are never available outside
-ty Erased _value
-fn Erase
-    .value _value
-    .erase-origin
-        (Fn (.in _value .eraser eraser _in-origin), _value-erased)
-    : Erased _value-erased
-# The cool thing is that you can _just_ access & modify erased types
-# as if they had an actual origin
-fn Erased-map
-    .Erased _value
-    .in _in
-    .change Fn .in _in .element _value, _value-new
-    : Erased _value-new
-fn Erased-rid
-    .erased Erased _value
-    .value-rid Fn _value, .
-    : .
-```
-In one way this is genious in that you can't ever store a useful eraser in e.g. a `Buf`
-because an eraser contains its unique origin type which is different per element.
-
-BUT (!) the `Erased` wrapper is actually pretty much entirely useless! Because you can't get any value out at all! Because if you could, an erased origin would not know if the origin collection actually matches!
-
-TODO This is the big problem to figure out.
-There would need to be a way to either
-- prevent in-flow of erased-origin values into an `Erased`
-- prevent out-flow of erased-origin values from an `Erased`
-
-Neither seems possible in general :( ((well... if only past lue knew))
-
-Below incomplete, probably useless ramblings and observations that could help
-
-`ty origin-erased` could include the parent collection origin,
-such that no origin-erased values from different parents can be used together.
-
-You can proof some properties of a type by requiring a `Fn that-type, some-proof-of-a-property`
-
-There can be a map function that changes the origin of a value which can go from specific origin to erased. (is that useful?)
-
-Somehow implement temporary read-only access (??)
-
-Require an "access token" to do anything with erased spans/slots/collections/...
-and only provide this access token when reading (this does not actually solve anything because origin-erased spans etc could still get smuggled out and in)
-It probably would even require introducing fully different types for them.
-
-It's easy to proof that a value is erased. It's hard to poof that a value is erased in none of its parts.
-
-Somehow make `erased` only a valid type you can spell out inside an `Erased`.
-That could make it impossible to smuggle out (and also in!).
-Basically make two `erased` instances different types across different `Erased`s.
-This probably falls on its face because it makes specifying the `Erased` inards impossible?
-Maybe (below doesn't work, just trying stuff)
-```sloe
-fn Erase
-    .value _value
-    .erase (
-        Fn
-        .value _value .eraser Eraser _value-origin
-        , _value-erased
-    )
-    .unsmugglable-origin Origin _unsmugglable
-    .to-unsmugglable (
-        Fn
-        .value _value .eraser EraserToUnsmugglable _value-origin, _unsmugglable
-        , _value-unsmugglable
-        )
-    # TODO along with proof you can convert one to the other (! but probably still not enough)
-    # unsmugglable -> erased ?
-
-    :
-    Erased _value-unsmugglable
-fn 
-```
-`EraserToUnsmugglable _value-origin, _unsmugglable` erases origins to `.unsmugglable _unsmugglable`
-
-
-I think the key to making this work is tying an `Erased` to a contained `Buf`. The contained `Buf` must be returned after access, meaning that even if slots/spans/... get smuggled out, they cannot be used to access anything.
-Can we guarantee that a given-out `Buf` will be the same that gets returned to the `Erased`?
-Only if we put an origin on it. That would mean also providing an "`Uneraser`" to the same origin.
-Actually, it might be possible to do it simpler: provide a `Buf origin-erased, ...`. It's not like you can dup it or produce a new `Buf` of that exact type 💡
-```sloe
-ty origin-erased
-
-ty Eraser _origin
-fn Eraser-rid Eraser _origin
-fn Eraser-dup Eraser _origin : .a Eraser _origin .b Eraser _origin
-fn Eraser-map
-    .eraser Eraser _origin
-    .change Fn _origin, _new-origin
-    : Eraser _new-origin
-
-fn Slot-erase-origin
-    .slot Slot _origin
-    .eraser Eraser _origin
-    :
-    .slot Slot erased
-    .eraser Eraser _origin
-# ... same for span and unset-*
-# deliberately not included: fn Buf-erase-origin
-
-# wrapper around a Buf and a value
-# with the important restriction that the Buf can never be extracted again!
-# It can only be updated or have its values read!
-# This means that no Buf with an erased origin will ever be available outside of it.
-# Which means that you will still never be able to mix up slots/spans/... between Buf-erased-withs (TODO this is wrong)
-ty Buf-erased-with _element, _value
-fn Buf-erase-origin-with
-    .buf Buf _origin, _element
-    .element-erase-origin
-        Fn (.element _element .eraser Eraser _origin), _element-erased
-    .value _value
-    .value-erase-origin
-        Fn (.value _value .eraser Eraser _origin), _value-erased
-    : Buf-erased-with _element-erased, _value-erased
-# The cool thing is that you can _just_ access & modify erased types
-# as if they had an actual origin
-fn Buf-erased-with-map
-    .Erased Buf-erased-with _element, _value
-    .in _in
-    .change (Fn .in _in .buf Buf origin-erased, _element .value _value, _value-new)
-    : Buf-erased-with _element, _value-new
-fn Buf-erased-with-rid
-    .erased Buf-erased-with _element, _value
-    .in _in
-    .rid (Fn .in _in .buf Buf origin-erased, _element .value _value, .)
-    : .
-```
-BUT (!!) even this restricted API is still not restrictive enough!
-Smuggling origin-erased slots/spans/... out and into `_value` would still be possible :(
-
-proof that `_in` does not contain `origin-erased` by (?? not possible probably because things like `Opt` can be trivially produced from nothing while having the ability to smuggle)
-
-
-Even if I were to find a solution somehow, this model is still very restrictive
-as it for example does not allow returning something out of creating an `Erased` or changing an `Erased`, like a global vec. This is quite essential though!
-
-Oh! Destructuring a value forces looking at _all_ contained values (!)
-(Did not turn out to be relevant:
-```sloe
-ty Origin-witness _origin
-fn Slot-origin-witness Slot _origin : Origin-witness _origin
-# same for other slot and span types
-```
-)
-That means that e.g. you cannot get rid for example of a `Slot origin-erased` unless you have a `Buf origin-erased, ...`. If the API makes it impossible to attain such a `Buf`, we can use a rid function as proof it is origin-erased-free 🎉
-```sloe
-# Whenever we give something into an Erased,
-# we _always_ ask users for proof that it does not contain an origin-erased (which wouldn't be able to be accessed!)
-ty origin-erased
-
-ty Eraser _origin
-fn Eraser-rid Eraser _origin
-fn Eraser-dup Eraser _origin : .a Eraser _origin .b Eraser _origin
-fn Eraser-map
-    .eraser Eraser _origin
-    .change Fn _origin, _new-origin
-    : Eraser _new-origin
-
-fn Slot-erase-origin
-    .slot Slot _origin
-    .eraser Eraser _origin
-    :
-    .slot Slot origin-erased
-    .eraser Eraser _origin
-# ... same for span and unset-*
-# deliberately not included: fn Buf-erase-origin
-
-# wrapper around a Buf and a value
-# with the important restriction that the Buf can never be extracted again!
-# It can only be updated or have its values read!
-# This means that no Buf with an erased origin will ever be available outside of it.
-# Which means that you will still never be able to mix up slots/spans/... between Buf-erased-withs because all `.in` arguments are checked to not contain origin-erased slots/spans/...
-ty Buf-erased-with _element, _value
-fn Buf-erase-origin-with
-    .buf Buf _origin, _element
-    .element-erase-origin
-        Fn (.element _element .eraser Eraser _origin), _element-erased
-    .value _value
-    .value-erase-origin
-        Fn (.value _value .eraser Eraser _origin), _value-erased
-    : Buf-erased-with _element-erased, _value-erased
-# The cool thing is that you can _just_ access & modify erased types
-# as if they had an actual origin (shurely not foreshadowing)
-fn Buf-erased-with-map
-    .Erased Buf-erased-with _element, _value
-    .in _in
-    # won't be called, purely for proving _in does not contain origin-erased
-    .in-rid Fn _in, .
-    .change (
-        Fn
-        .in _in .buf Buf origin-erased, _element .value _value
-        , .buf Buf origin-erased, _element .value _value-new .out _out
-    )
-    : .buf Buf-erased-with _element, _value-new .out _out
-fn Buf-erased-with-out
-    .erased Buf-erased-with _element, _value
-    .in _in
-    .out (Fn .in _in .buf Buf origin-erased, _element .value _value, _out)
-    : _out
-```
-This is already huge for a small guy like me!
-If it was correct that is: Are the access and change operations like `Buf-erased-with-map` safe when nesting `Erased`s, considering that there are now multiple `Buf origin-erased`s?
-It actually isn't!
-
-I think a solution to that is to never give out `Buf origin-erased` ever in the first place! Instead, taking in a new origin per modify/access along with an uneraser.
-There's still issue left though even then: The uneraser of one value could be used for another `Erased` and slots/spans/... could be unerased to the wrong origin!
-To prevent that ??
-
-Pondering...
-```sloe
-ty Uneraser _unerased-origin
-fn Slot-unerase
-    .slot Slot origin-erased .uneraser Uneraser _unerased-origin
-    : Slot _unerased-origin
-# same for Span and Unset-slot/-span
-
-fn Buf-erased-with-unerase
-    .Erased Buf-erased-with _element, _value
-    .origin _unerased-origin
-    .element-unerase (
-        Fn
-        .uneraser Uneraser _unerased-origin
-        .element _element
-        ,
-        .uneraser Uneraser _unerased-origin
-        .element _unerased-element
-        )
-    .value-unerase (
-        Fn
-        .uneraser Uneraser _unerased-origin
-        .value _value
-        ,
-        .uneraser Uneraser _unerased-origin
-        .value _unerased-value
-        )
-    # originally I included the "proofs" below.
-    # But they are not actually needed because it is impossible
-    # to pass an Uneraser anywhere as it can't be scrapped
-    # 
-    # won't be called, purely for proving that the result
-    # does not contain unerased origins from the outside
-    # .element-rid (
-    #     Fn
-    #     .buf Buf _unerased-origin, _unerased-element
-    #     .element _unerased-element,
-    #     .buf Buf _unerased-origin, _unerased-element
-    #     )
-    # won't be called, purely for proving that the result
-    # does not contain unerased origins from the outside
-    # .value-rid (
-    #     Fn
-    #     .buf Buf _unerased-origin, _unerased-element
-    #     .value _unerased-value,
-    #     .buf Buf _unerased-origin, _unerased-element
-    #     )
-    :
-    .buf Buf _unerased-origin, _unerased-element
-    .value _unerased-value
-```
-This is quite clunky but should actually, finally, work.
-It makes sure that nested `Erased`s do not use outer `Uneraser`s on a slot/span/... from the 
-
-
-A remaining sadness is still that this _requires_ Buf to be the "base type".
-This doesn't really work when you have multiple Bufs or other collection types.
-
-I think it would make sense then to consume an Uneraser once
-by any collection. Sketch below:
-```sloe
-ty origin-erased
-
-ty Eraser _origin
-# not included currently due to soundness hole:
-# fn Eraser-map
-#     .eraser Eraser _origin
-#     .origin-derive Fn _origin _derived-origin
-#     : Eraser _derived-origin
-
-fn Slot-origin-erase
-    .slot Slot _origin
-    .eraser Eraser _origin
-    :
-    .slot Slot erased
-    .eraser Eraser _origin
-# ... same for Span and Unset-slot/-span
-fn Buf-origin-erase
-    .buf Buf _origin, _element
-    .eraser Eraser _origin
-    .element-erase (
-        Fn
-        .element _element .eraser Eraser _origin
-        , .element _erased-element .eraser Eraser _origin
-        )
-    :
-    Buf erased, _erased-element
-
-ty Uneraser _origin
-# not included due to lack of usefulness:
-# fn Uneraser-map
-#     .uneraser Uneraser _origin
-#     .origin-derive Fn _origin, _derived-origin
-#     : Uneraser _derived-origin
-    
-fn Slot-unerase
-    .slot Slot origin-erased .uneraser Uneraser _origin
-    : Slot _origin
-# same for Span and Unset-slot/-span
-fn Buf-origin-unerase
-    .buf Buf origin-erased, _element
-    .uneraser Uneraser _origin
-    .element-unerase (
-        Fn
-        .element _element .uneraser Uneraser _origin
-        , .element _unerased-element .uneraser Uneraser _origin
-        )
-    : Buf _origin, _unerased-element
-
-ty Erased _value
-# same for insert
-fn Erase
-    .value _value
-    # originally I unnecessarily included:
-    # 
-    # never actually gets ran. Only checks that no origin-erased is present
-    # .value-rid Fn _value, .
-    .erase-origin
-        Fn
-         (.value _value  .eraser eraser _in-origin)
-         , _value-erased
-    : Erased _value-erased
-fn Unerase
-    .erased Erased _value
-    .origin Origin _origin
-    .unerase (
-        Fn
-        .value _value .uneraser Uneraser _origin
-        , _unerased-value
-        )
-    :
-    _unerased-value
-```
-TODO find a better name for uneraser and be extra clear in all the erase-named types and functions that an origin is erased.
-
-This is so much simpler than anticipated; lucky me!
-The tricks:
-- `Buf origin-erased` can never escape: Exactly one Buf gets erased in `Erase` (because only ) and exactly one `Buf` must also be unerased in `Unerase`
-  (below text is now irrelevant, it tought me that a previous approach was unviable)
-  You may ask yourself if storing an eraser in value could be bad?
-  It's actually not because
-    - Erasers can escape the `Erased`. However, there then is no way to get rid of it!
-      And you can't even get it inside another `Erased` because that checks that the value can be scrapped.
-      BUT wait a minute... You could store the Eraser in the program's persistent state when initilizing it?
-      This actually makes the idea moot :(
-    - an Uneraser with the same origin is required to be used
-
-Note: With introducing eraser and uneraser map it would be possible to smuggle out a Buf with derived origin-erased.
-This must be forbidden. An immediate solution is to instead rely on `Erased2/3/4/5` but I want to avoid this if at all possible.
-
-Consider introducing "origin-parent" types. Think
-```sloe
-ty origin-sub
-Origin-parent .expressions origin-sub .patterns origin-sub .types origin-sub
-```
-basically some API where a record can be split up into its fields, one origin/eraser/uneraser for each.
