@@ -609,8 +609,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- implement origin-erase API in zig
-
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
@@ -629,14 +627,14 @@ cargo install --offline --debug --path . sloe
 
 - strongly consider replacing `<>` by `{}` because it is more easily recognized as parens
 
-- chnage and add origin syntax
+- change and add origin syntax
   ```sloe
   ^just-like-after-the-origin-keyword-previously
   ^ .expressions .patterns .types parent-origin
-  # → parent is of type
-  # Origin parent-origin, .part (.expressions .) .and .part (.patterns .) .and (.types .)
+  # → parent-origin is of type
+  # Origin Origin-part parent-origin, .part (.expressions .) .rest .part (.patterns .) .rest (.types .)
   # alternatively:
-  # Origin parent-origin, Part-and .expressions ., Part-and .patterns ., .types .
+  # Origin Origin-part parent-origin, Part-rest .expressions ., Part-rest .patterns ., .types .
   ```
 
 - implement conversion to zig. current annoyances (non-blockers, though):

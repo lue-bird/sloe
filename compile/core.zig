@@ -118,13 +118,13 @@ pub const Str = struct {
             null;
     }
     pub fn utf8_byte_count_p32(@"%str": Str) error{OutOfMemory}!P32 {
-        return P32.fromU32(try std.math.cast(u32, @"%str".utf8.bytes.len) orelse error.OutOfMemory).?;
+        return P32.fromU32(std.math.cast(u32, @"%str".utf8.bytes.len) orelse return error.OutOfMemory).?;
     }
     pub fn codepoint_count_p32(@"%str": Str) error{OutOfMemory}!P32 {
-        return P32.fromU32(try std.math.cast(
+        return P32.fromU32(std.math.cast(
             u32,
             std.unicode.utf8CountCodepoints(@"%str".utf8.bytes) catch unreachable,
-        ) orelse error.OutOfMemory).?;
+        ) orelse return error.OutOfMemory).?;
     }
     pub fn splitStart(@"%str": Str) struct { start: Char, after: std.unicode.Utf8View } {
         var @"%codepoint_iterator" = @"%str".utf8.iterator();
@@ -204,14 +204,29 @@ pub fn record_to_array(@"%record": anytype) Array(
 /// but due to the (reasonable) lack of comptime mutable variables/mutable pointers it can't be done
 pub fn Origin(@"%Origin": type) type {
     const @"%is_valid" = switch (@typeInfo(@"%Origin")) {
-        .@"enum" => |enum_info| (enum_info.field_names.len == 1 and @bitSizeOf(@"%Origin") == 0),
-        else => false,
+        .@"enum" => |enum_info| (enum_info.field_names.len == 1 and @sizeOf(@"%Origin") == 0),
+        else => @sizeOf(@"%Origin") == 0,
     };
     if (!@"%is_valid") @compileError(std.fmt.comptimePrint(
-        "Only zero-sized enum values should be used as origins, as they are stored within slots, spans, bufs etc. and should be safe to copy and free (found bit size {} for origin type {}). Easiest is to just put `enum {{ origin }}`",
+        "Only zero-sized values should be used as origins, as they are stored within slots, spans, bufs etc. and should be safe to copy and free (found bit size {} for origin type {}). Easiest is to just put `enum {{ origin }}`",
         .{ @bitSizeOf(@"%Origin"), @"%Origin" },
     ));
     return @"%Origin";
+}
+pub const Erased = struct {};
+pub fn Origin_erased(@"%Parts": type, @"%ValueErased": type) type {
+    return struct {
+        erased: @"%ValueErased",
+        const parts = @"%Parts";
+    };
+}
+pub fn Origin_eraser(@"%Origin": type) type {
+    return struct {
+        const origin = @"%Origin";
+    };
+}
+pub fn Origin_uneraser(@"%Origin": type) type {
+    return struct { origin: @"%Origin" };
 }
 pub fn Slot_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
     return struct {
@@ -449,7 +464,7 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%new_element": @"%Element",
         ) error{OutOfMemory}!Slot(@"%Origin") {
             const @"%new_slot" = Slot(@"%Origin"){
-                .index = try (std.math.cast(u32, @"%buf".elements.items.len) orelse error.OutOfMemory),
+                .index = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory,
             };
             try @"%buf".elements.append(@"%allocator", @"%new_element");
             return @"%new_slot";
@@ -459,7 +474,7 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
         ) error{OutOfMemory}!Unset_slot(@"%Origin") {
             const @"%new_slot" = Unset_slot(@"%Origin"){
-                .index = try (std.math.cast(u32, @"%buf".elements.items.len) orelse error.OutOfMemory),
+                .index = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory,
             };
             try @"%buf".elements.append(@"%allocator", undefined);
             return @"%new_slot";
@@ -481,7 +496,7 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
             @"%length": P32,
         ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            const @"%start" = try (std.math.cast(u32, @"%buf".elements.items.len) orelse error.OutOfMemory);
+            const @"%start" = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory;
             try @"%buf".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%buf".elements.items.len, @"%length".positive));
             return Unset_span(@"%Origin"){
                 .start = .{ .index = @"%start" },
@@ -672,7 +687,7 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
                 return @"%span";
             }
             // span is not at the end already
-            const @"%move_destination_start" = try (std.math.cast(u32, @"%buf".elements.items.len) orelse error.OutOfMemory);
+            const @"%move_destination_start" = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory;
             try @"%buf".elements.ensureUnusedCapacity(@"%allocator", @"%span".length.positive);
             @"%buf".elements.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
             try @"%buf".spanRid(@"%allocator", Unset_span(@"%Origin"){
@@ -764,12 +779,12 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
             @"%new_elements": []const @"%Element",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
-            if (P32.fromU32(try (std.math.cast(u32, @"%new_elements".len) orelse error.OutOfMemory))) |@"%new_length"| {
+            if (P32.fromU32(std.math.cast(u32, @"%new_elements".len) orelse return error.OutOfMemory)) |@"%new_length"| {
                 const @"%length_before_add" = @"%buf".elements.items.len;
                 try @"%buf".elements.appendSlice(@"%allocator", @"%new_elements");
                 return .{ .yes = .{
                     .start = .{
-                        .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
+                        .index = std.math.cast(u32, @"%length_before_add") orelse return error.OutOfMemory,
                     },
                     .length = @"%new_length",
                 } };
@@ -788,11 +803,11 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
                 try @"%buf".elements.append(@"%allocator", @"%new_element");
             }
             return if (P32.fromU32(
-                try (std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse error.OutOfMemory),
+                std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse return error.OutOfMemory,
             )) |@"%new_length"|
                 .{ .yes = .{
                     .start = .{
-                        .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
+                        .index = std.math.cast(u32, @"%length_before_add") orelse return error.OutOfMemory,
                     },
                     .length = @"%new_length",
                 } }
@@ -809,10 +824,10 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             try @"%buf".elements.appendSlice(@"%allocator", &@"%new_elements");
             return .{
                 .start = .{
-                    .index = try (std.math.cast(u32, @"%length_before_add") orelse error.OutOfMemory),
+                    .index = std.math.cast(u32, @"%length_before_add") orelse return error.OutOfMemory,
                 },
                 .length = P32.fromU32(
-                    try (std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse error.OutOfMemory),
+                    std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse return error.OutOfMemory,
                 ).?,
             };
         }
@@ -859,7 +874,7 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = try @"%moved_span".length.addOrOutOfMem(
-                    try (std.math.cast(u32, @"%new_elements".len) orelse error.OutOfMemory),
+                    std.math.cast(u32, @"%new_elements".len) orelse return error.OutOfMemory,
                 ),
             };
         }
@@ -900,7 +915,7 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             while (@"%next_element"(&@"%new_elements_iterator")) |@"%new_element"| {
                 try @"%buf".elements.append(@"%allocator", @"%new_element");
             }
-            const @"%new_length" = try (std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse error.OutOfMemory);
+            const @"%new_length" = std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse return error.OutOfMemory;
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = try @"%moved_span".length.addOrOutOfMem(@"%new_length"),
@@ -1113,6 +1128,85 @@ pub fn call(
 }
 
 pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
+pub fn origin_part(@"%Origin": type, @"%Part": type, @"%Rest": type, @"%origin": Origin(
+    Record(struct { origin: @"%Origin", part: Record(struct { part: @"%Part", rest: @"%Rest" }) }),
+)) error{OutOfMemory}!Record(struct {
+    part: Origin(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    rest: Origin(Record(struct { origin: @"%Origin", part: @"%Rest" })),
+}) {
+    return .{
+        .part = .{ .origin = @"%origin".origin, .part = @"%origin".part.part },
+        .rest = .{ .origin = @"%origin".origin, .part = @"%origin".part.rest },
+    };
+}
+
+pub fn origin_erase(
+    @"%Origin": type,
+    @"%Parts": type,
+    @"%Value": type,
+    @"%ValueErased": type,
+    @"%": Record(struct {
+        value: @"%Value",
+        erase: Fn(
+            Record(struct {
+                value: @"%Value",
+                eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Parts" })),
+            }),
+            @"%ValueErased",
+        ),
+    }),
+) error{OutOfMemory}!Origin_erased(@"%Parts", @"%ValueErased") {
+    return .{ .erased = try @"%".erase(.{ .value = @"%".value, .eraser = .{} }) };
+}
+pub fn origin_unerase(
+    @"%Origin": type,
+    @"%Parts": type,
+    @"%Value": type,
+    @"%ValueErased": type,
+    @"%": Record(struct {
+        erased: Origin_erased(@"%Parts", @"%ValueErased"),
+        origin: Origin(Record(struct { origin: @"%Origin", part: @"%Parts" })),
+        unerase: Fn(
+            Record(struct {
+                uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Parts" })),
+                value: @"%ValueErased",
+            }),
+            @"%Value",
+        ),
+        value_rid: Fn(@"%Value", void),
+    }),
+) error{OutOfMemory}!@"%Value" {
+    return try @"%".unerase(.{
+        .uneraser = .{ .origin = @"%".origin },
+        .value = @"%".erased.erased,
+    });
+}
+
+pub fn origin_eraser_part(@"%Origin": type, @"%Part": type, @"%Rest": type, _: Origin_eraser(
+    Record(struct { origin: @"%Origin", part: Record(struct { part: @"%Part", rest: @"%Rest" }) }),
+)) error{OutOfMemory}!Record(struct {
+    part: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    rest: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Rest" })),
+}) {
+    return .{ .part = .{}, .rest = .{} };
+}
+pub fn origin_uneraser_part(@"%Origin": type, @"%Part": type, @"%Rest": type, @"%uneraser": Origin_uneraser(
+    Record(struct { origin: @"%Origin", part: Record(struct { part: @"%Part", rest: @"%Rest" }) }),
+)) error{OutOfMemory}!Record(struct {
+    part: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    rest: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Rest" })),
+}) {
+    return .{
+        .part = .{ .origin = .{
+            .origin = @"%uneraser".origin.origin,
+            .part = @"%uneraser".origin.part.part,
+        } },
+        .rest = .{ .origin = .{
+            .origin = @"%uneraser".origin.origin,
+            .part = @"%uneraser".origin.part.rest,
+        } },
+    };
+}
 
 pub fn slot_index(
     @"%Origin": type,
@@ -1122,6 +1216,30 @@ pub fn slot_index(
 }
 pub fn slot_to_span(@"%Origin": type, @"%slot": Slot(@"%Origin")) error{OutOfMemory}!Span(@"%Origin") {
     return @"%slot".to_span();
+}
+pub fn slot_origin_erase(@"%Origin": type, @"%": Record(struct {
+    slot: Slot(@"%Origin"),
+    eraser: Origin_eraser(@"%Origin"),
+})) error{OutOfMemory}!Record(struct {
+    slot: Slot(Erased),
+    eraser: Origin_eraser(@"%Origin"),
+}) {
+    return .{
+        .slot = .{ .index = @"%".slot.index },
+        .eraser = @"%".eraser,
+    };
+}
+pub fn slot_origin_unerase(@"%Origin": type, @"%": Record(struct {
+    slot: Slot(Erased),
+    uneraser: Origin_uneraser(@"%Origin"),
+})) error{OutOfMemory}!Record(struct {
+    slot: Slot(@"%Origin"),
+    uneraser: Origin_uneraser(@"%Origin"),
+}) {
+    return .{
+        .slot = .{ .index = @"%".slot.index },
+        .uneraser = @"%".uneraser,
+    };
 }
 
 pub fn unset_slot_index(
@@ -1208,6 +1326,30 @@ pub fn span_fold(
     }),
 ) error{OutOfMemory}!@"%State" {
     return @"%".span.fold(@"%".direction, @"%".state, @"%".step);
+}
+pub fn span_origin_erase(@"%Origin": type, @"%": Record(struct {
+    span: Span(@"%Origin"),
+    eraser: Origin_eraser(@"%Origin"),
+})) error{OutOfMemory}!Record(struct {
+    span: Span(Erased),
+    eraser: Origin_eraser(@"%Origin"),
+}) {
+    return .{
+        .span = .{ .start = .{ .index = @"%".span.start.index }, .length = @"%".span.length },
+        .eraser = @"%".eraser,
+    };
+}
+pub fn span_origin_unerase(@"%Origin": type, @"%": Record(struct {
+    span: Span(Erased),
+    uneraser: Origin_uneraser(@"%Origin"),
+})) error{OutOfMemory}!Record(struct {
+    span: Span(@"%Origin"),
+    uneraser: Origin_uneraser(@"%Origin"),
+}) {
+    return .{
+        .span = .{ .start = .{ .index = @"%".span.start.index }, .length = @"%".span.length },
+        .uneraser = @"%".uneraser,
+    };
 }
 
 pub fn unset_span_rid(@"%Origin": type, _: Unset_span(@"%Origin")) error{OutOfMemory}!void {}
@@ -2005,6 +2147,163 @@ pub fn buf_rid(
     @"%buf": Buf(@"%Origin", @"%Element"),
 ) error{OutOfMemory}!void {
     @"%buf".rid(@"%allocator");
+}
+pub fn buf_origin_erase(
+    @"%Origin": type,
+    @"%Element": type,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Element"),
+        eraser: Origin_eraser(@"%Origin"),
+    }),
+) error{OutOfMemory}!Buf(Erased, @"%Element") {
+    return .{
+        .origin = Erased{},
+        .vacant = std.ArrayList(Unset_span(Erased)){
+            .capacity = @"%".buf.vacant.capacity,
+            .items = @ptrCast(@"%".buf.vacant.items),
+        },
+        .elements = @"%".buf.elements,
+    };
+}
+pub fn buf_origin_unerase(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%": Record(struct {
+        buf: Buf(Erased, @"%Element"),
+        uneraser: Origin_uneraser(@"%Origin"),
+    }),
+) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
+    return .{
+        .origin = @"%".uneraser.origin,
+        .vacant = std.ArrayList(Unset_span(@"%Origin")){
+            .capacity = @"%".buf.vacant.capacity,
+            .items = @ptrCast(@"%".buf.vacant.items),
+        },
+        .elements = @"%".buf.elements,
+    };
+}
+/// Assumes no Unset_slot or Unset_span still points into the given buf
+pub fn buf_origin_erase_with_elements(
+    @"%Origin": type,
+    @"%Element": type,
+    @"%ElementErased": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Element"),
+        eraser: Origin_eraser(@"%Origin"),
+        element_erase: Fn(
+            Record(struct {
+                element: @"%Element",
+                eraser: Origin_eraser(@"%Origin"),
+            }),
+            Record(struct {
+                element: @"%ElementErased",
+                eraser: Origin_eraser(@"%Origin"),
+            }),
+        ),
+    }),
+) error{OutOfMemory}!Buf(Erased, @"%ElementErased") {
+    const elements_erased: std.ArrayList(@"%ElementErased") = elements_erased: {
+        if (comptime can_reuse: {
+            break :can_reuse (@sizeOf(@"%Element") == @sizeOf(@"%ElementErased")) and
+                (@alignOf(@"%Element") == @alignOf(@"%ElementErased"));
+        }) {
+            for (@"%".buf.elements.items) |*element| {
+                element.* = @bitCast((try @"%".element_erase(.{
+                    .element = element.*,
+                    .eraser = @"%".eraser,
+                })).element);
+            }
+            break :elements_erased .{
+                .capacity = @"%".buf.elements.capacity,
+                .items = @ptrCast(@"%".buf.elements.items),
+            };
+        } else {
+            var @"%elements_erased" = std.ArrayList(@"%ElementErased").empty;
+            try @"%elements_erased".resize(
+                @"%allocator",
+                @"%".buf.elements.items.len,
+            );
+            for (@"%".buf.elements.items, 0..) |@"%element", @"%i"| {
+                @"%elements_erased".items[@"%i"] = (try @"%".element_erase(.{
+                    .element = @"%element",
+                    .eraser = @"%".eraser,
+                })).element;
+            }
+            var @"%elements" = @"%".buf.elements;
+            @"%elements".deinit(@"%allocator");
+            break :elements_erased @"%elements_erased";
+        }
+    };
+    return .{
+        .origin = Erased{},
+        .vacant = std.ArrayList(Unset_span(Erased)){
+            .capacity = @"%".buf.vacant.capacity,
+            .items = @ptrCast(@"%".buf.vacant.items),
+        },
+        .elements = elements_erased,
+    };
+}
+pub fn buf_origin_unerase_with_elements(
+    @"%Origin": type,
+    @"%Element": type,
+    @"%ElementErased": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(Erased, @"%ElementErased"),
+        uneraser: Origin_uneraser(@"%Origin"),
+        element_unerase: Fn(
+            Record(struct {
+                element: @"%ElementErased",
+                uneraser: Origin_uneraser(@"%Origin"),
+            }),
+            Record(struct {
+                element: @"%Element",
+                uneraser: Origin_uneraser(@"%Origin"),
+            }),
+        ),
+    }),
+) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
+    const @"%elements_erased": std.ArrayList(@"%Element") = elements_erased: {
+        if (comptime can_reuse: {
+            break :can_reuse (@sizeOf(@"%Element") == @sizeOf(@"%ElementErased")) and
+                (@alignOf(@"%Element") == @alignOf(@"%ElementErased"));
+        }) {
+            for (@"%".buf.elements.items) |*element| {
+                element.* = @bitCast((try @"%".element_unerase(.{
+                    .element = element.*,
+                    .uneraser = @"%".uneraser,
+                })).element);
+            }
+            break :elements_erased .{
+                .capacity = @"%".buf.elements.capacity,
+                .items = @ptrCast(@"%".buf.elements.items),
+            };
+        } else {
+            var @"%elements_erased" = std.ArrayList(@"%Element").empty;
+            try @"%elements_erased".resize(
+                @"%allocator",
+                @"%".buf.elements.items.len,
+            );
+            for (@"%".buf.elements.items, 0..) |@"%element", @"%i"| {
+                @"%elements_erased".items[@"%i"] = (try @"%".element_unerase(.{
+                    .element = @"%element",
+                    .uneraser = @"%".uneraser,
+                })).element;
+            }
+            var @"%elements" = @"%".buf.elements;
+            @"%elements".deinit(@"%allocator");
+            break :elements_erased @"%elements_erased";
+        }
+    };
+    return .{
+        .origin = @"%".uneraser.origin,
+        .vacant = std.ArrayList(Unset_span(@"%Origin")){
+            .capacity = @"%".buf.vacant.capacity,
+            .items = @ptrCast(@"%".buf.vacant.items),
+        },
+        .elements = @"%elements_erased",
+    };
 }
 
 pub fn unset_slice_allocate_length(

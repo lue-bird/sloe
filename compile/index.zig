@@ -538,6 +538,12 @@ test "Unset_slot != Slot" {
     const b_slot: core.Unset_slot(Origin) = .{ .index = 0 };
     try std.testing.expect(@TypeOf(a_slot) != @TypeOf(b_slot));
 }
+test "Origin_uneraser != Origin_eraser" {
+    const Origin = enum { origin };
+    const eraser: core.Origin_eraser(Origin) = .{};
+    const uneraser: core.Origin_uneraser(Origin) = .{ .origin = .origin };
+    try std.testing.expect(@TypeOf(eraser) != @TypeOf(uneraser));
+}
 test "origin with enums containing the same member name" {
     const AOrigin = enum { origin };
     const a_origin: core.Origin(AOrigin) = .origin;
@@ -567,6 +573,289 @@ fn SourceLocationUniqueEnum(src_loc: std.lang.SourceLocation) type {
         &.{std.fmt.comptimePrint("{}", .{src_loc.line})},
         &.{0},
     );
+}
+test "multi-part origin" {
+    const Origin = enum { origin };
+    const origin_a_b = core.record(.{
+        .origin = @as(Origin, .origin),
+        .part = core.record(.{
+            .part = core.record(.{ .a = {} }),
+            .rest = core.record(.{ .b = {} }),
+        }),
+    });
+    const origin_split = try core.origin_part(
+        Origin,
+        core.Record(struct { a: void }),
+        core.Record(struct { b: void }),
+        origin_a_b,
+    );
+    try std.testing.expectEqual(origin_split.part.part, core.record(.{ .a = {} }));
+    try std.testing.expectEqual(origin_split.rest.part, core.record(.{ .b = {} }));
+}
+test "multi-part Origin_eraser" {
+    const Origin = enum { origin };
+    const origin_a_b = core.record(.{
+        .origin = @as(Origin, .origin),
+        .part = core.record(.{
+            .part = core.record(.{ .a = {} }),
+            .rest = core.record(.{ .b = {} }),
+        }),
+    });
+    const eraser_a_b = core.Origin_eraser(@TypeOf(origin_a_b)){};
+    const eraser_split = try core.origin_eraser_part(
+        Origin,
+        core.Record(struct { a: void }),
+        core.Record(struct { b: void }),
+        eraser_a_b,
+    );
+    try std.testing.expectEqual(@TypeOf(eraser_split.part), core.Origin_eraser(core.Record(struct {
+        origin: Origin,
+        part: core.Record(struct { a: void }),
+    })));
+    try std.testing.expectEqual(@TypeOf(eraser_split.rest), core.Origin_eraser(core.Record(struct {
+        origin: Origin,
+        part: core.Record(struct { b: void }),
+    })));
+}
+test "multi-part Origin_uneraser" {
+    const Origin = enum { origin };
+    const origin_a_b = core.record(.{
+        .origin = @as(Origin, .origin),
+        .part = core.record(.{
+            .part = core.record(.{ .a = {} }),
+            .rest = core.record(.{ .b = {} }),
+        }),
+    });
+    const uneraser_a_b = core.Origin_uneraser(core.Record(struct {
+        origin: Origin,
+        part: core.Record(struct {
+            part: core.Record(struct { a: void }),
+            rest: core.Record(struct { b: void }),
+        }),
+    })){ .origin = origin_a_b };
+    const uneraser_split = try core.origin_uneraser_part(
+        Origin,
+        core.Record(struct { a: void }),
+        core.Record(struct { b: void }),
+        uneraser_a_b,
+    );
+    try std.testing.expectEqual(uneraser_split.part.origin.part, core.record(.{ .a = {} }));
+    try std.testing.expectEqual(uneraser_split.rest.origin.part, core.record(.{ .b = {} }));
+}
+test "slot origin erase, then unerase" {
+    const Origin = enum { origin };
+    _ = Origin.origin;
+    const slot = core.Slot(Origin){ .index = 69 };
+    const eraser = core.Origin_eraser(Origin){};
+    const slot_erased = try core.slot_origin_erase(Origin, .{ .slot = slot, .eraser = eraser });
+    try std.testing.expectEqual(slot.index, slot_erased.slot.index);
+    const NewOrigin = enum { origin };
+    const new_origin: NewOrigin = .origin;
+    const uneraser = core.Origin_uneraser(NewOrigin){ .origin = new_origin };
+    const slot_unerased = try core.slot_origin_unerase(NewOrigin, .{ .slot = slot_erased.slot, .uneraser = uneraser });
+    try std.testing.expectEqual(slot_erased.slot.index, slot_unerased.slot.index);
+}
+test "span origin erase, then unerase" {
+    const Origin = enum { origin };
+    _ = Origin.origin;
+    const span = core.Span(Origin){ .start = .{ .index = 66 }, .length = core.P32{ .positive = 3 } };
+    const eraser = core.Origin_eraser(Origin){};
+    const span_erased = try core.span_origin_erase(Origin, .{ .span = span, .eraser = eraser });
+    try std.testing.expectEqual(span.endIndex(), span_erased.span.endIndex());
+    const NewOrigin = enum { origin };
+    const new_origin: NewOrigin = .origin;
+    const uneraser = core.Origin_uneraser(NewOrigin){ .origin = new_origin };
+    const span_unerased = try core.span_origin_unerase(NewOrigin, .{ .span = span_erased.span, .uneraser = uneraser });
+    try std.testing.expectEqual(span_erased.span.endIndex(), span_unerased.span.endIndex());
+}
+test "buf origin erase with elements, same size and alignment" {
+    const Origin = enum { origin };
+    const origin = Origin.origin;
+    var buf = try core.buf_empty(u32, @TypeOf(origin), origin);
+    _ = try buf.add(std.testing.allocator, 60);
+    const eraser = core.Origin_eraser(Origin){};
+    const buf_erased = try core.buf_origin_erase_with_elements(
+        Origin,
+        u32,
+        u32,
+        std.testing.allocator,
+        .{
+            .buf = buf,
+            .eraser = eraser,
+            .element_erase = struct {
+                pub fn f(erase: core.Record(struct {
+                    element: u32,
+                    eraser: core.Origin_eraser(@TypeOf(origin)),
+                })) error{OutOfMemory}!core.Record(struct {
+                    element: u32,
+                    eraser: core.Origin_eraser(@TypeOf(origin)),
+                }) {
+                    return .{ .element = erase.element, .eraser = erase.eraser };
+                }
+            }.f,
+        },
+    );
+    try std.testing.expectEqual(1, buf_erased.elements.items.len);
+    const uneraser = core.Origin_uneraser(Origin){ .origin = origin };
+    const buf_unerased = try core.buf_origin_unerase_with_elements(
+        Origin,
+        u32,
+        u32,
+        std.testing.allocator,
+        .{
+            .buf = buf_erased,
+            .uneraser = uneraser,
+            .element_unerase = struct {
+                pub fn f(unerase: core.Record(struct {
+                    element: u32,
+                    uneraser: core.Origin_uneraser(@TypeOf(origin)),
+                })) error{OutOfMemory}!core.Record(struct {
+                    element: u32,
+                    uneraser: core.Origin_uneraser(@TypeOf(origin)),
+                }) {
+                    return .{ .element = unerase.element, .uneraser = unerase.uneraser };
+                }
+            }.f,
+        },
+    );
+    try std.testing.expectEqual(1, buf_unerased.elements.items.len);
+    // scrap the original buf, showing that the allocation is the same as for buf_unerased
+    buf.rid(std.testing.allocator);
+}
+test "buf origin erase with elements, different size and alignment" {
+    const Origin = enum { origin };
+    const origin = Origin.origin;
+    var buf = try core.buf_empty(u32, @TypeOf(origin), origin);
+    _ = try buf.add(std.testing.allocator, 60);
+    const eraser = core.Origin_eraser(Origin){};
+    const buf_erased = try core.buf_origin_erase_with_elements(
+        Origin,
+        u32,
+        u64,
+        std.testing.allocator,
+        .{
+            .buf = buf,
+            .eraser = eraser,
+            .element_erase = struct {
+                pub fn f(erase: core.Record(struct {
+                    element: u32,
+                    eraser: core.Origin_eraser(@TypeOf(origin)),
+                })) error{OutOfMemory}!core.Record(struct {
+                    element: u64,
+                    eraser: core.Origin_eraser(@TypeOf(origin)),
+                }) {
+                    return .{ .element = erase.element, .eraser = erase.eraser };
+                }
+            }.f,
+        },
+    );
+    try std.testing.expectEqual(1, buf_erased.elements.items.len);
+    const uneraser = core.Origin_uneraser(Origin){ .origin = origin };
+    const buf_unerased = try core.buf_origin_unerase_with_elements(
+        Origin,
+        u32,
+        u64,
+        std.testing.allocator,
+        .{
+            .buf = buf_erased,
+            .uneraser = uneraser,
+            .element_unerase = struct {
+                pub fn f(unerase: core.Record(struct {
+                    element: u64,
+                    uneraser: core.Origin_uneraser(@TypeOf(origin)),
+                })) error{OutOfMemory}!core.Record(struct {
+                    element: u32,
+                    uneraser: core.Origin_uneraser(@TypeOf(origin)),
+                }) {
+                    return .{
+                        .element = std.math.lossyCast(u32, unerase.element),
+                        .uneraser = unerase.uneraser,
+                    };
+                }
+            }.f,
+        },
+    );
+    try std.testing.expectEqual(1, buf_unerased.elements.items.len);
+    buf_unerased.rid(std.testing.allocator);
+}
+test "origin_erase span + buf, then origin_unerase" {
+    const Origin = enum { origin };
+    const origin: core.Origin(
+        core.Record(struct { origin: Origin, part: void }),
+    ) = .{ .origin = Origin.origin, .part = {} };
+    var buf = try core.buf_empty(u32, @TypeOf(origin), origin);
+    const span = (try buf.add(std.testing.allocator, 1)).to_span();
+    const erased = try core.origin_erase(
+        Origin,
+        void,
+        struct { @TypeOf(buf), @TypeOf(span) },
+        struct { core.Buf(core.Erased, u32), core.Span(core.Erased) },
+        .{
+            .value = .{ buf, span },
+            .erase = struct {
+                pub fn f(erase: core.Record(struct {
+                    value: struct { @TypeOf(buf), @TypeOf(span) },
+                    eraser: core.Origin_eraser(@TypeOf(origin)),
+                })) error{OutOfMemory}!struct { core.Buf(core.Erased, u32), core.Span(core.Erased) } {
+                    const span_erased = try core.span_origin_erase(@TypeOf(origin), .{
+                        .span = erase.value.@"1",
+                        .eraser = erase.eraser,
+                    });
+                    const buf_erased = try core.buf_origin_erase(@TypeOf(origin), u32, .{
+                        .buf = erase.value.@"0",
+                        .eraser = span_erased.eraser,
+                    });
+                    return .{ buf_erased, span_erased.span };
+                }
+            }.f,
+        },
+    );
+    try std.testing.expectEqual(0, erased.erased.@"1".endIndex());
+    const NewOrigin = enum { origin };
+    const new_origin: core.Origin(
+        core.Record(struct { origin: NewOrigin, part: void }),
+    ) = .{ .origin = NewOrigin.origin, .part = {} };
+    const unerased = try core.origin_unerase(
+        NewOrigin,
+        void,
+        struct {
+            core.Buf(@TypeOf(new_origin), u32),
+            core.Span(@TypeOf(new_origin)),
+        },
+        struct { core.Buf(core.Erased, u32), core.Span(core.Erased) },
+        .{
+            .erased = erased,
+            .origin = new_origin,
+            .unerase = struct {
+                pub fn f(unerase: core.Record(struct {
+                    uneraser: core.Origin_uneraser(@TypeOf(new_origin)),
+                    value: struct { core.Buf(core.Erased, u32), core.Span(core.Erased) },
+                })) error{OutOfMemory}!struct {
+                    core.Buf(@TypeOf(new_origin), u32),
+                    core.Span(@TypeOf(new_origin)),
+                } {
+                    const span_unerased = try core.span_origin_unerase(@TypeOf(new_origin), .{
+                        .span = unerase.value.@"1",
+                        .uneraser = unerase.uneraser,
+                    });
+                    const buf_unerased = try core.buf_origin_unerase(u32, @TypeOf(new_origin), .{
+                        .buf = unerase.value.@"0",
+                        .uneraser = span_unerased.uneraser,
+                    });
+                    return .{ buf_unerased, span_unerased.span };
+                }
+            }.f,
+            .value_rid = struct {
+                pub fn f(_: struct {
+                    core.Buf(@TypeOf(new_origin), u32),
+                    core.Span(@TypeOf(new_origin)),
+                }) error{OutOfMemory}!void {}
+            }.f,
+        },
+    );
+    try std.testing.expectEqual(0, unerased.@"1".endIndex());
+    // scrap the original buf, showing that the allocation is the same as for unerased.buf
+    buf.rid(std.testing.allocator);
 }
 test "anonymous struct default does not work" {
     // This is very annoying: Zig just recently used to have real anonymous structs
@@ -643,39 +932,8 @@ test "anonymous union(enum)" {
 }
 fn rid_both(value: type, _: value, _: value) void {}
 
-test "compiles" {
-    try expect_fn(core.buf_pre_allocate_at_least);
-    try expect_fn(core.buf_pre_allocation_rid);
-    try expect_fn(core.buf_add);
-    try expect_fn(core.buf_insert);
-    try expect_fn(core.buf_insert_unset);
-    try expect_fn(core.buf_add_unset);
-    try expect_fn(core.buf_add_unset_length);
-    try expect_fn(core.buf_add_unset_length_positive);
-    try expect_fn(core.buf_unset);
-    try expect_fn(core.buf_set);
-    try expect_fn(core.buf_span_add);
-    try expect_fn(core.buf_span_add_buf_span);
-    try expect_fn(core.buf_span_add_buf_opt_span);
-    try expect_fn(core.buf_char_opt_span_add_str);
-    try expect_fn(core.buf_char_span_add_str);
-    try expect_fn(core.buf_opt_span_add);
-    try expect_fn(core.buf_opt_span_add_buf_span);
-    try expect_fn(core.buf_opt_span_add_buf_opt_span);
-    try expect_fn(core.buf_span_add_own_span);
-    try expect_fn(core.buf_span_add_own_opt_span);
-    try expect_fn(core.buf_opt_span_add_own_span);
-    try expect_fn(core.buf_opt_span_add_own_opt_span);
-    try expect_fn(core.buf_unset_span_add_own_span);
-    try expect_fn(core.buf_unset_span_add_own_opt_span);
-    try expect_fn(core.buf_opt_unset_span_add_own_span);
-    try expect_fn(core.buf_opt_unset_span_add_own_opt_span);
-    try expect_fn(core.buf_reuse);
-    try expect_fn(core.buf_to_unset);
-    try expect_fn(core.unset_slice_allocate_length);
-    try expect_fn(core.unset_slice_length);
-    try expect_fn(core.unset_slice_cast_or_rid_and_allocate);
-    try expect_fn(core.unset_slice_rid);
+test {
+    std.testing.refAllDecls(core);
 }
 fn expect_fn(thing: anytype) !void {
     return switch (@typeInfo(@TypeOf(thing))) {
