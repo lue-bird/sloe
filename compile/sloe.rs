@@ -211,7 +211,8 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         cases: Vec<SyntaxExpressionQueryCase<Expressions, Patterns, Types>>,
     },
     Origin {
-        origin_keyword_start: lsp_types::Position,
+        caret_key_symbol_start: lsp_types::Position,
+        parts: Vec<WithStartPosition<Option<Name>>>,
         name: Option<WithStartPosition<Name>>,
         result: Option<core::Slot<Expressions>>,
     },
@@ -635,10 +636,11 @@ pub fn expression_start<Expressions, Patterns, Types>(
             expression: _,
         } => comments.line0.start,
         SyntaxExpression::Origin {
-            origin_keyword_start,
+            caret_key_symbol_start,
+            parts: _,
             name: _,
             result: _,
-        } => *origin_keyword_start,
+        } => *caret_key_symbol_start,
         SyntaxExpression::Query {
             question_mark_start,
             queried: _,
@@ -788,7 +790,8 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .map(|inner| expression_end(expressions.element(inner), expressions, patterns, types))
             .unwrap_or_else(|| comments_end(comments)),
         SyntaxExpression::Origin {
-            origin_keyword_start,
+            caret_key_symbol_start,
+            parts,
             name,
             result,
         } => result
@@ -798,7 +801,12 @@ pub fn expression_end<Expressions, Patterns, Types>(
                 name.as_ref()
                     .map(|name| name_end(with_start_position_as_ref(name)))
             })
-            .unwrap_or_else(|| symbol_end(*origin_keyword_start, "origin")),
+            .or_else(|| {
+                parts
+                    .last()
+                    .map(|last_part| optional_field_name_end(last_part))
+            })
+            .unwrap_or_else(|| symbol_end(*caret_key_symbol_start, "^")),
         SyntaxExpression::Query {
             question_mark_start,
             queried,
@@ -2096,15 +2104,21 @@ fn parse_expression_origin<Expressions, Patterns, Types>(
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    let Some(origin_keyword_start) = parse_sloe_keyword_as_start(state, "origin") else {
+    let Some(caret_key_symbol_start) = parse_symbol_as_start(state, "^") else {
         return None;
     };
     parse_sloe_whitespace(state);
+    let mut parts = Vec::new();
+    while let Some(part) = parse_field_name(state) {
+        parts.push(part);
+        parse_sloe_whitespace(state);
+    }
     let name = parse_sloe_lowercase_name_with_start(state);
     parse_sloe_whitespace(state);
     let result = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Origin {
-        origin_keyword_start: origin_keyword_start,
+        caret_key_symbol_start: caret_key_symbol_start,
+        parts: parts,
         name: name,
         result: result.map(|result| expressions.insert(result)),
     })
@@ -2889,7 +2903,8 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             }
         }
         SyntaxExpression::Origin {
-            origin_keyword_start: _,
+            caret_key_symbol_start: _,
+            parts: _,
             name: _,
             result,
         } => {
@@ -5565,9 +5580,30 @@ struct CheckedPatternVariable {
     origin_start: lsp_types::Position,
     type_: Option<Type>,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct CheckedOrigin {
     origin_start: lsp_types::Position,
+    parts: Vec<Name>,
+}
+fn origin_parts_to_type(parts: &[Name]) -> Type {
+    match parts.split_last() {
+        None => type_record_empty,
+        Some((last_part, parts_before)) => parts_before.iter().fold(
+            Type::Record(vec![TypeField {
+                name: last_part.clone(),
+                value: type_record_empty,
+            }]),
+            |rest, part| {
+                type_part_rest(
+                    Type::Record(vec![TypeField {
+                        name: part.clone(),
+                        value: type_record_empty,
+                    }]),
+                    rest,
+                )
+            },
+        ),
+    }
 }
 fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
@@ -5764,7 +5800,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variable(name) => {
-            if let Some(_origin_info) = origins.get(&name.value) {
+            if let Some(origin_info) = origins.get(&name.value) {
                 let maybe_existing_origin_variable_use_start =
                     used_origin_variables.insert(&name.value, name.start);
                 if let Some(existing_origin_variable_use_start) =
@@ -5778,7 +5814,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 }
                 Some(type_origin(type_origin_part(
                     Type::Origin(name.value.clone()),
-                    type_record_empty,
+                    origin_parts_to_type(&origin_info.parts),
                 )))
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
@@ -6813,20 +6849,54 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             Some(checked_query_result_type)
         }
         SyntaxExpression::Origin {
-            origin_keyword_start,
+            caret_key_symbol_start,
+            parts,
             name,
             result,
         } => {
+            let part_names = parts
+                .iter()
+                .filter_map(|part| match &part.value {
+                    None => {
+                        errors.push(ErrorNode {
+                            range: lsp_types::Range {
+                                start: *caret_key_symbol_start,
+                                end: symbol_end(*caret_key_symbol_start, "^"),
+                            },
+                            message: Box::from("missing origin name after ^..here.."),
+                        });
+                        None
+                    }
+                    Some(part_name) => Some(part_name.clone()),
+                })
+                .collect::<Vec<_>>();
+            records_used.extend(part_names.iter().map(|part_name| vec![part_name.clone()]));
+            let Some(origin_name) = name else {
+                errors.push(match parts.last() {
+                    None => ErrorNode {
+                        range: lsp_types::Range {
+                            start: *caret_key_symbol_start,
+                            end: symbol_end(*caret_key_symbol_start, "^"),
+                        },
+                        message: Box::from("missing origin name after ^..here.."),
+                    },
+                    Some(last_part) => ErrorNode {
+                        range: lsp_types::Range {
+                            start: *caret_key_symbol_start,
+                            end: optional_field_name_end(last_part),
+                        },
+                        message: Box::from("missing origin name after ^ .parts ..here.."),
+                    },
+                });
+                return None;
+            };
             let Some(result) = result else {
                 errors.push(ErrorNode {
                     range: lsp_types::Range {
-                        start: *origin_keyword_start,
-                        end: name
-                            .as_ref()
-                            .map(|name| name_end(with_start_position_as_ref(name)))
-                            .unwrap_or_else(|| symbol_end(*origin_keyword_start, "origin")),
+                        start: *caret_key_symbol_start,
+                        end: name_end(with_start_position_as_ref(origin_name)),
                     },
-                    message: Box::from("missing expression after origin origin-name ..here.."),
+                    message: Box::from("missing expression after ^ origin-name ..here.."),
                 });
                 return None;
             };
@@ -6859,6 +6929,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     &origin_name.value,
                     CheckedOrigin {
                         origin_start: origin_name.start,
+                        parts: part_names,
                     },
                 );
             }
@@ -6889,12 +6960,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 let mut type_string = String::new();
                 type_format(&mut type_string, 0, result_type);
                 errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(origin_name)),
-                        message: format!(
-                            "the type of the resulting expression references this origin:\n{}. This is not allowed as it would allow creating multiple collections with the same origin. Move this origin creation to before the outer expression and/or pass the origin as an argument",
-                            type_string
-                        ).into_boxed_str(),
-                    });
+                    range: name_range(with_start_position_as_ref(origin_name)),
+                    message: format!(
+                        "the type of the resulting expression references this origin:\n{}. This is not allowed as it would allow creating multiple collections with the same origin. Move this origin creation to before the outer expression and/or pass the origin as an argument",
+                        type_string
+                    ).into_boxed_str(),
+                });
                 return None;
             }
             if used_origin_variables.remove(&origin_name.value).is_none() {
@@ -7077,7 +7148,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             if let Some(_origin_info) = origins.get(&name.value) {
                 syn_expr_reference([&name_to_lowercase_rust(&name.value)])
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
-                let Some(_) = variable_info.type_.clone() else {
+                let Some(_) = variable_info.type_ else {
                     return syn_expr_todo();
                 };
                 syn_expr_reference([&name_to_lowercase_rust(&name.value)])
@@ -8023,22 +8094,21 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Origin {
-            origin_keyword_start: _,
+            caret_key_symbol_start: _,
+            parts,
             name,
             result,
         } => {
+            let Some(origin_name) = name else {
+                return syn_expr_todo();
+            };
             let Some(result) = result else {
                 return syn_expr_todo();
             };
-            if let Some(origin_name) = name {
-                let _existing_origin_with_same_name = origins.remove(&origin_name.value);
-                origins.insert(
-                    &origin_name.value,
-                    CheckedOrigin {
-                        origin_start: origin_name.start,
-                    },
-                );
-            }
+            let part_names = parts
+                .iter()
+                .filter_map(|part| part.value.clone())
+                .collect::<Vec<_>>();
             let result_compiled = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
@@ -8052,10 +8122,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 expressions.element(result),
             );
-            let Some(origin_name) = name else {
-                return result_compiled;
-            };
-            syn::Expr::Block(syn::ExprBlock {
+            let rust = syn::Expr::Block(syn::ExprBlock {
                 attrs: vec![],
                 label: None,
                 block: syn::Block {
@@ -8074,13 +8141,14 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                     <proc_macro2::TokenStream as quote::TokenStreamExt>::append_separated(
                                         &mut token_stream,
                                         [
-                                            syn_ident(&name_to_lowercase_rust(
+                                            quote::ToTokens::to_token_stream(&syn_ident(&name_to_lowercase_rust(
                                                 origin_name.value.as_str(),
-                                            )),
-                                            syn_ident(&name_to_uppercase_rust(
+                                            ))),
+                                            quote::ToTokens::to_token_stream(&syn_ident(&name_to_uppercase_rust(
                                                 origin_name.value.as_str(),
-                                            )),
-                                        ],
+                                            ))),
+                                            quote::ToTokens::to_token_stream(&type_to_rust(&origin_parts_to_type(&part_names)))
+                                        ] ,
                                         syn::token::Comma(syn_span()),
                                     );
                                     token_stream
@@ -8091,7 +8159,15 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         syn::Stmt::Expr(result_compiled, None),
                     ],
                 },
-            })
+            });
+            origins.insert(
+                &origin_name.value,
+                CheckedOrigin {
+                    origin_start: origin_name.start,
+                    parts: part_names,
+                },
+            );
+            rust
         }
     }
 }
@@ -12087,7 +12163,8 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Origin {
-            origin_keyword_start: _,
+            caret_key_symbol_start: _,
+            parts: _,
             name: _,
             result,
         } => match result {
@@ -12475,11 +12552,24 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Origin {
-            origin_keyword_start: _,
+            caret_key_symbol_start: _,
+            parts,
             name,
             result,
         } => {
-            formatted.push_str("origin ");
+            formatted.push_str("^");
+            let mut part_names = parts.iter().filter_map(|part| part.value.as_ref());
+            if let Some(part_name0) = part_names.next() {
+                formatted.push(' ');
+                formatted.push('.');
+                formatted.push_str(part_name0);
+                formatted.push(' ');
+                for part_name in part_names {
+                    formatted.push('.');
+                    formatted.push_str(part_name);
+                    formatted.push(' ');
+                }
+            }
             if let Some(name) = name {
                 formatted.push_str(&name.value);
             }
@@ -13808,7 +13898,8 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 })
             }),
         SyntaxExpression::Origin {
-            origin_keyword_start: _,
+            caret_key_symbol_start: _,
+            parts: _,
             name,
             result,
         } => {
@@ -15246,7 +15337,8 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Origin {
-            origin_keyword_start: _,
+            caret_key_symbol_start: _,
+            parts: _,
             name: introduced_origin_name,
             result,
         } => {
@@ -15657,7 +15749,8 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Origin {
-            origin_keyword_start: _,
+            caret_key_symbol_start: _,
+            parts: _,
             name: _,
             result,
         } => {

@@ -618,15 +618,24 @@ impl<LocalOrigin> Origin<LocalOrigin> {
     /// This constructor is exposed because sadly macros (namely origin_new!) require it.
     /// It's _very strongly_ recommended to instead only construct new origins with `origin_new!`.
     /// Misusing this constructor can lead to UB like unchecked out of bounds access.
-    pub unsafe fn new_use_macro_instead(_: LocalOrigin) -> Origin<LocalOrigin> {
-        Origin(std::marker::PhantomData::<LocalOrigin>)
+    pub unsafe fn new_use_macro_instead<Parts>(
+        _: LocalOrigin,
+    ) -> Origin<Origin_part<LocalOrigin, Parts>> {
+        Origin(std::marker::PhantomData::<Origin_part<LocalOrigin, Parts>>)
     }
 }
 #[macro_export]
 macro_rules! origin_new {
     ($variable_name:ident, $type_name:ident) => {
-        struct $type_name();
-        let $variable_name = unsafe { $crate::core::Origin::new_use_macro_instead($type_name()) };
+        struct $type_name;
+        let $variable_name = unsafe {
+            $crate::core::Origin::new_use_macro_instead::<$crate::core::Record>($type_name)
+        };
+    };
+    ($variable_name:ident, $type_name:ident, $parts_type:ty) => {
+        struct $type_name;
+        let $variable_name =
+            unsafe { $crate::core::Origin::new_use_macro_instead::<$parts_type>($type_name) };
     };
 }
 pub use origin_new;

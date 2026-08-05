@@ -8,8 +8,6 @@
 
 (keyword_ty) @keyword
 
-(keyword_origin) @keyword
-
 (key_symbol_question_mark) @keyword
 
 (key_symbol_colon) @keyword
@@ -17,6 +15,8 @@
 (key_symbol_equals) @keyword
 
 (key_symbol_spread_fields) @keyword
+
+(key_symbol_origin) @keyword
 
 (field_name) @property
 

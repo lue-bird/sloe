@@ -134,17 +134,29 @@ export default grammar({
     expression_number: ($) => seq($.number, $.type),
     expression_number_not_open_ending_in_record: ($) =>
       seq($.number, $.type_not_open_ending_in_record),
-    expression_origin: ($) => seq($.keyword_origin, $.expression_variable, $.expression),
+    expression_origin: ($) =>
+      seq($.key_symbol_origin, repeat($.field_name), $.expression_variable, $.expression),
     expression_origin_not_open_ending_in_query: ($) =>
-      seq($.keyword_origin, $.expression_variable, $.expression_not_open_ending_in_query),
+      seq(
+        $.key_symbol_origin,
+        repeat($.field_name),
+        $.expression_variable,
+        $.expression_not_open_ending_in_query,
+      ),
     expression_origin_not_open_ending_in_record: ($) =>
       seq(
-        $.keyword_origin,
+        $.key_symbol_origin,
+        repeat($.field_name),
         $.expression_variable,
         $.expression_not_open_ending_in_record,
       ),
     expression_origin_not_open_ending_in_array: ($) =>
-      seq($.keyword_origin, $.expression_variable, $.expression_not_open_ending_in_array),
+      seq(
+        $.key_symbol_origin,
+        repeat($.field_name),
+        $.expression_variable,
+        $.expression_not_open_ending_in_array,
+      ),
     expression_variant: ($) => seq($.variant_name, $.angled_type_argument, $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
       seq($.variant_name, $.angled_type_argument, $.expression_not_open_ending_in_query),
@@ -433,12 +445,12 @@ export default grammar({
     field_name: ($) => /\.[a-z][a-zA-Z0-9-]*/,
     upper_name: ($) => /[A-Z][a-zA-Z0-9-]*/,
     lower_name: ($) => /[a-z][a-zA-Z0-9-]*/,
-    keyword_origin: ($) => "origin",
     keyword_fn: ($) => "fn",
     keyword_ty: ($) => "ty",
     key_symbol_question_mark: ($) => "?",
     key_symbol_equals: ($) => "=",
     key_symbol_colon: ($) => ":",
     key_symbol_spread_fields: ($) => "..",
+    key_symbol_origin: ($) => "^",
   },
 });

@@ -638,7 +638,11 @@
           "named": true
         },
         {
-          "type": "keyword_origin",
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_origin",
           "named": true
         }
       ]
@@ -661,7 +665,11 @@
           "named": true
         },
         {
-          "type": "keyword_origin",
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_origin",
           "named": true
         }
       ]
@@ -684,7 +692,11 @@
           "named": true
         },
         {
-          "type": "keyword_origin",
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_origin",
           "named": true
         }
       ]
@@ -707,7 +719,11 @@
           "named": true
         },
         {
-          "type": "keyword_origin",
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_origin",
           "named": true
         }
       ]
@@ -2211,6 +2227,10 @@
     "named": true
   },
   {
+    "type": "key_symbol_origin",
+    "named": true
+  },
+  {
     "type": "key_symbol_question_mark",
     "named": true
   },
@@ -2220,10 +2240,6 @@
   },
   {
     "type": "keyword_fn",
-    "named": true
-  },
-  {
-    "type": "keyword_origin",
     "named": true
   },
   {

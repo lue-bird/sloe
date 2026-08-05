@@ -58,7 +58,7 @@ A value whose type contains an origin can't escape the scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```sloe
 fn Some-buf . : Buf ??origin cannot even be annotated??, u32 =
-    origin buf-origin
+    ^buf-origin
     ? Buf-empty<u32> buf-origin [buf]
     ? Buf-add .buf buf .new 123 u32 [.buf buf .slot slot]
     ...
@@ -91,7 +91,7 @@ Like every other sloe value, an origin type can only be used once, so only for o
 ```sloe
 # use a temporary collection contained within a scope
 fn Use-buf . : u32 =
-    origin buf-origin
+    ^buf-origin
   	? Buf-empty<u32> buf-origin [buf]
   	? Buf-add .buf buf .new 123 u32 [.buf buf .slot first-slot]
   	? Buf-remove .buf buf .slot first-slot [.buf buf .element first]
@@ -105,10 +105,10 @@ fn Use-opt opt Opt u32 : ... =
     ? (
         ? opt
         [|no .]
-            origin buf-origin
+            ^buf-origin
             Buf-empty<u32> buf-origin
         [|yes number] (
-            origin buf-origin
+            ^buf-origin
             ? Buf-one .origin buf-origin .element number [.buf buf .slot slot]
             ...
             buf
@@ -116,7 +116,7 @@ fn Use-opt opt Opt u32 : ... =
         )
     [buf]
     # this will compile:
-    origin buf-origin
+    ^buf-origin
     ? (
         :opt
         [|no .]
@@ -150,7 +150,7 @@ ty State _expressions-origin
 fn Initial-state
     .expressions-origin expressions-origin Origin _expressions-origin
     : State _expressions-origin =
-    .expressions Buf-empty<Expression _expressions-origin, ...> expressions-origin
+    .expressions Buf-empty<Expression _expressions-origin> expressions-origin
     .root-expression (..do parsing..)
 
 fn State-to-interfaces-into
@@ -170,7 +170,7 @@ fn State-to-interfaces-into
 ## pass in origins or collections from the outside
 
 ```sloe
-fn Buf-empty<_element> origin Origin _origin : Buf _origin, _element
+fn Buf-empty<_element> Origin _origin : Buf _origin, _element
 ```
 Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection that you want to edit.
@@ -184,30 +184,33 @@ Sloe is a very explicit language, so any extra verbosity is not tolerable.
 # number type, so for example
 3.2 f32 # number types are p32, u32, i32, f32
 
-# str
+# text of type str
 "hello"
 
-# char
+# unicode scalar of type char
 'a'
 
 # most identifiers
-some-variable-or-field-or-variant-or-type-without-parameters-2012
+variable-or-field-or-variant-or-type-without-parameters-2012
 
 # constructor name
-Some-function-name-or-type-with-parameters
+Function-name-or-type-with-parameters
 
-# function call.
-# Rarely functions may require type arguments: <...>.
-# Any function is of type `Fn` and always requires an argument (which does not need to be parenthesized)
-Some-function<type><arguments> Inner-call-as-the-argument inner-inner-argument
+# function call of type Fn in, out. always 1 argument, no parens needed
+Some-function argument
+
+# very rarely functions may require type arguments: <...>.
+# Which types are needed is shown in the function declaration in <...>s (see later)
+Some-function<type><arguments> Inner-call-as-the-argument inner-call-argument
 
 # record. if values are open-ended they need to be parenthesized.
 # The last field value can end in a record without needing to be parenthesized
 .first-field first-value .second-field second-value
 
-# "empty record", like void/unit.
-# commonly used for variants "without a value", empty state/context
-# or as the result of functions like u32-rid
+# empty record, like void/unit.
+# commonly used for variants without a value,
+# for lazily constructing a value, for empty state/context
+# or as the result of functions like U32-rid
 .
 
 # ..spread a record into other fields
@@ -232,10 +235,11 @@ some-variable some-type
 
 # introduce a new origin (describes which collection slots and spans point into).
 # The given name can be used as a variable and type
-^new-origin-name   expression-that uses new-origin-name
+^new-origin-name  expression-that uses new-origin-name
 
-# advanced: create an origin that ties multiple sub-origins to a common origin type
-^ .new .origin .sub .origins new-origin-name   expression-that uses new-origin-name
+# advanced: create an origin that ties multiple origin parts to a base origin type.
+# See also: the functions Origin-part and Origin-erase
+^ .its .origin .parts new-origin-name  expression-that uses new-origin-name
 
 # project function declaration.
 # For type variables in the result that aren't used in the input,
@@ -255,13 +259,14 @@ u32
 Span origin
 My-function-type-alias env, input, output
 
-# project type which is an alias for an existing type.
-# Here a "choice type" that can come in different shapes ("variants")
-# which each have a unique name and one associated value.
+# declare a shorthand for an existing type
 ty point .x i32 .y i32
 
-# project type with parameters
-ty Type-name _potential, _type-parameters
+# can also accept parameters
+ty Pair _potential, _type-parameters
+
+# a "choice type" that can come in different shapes ("variants")
+# which each have a unique name and one associated value.
     |first-option .
     |second-option Buf _potential, u32
     |third-option Type-name-alias _potential, _type-parameters
@@ -398,7 +403,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       .consume-origin consume-origin _consume-origin
       .result-origin result-origin _result-origin
       : Buf _result-origin, u32 =
-      origin local-origin
+      ^local-origin
       ? Buf-empty<u32> consume-origin [temporary]
       ? Recurse local-origin result-origin [result]
       ? Buf-add .buf temporary .new 1 u32 [.slot slot .buf temporary]
@@ -456,8 +461,8 @@ It also makes initial_state much easier to call from the rust side (though we ne
   Its structure _must_ be created at compile-time. Dynamically this doesn't fly: `Buf origin = { bucket: Map<for type_byte_size: { key: type_byte_size, value: Buf<type_byte_size> }> }`.
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
   ```sloe
-  origin buf-origin
-  ? Buf-empty<.expression expression .pattern pattern buf-origin> buf-origin [buf]
+  ^buf-origin
+  ? Buf-empty<.expression expression .pattern Pattern buf-origin> buf-origin [buf]
   ? Buf-add .buf buf .new some-expression [.buf buf slot some-expression-slot]
   ? Buf-add .buf buf .new some-pattern  [.buf buf .slot some-pattern-slot]
   ...
@@ -582,11 +587,11 @@ If you're looking to learn from sloe, maybe do not learn from these:
 # general quetions you might have
 
 ## does sloe fill any niche well enough to be worth it?
-I'd say domains where languages like safe rust, C#, swift, go, nim stand today:
-  - not extensive enough to have a place in bare systems programming,
-    but comfortably sitting on top of a somewhat thin platform layer.
+I'd say domains where languages like safe rust or performance-aware C#/swift/go stand today:
+  - not extensive enough to have a front seat in systems programming,
+    but comfortably sitting on top of a somewhat thin platform layer
   - not as easy to use as scripting languages like python, gleam, lua, elm, prolog, etc.
-  - mainly used for applications or similar where maintainability and being easy to reason about is important
+  - mainly used for tools, applications or similar where maintainability, robustness and being easy to reason about is important
 
 Don't be afraid to program in a language sloe compiles to for tasks sloe feels annoying to use for.
 E.g. I imagine writing a recursive file watcher in sloe is not fun, so just "outsource" it :)

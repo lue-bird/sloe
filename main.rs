@@ -2071,11 +2071,15 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
         sloe::SyntaxExpression::Origin {
-            origin_keyword_start,
+            caret_key_symbol_start,
+            parts,
             name,
             result,
         } => {
-            keyword_highlight(state, "origin", *origin_keyword_start);
+            keyword_highlight(state, "^", *caret_key_symbol_start);
+            for part in parts {
+                sloe_syntax_optional_field_name_highlight(state, part);
+            }
             if let Some(name) = name {
                 sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
             }
@@ -2227,7 +2231,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                     label: origin_name.to_string(),
                                     kind: Some(lsp_types::CompletionItemKind::Struct),
                                     documentation: Some(lsp_documentation_markdown(format!(
-                                        "```sloe\norigin {}\n```",
+                                        "```sloe\n^{}\n```",
                                         origin_name
                                     ))),
                                     ..lsp_types::CompletionItem::default()
@@ -2443,7 +2447,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                     label: origin_name.to_string(),
                                     kind: Some(lsp_types::CompletionItemKind::Variable),
                                     documentation: Some(lsp_documentation_markdown(
-                                        "origin variable".to_string(),
+                                        "^origin variable".to_string(),
                                     )),
                                     ..lsp_types::CompletionItem::default()
                                 }

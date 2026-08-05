@@ -481,7 +481,14 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "keyword_origin"
+          "name": "key_symbol_origin"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "field_name"
+          }
         },
         {
           "type": "SYMBOL",
@@ -498,7 +505,14 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "keyword_origin"
+          "name": "key_symbol_origin"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "field_name"
+          }
         },
         {
           "type": "SYMBOL",
@@ -515,7 +529,14 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "keyword_origin"
+          "name": "key_symbol_origin"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "field_name"
+          }
         },
         {
           "type": "SYMBOL",
@@ -532,7 +553,14 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "keyword_origin"
+          "name": "key_symbol_origin"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "field_name"
+          }
         },
         {
           "type": "SYMBOL",
@@ -2059,10 +2087,6 @@
       "type": "PATTERN",
       "value": "[a-z][a-zA-Z0-9-]*"
     },
-    "keyword_origin": {
-      "type": "STRING",
-      "value": "origin"
-    },
     "keyword_fn": {
       "type": "STRING",
       "value": "fn"
@@ -2086,6 +2110,10 @@
     "key_symbol_spread_fields": {
       "type": "STRING",
       "value": ".."
+    },
+    "key_symbol_origin": {
+      "type": "STRING",
+      "value": "^"
     }
   },
   "extras": [
