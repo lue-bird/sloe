@@ -160,7 +160,7 @@ fn State-to-interfaces-into
     ? (
         Buf-one
         .origin interfaces-origin
-        .element |console-log<Interface State _expressions-origin> "hello"
+        .element |<Interface State _expressions-origin>console-log "hello"
         )
     [.slot slot .buf interfaces]
     ...
@@ -174,6 +174,7 @@ fn Buf-empty<_element> Origin _origin : Buf _origin, _element
 ```
 Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection that you want to edit.
+(There is even a way to create an origin inside the function and still pass collections etc using that origin out of the function. Its called `Origin-erased`. Look it up if you think the existing origin stuff is too restrictive)
 
 # syntax
 Syntax is secondary but I tried to make it coherent, practical and compact, avoiding parens and indentation when possible, especially for trailing syntax.
@@ -273,7 +274,7 @@ ty Pair _potential, _type-parameters
 
 # creating a variant. Note that the type could refer to a type alias
 # or a choice type directly <|... ...>
-|some-variant<its-choice-type> its value
+|<a-choice-type>some-variant its value
 
 # variant pattern
 |some-variant its value
@@ -614,21 +615,50 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- add `Choice-empty-rid`, `Choice-empty-to` (document that it can also procure another empty choice, thus `Choice-empty-dup` isn't needed)
+
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- change `|variant-name<type> value` to `|<type>variant-name value`. This allows better autocomplete and is more in line with other programming languages
-  Example: before
-  ```sloe
-  |text-dynamic<Html _view> Opt-yes text-span
-  ```
-  after
-  ```sloe
-  |<Html _view>text-dynamic Opt-yes text-span
-  ```
-
 - replace `<>` by `{}` because it is more easily recognized as parens
+
+- introduce a better API for multi-part origins.
+  Something like
+  ```sloe
+  ^new-origin # new-origin is of type Origin Origin-part new-origin, .new-origin .
+  fn Origin-add
+      .part Origin Origin-part _part, _part-name
+      .to Origin Origin-part _rest, _rest-names
+      : Origin Origin-part (Part-rest _part, _rest), (Part-rest _rest-names, _part-name)
+  ```
+  This achieves:
+  - simplified, less confusing syntax
+  - safely constructible in rust without possible runtime crash (Is it actually?)
+  
+  At the cost of
+  - the default case just one origin leads to much more annoying to origin type names in Buf, Slot, Span etc.
+  - it's frankly roundabout and annoying to do
+    ```sloe
+    ^htmls
+    ^modifiers
+    ^chars
+    ? Origin-add .part htmls .to Origin-add .part modifiers .to chars [view-origin]
+    ? Origin-part view-origin [.origin view-origin .part htmls]
+    ? Origin-part view-origin [.origin view-origin .part modifiers]
+    ? Origin-part view-origin [.origin view-origin .part chars]
+    ```
+    compared to
+    
+    ```sloe
+    ^ .htmls .modifiers .chars view-origin
+    ? Origin-part view-origin [.origin view-origin .part htmls]
+    ? Origin-part view-origin [.origin view-origin .part modifiers]
+    ? Origin-part view-origin [.origin view-origin .part chars]
+    ```
+    probably fine though because it isn't done often
+  
+  question: Is this abusable?
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements

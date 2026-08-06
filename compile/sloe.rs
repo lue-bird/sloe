@@ -173,8 +173,9 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         argument: Option<core::Slot<Expressions>>,
     },
     Variant {
-        name: WithStartPosition<Option<Name>>,
+        bar_start: lsp_types::Position,
         type_: Option<SyntaxAngledTypeArgument<Types>>,
+        name: Option<WithStartPosition<Name>>,
         value: Option<core::Slot<Expressions>>,
     },
     Fn {
@@ -609,10 +610,11 @@ pub fn expression_start<Expressions, Patterns, Types>(
             argument: _,
         } => name.start,
         SyntaxExpression::Variant {
-            name,
+            bar_start,
             type_: _,
+            name: _,
             value: _,
-        } => name.start,
+        } => *bar_start,
         SyntaxExpression::Fn {
             open_bracket_start,
             parameter: _,
@@ -710,15 +712,24 @@ pub fn expression_end<Expressions, Patterns, Types>(
                     .map(|type_arguments| angled_type_argument_end(type_arguments, types))
             })
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
-        SyntaxExpression::Variant { name, type_, value } => value
+        SyntaxExpression::Variant {
+            bar_start,
+            type_,
+            name,
+            value,
+        } => value
             .as_ref()
             .map(|value| expression_end(expressions.element(value), expressions, patterns, types))
+            .or_else(|| {
+                name.as_ref()
+                    .map(|name| name_end(with_start_position_as_ref(name)))
+            })
             .or_else(|| {
                 type_
                     .as_ref()
                     .map(|type_| angled_type_argument_end(type_, types))
             })
-            .unwrap_or_else(|| optional_variant_name_end(name)),
+            .unwrap_or_else(|| *bar_start),
         SyntaxExpression::Fn {
             open_bracket_start,
             parameter,
@@ -2063,16 +2074,19 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    let Some(name) = parse_variant_name(state) else {
+    let Some(bar_start) = parse_symbol_as_start(state, "|") else {
         return None;
     };
     parse_sloe_whitespace(state);
     let type_argument = parse_type_argument(state, types);
     parse_sloe_whitespace(state);
+    let name = parse_sloe_lowercase_name_with_start(state);
+    parse_sloe_whitespace(state);
     let value = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Variant {
-        name: name,
+        bar_start: bar_start,
         type_: type_argument,
+        name: name,
         value: value.map(|argument| expressions.insert(argument)),
     })
 }
@@ -2744,8 +2758,9 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             }
         }
         SyntaxExpression::Variant {
-            name: _,
+            bar_start: _,
             type_: _,
+            name: _,
             value,
         } => {
             if let Some(value) = value {
@@ -6030,25 +6045,30 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 Some(result_type)
             }
         }
-        SyntaxExpression::Variant { name, type_, value } => {
-            let Some(name_value) = &name.value else {
-                errors.push(ErrorNode {
-                    range: optional_variant_name_range(name),
-                    message: Box::from("missing variant name after this bar | . An example of a valid variant is |yes<Opt str> \"hi c:\""),
-                });
-                return None;
-            };
+        SyntaxExpression::Variant {
+            bar_start,
+            name,
+            type_,
+            value,
+        } => {
             let Some(syntax_type_argument) = type_ else {
                 errors.push(ErrorNode {
-                    range: optional_variant_name_range(name),
-                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |yes<Opt str> \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
+                    range: symbol_range(*bar_start, "|"),
+                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |<Opt str>yes \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
                 });
                 return None;
             };
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_angle_start, "<"),
-                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |yes<Opt str> \"hi c:\""),
+                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |<Opt str>yes \"hi c:\""),
+                });
+                return None;
+            };
+            let Some(name) = name else {
+                errors.push(ErrorNode {
+                    range: angled_type_argument_range(syntax_type_argument, types),
+                    message: Box::from("missing variant name after this variant type |<>. An example of a variant is |<Opt str>yes \"hi c:\""),
                 });
                 return None;
             };
@@ -6065,17 +6085,17 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             };
             let Type::Choice(origin_choice_type) = &checked_type else {
                 let mut error_message: String = String::from(
-                    "this variant type should be a choice (for example |a u32 |b str) but it's\n",
+                    "this variant type should be a choice (for example |a u32 |b str  or  Opt u32) but it's\n",
                 );
                 type_format(&mut error_message, 0, &checked_type);
                 errors.push(ErrorNode {
-                    range: optional_variant_name_range(name),
+                    range: angled_type_argument_range(syntax_type_argument, types),
                     message: error_message.into_boxed_str(),
                 });
                 return None;
             };
             let Some(expected_value_type) = origin_choice_type.iter().find_map(|variant| {
-                if &variant.name == name_value {
+                if &variant.name == &name.value {
                     Some(&variant.value)
                 } else {
                     None
@@ -6083,7 +6103,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             }) else {
                 let mut error_message: String = format!(
                     "the actual variant name {} is not included in this type\n",
-                    name_value
+                    name.value
                 );
                 type_format(&mut error_message, 0, &checked_type);
                 errors.push(ErrorNode {
@@ -6097,7 +6117,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     String::from("this variant is missing its associated value of type\n");
                 type_format(&mut error_message, 0, expected_value_type);
                 errors.push(ErrorNode {
-                    range: optional_variant_name_range(name),
+                    range: name_range(with_start_position_as_ref(name)),
                     message: error_message.into_boxed_str(),
                 });
                 return None;
@@ -7264,10 +7284,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 }
             }
         }
-        SyntaxExpression::Variant { name, type_, value } => {
-            let Some(name_value) = &name.value else {
-                return syn_expr_todo();
-            };
+        SyntaxExpression::Variant {
+            bar_start: _,
+            type_,
+            name,
+            value,
+        } => {
             let Some(syntax_type_argument) = type_ else {
                 return syn_expr_todo();
             };
@@ -7280,6 +7302,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 return syn_expr_todo();
             };
             let Type::Choice(origin_choice_type) = &compiled_type else {
+                return syn_expr_todo();
+            };
+            let Some(name) = name else {
                 return syn_expr_todo();
             };
             let Some(value) = value else {
@@ -7308,7 +7333,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
                             origin_choice_type.iter().map(|variant| &variant.name),
                         )),
-                        &name_to_uppercase_rust(name_value),
+                        &name_to_uppercase_rust(&name.value),
                     ]),
                 })),
                 paren_token: syn::token::Paren(syn_span()),
@@ -9867,7 +9892,7 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             },
             CoreFnInfo {
                 name: "Opt-yes",
-                documentation: "Shorthand for |yes<Opt ..value type..> value which kind of specifies the value type twice",
+                documentation: "Shorthand for |<Opt ..value type..>yes value which kind of specifies the value type twice",
                 type_parameters: vec![],
                 parameter_type: type_variable("yes"),
                 result_type: type_opt(type_variable("yes"))
@@ -12228,8 +12253,9 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             None => no_open_end_kinds,
         },
         SyntaxExpression::Variant {
-            name: _,
+            bar_start: _,
             type_: _,
+            name: _,
             value,
         } => match value {
             Some(value) => {
@@ -12440,8 +12466,13 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 );
             }
         }
-        SyntaxExpression::Variant { name, type_, value } => {
-            optional_variant_name_format(formatted, name.value.as_ref());
+        SyntaxExpression::Variant {
+            bar_start,
+            type_,
+            name,
+            value,
+        } => {
+            formatted.push('|');
             match type_ {
                 None => {
                     formatted.push_str("<>");
@@ -12450,12 +12481,27 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     syntax_angled_type_argument_format(formatted, indent, types, type_);
                 }
             }
+            match name {
+                Some(name) => {
+                    if range_line_span(lsp_types::Range {
+                        start: *bar_start,
+                        end: name.start,
+                    }) == LineSpan::Multiple
+                    {
+                        linebreak_indented_into(formatted, indent);
+                    }
+                    formatted.push_str(&name.value);
+                }
+                None => {
+                    formatted.push(' ');
+                }
+            }
             if let Some(value) = value {
                 let value = expressions.element(value);
                 space_or_linebreak_indented_into(
                     formatted,
                     range_line_span(lsp_types::Range {
-                        start: name.start,
+                        start: *bar_start,
                         end: expression_end(value, expressions, patterns, types),
                     }),
                     indent,
@@ -12471,7 +12517,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Fn {
-            open_bracket_start: _,
+            open_bracket_start,
             parameter,
             closed_bracket_start: _,
             result,
@@ -12480,6 +12526,9 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             if let Some(parameter) = parameter {
                 let parameter_line_span =
                     range_line_span(pattern_range(parameter, patterns, types));
+                if parameter_line_span == LineSpan::Multiple {
+                    linebreak_indented_into(formatted, indent);
+                }
                 syntax_pattern_unparenthesized_format(
                     formatted, indent, patterns, types, parameter,
                 );
@@ -12491,7 +12540,10 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             if let Some(result) = result {
                 space_or_linebreak_indented_into(
                     formatted,
-                    range_line_span(expression_range(expression, expressions, patterns, types)),
+                    range_line_span(lsp_types::Range {
+                        start: *open_bracket_start,
+                        end: expression_end(expression, expressions, patterns, types),
+                    }),
                     indent,
                 );
                 syntax_expression_unparenthesized_format(
@@ -12788,11 +12840,11 @@ fn syntax_angled_type_argument_format<Types>(
                 end: type_end(type_, types),
             });
             if line_span == LineSpan::Multiple {
-                linebreak_indented_into(formatted, next_indent(indent));
+                linebreak_indented_into(formatted, indent);
             }
-            syntax_type_unparenthesized_format(formatted, next_indent(indent), types, type_);
+            syntax_type_unparenthesized_format(formatted, indent, types, type_);
             if line_span == LineSpan::Multiple {
-                linebreak_indented_into(formatted, next_indent(indent));
+                linebreak_indented_into(formatted, indent);
             }
             formatted.push('>');
         }
@@ -13835,13 +13887,18 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     })
                 })
         }
-        SyntaxExpression::Variant { name, type_, value } => {
-            if range_includes_position(optional_variant_name_range(name), position)
-                && let Some(name_value) = &name.value
+        SyntaxExpression::Variant {
+            bar_start: _,
+            type_,
+            name,
+            value,
+        } => {
+            if let Some(name) = name
+                && range_includes_position(name_range(with_start_position_as_ref(name)), position)
             {
                 return Some(SyntaxSymbol::VariantOrUnknown(WithStartPosition {
                     start: name.start,
-                    value: name_value,
+                    value: &name.value,
                 }));
             }
             type_
@@ -14415,7 +14472,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             {
                 return Some(SyntaxSymbol::VariantOrUnknown(WithStartPosition {
                     value: name_value,
-                    start: name.start,
+                    start: position_add_characters(name.start, 1),
                 }));
             }
             value.as_ref().and_then(|value| {
@@ -15323,15 +15380,16 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            name,
+            bar_start: _,
             type_: type_argument,
+            name,
             value,
         } => {
             if let SyntaxSymbol::VariantOrUnknown(symbol_name) = symbol
-                && let Some(name_value) = &name.value
-                && name_value == symbol_name.value
+                && let Some(name) = name
+                && &name.value == symbol_name.value
             {
-                uses.push(optional_variant_name_range(name));
+                uses.push(name_range(with_start_position_as_ref(name)));
             }
             if let Some(type_argument) = type_argument
                 && let Some(type_) = &type_argument.type_
@@ -15803,8 +15861,9 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            name: _,
+            bar_start: _,
             type_,
+            name: _,
             value,
         } => {
             if let Some(SyntaxAngledTypeArgument {

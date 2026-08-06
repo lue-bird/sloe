@@ -576,12 +576,16 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "variant_name"
+          "type": "STRING",
+          "value": "|"
         },
         {
           "type": "SYMBOL",
           "name": "angled_type_argument"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
@@ -593,12 +597,16 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "variant_name"
+          "type": "STRING",
+          "value": "|"
         },
         {
           "type": "SYMBOL",
           "name": "angled_type_argument"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
@@ -610,12 +618,16 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "variant_name"
+          "type": "STRING",
+          "value": "|"
         },
         {
           "type": "SYMBOL",
           "name": "angled_type_argument"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
@@ -627,12 +639,16 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "variant_name"
+          "type": "STRING",
+          "value": "|"
         },
         {
           "type": "SYMBOL",
           "name": "angled_type_argument"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
@@ -1386,7 +1402,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "variant_name_including_bar"
         },
         {
           "type": "SYMBOL",
@@ -1399,7 +1415,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "variant_name_including_bar"
         },
         {
           "type": "SYMBOL",
@@ -1805,7 +1821,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "variant_name_including_bar"
         },
         {
           "type": "SYMBOL",
@@ -1818,7 +1834,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "variant_name_including_bar"
         },
         {
           "type": "SYMBOL",
@@ -1831,7 +1847,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "variant_name_including_bar"
         },
         {
           "type": "SYMBOL",
@@ -1844,7 +1860,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "variant_name_including_bar"
         },
         {
           "type": "SYMBOL",
@@ -2071,9 +2087,13 @@
       "type": "PATTERN",
       "value": "-?\\+?\\d+\\.?\\d*"
     },
-    "variant_name": {
+    "variant_name_including_bar": {
       "type": "PATTERN",
       "value": "\\|[a-z][a-zA-Z0-9-]*"
+    },
+    "variant_name": {
+      "type": "SYMBOL",
+      "name": "lower_name"
     },
     "field_name": {
       "type": "PATTERN",

@@ -1920,15 +1920,18 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
         sloe::SyntaxExpression::Variant {
+            bar_start: _,
             name,
             type_: type_argument,
             value,
         } => {
-            sloe_syntax_optional_variant_name_highlight(state, name);
             if let Some(type_argument) = type_argument
                 && let Some(type_) = &type_argument.type_
             {
                 sloe_syntax_type_highlight(state, types, type_);
+            }
+            if let Some(name) = name {
+                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::EnumMember);
             }
             if let Some(value) = value {
                 sloe_syntax_expression_highlight(

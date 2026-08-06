@@ -1393,7 +1393,7 @@
           "named": true
         },
         {
-          "type": "variant_name",
+          "type": "variant_name_including_bar",
           "named": true
         }
       ]
@@ -1412,7 +1412,7 @@
           "named": true
         },
         {
-          "type": "variant_name",
+          "type": "variant_name_including_bar",
           "named": true
         }
       ]
@@ -1633,6 +1633,11 @@
     }
   },
   {
+    "type": "type_choice_empty",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "type_choice_not_open_ending_in_construct",
     "named": true,
     "fields": {},
@@ -1683,7 +1688,7 @@
           "named": true
         },
         {
-          "type": "variant_name",
+          "type": "variant_name_including_bar",
           "named": true
         }
       ]
@@ -1702,7 +1707,7 @@
           "named": true
         },
         {
-          "type": "variant_name",
+          "type": "variant_name_including_bar",
           "named": true
         }
       ]
@@ -1721,7 +1726,7 @@
           "named": true
         },
         {
-          "type": "variant_name",
+          "type": "variant_name_including_bar",
           "named": true
         }
       ]
@@ -1740,7 +1745,7 @@
           "named": true
         },
         {
-          "type": "variant_name",
+          "type": "variant_name_including_bar",
           "named": true
         }
       ]
@@ -2147,6 +2152,21 @@
     }
   },
   {
+    "type": "variant_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "lower_name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "\n\n",
     "named": false
   },
@@ -2255,15 +2275,15 @@
     "named": true
   },
   {
-    "type": "type_choice_empty",
-    "named": true
-  },
-  {
     "type": "upper_name",
     "named": true
   },
   {
-    "type": "variant_name",
+    "type": "variant_name_including_bar",
     "named": true
+  },
+  {
+    "type": "|",
+    "named": false
   }
 ]

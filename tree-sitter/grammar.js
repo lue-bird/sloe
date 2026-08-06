@@ -157,13 +157,29 @@ export default grammar({
         $.expression_variable,
         $.expression_not_open_ending_in_array,
       ),
-    expression_variant: ($) => seq($.variant_name, $.angled_type_argument, $.expression),
+    expression_variant: ($) =>
+      seq("|", $.angled_type_argument, $.variant_name, $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
-      seq($.variant_name, $.angled_type_argument, $.expression_not_open_ending_in_query),
+      seq(
+        "|",
+        $.angled_type_argument,
+        $.variant_name,
+        $.expression_not_open_ending_in_query,
+      ),
     expression_variant_not_open_ending_in_record: ($) =>
-      seq($.variant_name, $.angled_type_argument, $.expression_not_open_ending_in_record),
+      seq(
+        "|",
+        $.angled_type_argument,
+        $.variant_name,
+        $.expression_not_open_ending_in_record,
+      ),
     expression_variant_not_open_ending_in_array: ($) =>
-      seq($.variant_name, $.angled_type_argument, $.expression_not_open_ending_in_array),
+      seq(
+        "|",
+        $.angled_type_argument,
+        $.variant_name,
+        $.expression_not_open_ending_in_array,
+      ),
     expression_variable: ($) => $.lower_name,
     expression_call: ($) =>
       seq($.project_fn_name, repeat($.angled_type_argument), $.expression),
@@ -306,8 +322,8 @@ export default grammar({
     pattern_variable_not_open_ending_in_record_typed: ($) =>
       seq($.pattern_variable_untyped, $.type_not_open_ending_in_record),
     pattern_variable_untyped: ($) => $.lower_name,
-    pattern_variant_typed: ($) => seq($.variant_name, $.pattern_typed),
-    pattern_variant_untyped: ($) => seq($.variant_name, $.pattern_untyped),
+    pattern_variant_typed: ($) => seq($.variant_name_including_bar, $.pattern_typed),
+    pattern_variant_untyped: ($) => seq($.variant_name_including_bar, $.pattern_untyped),
     pattern_record_empty: ($) => ".",
     pattern_record_typed: ($) =>
       seq(repeat($.pattern_field_not_open_ending_in_record_typed), $.pattern_field_typed),
@@ -397,13 +413,13 @@ export default grammar({
         repeat($.type_choice_variant_not_open_ending_in_choice),
         $.type_choice_variant_not_open_ending_in_construct,
       ),
-    type_choice_variant: ($) => seq($.variant_name, $.type),
+    type_choice_variant: ($) => seq($.variant_name_including_bar, $.type),
     type_choice_variant_not_open_ending_in_construct: ($) =>
-      seq($.variant_name, $.type_not_open_ending_in_construct),
+      seq($.variant_name_including_bar, $.type_not_open_ending_in_construct),
     type_choice_variant_not_open_ending_in_record: ($) =>
-      seq($.variant_name, $.type_not_open_ending_in_record),
+      seq($.variant_name_including_bar, $.type_not_open_ending_in_record),
     type_choice_variant_not_open_ending_in_choice: ($) =>
-      seq($.variant_name, $.type_not_open_ending_in_choice),
+      seq($.variant_name_including_bar, $.type_not_open_ending_in_choice),
     type_record_empty: ($) => ".",
     type_record: ($) =>
       seq(repeat($.type_record_part_not_open_ending_in_record), $.type_record_part),
@@ -441,7 +457,8 @@ export default grammar({
     string: ($) => $.string_quoted,
     string_quoted: ($) => seq('"', repeat(choice("\\\\", '\\"', /[^"]/)), '"'),
     number: ($) => /-?\+?\d+\.?\d*/,
-    variant_name: ($) => /\|[a-z][a-zA-Z0-9-]*/,
+    variant_name_including_bar: ($) => /\|[a-z][a-zA-Z0-9-]*/,
+    variant_name: ($) => $.lower_name,
     field_name: ($) => /\.[a-z][a-zA-Z0-9-]*/,
     upper_name: ($) => /[A-Z][a-zA-Z0-9-]*/,
     lower_name: ($) => /[a-z][a-zA-Z0-9-]*/,
