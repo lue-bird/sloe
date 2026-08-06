@@ -43,12 +43,20 @@ test "various trivial" {
     }
     try std.testing.expectEqual(core.P32{ .positive = 20 }, core.p32_add_clamp(.{ .p = core.P32{ .positive = 11 }, .u = 9 }));
     try std.testing.expectEqual(20, core.u32_add_clamp(.{ .a = 11, .b = 9 }));
+    try std.testing.expectEqual(2, core.u32_add_i32_clamp(.{ .u = 11, .i = -9 }));
     try std.testing.expectEqual(-2, core.i32_add_clamp(.{ .a = 1, .b = -3 }));
     try std.testing.expectEqual(-2, core.f32_add_clamp(.{ .a = -1.6, .b = -0.4 }));
     try std.testing.expectEqual(core.P32{ .positive = 99 }, core.p32_mul_clamp(.{ .a = core.P32{ .positive = 11 }, .b = core.P32{ .positive = 9 } }));
     try std.testing.expectEqual(99, core.u32_mul_clamp(.{ .a = 11, .b = 9 }));
     try std.testing.expectEqual(-99, core.i32_mul_clamp(.{ .a = -11, .b = 9 }));
     try std.testing.expectEqual(0.6, core.f32_mul_clamp(.{ .a = -1.5, .b = -0.4 }));
+    try std.testing.expectEqual(121, core.u32_pow_clamp(.{ .base = 11, .exponent = core.P32{ .positive = 2 } }));
+    try std.testing.expectEqual(121, core.i32_pow_clamp(.{ .base = -11, .exponent = core.P32{ .positive = 2 } }));
+    try std.testing.expectEqual(core.Opt(core.F32){ .yes = 134.56001 }, core.f32_pow_i32(.{ .base = -11.6, .exponent = 2 }));
+    try std.testing.expectEqual(core.Opt(core.F32){ .yes = 50.118725 }, core.f32_pow(.{ .base = 10, .exponent = 1.7 }));
+    try std.testing.expectEqual(core.Opt(core.F32){ .no = {} }, core.f32_pow(.{ .base = -11, .exponent = 0.5 }));
+    try std.testing.expectEqual(std.math.maxInt(i32), core.u32_to_i32_clamp(std.math.maxInt(u32)));
+    try std.testing.expectEqual(core.P32{ .positive = std.math.maxInt(u32) }, core.u32_successor_clamp(std.math.maxInt(u32)));
 }
 test "trivial rounding" {
     try std.testing.expectEqual(-1, try core.f32_round_up(-1.5));

@@ -9523,6 +9523,13 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_p32,
             },
             CoreFnInfo {
+                name: "P32-mul-clamp",
+                documentation: "Saturating a * b",
+                type_parameters: vec![],
+                parameter_type: type_record([("p", type_p32), ("u", type_u32)]),
+                result_type: type_p32,
+            },
+            CoreFnInfo {
                 name: "U32-dup",
                 documentation: "Split the u32 in two values with the same content",
                 type_parameters: vec![],
@@ -9537,10 +9544,45 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_record_empty,
             },
             CoreFnInfo {
+                name: "U32-successor-clamp",
+                documentation: "Saturating n + 1, returning a p32",
+                type_parameters: vec![],
+                parameter_type: type_u32,
+                result_type: type_p32,
+            },
+            CoreFnInfo {
+                name: "U32-to-i32-clamp",
+                documentation: "Saturating cast to fit it into an i32",
+                type_parameters: vec![],
+                parameter_type: type_u32,
+                result_type: type_p32,
+            },
+            CoreFnInfo {
                 name: "U32-add-clamp",
                 documentation: "Saturating a + b",
                 type_parameters: vec![],
                 parameter_type: type_record([("a", type_u32), ("b", type_u32)]),
+                result_type: type_u32,
+            },
+            CoreFnInfo {
+                name: "U32-add-i32-clamp",
+                documentation: "Saturating u + i",
+                type_parameters: vec![],
+                parameter_type: type_record([("u", type_u32), ("i", type_i32)]),
+                result_type: type_u32,
+            },
+            CoreFnInfo {
+                name: "U32-mul-clamp",
+                documentation: "Saturating a * b",
+                type_parameters: vec![],
+                parameter_type: type_record([("a", type_u32), ("b", type_u32)]),
+                result_type: type_u32,
+            },
+            CoreFnInfo {
+                name: "U32-pow-clamp",
+                documentation: "Saturating base ^ exponent",
+                type_parameters: vec![],
+                parameter_type: type_record([("base", type_u32), ("exponent", type_p32)]),
                 result_type: type_u32,
             },
             CoreFnInfo {
@@ -9565,6 +9607,20 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_i32,
             },
             CoreFnInfo {
+                name: "I32-mul-clamp",
+                documentation: "Saturating a * b",
+                type_parameters: vec![],
+                parameter_type: type_record([("a", type_i32), ("b", type_i32)]),
+                result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "I32-pow-clamp",
+                documentation: "Saturating a ^ b",
+                type_parameters: vec![],
+                parameter_type: type_record([("base", type_i32), ("exponent", type_p32)]),
+                result_type: type_i32,
+            },
+            CoreFnInfo {
                 name: "F32-dup",
                 documentation: "Split the f32 in two values with the same content",
                 type_parameters: vec![],
@@ -9577,6 +9633,62 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_record_empty,
+            },
+            CoreFnInfo {
+                name: "F32-abs",
+                documentation: "Set its sign to positive",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-negate",
+                documentation: "Flip its sign",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-ln",
+                documentation: "Its natural logarithm",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-exp",
+                documentation: "e to the power of the given f32, known as the exponential function",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-sin",
+                documentation: "The sine of given radians",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-cos",
+                documentation: "The cosine of given radians",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-tan",
+                documentation: "The tangent of given radians",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-atan",
+                documentation: "The arctangent of given radians, returned in radians from -pi/2 to pi/2",
+                type_parameters: vec![],
+                parameter_type: type_f32,
+                result_type: type_f32,
             },
             CoreFnInfo {
                 name: "F32-add-clamp",
@@ -9599,6 +9711,20 @@ Try not to divide by 0.0, as 0.0 will be returned which is not mathematically co
                 type_parameters: vec![],
                 parameter_type: type_record([("n", type_f32), ("by", type_f32)]),
                 result_type: type_f32,
+            },
+            CoreFnInfo {
+                name: "F32-pow-i32",
+                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined",
+                type_parameters: vec![],
+                parameter_type: type_record([("base", type_f32), ("exponent", type_i32)]),
+                result_type: type_opt(type_f32),
+            },
+            CoreFnInfo {
+                name: "F32-pow",
+                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined",
+                type_parameters: vec![],
+                parameter_type: type_record([("base", type_f32), ("exponent", type_f32)]),
+                result_type: type_opt(type_f32),
             },
             CoreFnInfo {
                 name: "F32-round-nearest-else-away-from-0",
@@ -9649,7 +9775,7 @@ Often called floor",
                 result_type: type_f32,
             },
             CoreFnInfo {
-                name: "F32-toward-0",
+                name: "F32-round-toward-0",
                 documentation: "If not already equal to an integer value, find the closest neighboring integer with a smaller absolute value.
 Often called truncate",
                 type_parameters: vec![],
@@ -9657,7 +9783,7 @@ Often called truncate",
                 result_type: type_f32,
             },
             CoreFnInfo {
-                name: "F32-away-from-0",
+                name: "F32-round-away-from-0",
                 documentation: "If not already equal to an integer value, find the closest neighboring integer with a greater absolute value",
                 type_parameters: vec![],
                 parameter_type: type_f32 ,
@@ -10864,7 +10990,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-move-opt-span-to-vacant",
+                name: "Buf-opt-span-move-to-vacant",
                 documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -10883,7 +11009,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-move-span-to-vacant",
+                name: "Buf-span-move-to-vacant",
                 documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -10902,7 +11028,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-move-span-to-end",
+                name: "Buf-span-move-to-end",
                 documentation: "Move the given span to after all existing elements if necessary.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -10921,7 +11047,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-move-opt-span-to-end",
+                name: "Buf-opt-span-move-to-end",
                 documentation: "Move the given span to after all existing elements if necessary.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -15852,4 +15978,20 @@ fn index_to_th(index: usize) -> String {
         _ => "th",
     };
     format!("{n}{th}")
+}
+
+#[cfg(test)]
+mod core_declarations_are_implemented {
+    use super::*;
+    #[test]
+    fn in_rust() {
+        for (core_fn_name, _) in core_fns.iter() {
+            let core_fn_name = name_to_lowercase_rust(core_fn_name);
+            assert!(
+                include_str!("core.rs").contains(&format!("fn {}", core_fn_name)),
+                "core.rs does not contain fn {}",
+                core_fn_name
+            );
+        }
+    }
 }

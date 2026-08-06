@@ -618,9 +618,7 @@ cargo install --offline --debug --path . sloe
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- add more math and maybe bit operations
-
-- consider changing `|variant-name<type> value` to `|<type>variant-name value`. This allows better autocomplete and is more in line with other programming languages
+- change `|variant-name<type> value` to `|<type>variant-name value`. This allows better autocomplete and is more in line with other programming languages
   Example: before
   ```sloe
   |text-dynamic<Html _view> Opt-yes text-span

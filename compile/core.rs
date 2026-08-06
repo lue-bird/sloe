@@ -24,6 +24,11 @@ pub struct Record·a·b<A, B> {
     pub b: B,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·i·u<I, U> {
+    pub i: I,
+    pub u: U,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·a·b·carry<A, B, Carry> {
     pub a: A,
     pub b: B,
@@ -38,6 +43,11 @@ pub struct Record·p·u<P, U> {
 pub struct Record·by·n<By, N> {
     pub by: By,
     pub n: N,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·base·exponent<Base, Exponent> {
+    pub base: Base,
+    pub exponent: Exponent,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·fnø·inø<Fn, In> {
@@ -1910,6 +1920,9 @@ pub fn p32_predecessor(n: P32) -> U32 {
 pub fn p32_add_clamp(Record·p·u { p, u }: Record·p·u<P32, U32>) -> P32 {
     p.saturating_add(u)
 }
+pub fn p32_mul_clamp(Record·a·b { a, b }: Record·a·b<P32, P32>) -> P32 {
+    a.saturating_mul(b)
+}
 pub fn p32_to_u32(n: P32) -> U32 {
     n.get()
 }
@@ -1949,6 +1962,23 @@ pub fn u32_add_carry(
         },
         wrapped: sum,
     }
+}
+pub fn u32_add_i32_clamp(Record·i·u { i, u }: Record·i·u<I32, U32>) -> U32 {
+    u.saturating_add_signed(i)
+}
+pub fn u32_mul_clamp(Record·a·b { a, b }: Record·a·b<U32, U32>) -> U32 {
+    a.saturating_mul(b)
+}
+pub fn u32_pow_clamp(
+    Record·base·exponent { base, exponent }: Record·base·exponent<U32, P32>,
+) -> U32 {
+    base.saturating_pow(exponent.get())
+}
+pub fn u32_successor_clamp(n: U32) -> P32 {
+    P32::MIN.saturating_add(n)
+}
+pub fn u32_to_i32_clamp(n: U32) -> I32 {
+    <I32 as std::convert::TryFrom<U32>>::try_from(n).unwrap_or(I32::MAX)
 }
 pub fn i32_dup(n: I32) -> Record·a·b<I32, I32> {
     Record·a·b { a: n, b: n }
@@ -1995,6 +2025,11 @@ pub fn i32_add_carry(
 pub fn i32_mul_clamp(Record·a·b { a, b }: Record·a·b<I32, I32>) -> I32 {
     a.saturating_mul(b)
 }
+pub fn i32_pow_clamp(
+    Record·base·exponent { base, exponent }: Record·base·exponent<I32, P32>,
+) -> I32 {
+    base.saturating_pow(exponent.get())
+}
 pub fn f32_dup(n: F32) -> Record·a·b<F32, F32> {
     Record·a·b { a: n, b: n }
 }
@@ -2012,11 +2047,49 @@ pub fn f32_div_clamp(Record·by·n { n, by }: Record·by·n<F32, F32>) -> F32 {
         (n / by).clamp(f32::MIN, f32::MAX)
     }
 }
+pub fn f32_pow_i32(
+    Record·base·exponent { base, exponent }: Record·base·exponent<F32, I32>,
+) -> Opt<F32> {
+    let power = base.powi(exponent);
+    if power.is_finite() {
+        Opt::Yes(power)
+    } else {
+        Opt::No(())
+    }
+}
+pub fn f32_pow(
+    Record·base·exponent { base, exponent }: Record·base·exponent<F32, F32>,
+) -> Opt<F32> {
+    let power = base.powf(exponent);
+    if power.is_finite() {
+        Opt::Yes(power)
+    } else {
+        Opt::No(())
+    }
+}
 pub fn f32_abs(n: F32) -> F32 {
     n.abs()
 }
 pub fn f32_negate(n: F32) -> F32 {
     -n
+}
+pub fn f32_ln(n: F32) -> F32 {
+    n.ln()
+}
+pub fn f32_exp(n: F32) -> F32 {
+    n.exp()
+}
+pub fn f32_sin(radians: F32) -> F32 {
+    radians.sin()
+}
+pub fn f32_cos(radians: F32) -> F32 {
+    radians.cos()
+}
+pub fn f32_tan(radians: F32) -> F32 {
+    radians.tan()
+}
+pub fn f32_atan(radians: F32) -> F32 {
+    radians.atan()
 }
 pub fn f32_round_up(n: F32) -> F32 {
     n.ceil()

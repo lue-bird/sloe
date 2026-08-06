@@ -980,11 +980,23 @@ pub fn u32_rid(_: U32) error{OutOfMemory}!void {}
 pub fn u32_dup(@"%n": U32) error{OutOfMemory}!Record(struct { a: U32, b: U32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
+pub fn u32_to_i32_clamp(@"%n": U32) error{OutOfMemory}!I32 {
+    return std.math.lossyCast(i32, @"%n");
+}
+pub fn u32_successor_clamp(@"%n": U32) error{OutOfMemory}!P32 {
+    return .{ .positive = @"%n" +| 1 };
+}
 pub fn u32_add_clamp(@"%": Record(struct { a: U32, b: U32 })) error{OutOfMemory}!U32 {
     return @"%".a +| @"%".b;
 }
+pub fn u32_add_i32_clamp(@"%": Record(struct { i: I32, u: U32 })) error{OutOfMemory}!U32 {
+    return std.math.lossyCast(u32, @as(i33, @"%".u) +| @as(i33, @"%".i));
+}
 pub fn u32_mul_clamp(@"%": Record(struct { a: U32, b: U32 })) error{OutOfMemory}!U32 {
     return @"%".a *| @"%".b;
+}
+pub fn u32_pow_clamp(@"%": Record(struct { base: U32, exponent: P32 })) error{OutOfMemory}!U32 {
+    return std.math.powi(u32, @"%".base, @"%".exponent.positive) catch std.math.maxInt(u32);
 }
 pub fn u32_to_p32(@"%n": U32) error{OutOfMemory}!Opt(P32) {
     return if (P32.fromU32(@"%n")) |@"%p32"| .{ .yes = @"%p32" } else .{ .no = {} };
@@ -999,6 +1011,9 @@ pub fn i32_add_clamp(@"%": Record(struct { a: I32, b: I32 })) error{OutOfMemory}
 }
 pub fn i32_mul_clamp(@"%": Record(struct { a: I32, b: I32 })) error{OutOfMemory}!I32 {
     return @"%".a *| @"%".b;
+}
+pub fn i32_pow_clamp(@"%": Record(struct { base: I32, exponent: P32 })) error{OutOfMemory}!I32 {
+    return std.math.powi(i32, @"%".base, std.math.lossyCast(i32, @"%".exponent.positive)) catch std.math.maxInt(i32);
 }
 pub fn i32_negate_clamp(@"%n": I32) error{OutOfMemory}!I32 {
     return 0 -| @"%n";
@@ -1016,6 +1031,24 @@ pub fn f32_negate(@"%n": F32) error{OutOfMemory}!F32 {
 }
 pub fn f32_abs(@"%n": F32) error{OutOfMemory}!F32 {
     return @abs(@"%n");
+}
+pub fn f32_ln(@"%n": F32) error{OutOfMemory}!F32 {
+    return @log(@"%n");
+}
+pub fn f32_exp(@"%n": F32) error{OutOfMemory}!F32 {
+    return @exp(@"%n");
+}
+pub fn f32_sin(@"%n": F32) error{OutOfMemory}!F32 {
+    return @sin(@"%n");
+}
+pub fn f32_cos(@"%n": F32) error{OutOfMemory}!F32 {
+    return @cos(@"%n");
+}
+pub fn f32_tan(@"%n": F32) error{OutOfMemory}!F32 {
+    return @tan(@"%n");
+}
+pub fn f32_atan(@"%n": F32) error{OutOfMemory}!F32 {
+    return std.math.atan(@"%n");
 }
 pub fn f32_round_up(@"%n": F32) error{OutOfMemory}!F32 {
     return @ceil(@"%n");
@@ -1077,11 +1110,19 @@ pub fn f32_mul_clamp(@"%": Record(struct { a: F32, b: F32 })) error{OutOfMemory}
     const @"%product" = @"%".a * @"%".b;
     return if (std.math.isNegativeInf(@"%product")) std.math.floatMin(f32) else if (std.math.isPositiveInf(@"%product")) std.math.floatMax(f32) else @"%product";
 }
-pub fn f32_div_clamp(@"%": Record(struct { a: F32, b: F32 })) error{OutOfMemory}!F32 {
-    return if (@"%".b == 0) 0 else {
-        const @"%div_result" = @"%".a / @"%".b;
+pub fn f32_div_clamp(@"%": Record(struct { n: F32, by: F32 })) error{OutOfMemory}!F32 {
+    return if (@"%".by == 0.0) 0.0 else {
+        const @"%div_result" = @"%".n / @"%".by;
         return if (std.math.isNegativeInf(@"%div_result")) std.math.floatMin(f32) else if (std.math.isPositiveInf(@"%div_result")) std.math.floatMax(f32) else @"%div_result";
     };
+}
+pub fn f32_pow_i32(@"%": Record(struct { base: F32, exponent: I32 })) error{OutOfMemory}!Opt(F32) {
+    const @"%power" = std.math.pow(f32, @"%".base, @floatFromInt(@"%".exponent));
+    return if (std.math.isFinite(@"%power")) .{ .yes = @"%power" } else .{ .no = {} };
+}
+pub fn f32_pow(@"%": Record(struct { base: F32, exponent: F32 })) error{OutOfMemory}!Opt(F32) {
+    const @"%power" = std.math.pow(f32, @"%".base, @"%".exponent);
+    return if (std.math.isFinite(@"%power")) .{ .yes = @"%power" } else .{ .no = {} };
 }
 
 pub fn char_rid(_: Char) error{OutOfMemory}!void {}
