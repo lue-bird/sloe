@@ -11633,8 +11633,10 @@ Origin-unerase
 ```
 As juicy as this may look, avoid this if you can.
 Nesting always means more segmented memory. We don't want that.
-A valid use case is when any one of the inner Bufs could change size at any moment
-and each origin-erased value is scrapped/updated in bulk."
+Valid use cases are
+- inner Bufs are scrapped/updated in bulk
+- any one of the inner Bufs could change size at any moment
+- (less important) the inner Bufs are always read and modified together by themselves"
                 )),
                 parameters: vec![Name::from_static("parts"), Name::from_static("value-erased")],
                 type_: Some(type_origin_erased(type_variable("parts"), type_variable("value-erased"))),
