@@ -9932,6 +9932,33 @@ fn Three . : . =
                 result_type: type_variable("out"),
             },
             CoreFnInfo {
+                name: "Choice-empty-to",
+                documentation: "The empty choice type (`|`) is a weird one
+(you may know it as never, noreturn, unreachable, uninhabited, bottom (⊥) or impossible).
+No value of this type can ever exist and it's only use is some type trickery.
+
+For example, values of type `|success u32 |failure |` can be passed to any function expecting
+a success and failure variant to be possible.
+But the interesting thing about having a value of this type is that since the type knows
+the failure variant could never have been created, we can safely unwrap it!
+```sloe
+fn Tried-unwrap tried |success _ok |failure | : _ok =
+    ? tried
+    [|success ok] ok
+    [|failure impossible] Choice-empty-to<_ok> impossible
+```
+You really can ask for any type of data, like emulating a dup or rid operation
+```sloe
+fn Choice-empty-rid choice-empty | : . =
+    Choice-empty-to<.> choice-empty
+fn Choice-empty-dup choice-empty | : .a | .b | =
+    Choice-empty-to<.a | .b |> choice-empty
+```",
+                type_parameters: vec![],
+                parameter_type: type_variable("yes"),
+                result_type: type_opt(type_variable("yes"))
+            },
+            CoreFnInfo {
                 name: "Origin-part",
                 documentation: "Create a new derived `Origin` and remove that part from the original `Origin`",
                 type_parameters: vec![],

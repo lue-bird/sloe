@@ -172,6 +172,14 @@ test "str_end empty before end" {
     try std.testing.expectEqual('a', split.end);
     try std.testing.expectEqual(core.Opt(core.Str){ .no = {} }, split.before);
 }
+test "choice_empty_to" {
+    const choice_empty_rid: core.Fn(core.Choice, void) = struct {
+        pub fn f(imp: core.Choice) error{OutOfMemory}!void {
+            try core.choice_empty_to(void, imp);
+        }
+    }.f;
+    _ = choice_empty_rid;
+}
 test "simple slot and span queries" {
     const ExampleOrigin = enum { buf };
     const slot4 = core.Slot(ExampleOrigin){ .index = 4 };

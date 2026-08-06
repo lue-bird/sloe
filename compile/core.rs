@@ -330,7 +330,7 @@ pub enum Choice·Contained·Overflowed<Contained, Overflowed> {
 
 /// empty record, represented as unit
 pub type Record = ();
-/// empty choice
+/// empty choice. Should be changed to the never type once stabilized
 #[derive(Clone, Copy, Debug)]
 pub enum Choice {}
 
@@ -2244,6 +2244,10 @@ pub fn str_chars_fold_while<Exit, GoOn>(
 
 pub fn opt_yes<Yes>(yes: Yes) -> Opt<Yes> {
     Opt::Yes(yes)
+}
+
+pub fn choice_empty_to<Result>(choice_empty: Choice) -> Result {
+    match choice_empty {}
 }
 
 pub fn slot_index<Origin>(slot: Slot<Origin>) -> Record·index·slot<u32, Slot<Origin>> {

@@ -615,8 +615,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `Choice-empty-rid`, `Choice-empty-to` (document that it can also procure another empty choice, thus `Choice-empty-dup` isn't needed)
-
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold

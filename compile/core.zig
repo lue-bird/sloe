@@ -59,6 +59,8 @@ pub fn @"|no|yes"(@"%No": type, @"%Yes": type) type {
 pub fn @"|down|up"(@"%Down": type, @"%Up": type) type {
     return union(enum) { down: @"%Down", up: @"%Up" };
 }
+/// would preferably be noreturn but it isn't allowed in parameters for some reason
+pub const Choice = enum {};
 
 pub const P32 = struct {
     // zig does not have non-zero number types, yet.
@@ -1166,6 +1168,13 @@ pub fn call(
     @"%": Record(struct { @"fn": Fn(@"%In", @"%Out"), in: @"%In" }),
 ) error{OutOfMemory}!@"%Out" {
     return @"%".@"fn"(@"%".in);
+}
+
+pub fn choice_empty_to(
+    @"%Result": type,
+    @"%impossible": Choice,
+) error{OutOfMemory}!@"%Result" {
+    return switch (@"%impossible") {};
 }
 
 pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
