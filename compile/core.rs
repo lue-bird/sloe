@@ -624,6 +624,7 @@ impl<LocalOrigin> Origin<LocalOrigin> {
         Origin(std::marker::PhantomData::<Origin_part<LocalOrigin, Parts>>)
     }
 }
+/// TODO origin_new! with $($parts:ident),+ is unsafe unless verified to have no equal parts
 #[macro_export]
 macro_rules! origin_new {
     ($variable_name:ident, $type_name:ident) => {
@@ -632,16 +633,28 @@ macro_rules! origin_new {
             $crate::core::Origin::new_use_macro_instead::<$crate::core::Record>($type_name)
         };
     };
-    ($variable_name:ident, $type_name:ident, $parts_type:ty) => {
+    ($variable_name:ident, $type_name:ident, $($parts:ident),+) => {
         struct $type_name;
         let $variable_name =
-            unsafe { $crate::core::Origin::new_use_macro_instead::<$parts_type>($type_name) };
+            unsafe { $crate::core::Origin::new_use_macro_instead::<Parts!($($parts),+)>($type_name) };
     };
 }
 pub use origin_new;
+#[macro_export]
+macro_rules! Parts {
+    () => { $crate::sloe::Record };
+
+    ($part:ident) => {
+        $crate::sloe::$part<()>
+    };
+    ($part:ident, $($rest:ident),+) => {
+        $crate::sloe::Part_rest<$crate::sloe::$part<()>, Parts!($($rest),+)>
+    };
+}
+pub use Parts;
 
 impl<LocalOrigin, Part, Rest> Origin<Origin_part<LocalOrigin, Part_rest<Part, Rest>>> {
-    pub fn spllit_part(
+    pub fn split_part(
         self,
     ) -> (
         Origin<Origin_part<LocalOrigin, Part>>,
@@ -2429,7 +2442,7 @@ pub fn origin_part<LocalOrigin, Part, Rest>(
     Origin<Origin_part<LocalOrigin, Part>>,
     Origin<Origin_part<LocalOrigin, Rest>>,
 > {
-    let (part, remaining) = origin.spllit_part();
+    let (part, remaining) = origin.split_part();
     Record·part·rest {
         part: part,
         rest: remaining,

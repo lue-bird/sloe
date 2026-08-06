@@ -13,11 +13,9 @@ struct App<MouseTrailOrigin> {
 }
 impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
     type MSG = sloe::Event;
-
     fn init(&mut self) -> sauron::Cmd<Self::MSG> {
         sauron::Cmd::none()
     }
-
     fn update(&mut self, event: Self::MSG) -> sauron::Cmd<Self::MSG> {
         let state = self.sloe_state.take().expect("state is initialized");
         let updated_state = sloe::update(sloe::Record·event·state { event, state });
@@ -31,22 +29,24 @@ impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
         // );
         sauron::Cmd::none()
     }
-
     fn view(&self) -> sauron::prelude::Node<Self::MSG> {
-        sloe::origin_new!(htmls_origin, Htmls);
-        let htmls = sloe::Vec::new(htmls_origin);
-        sloe::origin_new!(modifiers_origin, Modifiers);
-        let modifiers: sloe::Vec<Modifiers, sloe::Modifier<sloe::Event, Chars>> =
-            sloe::Vec::new(modifiers_origin);
-        sloe::origin_new!(chars_origin, Chars);
-        let chars = sloe::Vec::new(chars_origin);
+        sloe::origin_new!(view_origin, View, Record·html, Record·modifier, Record·char);
+        let (htmls_origin, view_origin) = view_origin.split_part();
+        let (modifiers_origin, chars_origin) = view_origin.split_part();
+        let htmls = sloe::Buf::new(htmls_origin);
+        let modifiers: sloe::Buf<
+            sloe::Origin_part<View, sloe::Record·modifier<()>>,
+            sloe::Modifier<sloe::Event, View>,
+        > = sloe::Buf::new(modifiers_origin);
+        let chars = sloe::Buf::new(chars_origin);
         let state = self.sloe_state.take().expect("state is initialized");
-        let sloe_dom = sloe::view(sloe::Record·chars·htmls·modifiers·state {
-            htmls,
-            modifiers,
-            chars,
-            state,
-        });
+        let sloe_dom =
+            sloe::view::<MouseTrailOrigin, View>(sloe::Record·chars·htmls·modifiers·state {
+                htmls,
+                modifiers,
+                chars,
+                state,
+            });
         self.sloe_state.set(Some(sloe_dom.state));
         sloe_dom_node_to_sauron(
             &sloe_dom.html,
@@ -57,11 +57,14 @@ impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
     }
 }
 
-fn sloe_dom_node_to_sauron<Htmls, Modifiers: 'static, Chars: 'static>(
-    sloe_dom_node: &sloe::Html<Htmls, Modifiers, Chars>,
-    htmls: &sloe::Vec<Htmls, sloe::Html<Htmls, Modifiers, Chars>>,
-    modifiers: &sloe::Vec<Modifiers, sloe::Modifier<sloe::Event, Chars>>,
-    chars: &sloe::Vec<Chars, char>,
+fn sloe_dom_node_to_sauron<View: 'static>(
+    sloe_dom_node: &sloe::Html<View>,
+    htmls: &sloe::Buf<sloe::Origin_part<View, sloe::Record·html<()>>, sloe::Html<View>>,
+    modifiers: &sloe::Buf<
+        sloe::Origin_part<View, sloe::Record·modifier<()>>,
+        sloe::Modifier<sloe::Event, View>,
+    >,
+    chars: &sloe::Buf<sloe::Origin_part<View, sloe::Record·char<()>>, char>,
 ) -> sauron::Node<sloe::Event> {
     match sloe_dom_node {
         sloe::Html::Text_static(text) => sauron::Node::Leaf(sauron::vdom::Leaf::Text(
@@ -88,9 +91,9 @@ fn sloe_dom_node_to_sauron<Htmls, Modifiers: 'static, Chars: 'static>(
         )),
     }
 }
-fn sloe_dom_modifier_to_sauron<Chars: 'static>(
-    sloe_dom_modifier: &sloe::Modifier<sloe::Event, Chars>,
-    chars: &sloe::Vec<Chars, char>,
+fn sloe_dom_modifier_to_sauron<View: 'static>(
+    sloe_dom_modifier: &sloe::Modifier<sloe::Event, View>,
+    chars: &sloe::Buf<sloe::Origin_part<View, sloe::Record·char<()>>, char>,
 ) -> sauron::Attribute<sloe::Event> {
     match sloe_dom_modifier {
         sloe::Modifier::Attribute_static(attribute) => sauron::Attribute {
@@ -150,7 +153,7 @@ fn sloe_dom_modifier_to_sauron<Chars: 'static>(
 }
 fn sloe_modifier_property_value_to_sauron<Chars>(
     sloe_modifier_property_value: &sloe::Modifier_property_value<Chars>,
-    chars: &sloe::Vec<Chars, char>,
+    chars: &sloe::Buf<Chars, char>,
 ) -> sauron::Value {
     match sloe_modifier_property_value {
         sloe::Modifier_property_value::True(()) => sauron::Value::Bool(true),

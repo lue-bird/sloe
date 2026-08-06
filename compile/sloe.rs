@@ -6890,6 +6890,30 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
+            if let Some(existing_origin_with_same_name) = origins.remove(&origin_name.value) {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(origin_name)),
+                    message: format!(
+                        "an origin with this name already exists at {}",
+                        position_to_string(existing_origin_with_same_name.origin_start)
+                    )
+                    .into_boxed_str(),
+                });
+            } else if core_type_aliases.contains_key(&origin_name.value) {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(origin_name)),
+                    message: Box::from(
+                        "a core choice type with this name already exists. Rename this origin",
+                    ),
+                });
+            } else if type_aliases.contains_key(&origin_name.value) {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(origin_name)),
+                    message: Box::from(
+                        "a type alias with this name already exists. Rename this origin",
+                    ),
+                });
+            }
             let Some(result) = result else {
                 errors.push(ErrorNode {
                     range: lsp_types::Range {
@@ -6900,39 +6924,13 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            if let Some(origin_name) = name {
-                if let Some(existing_origin_with_same_name) = origins.remove(&origin_name.value) {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(origin_name)),
-                        message: format!(
-                            "an origin with this name already exists at {}",
-                            position_to_string(existing_origin_with_same_name.origin_start)
-                        )
-                        .into_boxed_str(),
-                    });
-                } else if core_type_aliases.contains_key(&origin_name.value) {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(origin_name)),
-                        message: Box::from(
-                            "a core choice type with this name already exists. Rename this origin",
-                        ),
-                    });
-                } else if type_aliases.contains_key(&origin_name.value) {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(origin_name)),
-                        message: Box::from(
-                            "a type alias with this name already exists. Rename this origin",
-                        ),
-                    });
-                }
-                origins.insert(
-                    &origin_name.value,
-                    CheckedOrigin {
-                        origin_start: origin_name.start,
-                        parts: part_names,
-                    },
-                );
-            }
+            origins.insert(
+                &origin_name.value,
+                CheckedOrigin {
+                    origin_start: origin_name.start,
+                    parts: part_names,
+                },
+            );
             let checked_result_type = syntax_expression_check(
                 errors,
                 type_aliases,
@@ -6951,9 +6949,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 records_used,
                 choices_used,
             );
-            let Some(origin_name) = name else {
-                return checked_result_type;
-            };
             if let Some(result_type) = &checked_result_type
                 && type_references_origin(result_type, &origin_name.value)
             {
@@ -6977,6 +6972,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return checked_result_type;
             }
+            origins.remove(&origin_name.value);
             checked_result_type
         }
     }
@@ -8109,6 +8105,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 .iter()
                 .filter_map(|part| part.value.clone())
                 .collect::<Vec<_>>();
+            origins.insert(
+                &origin_name.value,
+                CheckedOrigin {
+                    origin_start: origin_name.start,
+                    parts: part_names.clone(),
+                },
+            );
             let result_compiled = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
@@ -8122,51 +8125,96 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 expressions.element(result),
             );
+            let local_origin_rust_name = name_to_uppercase_rust(origin_name.value.as_str());
+            let mut rust_statements = Vec::new();
+            rust_statements.push(syn::Stmt::Item(syn::Item::Struct(syn::ItemStruct {
+                attrs: vec![],
+                vis: syn::Visibility::Inherited,
+                struct_token: syn::token::Struct(syn_span()),
+                ident: syn_ident(&local_origin_rust_name),
+                generics: syn::Generics::default(),
+                fields: syn::Fields::Unit,
+                semi_token: Some(syn::token::Semi(syn_span())),
+            })));
+            rust_statements.push(syn::Stmt::Local(syn::Local {
+                attrs: vec![],
+                let_token: syn::token::Let(syn_span()),
+                modifiers: syn::LocalModifiers::default(),
+                pat: syn::Pat::Ident(syn::PatIdent {
+                    attrs: vec![],
+                    by_ref: None,
+                    mutability: None,
+                    ident: syn_ident(&name_to_lowercase_rust(origin_name.value.as_str())),
+                    subpat: None,
+                }),
+                init: Some(syn::LocalInit {
+                    eq_token: syn::token::Eq(syn_span()),
+                    expr: Box::new(syn::Expr::Call(syn::ExprCall {
+                        attrs: vec![],
+                        func: Box::new(syn::Expr::Path(syn::ExprPath {
+                            attrs: vec![],
+                            qself: None,
+                            path: syn_path_reference(["Origin"]),
+                        })),
+                        paren_token: syn::token::Paren(syn_span()),
+                        args: std::iter::once(syn::Expr::Path(syn::ExprPath {
+                            attrs: vec![],
+                            qself: None,
+                            path: syn::Path {
+                                leading_colon: None,
+                                segments: [
+                                    syn_path_segment_ident("std"),
+                                    syn_path_segment_ident("marker"),
+                                    syn::PathSegment {
+                                        ident: syn_ident("PhantomData"),
+                                        arguments: syn::PathArguments::AngleBracketed(
+                                            syn::AngleBracketedGenericArguments {
+                                                colon2_token: Some(syn::token::PathSep(syn_span())),
+                                                lt_token: syn::token::Lt(syn_span()),
+                                                args: std::iter::once(syn::GenericArgument::Type(
+                                                    syn_type_construct(
+                                                        [],
+                                                        "Origin_part",
+                                                        [
+                                                            syn::Type::Path(syn::TypePath {
+                                                                attrs: vec![],
+                                                                qself: None,
+                                                                path: syn_path_reference([
+                                                                    &local_origin_rust_name,
+                                                                ]),
+                                                            }),
+                                                            type_to_rust(&origin_parts_to_type(
+                                                                &part_names,
+                                                            )),
+                                                        ],
+                                                    ),
+                                                ))
+                                                .collect(),
+                                                gt_token: syn::token::Gt(syn_span()),
+                                            },
+                                        ),
+                                    },
+                                ]
+                                .into_iter()
+                                .collect(),
+                            },
+                        }))
+                        .collect(),
+                    })),
+                    diverge: None,
+                }),
+                semi_token: syn::token::Semi(syn_span()),
+            }));
+            rust_statements.extend(syn_spread_expr_block_into_stmts(result_compiled));
             let rust = syn::Expr::Block(syn::ExprBlock {
                 attrs: vec![],
                 label: None,
                 block: syn::Block {
                     brace_token: syn::token::Brace(syn_span()),
-                    stmts: vec![
-                        syn::Stmt::Macro(syn::StmtMacro {
-                            attrs: vec![],
-                            mac: syn::Macro {
-                                path: syn_path_reference(["origin_new"]),
-                                bang_token: syn::token::Not(syn_span()),
-                                delimiter: syn::MacroDelimiter::Paren(
-                                    syn::token::Paren(syn_span()),
-                                ),
-                                tokens: {
-                                    let mut token_stream = proc_macro2::TokenStream::new();
-                                    <proc_macro2::TokenStream as quote::TokenStreamExt>::append_separated(
-                                        &mut token_stream,
-                                        [
-                                            quote::ToTokens::to_token_stream(&syn_ident(&name_to_lowercase_rust(
-                                                origin_name.value.as_str(),
-                                            ))),
-                                            quote::ToTokens::to_token_stream(&syn_ident(&name_to_uppercase_rust(
-                                                origin_name.value.as_str(),
-                                            ))),
-                                            quote::ToTokens::to_token_stream(&type_to_rust(&origin_parts_to_type(&part_names)))
-                                        ] ,
-                                        syn::token::Comma(syn_span()),
-                                    );
-                                    token_stream
-                                },
-                            },
-                            semi_token: None,
-                        }),
-                        syn::Stmt::Expr(result_compiled, None),
-                    ],
+                    stmts: rust_statements,
                 },
             });
-            origins.insert(
-                &origin_name.value,
-                CheckedOrigin {
-                    origin_start: origin_name.start,
-                    parts: part_names,
-                },
-            );
+            origins.remove(&origin_name.value);
             rust
         }
     }
@@ -9042,7 +9090,8 @@ fn name_to_uppercase_rust(name: &str) -> String {
         | choice_empty_rust_struct_name
         | "OwnedSliceIterator"
         | "Unset"
-        | "Set" => sanitized + "øø",
+        | "Set"
+        | "Parts" => sanitized + "øø",
         _ => sanitized,
     }
 }
@@ -11729,7 +11778,7 @@ pub fn compiled_rust_to_file_content(rust_file: &syn::File, compiled_mod_name: &
 {}",
         // I don't like this but I also haven't found any other way
         // to make a macro automatically adapt to the mod name it's placed in :(
-        include_str!("core.rs").replacen("crate::core", &format!("crate::{compiled_mod_name}"), 1),
+        include_str!("core.rs").replace("crate::core", &format!("crate::{compiled_mod_name}")),
         prettyplease::unparse(rust_file)
     )
 }
