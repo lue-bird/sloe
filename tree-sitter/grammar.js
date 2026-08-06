@@ -43,7 +43,7 @@ export default grammar({
       seq(
         $.keyword_fn,
         $.project_fn_name,
-        repeat($.angled_type_parameter),
+        repeat($.braced_type_parameter),
         $.pattern_typed,
         $.key_symbol_colon,
         $.type,
@@ -158,51 +158,51 @@ export default grammar({
         $.expression_not_open_ending_in_array,
       ),
     expression_variant: ($) =>
-      seq("|", $.angled_type_argument, $.variant_name, $.expression),
+      seq("|", $.braced_type_argument, $.variant_name, $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
       seq(
         "|",
-        $.angled_type_argument,
+        $.braced_type_argument,
         $.variant_name,
         $.expression_not_open_ending_in_query,
       ),
     expression_variant_not_open_ending_in_record: ($) =>
       seq(
         "|",
-        $.angled_type_argument,
+        $.braced_type_argument,
         $.variant_name,
         $.expression_not_open_ending_in_record,
       ),
     expression_variant_not_open_ending_in_array: ($) =>
       seq(
         "|",
-        $.angled_type_argument,
+        $.braced_type_argument,
         $.variant_name,
         $.expression_not_open_ending_in_array,
       ),
     expression_variable: ($) => $.lower_name,
     expression_call: ($) =>
-      seq($.project_fn_name, repeat($.angled_type_argument), $.expression),
+      seq($.project_fn_name, repeat($.braced_type_argument), $.expression),
     expression_call_not_open_ending_in_query: ($) =>
       seq(
         $.project_fn_name,
-        repeat($.angled_type_argument),
+        repeat($.braced_type_argument),
         $.expression_not_open_ending_in_query,
       ),
     expression_call_not_open_ending_in_record: ($) =>
       seq(
         $.project_fn_name,
-        repeat($.angled_type_argument),
+        repeat($.braced_type_argument),
         $.expression_not_open_ending_in_record,
       ),
     expression_call_not_open_ending_in_array: ($) =>
       seq(
         $.project_fn_name,
-        repeat($.angled_type_argument),
+        repeat($.braced_type_argument),
         $.expression_not_open_ending_in_array,
       ),
-    angled_type_argument: ($) => seq("<", $.type, ">"),
-    angled_type_parameter: ($) => seq("<", $.type_variable, ">"),
+    braced_type_argument: ($) => seq("{", $.type, "}"),
+    braced_type_parameter: ($) => seq("{", $.type_variable, "}"),
     expression_query: ($) =>
       seq(
         $.key_symbol_question_mark,

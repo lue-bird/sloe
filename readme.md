@@ -59,7 +59,7 @@ This is checked at compile-time for the expression following origin creation but
 ```sloe
 fn Some-buf . : Buf ??origin cannot even be annotated??, u32 =
     ^buf-origin
-    ? Buf-empty<u32> buf-origin [buf]
+    ? Buf-empty{u32} buf-origin [buf]
     ? Buf-add .buf buf .new 123 u32 [.buf buf .slot slot]
     ...
     buf
@@ -92,7 +92,7 @@ Like every other sloe value, an origin type can only be used once, so only for o
 # use a temporary collection contained within a scope
 fn Use-buf . : u32 =
     ^buf-origin
-  	? Buf-empty<u32> buf-origin [buf]
+  	? Buf-empty{u32} buf-origin [buf]
   	? Buf-add .buf buf .new 123 u32 [.buf buf .slot first-slot]
   	? Buf-remove .buf buf .slot first-slot [.buf buf .element first]
   	? Buf-add-array .buf buf .new ; 456 u32 ; 789 u32 [.buf buf .span after-first]
@@ -106,7 +106,7 @@ fn Use-opt opt Opt u32 : ... =
         ? opt
         [|no .]
             ^buf-origin
-            Buf-empty<u32> buf-origin
+            Buf-empty{u32} buf-origin
         [|yes number] (
             ^buf-origin
             ? Buf-one .origin buf-origin .element number [.buf buf .slot slot]
@@ -120,7 +120,7 @@ fn Use-opt opt Opt u32 : ... =
     ? (
         :opt
         [|no .]
-            Buf-empty<u32> buf-origin
+            Buf-empty{u32} buf-origin
         [|yes number] (
             ? Buf-one .origin buf-origin .element number [.buf buf .slot slot]
             ...
@@ -150,7 +150,7 @@ ty State _expressions-origin
 fn Initial-state
     .expressions-origin expressions-origin Origin _expressions-origin
     : State _expressions-origin =
-    .expressions Buf-empty<Expression _expressions-origin> expressions-origin
+    .expressions Buf-empty{Expression _expressions-origin} expressions-origin
     .root-expression (..do parsing..)
 
 fn State-to-interfaces-into
@@ -160,7 +160,7 @@ fn State-to-interfaces-into
     ? (
         Buf-one
         .origin interfaces-origin
-        .element |<Interface State _expressions-origin>console-log "hello"
+        .element |{Interface State _expressions-origin}console-log "hello"
         )
     [.slot slot .buf interfaces]
     ...
@@ -170,7 +170,7 @@ fn State-to-interfaces-into
 ## pass in origins or collections from the outside
 
 ```sloe
-fn Buf-empty<_element> Origin _origin : Buf _origin, _element
+fn Buf-empty{_element} Origin _origin : Buf _origin, _element
 ```
 Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection that you want to edit.
@@ -202,7 +202,7 @@ Some-function argument
 
 # very rarely functions may require type arguments: <...>.
 # Which types are needed is shown in the function declaration in <...>s (see later)
-Some-function<type><arguments> Inner-call-as-the-argument inner-call-argument
+Some-function{type}{arguments} Inner-call-as-the-argument inner-call-argument
 
 # record. if values are open-ended they need to be parenthesized.
 # The last field value can end in a record without needing to be parenthesized
@@ -245,7 +245,7 @@ some-variable some-type
 # project function declaration.
 # For type variables in the result that aren't used in the input,
 # functions require appended type parameters: <...>
-fn Function-name<_potential><_type-arguments><_only-used-in-the-result>
+fn Function-name{_potential}{_type-arguments}{_only-used-in-the-result}
     parameter-pattern-with-types
     : result-type =
     # optional documentation
@@ -274,7 +274,7 @@ ty Pair _potential, _type-parameters
 
 # creating a variant. Note that the type could refer to a type alias
 # or a choice type directly <|... ...>
-|<a-choice-type>some-variant its value
+|{a-choice-type}some-variant its value
 
 # variant pattern
 |some-variant its value
@@ -367,6 +367,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   as it makes searching for the right span possible (and reasonably fast)
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`.
   remove `'c'` syntax in favor of `"c" char/ascii`
+- change unicode \u{hex} syntax to \u() because {} is used for types
 - combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth
 - (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
   `!u32 "3"` where `u32` is of type `_fn str, |success u32 |failure str` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`).
@@ -405,7 +406,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       .result-origin result-origin _result-origin
       : Buf _result-origin, u32 =
       ^local-origin
-      ? Buf-empty<u32> consume-origin [temporary]
+      ? Buf-empty{u32} consume-origin [temporary]
       ? Recurse local-origin result-origin [result]
       ? Buf-add .buf temporary .new 1 u32 [.slot slot .buf temporary]
       ...
@@ -463,7 +464,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
   ```sloe
   ^buf-origin
-  ? Buf-empty<.expression expression .pattern Pattern buf-origin> buf-origin [buf]
+  ? Buf-empty{.expression expression .pattern Pattern buf-origin} buf-origin [buf]
   ? Buf-add .buf buf .new some-expression [.buf buf slot some-expression-slot]
   ? Buf-add .buf buf .new some-pattern  [.buf buf .slot some-pattern-slot]
   ...
@@ -618,8 +619,6 @@ cargo install --offline --debug --path . sloe
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
-
-- replace `<>` by `{}` because it is more easily recognized as parens
 
 - introduce a better API for multi-part origins.
   Something like

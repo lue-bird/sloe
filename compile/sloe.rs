@@ -31,7 +31,7 @@ pub enum SyntaxProjectElement<Expressions, Patterns, Types> {
     Fn {
         fn_keyword_start: lsp_types::Position,
         name: Option<WithStartPosition<Name>>,
-        type_parameters: Vec<SyntaxAngledTypeParameter>,
+        type_parameters: Vec<SyntaxBracedTypeParameter>,
         parameter: Option<SyntaxPattern<Patterns, Types>>,
         colon_start: Option<lsp_types::Position>,
         result_type: Option<SyntaxType<Types>>,
@@ -57,11 +57,11 @@ pub struct TyParameters {
     pub parameter1_up: Vec<SyntaxTrailingTypeParameter>,
 }
 #[derive(Clone, Debug)]
-pub struct SyntaxAngledTypeParameter {
-    pub open_angle_start: lsp_types::Position,
+pub struct SyntaxBracedTypeParameter {
+    pub open_brace_start: lsp_types::Position,
     pub underscore_start: Option<lsp_types::Position>,
     pub name: Name,
-    pub closed_angle_start: Option<lsp_types::Position>,
+    pub closed_brace_start: Option<lsp_types::Position>,
 }
 #[derive(Clone, Debug)]
 pub struct SyntaxTrailingTypeParameter {
@@ -143,10 +143,10 @@ pub struct SyntaxTrailingField<Value> {
     pub value: Option<Value>,
 }
 #[derive(Debug)]
-pub struct SyntaxAngledTypeArgument<Types> {
-    pub open_angle_start: lsp_types::Position,
+pub struct SyntaxBracedTypeArgument<Types> {
+    pub open_brace_start: lsp_types::Position,
     pub type_: Option<SyntaxType<Types>>,
-    pub closed_angle_start: Option<lsp_types::Position>,
+    pub closed_brace_start: Option<lsp_types::Position>,
 }
 #[derive(Debug)]
 pub enum SyntaxExpression<Expressions, Patterns, Types> {
@@ -169,12 +169,12 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
     Variable(WithStartPosition<Name>),
     Call {
         name: WithStartPosition<Name>,
-        type_arguments: Vec<SyntaxAngledTypeArgument<Types>>,
+        type_arguments: Vec<SyntaxBracedTypeArgument<Types>>,
         argument: Option<core::Slot<Expressions>>,
     },
     Variant {
         bar_start: lsp_types::Position,
-        type_: Option<SyntaxAngledTypeArgument<Types>>,
+        type_: Option<SyntaxBracedTypeArgument<Types>>,
         name: Option<WithStartPosition<Name>>,
         value: Option<core::Slot<Expressions>>,
     },
@@ -550,29 +550,29 @@ pub fn trailing_field_end<Value>(
         .map(value_end)
         .unwrap_or_else(|| optional_field_name_end(&field.name))
 }
-pub fn angled_type_argument_range<Types>(
-    type_arguments: &SyntaxAngledTypeArgument<Types>,
+pub fn braced_type_argument_range<Types>(
+    type_arguments: &SyntaxBracedTypeArgument<Types>,
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Range {
     lsp_types::Range {
-        start: type_arguments.open_angle_start,
-        end: angled_type_argument_end(type_arguments, types),
+        start: type_arguments.open_brace_start,
+        end: braced_type_argument_end(type_arguments, types),
     }
 }
-pub fn angled_type_argument_end<Types>(
-    type_arguments: &SyntaxAngledTypeArgument<Types>,
+pub fn braced_type_argument_end<Types>(
+    type_arguments: &SyntaxBracedTypeArgument<Types>,
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> lsp_types::Position {
     type_arguments
-        .closed_angle_start
-        .map(|closed_angle_start| symbol_end(closed_angle_start, ">"))
+        .closed_brace_start
+        .map(|closed_brace_start| symbol_end(closed_brace_start, "}"))
         .or_else(|| {
             type_arguments
                 .type_
                 .as_ref()
                 .map(|last_type| type_end(last_type, types))
         })
-        .unwrap_or_else(|| symbol_end(type_arguments.open_angle_start, "<"))
+        .unwrap_or_else(|| symbol_end(type_arguments.open_brace_start, "{"))
 }
 pub fn expression_range<Expressions, Patterns, Types>(
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
@@ -709,7 +709,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .or_else(|| {
                 type_arguments
                     .last()
-                    .map(|type_arguments| angled_type_argument_end(type_arguments, types))
+                    .map(|type_arguments| braced_type_argument_end(type_arguments, types))
             })
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxExpression::Variant {
@@ -727,7 +727,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .or_else(|| {
                 type_
                     .as_ref()
-                    .map(|type_| angled_type_argument_end(type_, types))
+                    .map(|type_| braced_type_argument_end(type_, types))
             })
             .unwrap_or_else(|| *bar_start),
         SyntaxExpression::Fn {
@@ -1248,20 +1248,20 @@ fn parse_ty_parameters(state: &mut ParseState) -> Option<TyParameters> {
         parameter1_up: parameter1_up,
     })
 }
-fn parse_angled_type_parameter(state: &mut ParseState) -> Option<SyntaxAngledTypeParameter> {
-    let Some(open_angle_start) = parse_symbol_as_start(state, "<") else {
+fn parse_brced_type_parameter(state: &mut ParseState) -> Option<SyntaxBracedTypeParameter> {
+    let Some(open_brace_start) = parse_symbol_as_start(state, "{") else {
         return None;
     };
     parse_sloe_whitespace(state);
     let underscore_start = parse_symbol_as_start(state, "_");
     let name = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
     parse_sloe_whitespace(state);
-    let closed_angle_start = parse_symbol_as_start(state, ">");
-    Some(SyntaxAngledTypeParameter {
-        open_angle_start: open_angle_start,
+    let closed_brace_start = parse_symbol_as_start(state, "}");
+    Some(SyntaxBracedTypeParameter {
+        open_brace_start: open_brace_start,
         underscore_start: underscore_start,
         name: name,
-        closed_angle_start: closed_angle_start,
+        closed_brace_start: closed_brace_start,
     })
 }
 fn parse_project_fn<Expressions, Patterns, Types>(
@@ -1277,7 +1277,7 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     let name = parse_sloe_uppercase_name_with_start(state);
     parse_sloe_whitespace(state);
     let mut type_parameters = Vec::new();
-    while let Some(type_parameter) = parse_angled_type_parameter(state) {
+    while let Some(type_parameter) = parse_brced_type_parameter(state) {
         type_parameters.push(type_parameter);
         parse_sloe_whitespace(state);
     }
@@ -1412,21 +1412,21 @@ fn parse_pattern_variant_untyped<Patterns, Types>(
         value: value.map(|value| patterns.insert(value)),
     })
 }
-fn parse_type_argument<Types>(
+fn parse_braced_type_argument<Types>(
     state: &mut ParseState,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
-) -> Option<SyntaxAngledTypeArgument<Types>> {
-    let Some(open_angle_start) = parse_symbol_as_start(state, "<") else {
+) -> Option<SyntaxBracedTypeArgument<Types>> {
+    let Some(open_brace_start) = parse_symbol_as_start(state, "{") else {
         return None;
     };
     parse_sloe_whitespace(state);
     let type_ = parse_type(state, types);
     parse_sloe_whitespace(state);
-    let closed_angle_start = parse_symbol_as_start(state, ">");
-    Some(SyntaxAngledTypeArgument {
-        open_angle_start: open_angle_start,
+    let closed_brace_start = parse_symbol_as_start(state, "}");
+    Some(SyntaxBracedTypeArgument {
+        open_brace_start: open_brace_start,
         type_: type_,
-        closed_angle_start: closed_angle_start,
+        closed_brace_start: closed_brace_start,
     })
 }
 fn parse_pattern_record_typed<Patterns, Types>(
@@ -2057,7 +2057,7 @@ fn parse_expression_call<Expressions, Patterns, Types>(
     };
     parse_sloe_whitespace(state);
     let mut type_arguments = Vec::new();
-    while let Some(type_argument) = parse_type_argument(state, types) {
+    while let Some(type_argument) = parse_braced_type_argument(state, types) {
         type_arguments.push(type_argument);
         parse_sloe_whitespace(state);
     }
@@ -2078,7 +2078,7 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_argument = parse_type_argument(state, types);
+    let type_argument = parse_braced_type_argument(state, types);
     parse_sloe_whitespace(state);
     let name = parse_sloe_lowercase_name_with_start(state);
     parse_sloe_whitespace(state);
@@ -2941,7 +2941,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
 pub struct SyntaxProjectFnInfo<'a, Expressions, Patterns, Types> {
     pub range: lsp_types::Range,
     pub name: &'a WithStartPosition<Name>,
-    pub type_parameters: &'a Vec<SyntaxAngledTypeParameter>,
+    pub type_parameters: &'a Vec<SyntaxBracedTypeParameter>,
     pub parameter: &'a Option<SyntaxPattern<Patterns, Types>>,
     pub result_type: &'a Option<SyntaxType<Types>>,
     pub documentation: &'a Option<SyntaxComments>,
@@ -5909,8 +5909,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 if let Some(first_type_argument) = syntax_type_arguments.first() {
                     errors.push(ErrorNode {
                         range: lsp_types::Range {
-                            start: first_type_argument.open_angle_start,
-                            end: angled_type_argument_end(
+                            start: first_type_argument.open_brace_start,
+                            end: braced_type_argument_end(
                                 syntax_type_arguments.last().unwrap_or(first_type_argument),
                                 types,
                             ),
@@ -5974,7 +5974,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 if syntax_type_arguments.len() != project_fn_info.type_parameters.len() {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Buf-empty<u32> origin, each type parenthesized if necessary.",
+                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Buf-empty{{u32}} origin, each type parenthesized if necessary.",
                             parameter_count = project_fn_info.type_parameters.len(),
                             parameter_pluralized = if project_fn_info.type_parameters.len() == 1 {
                                 "parameter"
@@ -6054,21 +6054,21 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             let Some(syntax_type_argument) = type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(*bar_start, "|"),
-                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |<Opt str>yes \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
+                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |{Opt str}yes \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
                 });
                 return None;
             };
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
-                    range: symbol_range(syntax_type_argument.open_angle_start, "<"),
-                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |<Opt str>yes \"hi c:\""),
+                    range: symbol_range(syntax_type_argument.open_brace_start, "{"),
+                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |{Opt str}yes \"hi c:\""),
                 });
                 return None;
             };
             let Some(name) = name else {
                 errors.push(ErrorNode {
-                    range: angled_type_argument_range(syntax_type_argument, types),
-                    message: Box::from("missing variant name after this variant type |<>. An example of a variant is |<Opt str>yes \"hi c:\""),
+                    range: braced_type_argument_range(syntax_type_argument, types),
+                    message: Box::from("missing variant name after this braced variant type |{type} ..here.. . An example of a variant is |{Opt str}yes \"hi c:\""),
                 });
                 return None;
             };
@@ -6089,7 +6089,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 );
                 type_format(&mut error_message, 0, &checked_type);
                 errors.push(ErrorNode {
-                    range: angled_type_argument_range(syntax_type_argument, types),
+                    range: braced_type_argument_range(syntax_type_argument, types),
                     message: error_message.into_boxed_str(),
                 });
                 return None;
@@ -9892,7 +9892,7 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             },
             CoreFnInfo {
                 name: "Opt-yes",
-                documentation: "Shorthand for |<Opt ..value type..>yes value which kind of specifies the value type twice",
+                documentation: "Shorthand for |{Opt ..value type..}yes value which kind of specifies the value type twice",
                 type_parameters: vec![],
                 parameter_type: type_variable("yes"),
                 result_type: type_opt(type_variable("yes"))
@@ -9950,9 +9950,9 @@ fn Tried-unwrap tried |success _ok |failure | : _ok =
 You really can ask for any type of data, like emulating a dup or rid operation
 ```sloe
 fn Choice-empty-rid choice-empty | : . =
-    Choice-empty-to<.> choice-empty
+    Choice-empty-to{.} choice-empty
 fn Choice-empty-dup choice-empty | : .a | .b | =
-    Choice-empty-to<.a | .b |> choice-empty
+    Choice-empty-to{.a | .b |} choice-empty
 ```",
                 type_parameters: vec![],
                 parameter_type: type_variable("yes"),
@@ -11636,10 +11636,10 @@ An `Origin-erased` value can be turned back into a proper value with a new speci
 If none if this sounded useful to you, you don't need this (yet).
 ```sloe
 ^outer
-? Buf-empty<Origin-erased ., .buf Buf erased, u32 .slot Slot erased> outer [buf-outer]
+? Buf-empty{Origin-erased ., .buf Buf erased, u32 .slot Slot erased} outer [buf-outer]
 
 ^inner0
-? Buf-empty<u32> inner0 [buf-inner0]
+? Buf-empty{u32} inner0 [buf-inner0]
 ? Buf-add .buf buf-inner0 .new 0 u32 [.buf buf-inner0 .slot slot-inner0]
 ? (
     Origin-erase
@@ -11661,7 +11661,7 @@ If none if this sounded useful to you, you don't need this (yet).
 [erased-inner0]
 
 ^inner1
-? Buf-empty<u32> inner1 [buf-inner1]
+? Buf-empty{u32} inner1 [buf-inner1]
 ? Buf-add .buf buf-inner1 .new 0 u32 [.buf buf-inner1 .slot slot-inner1]
 ? ..do the same as in Origin-erase for slot0.. [erased-inner1]
 
@@ -11731,7 +11731,7 @@ See `Origin-erased`, `Slot-origin-unerase`, `Span-origin-unerase`, `Opt-span-ori
 ```sloe
 fn Use-a-buf . : u32 =
     origin my-elements-origin
-    ? Buf-empty<u32> my-elements-origin [my-elements]
+    ? Buf-empty{u32} my-elements-origin [my-elements]
     ? Buf-add .buf my-elements .element 609 u32 [.buf my-elements .slot first-element-slot]
     ? Buf-remove .buf my-elements .slot first-element-slot
     [.buf my-elements .element first-element]
@@ -12092,7 +12092,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                     formatted.push_str(&name.value);
                 }
                 for type_parameter in type_parameters {
-                    syntax_angled_type_parameter_format(&mut formatted, type_parameter);
+                    syntax_braced_type_parameter_format(&mut formatted, type_parameter);
                 }
                 let header_line_span = range_line_span(lsp_types::Range {
                     start: *fn_keyword_start,
@@ -12180,13 +12180,13 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
     formatted
 }
 
-fn syntax_angled_type_parameter_format(
+fn syntax_braced_type_parameter_format(
     formatted: &mut String,
-    angled_type_parameter: &SyntaxAngledTypeParameter,
+    braced_type_parameter: &SyntaxBracedTypeParameter,
 ) {
-    formatted.push_str("<_");
-    formatted.push_str(&angled_type_parameter.name);
-    formatted.push('>');
+    formatted.push_str("{_");
+    formatted.push_str(&braced_type_parameter.name);
+    formatted.push('}');
 }
 fn syntax_char_format(formatted: &mut String, maybe_char: Option<char>) {
     match maybe_char {
@@ -12475,7 +12475,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
         } => {
             formatted.push_str(&name.value);
             for type_argument in type_arguments {
-                syntax_angled_type_argument_format(formatted, indent, types, type_argument)
+                syntax_braced_type_argument_format(formatted, indent, types, type_argument)
             }
             if let Some(argument) = argument {
                 space_or_linebreak_indented_into(
@@ -12502,10 +12502,10 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             formatted.push('|');
             match type_ {
                 None => {
-                    formatted.push_str("<>");
+                    formatted.push_str("{}");
                 }
                 Some(type_) => {
-                    syntax_angled_type_argument_format(formatted, indent, types, type_);
+                    syntax_braced_type_argument_format(formatted, indent, types, type_);
                 }
             }
             match name {
@@ -12850,20 +12850,20 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
         }
     }
 }
-fn syntax_angled_type_argument_format<Types>(
+fn syntax_braced_type_argument_format<Types>(
     formatted: &mut String,
     indent: usize,
     types: &core::Buf<Types, SyntaxType<Types>>,
-    angled_type_argument: &SyntaxAngledTypeArgument<Types>,
+    braced_type_argument: &SyntaxBracedTypeArgument<Types>,
 ) {
-    match &angled_type_argument.type_ {
+    match &braced_type_argument.type_ {
         None => {
-            formatted.push_str("<>");
+            formatted.push_str("{}");
         }
         Some(type_) => {
-            formatted.push('<');
+            formatted.push('{');
             let line_span = range_line_span(lsp_types::Range {
-                start: angled_type_argument.open_angle_start,
+                start: braced_type_argument.open_brace_start,
                 end: type_end(type_, types),
             });
             if line_span == LineSpan::Multiple {
@@ -12873,7 +12873,7 @@ fn syntax_angled_type_argument_format<Types>(
             if line_span == LineSpan::Multiple {
                 linebreak_indented_into(formatted, indent);
             }
-            formatted.push('>');
+            formatted.push('}');
         }
     }
 }
@@ -15873,10 +15873,10 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
             type_arguments,
             argument,
         } => {
-            for SyntaxAngledTypeArgument {
-                open_angle_start: _,
+            for SyntaxBracedTypeArgument {
+                open_brace_start: _,
                 type_,
-                closed_angle_start: _,
+                closed_brace_start: _,
             } in type_arguments
             {
                 if let Some(type_) = type_ {
@@ -15893,10 +15893,10 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
             name: _,
             value,
         } => {
-            if let Some(SyntaxAngledTypeArgument {
-                open_angle_start: _,
+            if let Some(SyntaxBracedTypeArgument {
+                open_brace_start: _,
                 type_: Some(type_),
-                closed_angle_start: _,
+                closed_brace_start: _,
             }) = type_
             {
                 syntax_type_rid(type_, types);

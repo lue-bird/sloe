@@ -124,7 +124,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "angled_type_parameter"
+            "name": "braced_type_parameter"
           }
         },
         {
@@ -581,7 +581,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "angled_type_argument"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -602,7 +602,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "angled_type_argument"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -623,7 +623,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "angled_type_argument"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -644,7 +644,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "angled_type_argument"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -671,7 +671,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "angled_type_argument"
+            "name": "braced_type_argument"
           }
         },
         {
@@ -691,7 +691,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "angled_type_argument"
+            "name": "braced_type_argument"
           }
         },
         {
@@ -711,7 +711,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "angled_type_argument"
+            "name": "braced_type_argument"
           }
         },
         {
@@ -731,7 +731,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "angled_type_argument"
+            "name": "braced_type_argument"
           }
         },
         {
@@ -740,12 +740,12 @@
         }
       ]
     },
-    "angled_type_argument": {
+    "braced_type_argument": {
       "type": "SEQ",
       "members": [
         {
           "type": "STRING",
-          "value": "<"
+          "value": "{"
         },
         {
           "type": "SYMBOL",
@@ -753,16 +753,16 @@
         },
         {
           "type": "STRING",
-          "value": ">"
+          "value": "}"
         }
       ]
     },
-    "angled_type_parameter": {
+    "braced_type_parameter": {
       "type": "SEQ",
       "members": [
         {
           "type": "STRING",
-          "value": "<"
+          "value": "{"
         },
         {
           "type": "SYMBOL",
@@ -770,7 +770,7 @@
         },
         {
           "type": "STRING",
-          "value": ">"
+          "value": "}"
         }
       ]
     },

@@ -1,6 +1,6 @@
 [
   {
-    "type": "angled_type_argument",
+    "type": "braced_type_argument",
     "named": true,
     "fields": {},
     "children": {
@@ -15,7 +15,7 @@
     }
   },
   {
-    "type": "angled_type_parameter",
+    "type": "braced_type_parameter",
     "named": true,
     "fields": {},
     "children": {
@@ -167,7 +167,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -190,7 +190,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -213,7 +213,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -236,7 +236,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -987,7 +987,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -1010,7 +1010,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -1033,7 +1033,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -1056,7 +1056,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_argument",
+          "type": "braced_type_argument",
           "named": true
         },
         {
@@ -1450,7 +1450,7 @@
       "required": true,
       "types": [
         {
-          "type": "angled_type_parameter",
+          "type": "braced_type_parameter",
           "named": true
         },
         {
@@ -2199,14 +2199,6 @@
     "named": false
   },
   {
-    "type": "<",
-    "named": false
-  },
-  {
-    "type": ">",
-    "named": false
-  },
-  {
     "type": "[",
     "named": false
   },
@@ -2283,7 +2275,15 @@
     "named": true
   },
   {
+    "type": "{",
+    "named": false
+  },
+  {
     "type": "|",
+    "named": false
+  },
+  {
+    "type": "}",
     "named": false
   }
 ]

@@ -226,7 +226,7 @@ fn present_project_fn_with_complete_type_markdown(
     fn_info: &sloe::CheckedProjectFn,
 ) -> String {
     let mut type_parameters_string = String::new();
-    angled_type_parameters_format(&mut type_parameters_string, &fn_info.type_parameters);
+    braced_type_parameters_format(&mut type_parameters_string, &fn_info.type_parameters);
     let mut parameter_type_string: String = String::new();
     let mut result_type_string: String = String::new();
     if let Some(fn_parameter_type) = &fn_info.parameter_type {
@@ -286,15 +286,15 @@ fn present_pattern_variable_markdown(type_: Option<&sloe::Type>) -> String {
         }
     }
 }
-fn angled_type_parameters_format(formatted: &mut String, type_parameters: &[sloe::Name]) {
+fn braced_type_parameters_format(formatted: &mut String, type_parameters: &[sloe::Name]) {
     if let Some((type_parameter0, type_parameter1_up)) = type_parameters.split_first() {
-        formatted.push_str("<_");
+        formatted.push_str("{_");
         formatted.push_str(type_parameter0);
         for type_parameter in type_parameter1_up {
             formatted.push_str(", _");
             formatted.push_str(type_parameter);
         }
-        formatted.push('>');
+        formatted.push('}');
     }
 }
 
@@ -1582,11 +1582,11 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                         name.value.len(),
                     );
                 }
-                for sloe::SyntaxAngledTypeParameter {
-                    open_angle_start: _,
+                for sloe::SyntaxBracedTypeParameter {
+                    open_brace_start: _,
                     underscore_start,
                     name: type_parameter_name,
-                    closed_angle_start: _,
+                    closed_brace_start: _,
                 } in type_parameters
                 {
                     if let &Some(parameter_underscore_start) = underscore_start {
@@ -1899,10 +1899,10 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             argument,
         } => {
             sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
-            for sloe::SyntaxAngledTypeArgument {
-                open_angle_start: _,
+            for sloe::SyntaxBracedTypeArgument {
+                open_brace_start: _,
                 type_,
-                closed_angle_start: _,
+                closed_brace_start: _,
             } in type_arguments
             {
                 if let Some(type_) = type_ {
@@ -2471,7 +2471,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                 let mut inserted_text = String::new();
                                 inserted_text.push_str("(_");
                                 inserted_text.push_str(fn_name);
-                                angled_type_parameters_format(
+                                braced_type_parameters_format(
                                     &mut inserted_text,
                                     &fn_info.type_parameters,
                                 );
@@ -2502,9 +2502,9 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         sloe::Type::Choice(variants) => {
                                             inserted_text.push(' ');
                                             if let [variant] = variants.as_slice() {
-                                                inserted_text.push_str("(|");
+                                                inserted_text.push_str("(|{}");
                                                 inserted_text.push_str(&variant.name);
-                                                inserted_text.push_str("<> )");
+                                                inserted_text.push_str(" )");
                                             }
                                         }
                                         sloe::Type::CoreConstruct { .. } => {
