@@ -33,3 +33,5 @@
 (type_with_arguments_name) @type
 
 (variant_name) @variant
+
+(variant_name_including_bar) @variant
