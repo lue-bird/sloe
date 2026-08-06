@@ -624,7 +624,12 @@ impl<LocalOrigin> Origin<LocalOrigin> {
         Origin(std::marker::PhantomData::<Origin_part<LocalOrigin, Parts>>)
     }
 }
-/// TODO origin_new! with $($parts:ident),+ is unsafe unless verified to have no equal parts
+/// Careful! origin!(some, Origin, Record·Some, Record·parts)
+/// wil crash **at runtime** when the field names after Record· are duplicated.
+/// This is to prevent multiple origins with the same type being created.
+/// In theory, it should be possible to report a compile-error in that case,
+/// however, there seems to neither exist const == on &str, nor const panic.
+/// I'm sorry :3
 #[macro_export]
 macro_rules! origin_new {
     ($variable_name:ident, $type_name:ident) => {
@@ -633,7 +638,11 @@ macro_rules! origin_new {
             $crate::core::Origin::new_use_macro_instead::<$crate::core::Record>($type_name)
         };
     };
-    ($variable_name:ident, $type_name:ident, $($parts:ident),+) => {
+    ($variable_name:ident, $type_name:ident, $($parts:ident),*) => {
+        if any_idents_are_equal!($($parts),+) {
+            panic!("equal part names. Each part needs a unique name!");
+            // compile_error!("equal part names. Each part needs a unique name!");
+        }
         struct $type_name;
         let $variable_name =
             unsafe { $crate::core::Origin::new_use_macro_instead::<Parts!($($parts),+)>($type_name) };
@@ -642,16 +651,29 @@ macro_rules! origin_new {
 pub use origin_new;
 #[macro_export]
 macro_rules! Parts {
-    () => { $crate::sloe::Record };
+    () => { $crate::core::Record };
 
     ($part:ident) => {
-        $crate::sloe::$part<()>
+        $crate::core::$part<()>
     };
     ($part:ident, $($rest:ident),+) => {
-        $crate::sloe::Part_rest<$crate::sloe::$part<()>, Parts!($($rest),+)>
+        $crate::core::Part_rest<$crate::core::$part<()>, Parts!($($rest),+)>
     };
 }
 pub use Parts;
+#[macro_export]
+macro_rules! any_idents_are_equal {
+    () => { false };
+    ($i:ident) => { false };
+    ($a:ident, $b:ident) => {
+        stringify!($a) == stringify!($b)
+    };
+    ($a:ident, $b:ident, $($rest:ident),*) => {
+        stringify!($a) == stringify!($b)
+            || any_idents_are_equal!($a, $($rest),*)
+            || any_idents_are_equal!($b, $($rest),*)
+    };
+}
 
 impl<LocalOrigin, Part, Rest> Origin<Origin_part<LocalOrigin, Part_rest<Part, Rest>>> {
     pub fn split_part(
