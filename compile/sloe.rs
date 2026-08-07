@@ -16154,12 +16154,45 @@ mod core_declarations_are_implemented {
     use super::*;
     #[test]
     fn in_rust() {
+        let core_rs = include_str!("core.rs");
         for (core_fn_name, _) in core_fns.iter() {
             let core_fn_name = name_to_lowercase_rust(core_fn_name);
             assert!(
-                include_str!("core.rs").contains(&format!("fn {}", core_fn_name)),
+                core_rs.contains(&format!("fn {}", core_fn_name)),
                 "core.rs does not contain fn {}",
                 core_fn_name
+            );
+        }
+        for (core_fn_name, _) in core_type_aliases.iter() {
+            let core_ty_name = name_to_uppercase_rust(core_fn_name);
+            assert!(
+                core_rs.contains(&format!("type {}", core_ty_name))
+                    || core_rs.contains(&format!("struct {}", core_ty_name))
+                    || core_rs.contains(&format!("enum {}", core_ty_name)),
+                "core.rs does not contain ty {}",
+                core_ty_name
+            );
+        }
+    }
+    #[test]
+    fn in_zig() {
+        let core_zig = include_str!("core.zig");
+        for (core_fn_name, _) in core_fns.iter() {
+            let core_fn_name = name_to_lowercase_rust(core_fn_name);
+            assert!(
+                core_zig.contains(&format!("pub fn {}", core_fn_name)),
+                "core.zig does not contain fn {}",
+                core_fn_name
+            );
+        }
+        for (core_fn_name, _) in core_type_aliases.iter() {
+            // switch to name_to_uppercase_rust when available
+            let core_ty_name = name_to_uppercase_rust(core_fn_name);
+            assert!(
+                core_zig.contains(&format!("fn {}", core_ty_name))
+                    || core_zig.contains(&format!("const {}", core_ty_name)),
+                "core.zig does not contain ty {}",
+                core_ty_name
             );
         }
     }

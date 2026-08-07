@@ -65,6 +65,13 @@ pub fn @"|equal|greater|less"(@"%Equal": type, @"%Greater": type, @"%Less": type
 /// would preferably be noreturn but it isn't allowed in parameters for some reason
 pub const Choice = enum {};
 
+pub fn Origin_part(@"%Origin": type, @"%Part": type) type {
+    return Record(struct { origin: @"%Origin", part: @"%Part" });
+}
+pub fn Part_rest(@"%Part": type, @"%Rest": type) type {
+    return Record(struct { part: @"%Part", rest: @"%Rest" });
+}
+
 pub const P32 = struct {
     // zig does not have non-zero number types, yet.
     // This is quite wasteful.
@@ -1207,6 +1214,10 @@ pub fn choice_empty_to(
     return switch (@"%impossible") {};
 }
 
+pub fn opt_yes(@"%Yes": type, @"%yes": @"%Yes") Opt(@"%Yes") {
+    return .{ .present = @"%yes" };
+}
+
 pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
 pub fn origin_add(
     @"%PartName": type,
@@ -1443,6 +1454,24 @@ pub fn span_origin_erase(@"%Origin": type, @"%": Record(struct {
         .eraser = @"%".eraser,
     };
 }
+pub fn opt_span_origin_erase(@"%Origin": type, @"%": Record(struct {
+    span: Opt(Span(@"%Origin")),
+    eraser: Origin_eraser(@"%Origin"),
+})) error{OutOfMemory}!Record(struct {
+    span: Opt(Span(Erased)),
+    eraser: Origin_eraser(@"%Origin"),
+}) {
+    return .{
+        .eraser = @"%".eraser,
+        .span = switch (@"%".span) {
+            .absent => .{ .absent = {} },
+            .present => |@"%span"| .{ .present = .{
+                .start = .{ .index = @"%span".start.index },
+                .length = @"%span".length,
+            } },
+        },
+    };
+}
 pub fn span_origin_unerase(@"%Origin": type, @"%": Record(struct {
     span: Span(Erased),
     uneraser: Origin_uneraser(@"%Origin"),
@@ -1453,6 +1482,24 @@ pub fn span_origin_unerase(@"%Origin": type, @"%": Record(struct {
     return .{
         .span = .{ .start = .{ .index = @"%".span.start.index }, .length = @"%".span.length },
         .uneraser = @"%".uneraser,
+    };
+}
+pub fn opt_span_origin_unerase(@"%Origin": type, @"%": Record(struct {
+    span: Opt(Span(Erased)),
+    uneraser: Origin_uneraser(@"%Origin"),
+})) error{OutOfMemory}!Record(struct {
+    span: Opt(Span(@"%Origin")),
+    uneraser: Origin_uneraser(@"%Origin"),
+}) {
+    return .{
+        .uneraser = @"%".uneraser,
+        .span = switch (@"%".span) {
+            .absent => .{ .absent = {} },
+            .present => |@"%span"| .{ .present = .{
+                .start = .{ .index = @"%span".start.index },
+                .length = @"%span".length,
+            } },
+        },
     };
 }
 

@@ -676,18 +676,18 @@ impl<LocalOrigin, Parts> Origin<Origin_part<LocalOrigin, Parts>> {
     }
 }
 /// If you plan on using Origin::add/origin_add, use
-/// ```rust
+/// ```ignore
 /// origin_new!(some, Origin, Record·not_origin)
 /// ```
 /// (only works if there is actually such a record in the generated code)
 ///
 /// If you don't, use the simpler
-/// ```rust
+/// ```ignore
 /// origin_new!(variable_name, LocalOriginName)
 /// ```
 ///
 /// Careful!
-/// ```rust
+/// ```ignore
 /// origin_new!(some, Origin, Record·not_origin)
 /// ```
 /// wil crash **at runtime** when the field name after Record· does not match the lowercased type name.
