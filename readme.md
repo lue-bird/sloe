@@ -238,10 +238,6 @@ some-variable some-type
 # The given name can be used as a variable and type
 ^new-origin-name  expression-that uses new-origin-name
 
-# advanced: create an origin that ties multiple origin parts to a base origin type.
-# See also: the functions Origin-part and Origin-erase
-^ .its .origin .parts new-origin-name  expression-that uses new-origin-name
-
 # project function declaration.
 # For type variables in the result that aren't used in the input,
 # functions require appended type parameters: <...>
@@ -287,11 +283,11 @@ What I'm unhappy with in the current design.
 Writing these down has already helped a lot in coming up with fixes (e.g. `Unset-slot`, `Buf-span-add-own-span`, `Origin-erased` etc. did not exist at one point but were created in response to a now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
 
-- it seems quite natural to represent a span of structs as e.g. `.field-names Span Field-names .field-values Span Values`. This pattern can avoid "type parameter spam" for any record (plus it is more memory efficient).
+- it seems quite natural to represent a span of structs as e.g. `.field-names Span _field-names .field-values Span _values`. This pattern is more memory efficient and can reduce the amount of origins and Bufs necessary.
   The biggest missing convenience to make this attractive might be helpers to fold over many spans simultaneously.
   Honestly, the current "fold over one span and step through the rest with `Span-start`"
   is annoying. I do not particularly like it as there is always "overspill" that needs to be handled.
-  Additionally, this wastes memory for the duplicated memory and wastes computation for unnecessarily handling 
+  Additionally, this wastes memory for the duplicated memory (length u32 per extra Span) and wastes computation for unnecessarily handling 
   
   Zig "fixes" this by both
     - introducing special syntax and crashing at runtime if lengths differ
@@ -300,16 +296,15 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   I think introducing `Span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes a bunch of sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
   The sad thing is that this is positional and individual span slots then do not have an associated name.
   Also, how would this work with existing buf APIs? Something like `Buf2-opt-span-add`
-- sometimes, you really own all the elements of a buf in one place (especially when the buf elements can be trivially copied).
-  Splitting it into `opt span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0).
-  Due to "can't easily recombine spans" it is also really annoying to access any elements in the owning buf.
+- minor: sometimes, you really own all the elements of a buf in one place (especially when the buf elements can be trivially copied).
+  Splitting it into `opt span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0)
 - by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
-- currently syntax is not full-word-search friendly. Think `_construct argument` and `minus-dash-hyphen`
+- currently syntax is not full-word-search friendly. Think `_type-variable` and `minus-dash-hyphen`
 - the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
   Sloe is most likely not the right vehicle to explore this space,
   still it seems like a warning sign for a supposed "general-purpose language"
-- number types, buftor/array types etc. are very underbaked in sloe.
+- number types, vector/array types etc. are very underbaked in sloe.
   I need more real-world experience for their uses.
   Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
 
@@ -367,6 +362,21 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   as it makes searching for the right span possible (and reasonably fast)
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`.
   remove `'c'` syntax in favor of `"c" char/ascii`
+- add ascii operations like
+  ```sloe
+  fn Char-if-ascii-to-lower char : char
+  fn Char-if-ascii-to-upper char : char
+  fn Char-is-ascii-lower char : Opt ascii
+  fn Char-is-ascii-upper char : Opt ascii
+  fn Ascii-rid
+  fn Ascii-dup
+  fn Ascii-to-u32
+  fn Ascii-order
+  fn Ascii-to-lower ascii : ascii
+  fn Ascii-to-upper ascii : ascii
+  fn Ascii-is-lower ascii : Opt ascii # maybe |yes.|no. instead
+  fn Ascii-is-upper ascii : Opt ascii # maybe |yes.|no. instead
+  ```
 - change unicode \u{hex} syntax to \u() because {} is used for types
 - combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth
 - (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
@@ -620,42 +630,24 @@ cargo install --offline --debug --path . sloe
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- introduce a better API for multi-part origins.
-  Something like
+- add order operations like
   ```sloe
-  ^new-origin # new-origin is of type Origin Origin-part new-origin, .new-origin .
-  fn Origin-add
-      .part Origin Origin-part _part, _part-name
-      .to Origin Origin-part _rest, _rest-names
-      : Origin Origin-part (Part-rest _part, _rest), (Part-rest _rest-names, _part-name)
+  ty order |less |equal |greater
+  fn Buf-char-span-str-order
+      .buf Buf _origin, char
+      .span Span _origin
+      .str 
+      .char-order Fn .a char .b char, order
+  
+  fn P32-order
+  fn U32-order
+  fn I32-order
+  fn F32-order
+  fn Char-order
+  # maybe also: Buf-span-own-span-order, Buf-span-buf-span-order
   ```
-  This achieves:
-  - simplified, less confusing syntax
-  - safely constructible in rust without possible runtime crash (Is it actually?)
-  
-  At the cost of
-  - the default case just one origin leads to much more annoying to origin type names in Buf, Slot, Span etc.
-  - it's frankly roundabout and annoying to do
-    ```sloe
-    ^htmls
-    ^modifiers
-    ^chars
-    ? Origin-add .part htmls .to Origin-add .part modifiers .to chars [view-origin]
-    ? Origin-part view-origin [.origin view-origin .part htmls]
-    ? Origin-part view-origin [.origin view-origin .part modifiers]
-    ? Origin-part view-origin [.origin view-origin .part chars]
-    ```
-    compared to
-    
-    ```sloe
-    ^ .htmls .modifiers .chars view-origin
-    ? Origin-part view-origin [.origin view-origin .part htmls]
-    ? Origin-part view-origin [.origin view-origin .part modifiers]
-    ? Origin-part view-origin [.origin view-origin .part chars]
-    ```
-    probably fine though because it isn't done often
-  
-  question: Is this abusable?
+
+- remove special syntax for multi-part origins
 
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements

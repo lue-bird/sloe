@@ -484,13 +484,6 @@
           "name": "key_symbol_origin"
         },
         {
-          "type": "REPEAT",
-          "content": {
-            "type": "SYMBOL",
-            "name": "field_name"
-          }
-        },
-        {
           "type": "SYMBOL",
           "name": "expression_variable"
         },
@@ -506,13 +499,6 @@
         {
           "type": "SYMBOL",
           "name": "key_symbol_origin"
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SYMBOL",
-            "name": "field_name"
-          }
         },
         {
           "type": "SYMBOL",
@@ -532,13 +518,6 @@
           "name": "key_symbol_origin"
         },
         {
-          "type": "REPEAT",
-          "content": {
-            "type": "SYMBOL",
-            "name": "field_name"
-          }
-        },
-        {
           "type": "SYMBOL",
           "name": "expression_variable"
         },
@@ -554,13 +533,6 @@
         {
           "type": "SYMBOL",
           "name": "key_symbol_origin"
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SYMBOL",
-            "name": "field_name"
-          }
         },
         {
           "type": "SYMBOL",

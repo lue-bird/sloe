@@ -1085,10 +1085,13 @@ fn respond_to_hover<Expressions, Patterns, Types>(
             contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: format!(
-                    "```sloe
-origin {}
-```",
-                    name
+                    "Origin `^{name}` whose variable is of type
+```sloe
+Origin .origin {name}, .part .{name} .
+```
+The type after `.origin` is a unique, local type with the same name as the variable.
+The type after `.part` is an empty record with a field of the same name.
+It's used for APIs like `Origin-add`/`Origin-part` and `Origin-erase`"
                 ),
             }),
             range: Some(sloe::name_range(sloe::WithStartPosition {
@@ -2079,14 +2082,10 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         }
         sloe::SyntaxExpression::Origin {
             caret_key_symbol_start,
-            parts,
             name,
             result,
         } => {
             keyword_highlight(state, "^", *caret_key_symbol_start);
-            for part in parts {
-                sloe_syntax_optional_field_name_highlight(state, part);
-            }
             if let Some(name) = name {
                 sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
             }

@@ -213,7 +213,6 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
     },
     Origin {
         caret_key_symbol_start: lsp_types::Position,
-        parts: Vec<WithStartPosition<Option<Name>>>,
         name: Option<WithStartPosition<Name>>,
         result: Option<core::Slot<Expressions>>,
     },
@@ -639,7 +638,6 @@ pub fn expression_start<Expressions, Patterns, Types>(
         } => comments.line0.start,
         SyntaxExpression::Origin {
             caret_key_symbol_start,
-            parts: _,
             name: _,
             result: _,
         } => *caret_key_symbol_start,
@@ -802,7 +800,6 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .unwrap_or_else(|| comments_end(comments)),
         SyntaxExpression::Origin {
             caret_key_symbol_start,
-            parts,
             name,
             result,
         } => result
@@ -811,11 +808,6 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .or_else(|| {
                 name.as_ref()
                     .map(|name| name_end(with_start_position_as_ref(name)))
-            })
-            .or_else(|| {
-                parts
-                    .last()
-                    .map(|last_part| optional_field_name_end(last_part))
             })
             .unwrap_or_else(|| symbol_end(*caret_key_symbol_start, "^")),
         SyntaxExpression::Query {
@@ -2122,17 +2114,11 @@ fn parse_expression_origin<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let mut parts = Vec::new();
-    while let Some(part) = parse_field_name(state) {
-        parts.push(part);
-        parse_sloe_whitespace(state);
-    }
     let name = parse_sloe_lowercase_name_with_start(state);
     parse_sloe_whitespace(state);
     let result = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Origin {
         caret_key_symbol_start: caret_key_symbol_start,
-        parts: parts,
         name: name,
         result: result.map(|result| expressions.insert(result)),
     })
@@ -2919,7 +2905,6 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
-            parts: _,
             name: _,
             result,
         } => {
@@ -5598,27 +5583,6 @@ struct CheckedPatternVariable {
 #[derive(Clone, Debug)]
 pub struct CheckedOrigin {
     origin_start: lsp_types::Position,
-    parts: Vec<Name>,
-}
-fn origin_parts_to_type(parts: &[Name]) -> Type {
-    match parts.split_last() {
-        None => type_record_empty,
-        Some((last_part, parts_before)) => parts_before.iter().fold(
-            Type::Record(vec![TypeField {
-                name: last_part.clone(),
-                value: type_record_empty,
-            }]),
-            |rest, part| {
-                type_part_rest(
-                    Type::Record(vec![TypeField {
-                        name: part.clone(),
-                        value: type_record_empty,
-                    }]),
-                    rest,
-                )
-            },
-        ),
-    }
 }
 fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
@@ -5815,7 +5779,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variable(name) => {
-            if let Some(origin_info) = origins.get(&name.value) {
+            if let Some(_origin_info) = origins.get(&name.value) {
                 let maybe_existing_origin_variable_use_start =
                     used_origin_variables.insert(&name.value, name.start);
                 if let Some(existing_origin_variable_use_start) =
@@ -5829,7 +5793,10 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 }
                 Some(type_origin(type_origin_part(
                     Type::Origin(name.value.clone()),
-                    origin_parts_to_type(&origin_info.parts),
+                    Type::Record(vec![TypeField {
+                        name: name.value.clone(),
+                        value: type_record_empty,
+                    }]),
                 )))
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
@@ -6870,46 +6837,20 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start,
-            parts,
             name,
             result,
         } => {
-            let part_names = parts
-                .iter()
-                .filter_map(|part| match &part.value {
-                    None => {
-                        errors.push(ErrorNode {
-                            range: lsp_types::Range {
-                                start: *caret_key_symbol_start,
-                                end: symbol_end(*caret_key_symbol_start, "^"),
-                            },
-                            message: Box::from("missing origin name after ^..here.."),
-                        });
-                        None
-                    }
-                    Some(part_name) => Some(part_name.clone()),
-                })
-                .collect::<Vec<_>>();
-            records_used.extend(part_names.iter().map(|part_name| vec![part_name.clone()]));
             let Some(origin_name) = name else {
-                errors.push(match parts.last() {
-                    None => ErrorNode {
-                        range: lsp_types::Range {
-                            start: *caret_key_symbol_start,
-                            end: symbol_end(*caret_key_symbol_start, "^"),
-                        },
-                        message: Box::from("missing origin name after ^..here.."),
+                errors.push(ErrorNode {
+                    range: lsp_types::Range {
+                        start: *caret_key_symbol_start,
+                        end: symbol_end(*caret_key_symbol_start, "^"),
                     },
-                    Some(last_part) => ErrorNode {
-                        range: lsp_types::Range {
-                            start: *caret_key_symbol_start,
-                            end: optional_field_name_end(last_part),
-                        },
-                        message: Box::from("missing origin name after ^ .parts ..here.."),
-                    },
+                    message: Box::from("missing origin name after ^..here.."),
                 });
                 return None;
             };
+            records_used.insert(vec![origin_name.value.clone()]);
             if let Some(existing_origin_with_same_name) = origins.remove(&origin_name.value) {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(origin_name)),
@@ -6948,7 +6889,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 &origin_name.value,
                 CheckedOrigin {
                     origin_start: origin_name.start,
-                    parts: part_names,
                 },
             );
             let checked_result_type = syntax_expression_check(
@@ -8116,7 +8056,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
-            parts,
             name,
             result,
         } => {
@@ -8126,15 +8065,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(result) = result else {
                 return syn_expr_todo();
             };
-            let part_names = parts
-                .iter()
-                .filter_map(|part| part.value.clone())
-                .collect::<Vec<_>>();
             origins.insert(
                 &origin_name.value,
                 CheckedOrigin {
                     origin_start: origin_name.start,
-                    parts: part_names.clone(),
                 },
             );
             let result_compiled = syntax_expression_to_rust(
@@ -8208,9 +8142,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                                     &local_origin_rust_name,
                                                                 ]),
                                                             }),
-                                                            type_to_rust(&origin_parts_to_type(
-                                                                &part_names,
-                                                            )),
+                                                            type_to_rust(&Type::Record(vec![
+                                                                TypeField {
+                                                                    name: origin_name.value.clone(),
+                                                                    value: type_record_empty,
+                                                                },
+                                                            ])),
                                                         ],
                                                     ),
                                                 ))
@@ -9959,6 +9896,56 @@ fn Choice-empty-dup choice-empty | : .a | .b | =
                 result_type: type_opt(type_variable("yes"))
             },
             CoreFnInfo {
+                name: "Origin-add",
+                documentation: "Combine two `Origin`s, including the part names.
+Combining origins, then taking the combined Origin apart again
+gives an interesting property: All resulting Origins Have the same first parameter to `.origin`
+and a distinct name in `.part`. This means you only have to pass one origin type to
+type aliases instead of one parameter per origin:
+```sloe
+# introduce origins
+^htmls
+^modifiers
+^chars
+# combine them all up
+? Origin-add .part htmls .rest Origin-add .part modifiers .rest chars [view-origin]
+# Now view-origin is of type
+# Origin
+# Origin-part (Part-rest htmls, Part-rest modifiers, chars),
+# Part-rest .htmls ., Part-rest .modifiers ., .chars .
+
+# deconstruct them in order
+? Origin-part view-origin [.origin view-origin .part htmls]
+? Origin-part view-origin [.origin view-origin .part modifiers]
+? Origin-part view-origin [.origin view-origin .part chars]
+```
+used like this
+```sloe
+ty Html _view
+    |element
+        .tag str
+        .modifiers (Opt Span Origin-part _view, .modifiers .)
+        .subs (Opt Span Origin-part _view, .html .)
+    |text-dynamic Opt Span Origin-part _view, .chars .
+    |text-static str
+```
+See for example `.modifiers (Opt Span Origin-part _view, .modifiers .)`
+which you otherwise would have represented as `.modifiers (Opt Span _modifiers)`.
+`Origin-part` refers to the `modifier` origin that was combined into an Origin with `_view`.
+
+A more advanced use-case is `Origin-erased` which only allows one set of part names
+per erased value.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("part", type_origin(type_origin_part(type_variable("part-origin"), type_variable("part-name")))),
+                    ("rest", type_origin(type_origin_part(type_variable("rest-origin"), type_variable("rest-name"))))
+                ]),
+                result_type: type_origin(type_origin_part(
+                    type_part_rest(type_variable("part-origin"), type_variable("rest-origin")),
+                    type_part_rest(type_variable("part-name"), type_variable("rest-name"))
+                )),
+            },
+            CoreFnInfo {
                 name: "Origin-part",
                 documentation: "Create a new derived `Origin` and remove that part from the original `Origin`",
                 type_parameters: vec![],
@@ -11534,20 +11521,26 @@ When building new strings at runtime, use functions like `Buf-char-opt-span-add-
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Each variable created with `^some-origin expression`
-or `^ .a .b .c some-origin-origin-name` is of this type.
+                    "Each variable created with `^some-origin expression` is of this type.
 Origins can not be arbitrary values because values like `u32` could be duplicated leading to different collections with the same origin type.
 This is not possible for values of type `Origin`.
 
 When you create an `Origin` with `^some-origin expression`,
-`some-origin` will be of type `Origin Origin-part some-origin, .`,
-specifying that this `Origin` value cannot be subdivided and is uniquely identified by the type `some-origin`.
+`some-origin` will be of type `Origin .origin some-origin, .part .some-origin .`
+(or using a core type alias `Origin Origin-part some-origin, .some-origin .`),
+The `.part` type specifies that the `Origin` value cannot be subdivided.
+The type given to `.origin` here uniquely identifies the `Origin` with type `some-origin`.
+
 The type argument of an `Origin` is what will also be present in `Slot`, `Span`, `Buf`, `Unset-slot`, `Unset-span` as the first type argument.
 
-The second type argument in `Origin Origin-part some-origin, ??` is usually just `.`.
+The second type argument in `Origin Origin-part some-origin, ??`
+is usually just an empty record with a field of the same name as the origin.
 But if the origin was created with for example
 ```sloe
-^ .a .b .c origin-origin
+^a
+^b
+^c
+? Origin-add .part a .rest Part-add .part b .rest c [origin-origin]
 # origin-origin is of type
 # Origin origin-origin, Part-rest .a ., Part-rest .b ., .c .
 ```
@@ -11558,7 +11551,9 @@ Then you can use `Origin-part` to pop origin parts from the origin one by one:
 # a is of type Origin Origin-part origin-origin, .a .
 # b is of type Origin Origin-part origin-origin, .b .
 # c is of type Origin Origin-part origin-origin, .c .
-```"
+```
+giving you a way to for example just pass one origin to a type alias and
+inside of the type alias use the .a ., .b . or .c . to choose the part you want"
                 )),
                 parameters: vec![Name::from_static("origin")],
                 type_: Some(type_origin(type_variable("origin"))),
@@ -11581,8 +11576,8 @@ Then you can use `Origin-part` to pop origin parts from the origin one by one:
                 name_range: None,
                 documentation: Some(Box::from(
                     "Piece of the description of the parts of an origin
-that was created with `^ .a .b .c some-origin` for example.
-See `Origin` for further explanations.
+that was created with `Origin-add`.
+See `Origin`, `Origin-add` and `Origin-part` for further explanations.
 
 `Part-rest` specifically is basically a stack of types that can be popped from the front:
 ```sloe
@@ -11607,15 +11602,15 @@ This exact operation is used in `Origin-part`, `Origin-eraser-part`, `Origin-une
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Simple origins created with `^some-origin` are of type `Origin-part some-origin, .`.
-For example `Slot Origin-part some-origin, .`
-could refer to an index in a `Buf (Origin-part some-origin, .), char`.
+                    "Simple origins created with `^some-origin` are of type `Origin-part some-origin, .some-origin .`.
+For example `Slot Origin-part some-origin, .some-origin .`
+could refer to an index in a `Buf (Origin-part some-origin, .some-origin .), char`.
 
-Origins created with `^ .a .b .c some-origin` additionally have the ability
-to create derived origins using `Origin-part` (similar: `Origin-eraser-part` or `Origin-uneraser-part`).
-For example `Slot (Origin-part _parent-origin, .chars .)`
-could refer to an index in a `Buf (Origin-part _parent-origin, .chars .), char`
-which was derived from an `Origin _parent-origin, Part-rest .chars ., .positions .`.
+Origins combined with `Origin-add` additionally have the ability
+to make indivual origins look like derived origins using `Origin-part` (similar: `Origin-eraser-part` or `Origin-uneraser-part`).
+For example `Slot (Origin-part _combined-origin, .chars .)`
+could refer to an index in a `Buf (Origin-part _combined-origin, .chars .), char`
+which was derived from a combined `Origin (Part-rest chars, positions), Part-rest .chars ., .positions .`.
 
 The ability for one origin origin type to be used is very valuable to avoid
 passing endless origin type variables into type aliases.
@@ -12394,7 +12389,6 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
-            parts: _,
             name: _,
             result,
         } => match result {
@@ -12809,23 +12803,10 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
-            parts,
             name,
             result,
         } => {
             formatted.push_str("^");
-            let mut part_names = parts.iter().filter_map(|part| part.value.as_ref());
-            if let Some(part_name0) = part_names.next() {
-                formatted.push(' ');
-                formatted.push('.');
-                formatted.push_str(part_name0);
-                formatted.push(' ');
-                for part_name in part_names {
-                    formatted.push('.');
-                    formatted.push_str(part_name);
-                    formatted.push(' ');
-                }
-            }
             if let Some(name) = name {
                 formatted.push_str(&name.value);
             }
@@ -14160,7 +14141,6 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             }),
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
-            parts: _,
             name,
             result,
         } => {
@@ -15600,7 +15580,6 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
-            parts: _,
             name: introduced_origin_name,
             result,
         } => {
@@ -16013,7 +15992,6 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
-            parts: _,
             name: _,
             result,
         } => {

@@ -71,10 +71,10 @@ fn Stack-fold
     .state elements-nodes
 
 fn Example . : u32 =
-    ^example-nodes-origin
+    ^example-origin
     ?
-        .nodes Buf-empty{Stack (Origin-part example-nodes-origin, .), u32} example-nodes-origin
-        .stack |{Stack (Origin-part example-nodes-origin, .), u32}empty .
+        .nodes Buf-empty{Stack (Origin-part example-origin, .example-origin .), u32} example-origin
+        .stack |{Stack (Origin-part example-origin, .example-origin .), u32}empty .
     [example-stack]
     ? Stack-cons .. example-stack .new 39 u32 [example-stack]
     ? Stack-cons .. example-stack .new 3 u32 [example-stack]

@@ -1178,6 +1178,30 @@ pub fn choice_empty_to(
 }
 
 pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
+pub fn origin_add(
+    @"%PartName": type,
+    @"%PartOrigin": type,
+    @"%RestName": type,
+    @"%RestOrigin": type,
+    @"%": Record(struct {
+        part: Origin(Record(struct {
+            origin: @"%PartOrigin",
+            part: @"%PartName",
+        })),
+        rest: Origin(Record(struct {
+            origin: @"%RestOrigin",
+            part: @"%RestName",
+        })),
+    }),
+) error{OutOfMemory}!Origin(Record(struct {
+    origin: Record(struct { part: @"%PartOrigin", rest: @"%RestOrigin" }),
+    part: Record(struct { part: @"%PartName", rest: @"%RestName" }),
+})) {
+    return .{
+        .origin = .{ .rest = @"%".rest.origin, .part = @"%".part.origin },
+        .part = .{ .rest = @"%".rest.part, .part = @"%".part.part },
+    };
+}
 pub fn origin_part(@"%Origin": type, @"%Part": type, @"%Rest": type, @"%origin": Origin(
     Record(struct { origin: @"%Origin", part: Record(struct { part: @"%Part", rest: @"%Rest" }) }),
 )) error{OutOfMemory}!Record(struct {

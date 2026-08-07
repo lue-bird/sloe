@@ -135,25 +135,22 @@ export default grammar({
     expression_number_not_open_ending_in_record: ($) =>
       seq($.number, $.type_not_open_ending_in_record),
     expression_origin: ($) =>
-      seq($.key_symbol_origin, repeat($.field_name), $.expression_variable, $.expression),
+      seq($.key_symbol_origin, $.expression_variable, $.expression),
     expression_origin_not_open_ending_in_query: ($) =>
       seq(
         $.key_symbol_origin,
-        repeat($.field_name),
         $.expression_variable,
         $.expression_not_open_ending_in_query,
       ),
     expression_origin_not_open_ending_in_record: ($) =>
       seq(
         $.key_symbol_origin,
-        repeat($.field_name),
         $.expression_variable,
         $.expression_not_open_ending_in_record,
       ),
     expression_origin_not_open_ending_in_array: ($) =>
       seq(
         $.key_symbol_origin,
-        repeat($.field_name),
         $.expression_variable,
         $.expression_not_open_ending_in_array,
       ),

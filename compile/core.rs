@@ -624,38 +624,83 @@ impl Str {
     }
 }
 
-impl<LocalOrigin> Origin<LocalOrigin> {
+impl<LocalOrigin, Parts> Origin<Origin_part<LocalOrigin, Parts>> {
+    pub fn add<PartLocalOrigin, PartName>(
+        self,
+        _: Origin<Origin_part<PartLocalOrigin, PartName>>,
+    ) -> Origin<Origin_part<Part_rest<PartLocalOrigin, LocalOrigin>, Part_rest<PartName, Parts>>>
+    {
+        Origin(
+            std::marker::PhantomData::<
+                Origin_part<Part_rest<PartLocalOrigin, LocalOrigin>, Part_rest<PartName, Parts>>,
+            >,
+        )
+    }
+    /// Safe if no other origin exists with the same LocalOrigin and Parts.
+    /// LocalOrigin is usually a local type without values and Parts a global type without values
+    ///
     /// This constructor is exposed because sadly macros (namely origin_new!) require it.
-    /// It's _very strongly_ recommended to instead only construct new origins with `origin_new!`.
+    /// It's _strongly_ recommended to only construct new origins with `origin_new!`.
     /// Misusing this constructor can lead to UB like unchecked out of bounds access.
-    pub unsafe fn new_use_macro_instead<Parts>(
-        _: LocalOrigin,
-    ) -> Origin<Origin_part<LocalOrigin, Parts>> {
+    pub const unsafe fn new() -> Origin<Origin_part<LocalOrigin, Parts>> {
         Origin(std::marker::PhantomData::<Origin_part<LocalOrigin, Parts>>)
     }
 }
-/// Careful! origin!(some, Origin, Record·Some, Record·parts)
-/// wil crash **at runtime** when the field names after Record· are duplicated.
-/// This is to prevent multiple origins with the same type being created.
+/// If you plan on using Origin::add/origin_add, use
+/// ```rust
+/// origin_new!(some, Origin, Record·not_origin)
+/// ```
+/// (only works if there is actually such a record in the generated code)
+///
+/// If you don't, use the simpler
+/// ```rust
+/// origin_new!(variable_name, LocalOriginName)
+/// ```
+///
+/// Careful!
+/// ```rust
+/// origin_new!(some, Origin, Record·not_origin)
+/// ```
+/// wil crash **at runtime** when the field name after Record· does not match the lowercased type name.
+/// This is to prevent multiple origins with the same name type being created.
 /// In theory, it should be possible to report a compile-error in that case,
-/// however, there seems to neither exist const == on &str, nor const panic.
+/// however, there seems to neither exist const == on &str, nor const panic, nor ident concat etc.
 /// I'm sorry :3
 #[macro_export]
 macro_rules! origin_new {
     ($variable_name:ident, $type_name:ident) => {
         struct $type_name;
-        let $variable_name = unsafe {
-            $crate::core::Origin::new_use_macro_instead::<$crate::core::Record>($type_name)
+        let $variable_name: $crate::core::Origin::<$crate::core::Origin_part<$type_name, $type_name>> = unsafe {
+            $crate::core::Origin::new()
         };
     };
-    ($variable_name:ident, $type_name:ident, $($parts:ident),*) => {
-        if any_idents_are_equal!($($parts),+) {
-            panic!("equal part names. Each part needs a unique name!");
-            // compile_error!("equal part names. Each part needs a unique name!");
+    ($variable_name:ident, $type_name:ident, $part_name_record_type:ident) => {
+        {
+            let Some(field_name) = stringify!($part_name_record_type).strip_prefix("Record·")
+            else {
+                panic!("the third argument must match Record·type_name where Type_name is the second argument!");
+            };
+            let mut field_name_chars = field_name.chars();
+            let mut type_name_chars = stringify!($type_name).chars();
+            let Some(field_name_char0) = field_name_chars.next()
+            else {
+                panic!("the third argument must match Record·type_name where Type_name is the second argument!");
+            };
+            let Some(type_name_char0) = type_name_chars.next()
+            else {
+                panic!("the third argument must match Record·type_name where Type_name is the second argument!");
+            };
+            if type_name_char0.is_ascii_lowercase()
+                || field_name_char0 != type_name_char0.to_ascii_lowercase()
+                || field_name_chars.as_str() != type_name_chars.as_str()
+            {
+                panic!("the third argument must match Record·type_name where Type_name is the second argument!");
+            }
         }
         struct $type_name;
-        let $variable_name =
-            unsafe { $crate::core::Origin::new_use_macro_instead::<Parts!($($parts),+)>($type_name) };
+        let $variable_name: $crate::core::Origin::<$crate::core::Origin_part<$type_name, $crate::core::$part_name_record_type<()>>> = unsafe {
+            $crate::core::Origin::new()
+        };
     };
 }
 pub use origin_new;
@@ -2535,6 +2580,14 @@ pub fn opt_unset_span_fold<Origin, State>(
 }
 
 pub fn origin_rid<LocalOrigin>(_: Origin<LocalOrigin>) -> Record {}
+pub fn origin_add<PartName, PartOrigin, RestName, RestOrigin>(
+    Part_rest { part, rest }: Part_rest<
+        Origin<Origin_part<PartOrigin, PartName>>,
+        Origin<Origin_part<RestOrigin, RestName>>,
+    >,
+) -> Origin<Origin_part<Part_rest<PartOrigin, RestOrigin>, Part_rest<PartName, RestName>>> {
+    rest.add(part)
+}
 pub fn origin_part<LocalOrigin, Part, Rest>(
     origin: Origin<Origin_part<LocalOrigin, Part_rest<Part, Rest>>>,
 ) -> Record·part·rest<
