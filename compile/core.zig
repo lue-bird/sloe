@@ -1136,8 +1136,11 @@ pub fn str_rid(_: Str) error{OutOfMemory}!void {}
 pub fn str_dup(@"%str": Str) error{OutOfMemory}!Record(struct { a: Str, b: Str }) {
     return .{ .a = @"%str", .b = @"%str" };
 }
-pub fn str_byte_count(@"%str": Str) error{OutOfMemory}!P32 {
+pub fn str_utf8_length(@"%str": Str) error{OutOfMemory}!P32 {
     return @"%str".utf8_byte_count_p32();
+}
+pub fn str_char_count(@"%str": Str) error{OutOfMemory}!P32 {
+    return @"%str".codepoint_count_p32();
 }
 pub fn str_start(@"%str": Str) error{OutOfMemory}!Record(struct { after: Opt(Str), start: Char }) {
     const @"%split" = @"%str".splitStart();

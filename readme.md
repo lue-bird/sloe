@@ -647,8 +647,6 @@ cargo install --offline --debug --path . sloe
   # maybe also: Buf-span-own-span-order, Buf-span-buf-span-order
   ```
 
-- remove special syntax for multi-part origins
-
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
     - pattern matching. Probably easiest to start with

@@ -2198,7 +2198,7 @@ pub fn str_dup(str: Str) -> Record·a·b<Str, Str> {
     Record·a·b { a: str, b: str }
 }
 pub fn str_rid(_: Str) -> Record {}
-pub fn str_byte_count(str: Str) -> P32 {
+pub fn str_utf8_length(str: Str) -> P32 {
     <P32 as std::convert::TryFrom<std::num::NonZeroUsize>>::try_from(str.byte_len()).unwrap()
 }
 pub fn str_char_count(str: Str) -> P32 {

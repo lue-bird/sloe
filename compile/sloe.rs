@@ -9820,6 +9820,35 @@ fn Age . : f32 =
                 result_type: type_record([("a", type_str), ("b", type_str)]),
             },
             CoreFnInfo {
+                name: "Str-utf8-length",
+                documentation: "Its number of bytes when encoded as UTF-8.
+You usually want to use the slower Str-char-count.",
+                type_parameters: vec![],
+                parameter_type: type_str,
+                result_type: type_p32,
+            },
+            CoreFnInfo {
+                name: "Str-char-count",
+                documentation: "Its number of unicode codepoints aka chars",
+                type_parameters: vec![],
+                parameter_type: type_str,
+                result_type: type_p32,
+            },
+            CoreFnInfo {
+                name: "Str-start",
+                documentation: "Split off its first char",
+                type_parameters: vec![],
+                parameter_type: type_str,
+                result_type: type_record([("start", type_char), ("after", type_opt(type_str))]),
+            },
+            CoreFnInfo {
+                name: "Str-end",
+                documentation: "Split off its last char",
+                type_parameters: vec![],
+                parameter_type: type_str,
+                result_type: type_record([("end", type_char), ("before", type_opt(type_str))]),
+            },
+            CoreFnInfo {
                 name: "Str-rid",
                 documentation: "Mark the given str value as \"won't be used anymore\".
 This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
@@ -10429,7 +10458,8 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
             },
             CoreFnInfo {
                 name: "Buf-empty",
-                documentation: "Initialize a `Buf` with 0 elements. Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-unset` etc.",
+                documentation: "Initialize a `Buf` with 0 elements.
+Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-array`, `Buf-add-unset` etc.",
                 type_parameters: vec![Name::from_static("element")],
                 parameter_type: type_origin(type_variable("origin")),
                 result_type: type_buf(type_variable("origin"), type_variable("element")),
