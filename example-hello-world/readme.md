@@ -4,5 +4,5 @@ cargo run --manifest-path ../Cargo.toml build && cargo run
 ```
 if you've installed `sloe`, run with
 ```bash
-sloe build && cargo run
+sloe rust && cargo run
 ```

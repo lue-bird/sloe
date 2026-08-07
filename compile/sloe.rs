@@ -2170,14 +2170,6 @@ fn parse_expression_query_case<Expressions, Patterns, Types>(
     })
 }
 
-pub struct CompiledProject {
-    pub rust: syn::File,
-    pub type_aliases: std::collections::HashMap<Name, CheckedTypeAlias>,
-    pub fns: std::collections::HashMap<Name, CheckedProjectFn>,
-    pub records: std::collections::HashSet<Vec<Name>>,
-    pub queries: std::collections::HashMap<lsp_types::Position, CheckedQuery>,
-    pub spread_records: std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-}
 #[derive(Clone, Debug)]
 pub struct CheckedTypeAlias {
     pub name_range: Option<lsp_types::Range>,
@@ -2210,17 +2202,6 @@ pub struct CheckedProjectFn {
     pub parameter_type: Option<Type>,
     pub result_type: Option<Type>,
     pub result_expression_is_invalid: bool,
-}
-// TODO inline use sites
-pub fn syntax_project_to_rust<Expressions, Patterns, Types>(
-    errors: &mut Vec<ErrorNode>,
-    syntax_project: &SyntaxProject<Expressions, Patterns, Types>,
-    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Buf<Types, SyntaxType<Types>>,
-) -> CompiledProject {
-    let project_info = syntax_project_check(errors, syntax_project, expressions, patterns, types);
-    checked_project_to_rust(project_info, expressions, patterns, types)
 }
 pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
@@ -2959,7 +2940,7 @@ impl<'a, Types> Clone for SyntaxProjectTypeInfo<'a, Types> {
     }
 }
 
-fn checked_project_to_rust<Expressions, Patterns, Types>(
+pub fn checked_project_to_rust<Expressions, Patterns, Types>(
     CheckedSyntaxProject {
         type_graph,
         project_type_by_graph_node: _,
@@ -2973,14 +2954,14 @@ fn checked_project_to_rust<Expressions, Patterns, Types>(
         checked_local_fns,
         checked_queries,
         checked_spread_records,
-    }: CheckedSyntaxProject<Expressions, Patterns, Types>,
+    }: &CheckedSyntaxProject<Expressions, Patterns, Types>,
     expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
-) -> CompiledProject {
+) -> syn::File {
     let mut rust_items: Vec<syn::Item> =
         Vec::with_capacity(type_graph.len() * 3 + project_fn_graph.len());
-    for (checked_type_alias_name, checked_type_alias) in &checked_type_aliases {
+    for (checked_type_alias_name, checked_type_alias) in checked_type_aliases {
         // TODO a better solution is likely to set core .type_ = None
         if let Some(checked_aliased_type) = &checked_type_alias.type_
             && !core_type_aliases.contains_key(checked_type_alias_name)
@@ -2993,7 +2974,7 @@ fn checked_project_to_rust<Expressions, Patterns, Types>(
             ));
         }
     }
-    for (project_fn_name, checked_project_fn) in &checked_project_fns {
+    for (project_fn_name, checked_project_fn) in checked_project_fns {
         if let Some(syntax_project_fn_node) = project_fn_graph_node_by_name.get(project_fn_name)
             && let Some(syntax_project_fn) = project_fn_by_graph_node.get(syntax_project_fn_node)
             && let Some(parameter_type) = &checked_project_fn.parameter_type
@@ -3032,18 +3013,11 @@ fn checked_project_to_rust<Expressions, Patterns, Types>(
             .filter(|choice| !core_choices.contains(choice.as_slice()))
             .map(|used_choice_variants| syntax_choice_to_rust(used_choice_variants)),
     );
-    CompiledProject {
-        rust: syn::File {
-            shebang: None,
-            frontmatter: None,
-            attrs: vec![],
-            items: rust_items,
-        },
-        type_aliases: checked_type_aliases,
-        fns: checked_project_fns,
-        records: records_used,
-        queries: checked_queries,
-        spread_records: checked_spread_records,
+    syn::File {
+        shebang: None,
+        frontmatter: None,
+        attrs: vec![],
+        items: rust_items,
     }
 }
 fn syntax_choice_to_rust(used_choice_variants: &[Name]) -> syn::Item {

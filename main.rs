@@ -37,9 +37,31 @@ fn main_or_err() -> Result<(), ()> {
                 Ok(())
             }
             "build" | "make" | "compile" | "transpile" | "b" | "m" => {
+                println!(
+                    "To compile a file to a specific target language, use e.g. sloe zig.
+
+Full help:
+{command_help}"
+                );
+                Ok(())
+            }
+            "init" | "initialize" | "new" | "create" | "setup" | "boilerplate" | "template"
+            | "hello" | "hello-world" => {
+                println!(
+                    "Hi! There is no one starting point for every sloe program.
+Just create a sloe.sloe file and compile it to any of sloe's target languages like rust with `sloe rust`.
+Take a look at the examples at https://codeberg.org/lue-bird/sloe/examples for setup inspiration ^^
+
+Full help:
+{command_help}"
+                );
+                Ok(())
+            }
+            "rs" | "rust" | "r" => {
                 let maybe_input_file_path: Option<String> = full_command.next();
                 let maybe_output_file_path: Option<String> = full_command.next();
                 build_main(
+                    CompileOutputLanguage::Rust,
                     maybe_input_file_path.as_ref().map(std::path::Path::new),
                     maybe_output_file_path.as_ref().map(std::path::Path::new),
                 )
@@ -55,20 +77,6 @@ fn main_or_err() -> Result<(), ()> {
                 print_core_docs();
                 Ok(())
             }
-            "init" | "initialize" | "new" | "create" | "setup" | "boilerplate" | "template"
-            | "hello" | "hello-world" => {
-                println!(
-                    "Each project has one .sloe file. For applications, a rust project is also needed. Both will be initialized now."
-                );
-                if full_command.next().is_some() {
-                    println!(
-                        "Nothing was created. If you want to initialize a sloe project in a directory, please create that directory yourself and run sloe init from inside there."
-                    );
-                    return Ok(());
-                }
-                initialize_new_sloe_hello_world_project();
-                Ok(())
-            }
             _ => {
                 println!("Unknown command name.\n{command_help}");
                 Ok(())
@@ -77,13 +85,16 @@ fn main_or_err() -> Result<(), ()> {
     }
 }
 const command_help: &str = "\
-To compile to a rust file: sloe build [input-file.sloe [output-file.rs]]
-To copy the hello-world project setup into the current directory: sloe init
+To compile to a rust file: sloe rs [input-file.sloe [output-file.rs]]
+To compile to a zig file: sloe zig [input-file.sloe [output-file.zig]]
+To copy the rust hello-world project setup into the current directory: sloe init
 To start the language server: sloe lsp
 To print core declaration documentation: sloe core-docs
+To print this help message: sloe help
+
 To run a rust project: cargo run
 To compile a rust project into an executable: cargo build --release
-To print this help message: sloe help
+
 See the source code, see the full documentation, report bugs or leave any kind of feedback at https://codeberg.org/lue-bird/sloe";
 
 fn print_core_docs() {
@@ -297,93 +308,13 @@ fn braced_type_parameters_format(formatted: &mut String, type_parameters: &[sloe
         formatted.push('}');
     }
 }
-
-fn initialize_new_sloe_hello_world_project() {
-    try_generate_file(
-        "sloe.sloe",
-        "this is where all your sloe code goes",
-        r#"
-
-greet \:str:name >
-    strs-flatten [ "Hello, ", name, "\n" ]
-
-"#,
-    );
-    try_generate_file(
-        "main.rs",
-        "the actual program entrypoint, written in rust.",
-        r#"mod sloe;
-
-fn main() {
-    print!("{}", sloe::greet(sloe::Str::Slice("world")));
-}
-"#,
-    );
-    try_generate_file(
-        "Cargo.toml",
-        "this tells cargo (the rust package manager) how to build the project",
-        r#"[package]
-name = "example"
-edition = "2024"
-[[bin]]
-name = "example"
-path = "main.rs"
-"#,
-    );
-    try_generate_file(
-        ".gitignore",
-        "this tells git to not track the generated rust code",
-        r"# Generated rust code
-sloe/
-",
-    );
-    match std::fs::exists("sloe") {
-        Ok(true) => {
-            println!("sloe/ directory already exists, skipping generating it.");
-        }
-        Ok(false) => {
-            let write_result: Result<(), std::io::Error> = std::fs::create_dir("sloe");
-            match write_result {
-                Ok(()) => {
-                    println!(
-                        "created sloe/ directory, this will contain the generated rust file sloe/mod.rs."
-                    );
-                }
-                Err(error) => {
-                    println!("failed to generate sloe/ directory: {error}");
-                }
-            }
-        }
-        Err(error) => {
-            println!("failed to check if sloe/ directory already exists: {error}");
-        }
-    }
-}
-fn try_generate_file(path: &str, purpose: &str, content: &str) {
-    match std::fs::exists(path) {
-        Ok(true) => {
-            println!("{path} already exists, skipping generating it.");
-        }
-        Ok(false) => {
-            let write_result: Result<(), std::io::Error> = std::fs::write(path, content);
-            match write_result {
-                Ok(()) => {
-                    println!("created {path}, {purpose}.");
-                }
-                Err(error) => {
-                    println!("failed to generate {path}: {error}");
-                }
-            }
-        }
-        Err(error) => {
-            println!("failed to check if {path} already exists: {error}");
-        }
-    }
-}
-fn default_sloe_output_file_path_for_input_file_path(
+fn default_output_file_path_for_sloe_input_file_path(
     input_file_path: &std::path::Path,
+    language: CompileOutputLanguage,
 ) -> std::path::PathBuf {
-    input_file_path.with_extension("rs")
+    match language {
+        CompileOutputLanguage::Rust => input_file_path.with_extension("rs"),
+    }
 }
 fn rust_file_name_derive_mod_name(rust_file_name: &std::path::Path) -> Result<&str, ()> {
     match rust_file_name
@@ -393,9 +324,9 @@ fn rust_file_name_derive_mod_name(rust_file_name: &std::path::Path) -> Result<&s
         Some(mod_name) => Ok(mod_name),
         None => {
             eprintln!(
-            "Can't compile to {rust_file_name:?} because there's no clear module name to extract.
+                "Can't compile to {rust_file_name:?} because there's no clear module name to extract.
 For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
-        );
+            );
             Err(())
         }
     }
@@ -437,7 +368,9 @@ fn check_main(maybe_input_file_path: Option<&std::path::Path>) -> Result<(), ()>
         &syntax_types,
     );
     if output_errors.is_empty() {
-        println!("No errors found. Note that sloe build already checks before building.");
+        println!(
+            "No errors found. Note that sloe <language target> already checks before building."
+        );
         Ok(())
     } else {
         for output_error in output_errors.iter().rev() {
@@ -453,7 +386,12 @@ fn check_main(maybe_input_file_path: Option<&std::path::Path>) -> Result<(), ()>
     }
     // potential improvement: statistics
 }
+#[derive(Clone, Copy)]
+enum CompileOutputLanguage {
+    Rust,
+}
 fn build_main(
+    output_language: CompileOutputLanguage,
     maybe_input_file_path: Option<&std::path::Path>,
     maybe_output_file_path: Option<&std::path::Path>,
 ) -> Result<(), ()> {
@@ -462,81 +400,86 @@ fn build_main(
         None => std::path::Path::new("sloe.sloe"),
     };
     let output_file_path: &std::path::Path = match maybe_output_file_path {
-        Some(output_file_path) => &output_file_path.with_extension(".rs"),
-        None => &default_sloe_output_file_path_for_input_file_path(input_file_path),
-    };
-    let Some(output_mod_name) = output_file_path
-        .file_prefix()
-        .and_then(|os_str| os_str.to_str())
-    else {
-        eprintln!(
-            "Can't compile to {output_file_path:?} because there's no clear module name to extract.
-For example when I see .../.../src/sloe.rs I assume the mod name to be sloe."
-        );
-        return Err(());
+        Some(output_file_path) => {
+            &default_output_file_path_for_sloe_input_file_path(output_file_path, output_language)
+        }
+        None => {
+            &default_output_file_path_for_sloe_input_file_path(input_file_path, output_language)
+        }
     };
     println!("...compiling {input_file_path:?} into {output_file_path:?}.");
-    match std::fs::read_to_string(input_file_path) {
+    let project_source = match std::fs::read_to_string(input_file_path) {
         Err(read_error) => {
             eprintln!(
                 "was looking for a file with the name {input_file_path:?} but failed: {read_error}"
             );
-            Err(())
+            return Err(());
         }
-        Ok(project_source) => {
-            sloe::core::origin_new!(expressions, Expressions);
-            sloe::core::origin_new!(patterns, Patterns);
-            sloe::core::origin_new!(types, Types);
-            let mut syntax_expressions = sloe::core::Buf::new(expressions);
-            let mut syntax_patterns = sloe::core::Buf::new(patterns);
-            let mut syntax_types = sloe::core::Buf::new(types);
-            let syntax_project = sloe::parse_project(
-                &mut syntax_expressions,
-                &mut syntax_patterns,
-                &mut syntax_types,
-                &project_source,
-            );
-            let mut output_errors: Vec<sloe::ErrorNode> = Vec::new();
-            let compiled_project: sloe::CompiledProject = sloe::syntax_project_to_rust(
-                &mut output_errors,
-                &syntax_project,
+        Ok(project_source) => project_source,
+    };
+    sloe::core::origin_new!(expressions, Expressions);
+    sloe::core::origin_new!(patterns, Patterns);
+    sloe::core::origin_new!(types, Types);
+    let mut syntax_expressions = sloe::core::Buf::new(expressions);
+    let mut syntax_patterns = sloe::core::Buf::new(patterns);
+    let mut syntax_types = sloe::core::Buf::new(types);
+    let syntax_project = sloe::parse_project(
+        &mut syntax_expressions,
+        &mut syntax_patterns,
+        &mut syntax_types,
+        &project_source,
+    );
+    let mut output_errors: Vec<sloe::ErrorNode> = Vec::new();
+    let checked_project = sloe::syntax_project_check(
+        &mut output_errors,
+        &syntax_project,
+        &syntax_expressions,
+        &syntax_patterns,
+        &syntax_types,
+    );
+    for output_error in output_errors.iter().rev() {
+        eprintln!(
+            "{input_file_path}:{span_start_line}:{span_start_column} {message}",
+            input_file_path = input_file_path.to_string_lossy(),
+            span_start_line = output_error.range.start.line + 1,
+            span_start_column = output_error.range.start.character + 1,
+            message = output_error.message
+        );
+    }
+    if let Some(output_file_directory_path) = output_file_path.parent()
+        && let Err(error) = std::fs::create_dir_all(output_file_directory_path)
+    {
+        eprintln!(
+            "tried to create the directory containing the output file {output_file_path:?} but failed: {}",
+            error
+        );
+        return Err(());
+    }
+    let output_rust_file_string: String = match output_language {
+        CompileOutputLanguage::Rust => {
+            let Ok(output_mod_name) = rust_file_name_derive_mod_name(output_file_path) else {
+                return Err(());
+            };
+            let compiled_project = sloe::checked_project_to_rust(
+                &checked_project,
                 &syntax_expressions,
                 &syntax_patterns,
                 &syntax_types,
             );
-            for output_error in output_errors.iter().rev() {
-                eprintln!(
-                    "{input_file_path}:{span_start_line}:{span_start_column} {message}",
-                    input_file_path = input_file_path.to_string_lossy(),
-                    span_start_line = output_error.range.start.line + 1,
-                    span_start_column = output_error.range.start.character + 1,
-                    message = output_error.message
-                );
-            }
-            let output_rust_file_string: String =
-                sloe::compiled_rust_to_file_content(&compiled_project.rust, output_mod_name);
-            if let Some(output_file_directory_path) = output_file_path.parent()
-                && let Err(error) = std::fs::create_dir_all(output_file_directory_path)
-            {
-                eprintln!(
-                    "tried to create the directory containing the output rust file {output_file_path:?} but failed: {}",
-                    error
-                );
-                return Err(());
-            }
-            if let Err(write_error) = std::fs::write(output_file_path, output_rust_file_string) {
-                eprintln!(
-                    "tried to write the output into the rust file {output_file_path:?} but failed: {}",
-                    write_error
-                );
-                return Err(());
-            }
-            if output_errors.is_empty() {
-                Ok(())
-            } else {
-                Err(())
-            }
+            sloe::compiled_rust_to_file_content(&compiled_project, output_mod_name)
         }
+    };
+    if let Err(write_error) = std::fs::write(output_file_path, output_rust_file_string) {
+        eprintln!(
+            "tried to write the output into the file {output_file_path:?} but failed: {}",
+            write_error
+        );
+        return Err(());
+    }
+    if output_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(())
     }
 }
 fn lsp_main() -> Result<(), ()> {
@@ -984,16 +927,21 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
 ) -> ProjectState<Expressions, Patterns, Types> {
     let parsed_project = sloe::parse_project(expressions, patterns, types, &source);
     let mut errors: Vec<sloe::ErrorNode> = Vec::new();
-    let compiled_project: sloe::CompiledProject =
-        sloe::syntax_project_to_rust(&mut errors, &parsed_project, expressions, patterns, types);
+    let checked_project =
+        sloe::syntax_project_check(&mut errors, &parsed_project, expressions, patterns, types);
     if let Some(input_file_path) = lsp_uri_to_file_path(&uri)
-        && let output_file_path = default_sloe_output_file_path_for_input_file_path(input_file_path)
+        && let output_file_path = default_output_file_path_for_sloe_input_file_path(
+            input_file_path,
+            CompileOutputLanguage::Rust,
+        )
         && std::fs::exists(&output_file_path).is_ok_and(|exists| exists)
         && let Ok(output_mod_name) = rust_file_name_derive_mod_name(&output_file_path)
     {
+        let compiled_project =
+            sloe::checked_project_to_rust(&checked_project, expressions, patterns, types);
         let _: std::io::Result<()> = std::fs::write(
             &output_file_path,
-            sloe::compiled_rust_to_file_content(&compiled_project.rust, output_mod_name),
+            sloe::compiled_rust_to_file_content(&compiled_project, output_mod_name),
         );
     }
     publish_diagnostics(
@@ -1009,11 +957,11 @@ fn initialize_project_state_from_source<Expressions, Patterns, Types>(
     );
     ProjectState {
         source: source,
-        type_aliases: compiled_project.type_aliases,
-        fns: compiled_project.fns,
+        type_aliases: checked_project.checked_type_aliases,
+        fns: checked_project.checked_project_fns,
+        queries: checked_project.checked_queries,
+        spread_records: checked_project.checked_spread_records,
         syntax: parsed_project,
-        queries: compiled_project.queries,
-        spread_records: compiled_project.spread_records,
     }
 }
 fn sloe_error_node_to_diagnostic(problem: &sloe::ErrorNode) -> lsp_types::Diagnostic {
