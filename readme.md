@@ -630,23 +630,6 @@ cargo install --offline --debug --path . sloe
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- add order operations like
-  ```sloe
-  ty order |less |equal |greater
-  fn Buf-char-span-str-order
-      .buf Buf _origin, char
-      .span Span _origin
-      .str 
-      .char-order Fn .a char .b char, order
-  
-  fn P32-order
-  fn U32-order
-  fn I32-order
-  fn F32-order
-  fn Char-order
-  # maybe also: Buf-span-own-span-order, Buf-span-buf-span-order
-  ```
-
 - implement conversion to zig. current annoyances (non-blockers, though):
     - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
     - pattern matching. Probably easiest to start with

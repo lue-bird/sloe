@@ -24,8 +24,8 @@ fn RecordWithFieldNames(comptime @"%field_names": []const []const u8) type {
 pub fn Record(@"%struct_type": type) type {
     // uncomment to verify field names are sorted
     // if (!std.sort.isSorted([]const u8, @typeInfo(@"%struct_type").@"struct".field_names, {}, struct {
-    //     fn f(_: void, a: []const u8, b: []const u8) bool {
-    //         return std.mem.order(u8, a, b) == .lt;
+    //     fn f(_: void, @"%a": []const u8, @"%b": []const u8) bool {
+    //         return std.mem.order(u8, @"%a", @"%b") == .lt;
     //     }
     // }.f)) {
     //     @compileError("fields must be sorted");
@@ -58,6 +58,9 @@ pub fn @"|no|yes"(@"%No": type, @"%Yes": type) type {
 }
 pub fn @"|down|up"(@"%Down": type, @"%Up": type) type {
     return union(enum) { down: @"%Down", up: @"%Up" };
+}
+pub fn @"|equal|greater|less"(@"%Equal": type, @"%Greater": type, @"%Less": type) type {
+    return union(enum) { equal: @"%Equal", greater: @"%Greater", less: @"%Less" };
 }
 /// would preferably be noreturn but it isn't allowed in parameters for some reason
 pub const Choice = enum {};
@@ -159,16 +162,18 @@ pub const Str = struct {
 pub fn Fn(@"%In": type, @"%Out": type) type {
     return *const fn (@"%In") error{OutOfMemory}!@"%Out";
 }
+pub const Order =
+    @"|equal|greater|less"(void, void, void);
 pub fn Opt(@"%Yes": type) type {
     return @"|no|yes"(void, @"%Yes");
 }
 
-fn u32AddOrOutOfMem(a: u32, b: u32) error{OutOfMemory}!u32 {
-    const sum, const overflow = @addWithOverflow(a, b);
+fn u32AddOrOutOfMem(@"%a": u32, @"%b": u32) error{OutOfMemory}!u32 {
+    const sum, const overflow = @addWithOverflow(@"%a", @"%b");
     return if (overflow != 0) error.OutOfMemory else sum;
 }
-fn usizeAddOrOutOfMem(a: usize, b: usize) error{OutOfMemory}!usize {
-    const sum, const overflow = @addWithOverflow(a, b);
+fn usizeAddOrOutOfMem(@"%a": usize, @"%b": usize) error{OutOfMemory}!usize {
+    const sum, const overflow = @addWithOverflow(@"%a", @"%b");
     return if (overflow != 0) error.OutOfMemory else sum;
 }
 fn strideOf(@"%Element": type) comptime_int {
@@ -176,6 +181,13 @@ fn strideOf(@"%Element": type) comptime_int {
     // @sizeOf(@"%Element")
     // is there a nicer way? And is this always correct in the first place?
     return @sizeOf(@"%Element");
+}
+fn mathOrderToOrder(@"%order": std.math.Order) Order {
+    return switch (@"%order") {
+        .lt => .{ .less = {} },
+        .eq => .{ .equal = {} },
+        .gt => .{ .greater = {} },
+    };
 }
 
 pub fn Array(@"%Element": type, @"%Record": type) type {
@@ -977,6 +989,9 @@ pub fn p32_add_clamp(@"%": Record(struct { p: P32, u: U32 })) error{OutOfMemory}
 pub fn p32_mul_clamp(@"%": Record(struct { a: P32, b: P32 })) error{OutOfMemory}!P32 {
     return @"%".a.mulClamp(@"%".b);
 }
+pub fn p32_order(@"%": Record(struct { left: P32, right: P32 })) error{OutOfMemory}!Order {
+    return mathOrderToOrder(std.math.order(@"%".left.positive, @"%".right.positive));
+}
 
 pub fn u32_rid(_: U32) error{OutOfMemory}!void {}
 pub fn u32_dup(@"%n": U32) error{OutOfMemory}!Record(struct { a: U32, b: U32 }) {
@@ -1003,6 +1018,9 @@ pub fn u32_pow_clamp(@"%": Record(struct { base: U32, exponent: P32 })) error{Ou
 pub fn u32_to_p32(@"%n": U32) error{OutOfMemory}!Opt(P32) {
     return if (P32.fromU32(@"%n")) |@"%p32"| .{ .yes = @"%p32" } else .{ .no = {} };
 }
+pub fn u32_order(@"%": Record(struct { left: U32, right: U32 })) error{OutOfMemory}!Order {
+    return mathOrderToOrder(std.math.order(@"%".left, @"%".right));
+}
 
 pub fn i32_rid(_: I32) error{OutOfMemory}!void {}
 pub fn i32_dup(@"%n": I32) error{OutOfMemory}!Record(struct { a: I32, b: I32 }) {
@@ -1022,6 +1040,9 @@ pub fn i32_negate_clamp(@"%n": I32) error{OutOfMemory}!I32 {
 }
 pub fn i32_abs_to_u32(@"%n": I32) error{OutOfMemory}!U32 {
     return @abs(@"%n");
+}
+pub fn i32_order(@"%": Record(struct { left: I32, right: I32 })) error{OutOfMemory}!Order {
+    return mathOrderToOrder(std.math.order(@"%".left, @"%".right));
 }
 
 pub fn f32_rid(_: F32) error{OutOfMemory}!void {}
@@ -1125,6 +1146,9 @@ pub fn f32_pow_i32(@"%": Record(struct { base: F32, exponent: I32 })) error{OutO
 pub fn f32_pow(@"%": Record(struct { base: F32, exponent: F32 })) error{OutOfMemory}!Opt(F32) {
     const @"%power" = std.math.pow(f32, @"%".base, @"%".exponent);
     return if (std.math.isFinite(@"%power")) .{ .yes = @"%power" } else .{ .no = {} };
+}
+pub fn f32_order(@"%": Record(struct { left: F32, right: F32 })) error{OutOfMemory}!Order {
+    return mathOrderToOrder(std.math.order(@"%".left, @"%".right));
 }
 
 pub fn char_rid(_: Char) error{OutOfMemory}!void {}

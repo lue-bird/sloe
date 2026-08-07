@@ -9376,6 +9376,22 @@ const type_erased: Type = Type::CoreConstruct {
     name: Name::from_static("erased"),
     arguments: vec![],
 };
+fn type_order() -> Type {
+    Type::Choice(vec![
+        TypeVariant {
+            name: Name::from_static("less"),
+            value: type_record_empty,
+        },
+        TypeVariant {
+            name: Name::from_static("equals"),
+            value: type_record_empty,
+        },
+        TypeVariant {
+            name: Name::from_static("greater"),
+            value: type_record_empty,
+        },
+    ])
+}
 fn type_origin(origin: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Origin"),
@@ -9492,6 +9508,13 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_p32,
             },
             CoreFnInfo {
+                name: "P32-order",
+                documentation: "Compare left to right. For example |less means left < right",
+                type_parameters: vec![],
+                parameter_type: type_record([("left", type_p32), ("right", type_p32)]),
+                result_type: type_order(),
+            },
+            CoreFnInfo {
                 name: "U32-dup",
                 documentation: "Split the u32 in two values with the same content",
                 type_parameters: vec![],
@@ -9548,6 +9571,13 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_u32,
             },
             CoreFnInfo {
+                name: "U32-order",
+                documentation: "Compare left to right. For example |less means left < right",
+                type_parameters: vec![],
+                parameter_type: type_record([("left", type_u32), ("right", type_u32)]),
+                result_type: type_order(),
+            },
+            CoreFnInfo {
                 name: "I32-dup",
                 documentation: "Split the i32 in two values with the same content",
                 type_parameters: vec![],
@@ -9581,6 +9611,13 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 type_parameters: vec![],
                 parameter_type: type_record([("base", type_i32), ("exponent", type_p32)]),
                 result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "I32-order",
+                documentation: "Compare left to right. For example |less means left < right",
+                type_parameters: vec![],
+                parameter_type: type_record([("left", type_i32), ("right", type_i32)]),
+                result_type: type_order(),
             },
             CoreFnInfo {
                 name: "F32-dup",
@@ -9797,6 +9834,13 @@ fn Age . : f32 =
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_i32,
+            },
+            CoreFnInfo {
+                name: "F32-order",
+                documentation: "Compare left to right. For example |less means left < right",
+                type_parameters: vec![],
+                parameter_type: type_record([("left", type_f32), ("right", type_f32)]),
+                result_type: type_order(),
             },
             CoreFnInfo {
                 name: "Char-dup",
@@ -11537,6 +11581,28 @@ like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""`
 (`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
 When building new strings at runtime, use functions like `Buf-char-opt-span-add-str`."#,
+                )),
+                parameters: vec![],
+                type_: Some(type_str),
+            },
+        ),
+        (
+            Name::from_static("order"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    r#"Result of a binary comparison.
+```sloe
+U32-order .left 12 u32 .right 20 u32
+# = |{order}less
+
+fn U32-max .a a u32 .b b u32 : u32 =
+    ? U32-order .left a .right b
+    [|less] (? U32-rid a [.] b)
+    [|equal] (? U32-rid a [.] b)
+    [|greater] (? U32-rid b [.] a)
+```
+"#,
                 )),
                 parameters: vec![],
                 type_: Some(type_str),

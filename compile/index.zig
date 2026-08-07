@@ -132,6 +132,12 @@ test "f32_round_nearest_else_even_to_i32_clamp" {
     try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.5));
     try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.6));
 }
+test "order" {
+    try std.testing.expectEqual(core.Order{ .equal = {} }, try core.p32_order(.{ .left = core.P32.one, .right = core.P32.fromComptime(1) }));
+    try std.testing.expectEqual(core.Order{ .equal = {} }, try core.u32_order(.{ .left = 60, .right = 60 }));
+    try std.testing.expectEqual(core.Order{ .greater = {} }, try core.i32_order(.{ .left = 60, .right = -60 }));
+    try std.testing.expectEqual(core.Order{ .less = {} }, try core.f32_order(.{ .left = 40.2, .right = 60.1 }));
+}
 test "char-to-u32" {
     try std.testing.expectEqual(97, try core.char_to_u32('a'));
 }

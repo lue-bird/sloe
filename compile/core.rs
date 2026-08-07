@@ -24,6 +24,11 @@ pub struct Record·a·b<A, B> {
     pub b: B,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·left·right<Left, Right> {
+    pub left: Left,
+    pub right: Right,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·i·u<I, U> {
     pub i: I,
     pub u: U,
@@ -327,6 +332,12 @@ pub enum Choice·Contained·Overflowed<Contained, Overflowed> {
     Contained(Contained),
     Overflowed(Overflowed),
 }
+#[derive(Clone, Copy, Debug)]
+pub enum Choice·Equal·Greater·Less<Equal, Greater, Less> {
+    Equal(Equal),
+    Greater(Greater),
+    Less(Less),
+}
 
 /// empty record, represented as unit
 pub type Record = ();
@@ -357,6 +368,7 @@ pub struct Str {
     pub str: &'static str,
 }
 pub type Fn<In, Out> = fn(In) -> Out;
+pub type Order = Choice·Equal·Greater·Less<Record, Record, Record>;
 pub type Opt<Yes> = Choice·No·Yes<Record, Yes>;
 pub type Origin_part<Origin, Part> = Record·origin·part<Origin, Part>;
 pub type Part_rest<Part, Rest> = Record·part·rest<Part, Rest>;
@@ -514,6 +526,23 @@ impl<Element> std::fmt::Debug for Unset_slice<Element> {
         f.debug_struct("Unset_slice")
             .field("length", &self.0.len())
             .finish()
+    }
+}
+
+impl Order {
+    pub fn from_ordering(order: std::cmp::Ordering) -> Order {
+        match order {
+            std::cmp::Ordering::Less => Order::Less(()),
+            std::cmp::Ordering::Equal => Order::Equal(()),
+            std::cmp::Ordering::Greater => Order::Greater(()),
+        }
+    }
+    pub fn to_ordering(self) -> std::cmp::Ordering {
+        match self {
+            Order::Less(()) => std::cmp::Ordering::Less,
+            Order::Equal(()) => std::cmp::Ordering::Equal,
+            Order::Greater(()) => std::cmp::Ordering::Greater,
+        }
     }
 }
 
@@ -1971,6 +2000,9 @@ pub fn p32_mul_clamp(Record·a·b { a, b }: Record·a·b<P32, P32>) -> P32 {
 pub fn p32_to_u32(n: P32) -> U32 {
     n.get()
 }
+pub fn p32_order(Record·left·right { left, right }: Record·left·right<P32, P32>) -> Order {
+    Order::from_ordering(std::cmp::Ord::cmp(&left, &right))
+}
 pub fn u32_to_p32(n: U32) -> Opt<P32> {
     Opt::from_option(P32::new(n))
 }
@@ -2025,6 +2057,9 @@ pub fn u32_successor_clamp(n: U32) -> P32 {
 pub fn u32_to_i32_clamp(n: U32) -> I32 {
     <I32 as std::convert::TryFrom<U32>>::try_from(n).unwrap_or(I32::MAX)
 }
+pub fn u32_order(Record·left·right { left, right }: Record·left·right<U32, U32>) -> Order {
+    Order::from_ordering(std::cmp::Ord::cmp(&left, &right))
+}
 pub fn i32_dup(n: I32) -> Record·a·b<I32, I32> {
     Record·a·b { a: n, b: n }
 }
@@ -2074,6 +2109,9 @@ pub fn i32_pow_clamp(
     Record·base·exponent { base, exponent }: Record·base·exponent<I32, P32>,
 ) -> I32 {
     base.saturating_pow(exponent.get())
+}
+pub fn i32_order(Record·left·right { left, right }: Record·left·right<I32, I32>) -> Order {
+    Order::from_ordering(std::cmp::Ord::cmp(&left, &right))
 }
 pub fn f32_dup(n: F32) -> Record·a·b<F32, F32> {
     Record·a·b { a: n, b: n }
@@ -2173,6 +2211,13 @@ pub fn f32_round_nearest_else_even_to_i32_clamp(n: F32) -> I32 {
 }
 pub fn f32_round_nearest_else_away_from_0_to_i32_clamp(n: F32) -> I32 {
     f32_round_nearest_else_away_from_0(n) as I32
+}
+pub fn f32_order(Record·left·right { left, right }: Record·left·right<F32, F32>) -> Order {
+    Order::from_ordering(
+        // should always succeed because F32 is assumed to be finite
+        <F32 as std::cmp::PartialOrd>::partial_cmp(&left, &right)
+            .unwrap_or(std::cmp::Ordering::Greater),
+    )
 }
 
 pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> Record·a·b<Fn<In, Out>, Fn<In, Out>> {
