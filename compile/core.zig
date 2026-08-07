@@ -1128,6 +1128,9 @@ pub fn f32_pow(@"%": Record(struct { base: F32, exponent: F32 })) error{OutOfMem
 }
 
 pub fn char_rid(_: Char) error{OutOfMemory}!void {}
+pub fn char_to_u32(@"%char": Char) error{OutOfMemory}!U32 {
+    return @"%char";
+}
 pub fn char_dup(@"%n": Char) error{OutOfMemory}!Record(struct { a: Char, b: Char }) {
     return .{ .a = @"%n", .b = @"%n" };
 }

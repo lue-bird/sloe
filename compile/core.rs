@@ -2187,7 +2187,7 @@ pub fn char_dup(char: Char) -> Record·a·b<Char, Char> {
     Record·a·b { a: char, b: char }
 }
 pub fn char_rid(_: Char) -> Record {}
-pub fn char_to_code_point(char: Char) -> U32 {
+pub fn char_to_u32(char: Char) -> U32 {
     <u32 as std::convert::From<char>>::from(char)
 }
 pub fn u32_code_point_to_char(code_point: U32) -> Opt<Char> {

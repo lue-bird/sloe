@@ -132,6 +132,9 @@ test "f32_round_nearest_else_even_to_i32_clamp" {
     try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.5));
     try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.6));
 }
+test "char-to-u32" {
+    try std.testing.expectEqual(97, try core.char_to_u32('a'));
+}
 test "str_start more after start" {
     const split = try core.str_start(core.Str.fromComptime("abcde"));
     try std.testing.expectEqual('a', split.start);

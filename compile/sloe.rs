@@ -9806,6 +9806,13 @@ fn Age . : f32 =
                 result_type: type_record([("a", type_char), ("b", type_char)]),
             },
             CoreFnInfo {
+                name: "Char-to-u32",
+                documentation: "Its code as a u32",
+                type_parameters: vec![],
+                parameter_type: type_char,
+                result_type: type_u32,
+            },
+            CoreFnInfo {
                 name: "Char-rid",
                 documentation: "Mark the given char value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                 type_parameters: vec![],
