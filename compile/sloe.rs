@@ -2942,9 +2942,9 @@ impl<'a, Types> Clone for SyntaxProjectTypeInfo<'a, Types> {
 
 pub fn checked_project_to_rust<Expressions, Patterns, Types>(
     CheckedSyntaxProject {
-        type_graph,
+        type_graph: _,
         project_type_by_graph_node: _,
-        project_fn_graph,
+        project_fn_graph: _,
         project_fn_graph_node_by_name,
         project_fn_by_graph_node,
         records_used,
@@ -2959,8 +2959,12 @@ pub fn checked_project_to_rust<Expressions, Patterns, Types>(
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> syn::File {
-    let mut rust_items: Vec<syn::Item> =
-        Vec::with_capacity(type_graph.len() * 3 + project_fn_graph.len());
+    let mut rust_items: Vec<syn::Item> = Vec::with_capacity(
+        checked_type_aliases.len() - core_type_aliases.len()
+            + checked_project_fns.len()
+            + records_used.len()
+            + choices_used.len(),
+    );
     for (checked_type_alias_name, checked_type_alias) in checked_type_aliases {
         // TODO a better solution is likely to set core .type_ = None
         if let Some(checked_aliased_type) = &checked_type_alias.type_
@@ -5548,6 +5552,1224 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
         },
     }
 }
+
+pub fn checked_project_to_zig<Expressions, Patterns, Types>(
+    CheckedSyntaxProject {
+        type_graph: _,
+        project_type_by_graph_node: _,
+        project_fn_graph: _,
+        project_fn_graph_node_by_name,
+        project_fn_by_graph_node,
+        records_used: _,
+        choices_used,
+        checked_type_aliases,
+        checked_project_fns,
+        checked_local_fns,
+        checked_queries,
+        checked_spread_records,
+    }: &CheckedSyntaxProject<Expressions, Patterns, Types>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+) -> String {
+    let mut output: String = format!(
+        "// jump to compiled code by searching for // compiled
+
+{}
+
+
+// compiled code //
+
+
+",
+        include_str!("core.zig"),
+    );
+    output.reserve(checked_project_fns.len() * 12 + checked_type_aliases.len() * 5);
+
+    for (checked_type_alias_name, checked_type_alias) in checked_type_aliases {
+        // TODO a better solution is likely to set core .type_ = None
+        if let Some(checked_aliased_type) = &checked_type_alias.type_
+            && !core_type_aliases.contains_key(checked_type_alias_name)
+        {
+            project_type_alias_to_zig(
+                &mut output,
+                checked_type_alias.documentation.as_deref(),
+                checked_type_alias_name,
+                &checked_type_alias.parameters,
+                checked_aliased_type,
+            );
+        }
+    }
+    for (project_fn_name, checked_project_fn) in checked_project_fns {
+        if let Some(syntax_project_fn_node) = project_fn_graph_node_by_name.get(project_fn_name)
+            && let Some(syntax_project_fn) = project_fn_by_graph_node.get(syntax_project_fn_node)
+            && let Some(parameter_type) = &checked_project_fn.parameter_type
+            && let Some(result_type) = &checked_project_fn.result_type
+            && let Some(parameter) = syntax_project_fn.parameter.as_ref()
+            && let Some(result) = syntax_project_fn.result.as_ref()
+        {
+            syntax_project_fn_to_zig(
+                &mut output,
+                &checked_type_aliases,
+                &checked_project_fns,
+                &checked_local_fns,
+                &checked_queries,
+                &checked_spread_records,
+                expressions,
+                patterns,
+                types,
+                project_fn_name,
+                checked_project_fn.documentation.as_deref(),
+                parameter_type,
+                result_type,
+                checked_project_fn.result_expression_is_invalid,
+                parameter,
+                result,
+            );
+        }
+    }
+    for used_choice_variants in choices_used
+        .iter()
+        .filter(|choice| !core_choices.contains(choice.as_slice()))
+    {
+        syntax_choice_to_zig(&mut output, used_choice_variants);
+    }
+    output
+}
+fn syntax_choice_to_zig(output: &mut String, variant_names: &[Name]) {
+    output.push_str("pub fn ");
+    variant_names_to_zig_choice_type_name(output, variant_names);
+    output.push('(');
+    for variant_name in variant_names {
+        name_to_uppercase_local_zig(output, variant_name);
+        output.push_str(": type, ");
+    }
+    output.push_str(") type { return union(enum) { ");
+    for variant_name in variant_names {
+        output.push_str(&name_to_lowercase_zig(variant_name));
+        output.push_str(": ");
+        name_to_uppercase_local_zig(output, variant_name);
+        output.push_str(", ");
+    }
+    output.push_str(" }; }");
+}
+fn variant_names_to_zig_choice_type_name<'a>(
+    output: &mut String,
+    variant_names: impl IntoIterator<Item = &'a Name>,
+) {
+    output.push_str("@\"");
+    for variant_name in variant_names {
+        output.push_str("|");
+        // no need to respect keywords etc
+        output.push_str(&variant_name.replace("-", "_"));
+    }
+    output.push('"');
+}
+fn project_type_alias_to_zig(
+    output: &mut String,
+    maybe_documentation: Option<&str>,
+    name: &Name,
+    parameters: &[Name],
+    aliased_type: &Type,
+) {
+    if let Some(documentation) = maybe_documentation {
+        for documentation_line in documentation.lines() {
+            output.push_str("/// ");
+            output.push_str(documentation_line);
+            output.push('\n');
+        }
+    }
+    output.push_str("pub fn ");
+    output.push_str(&name_to_uppercase_zig(name));
+    output.push('(');
+    for parameter in parameters {
+        name_to_uppercase_local_zig(output, parameter);
+        output.push_str(": type, ");
+    }
+    output.push_str(") type { return ");
+    type_to_zig(output, aliased_type);
+    output.push_str("; }");
+}
+fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
+    output: &mut String,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    name: &Name,
+    maybe_documentation: Option<&str>,
+    parameter_type: &Type,
+    result_type: &Type,
+    result_expression_is_invalid: bool,
+    syntax_parameter: &SyntaxPattern<Patterns, Types>,
+    syntax_result: &SyntaxExpression<Expressions, Patterns, Types>,
+) {
+    if let Some(documentation) = maybe_documentation {
+        for documentation_line in documentation.lines() {
+            output.push_str("/// ");
+            output.push_str(documentation_line);
+            output.push('\n');
+        }
+    }
+    output.push_str("pub fn ");
+    output.push_str(&name_to_lowercase_zig(name));
+    output.push('(');
+    let mut type_parameters = std::collections::BTreeSet::new();
+    type_variables_into(&mut type_parameters, parameter_type);
+    type_variables_into(&mut type_parameters, result_type);
+    for type_parameter in type_parameters {
+        name_to_uppercase_local_zig(output, type_parameter);
+        output.push_str(": type, ");
+    }
+    output.push_str("@\"%\": ");
+    type_to_zig(output, parameter_type);
+    output.push_str(") error{OutOfMemory}!");
+    type_to_zig(output, result_type);
+    output.push_str(" {\n");
+    let mut parameter_introduced_variables = std::collections::HashMap::new();
+    syntax_pattern_to_zig_destructuring(
+        output,
+        syntax_parameter,
+        "@\"%\"",
+        &mut parameter_introduced_variables,
+        type_aliases,
+        checked_spread_records,
+        patterns,
+        types,
+    );
+    if parameter_introduced_variables.is_empty() {
+        output.push_str("_ = @\"%\";\n");
+    }
+    output.push_str("return ");
+    if result_expression_is_invalid {
+        zig_incomplete_expression(output)
+    } else {
+        syntax_expression_to_zig(
+            output,
+            type_aliases,
+            project_fns,
+            expressions,
+            patterns,
+            types,
+            checked_local_fns,
+            checked_queries,
+            checked_spread_records,
+            &mut parameter_introduced_variables,
+            &mut std::collections::HashMap::new(),
+            syntax_result,
+        );
+    }
+    output.push_str(";\n}");
+}
+fn zig_incomplete_expression(output: &mut String) {
+    output.push_str("unreachable"); // or std.process.abort()
+}
+fn syntax_pattern_to_zig_matches_condition<'a, Patterns, Types>(
+    output: &mut String,
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    to_match: &str,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+) {
+    match pattern {
+        SyntaxPattern::Variable { .. } => {
+            output.push_str("true");
+        }
+        SyntaxPattern::Variant { name, value } => {
+            if let Some(name) = &name.value
+                && let Some(value) = value
+            {
+                output.push_str("switch (");
+                output.push_str(to_match);
+                output.push_str(") { .");
+                output.push_str(&name_to_lowercase_zig(name));
+                output.push_str(" => true, else => false } and ");
+                syntax_pattern_to_zig_matches_condition(
+                    output,
+                    patterns.element(value),
+                    &format!("{to_match}.{}", name_to_lowercase_zig(name)),
+                    patterns,
+                );
+            }
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {
+            output.push_str("true");
+        }
+        SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        if let Some(name) = &name.value
+                            && let Some(value) = value
+                        {
+                            syntax_pattern_to_zig_matches_condition(
+                                output,
+                                patterns.element(value),
+                                &format!("{to_match}.{}", name_to_lowercase_zig(name)),
+                                patterns,
+                            );
+                            output.push_str(" and ");
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            syntax_pattern_to_zig_matches_condition(
+                                output,
+                                patterns.element(record),
+                                to_match,
+                                patterns,
+                            );
+                            output.push_str(" and ");
+                        }
+                    }
+                }
+            }
+            output.push_str("true");
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_pattern_to_zig_matches_condition(
+                    output,
+                    patterns.element(inner),
+                    to_match,
+                    patterns,
+                );
+            }
+        }
+    }
+}
+fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
+    output: &mut String,
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    to_destructure: &str,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+) {
+    match pattern {
+        SyntaxPattern::Variable { name, type_: _ } => {
+            output.push_str("const ");
+            name_to_lowercase_local_zig_introduced_at(output, &name.value, name.start);
+            output.push_str(" = ");
+            output.push_str(to_destructure);
+            output.push_str(";\n");
+            introduced_variables.insert(&name.value, name.start);
+        }
+        SyntaxPattern::Variant { name, value } => {
+            if let Some(name) = &name.value
+                && let Some(value) = value
+            {
+                syntax_pattern_to_zig_destructuring(
+                    output,
+                    patterns.element(value),
+                    &format!("{to_destructure}.{}", name_to_lowercase_zig(name)),
+                    introduced_variables,
+                    type_aliases,
+                    checked_spread_records,
+                    patterns,
+                    types,
+                );
+            }
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {}
+        SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        if let Some(name) = &name.value
+                            && let Some(value) = value
+                        {
+                            syntax_pattern_to_zig_destructuring(
+                                output,
+                                patterns.element(value),
+                                &format!("{to_destructure}.{}", name_to_lowercase_zig(name)),
+                                introduced_variables,
+                                type_aliases,
+                                checked_spread_records,
+                                patterns,
+                                types,
+                            );
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        let Some(record) = record else {
+                            return;
+                        };
+                        let record = patterns.element(record);
+                        let Some(record_spread_field_names) =
+                            checked_spread_records.get(dot_dot_start)
+                        else {
+                            return;
+                        };
+                        let unspread_record_variable_name = {
+                            let mut unspread_record_variable_name = String::new();
+                            use std::fmt::Write as _;
+                            unspread_record_variable_name.push_str("@\"%unspread_record:");
+                            let _ = write!(unspread_record_variable_name, "{}", dot_dot_start.line);
+                            unspread_record_variable_name.push_str(":");
+                            let _ = write!(
+                                unspread_record_variable_name,
+                                "{}",
+                                dot_dot_start.character
+                            );
+                            unspread_record_variable_name.push_str("\"");
+                            unspread_record_variable_name
+                        };
+                        output.push_str("const ");
+                        output.push_str(&unspread_record_variable_name);
+                        output.push_str(" = record(.{ ");
+                        for record_spread_field_name in record_spread_field_names {
+                            output.push('.');
+                            output.push_str(&name_to_lowercase_zig(record_spread_field_name));
+                            output.push_str(" = ");
+                            output.push_str(to_destructure);
+                            output.push('.');
+                            output.push_str(&name_to_lowercase_zig(record_spread_field_name));
+                            output.push_str(", ");
+                        }
+                        output.push_str(" });\n");
+                        syntax_pattern_to_zig_destructuring(
+                            output,
+                            record,
+                            &unspread_record_variable_name,
+                            introduced_variables,
+                            type_aliases,
+                            checked_spread_records,
+                            patterns,
+                            types,
+                        );
+                    }
+                }
+            }
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_pattern_to_zig_destructuring(
+                    output,
+                    patterns.element(inner),
+                    to_destructure,
+                    introduced_variables,
+                    type_aliases,
+                    checked_spread_records,
+                    patterns,
+                    types,
+                );
+            }
+        }
+    }
+}
+fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
+    output: &mut String,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    checked_spread_records: &std::collections::HashMap<
+        /* .. start */ lsp_types::Position,
+        Vec<Name>,
+    >,
+    pattern_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
+    origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
+    expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
+) {
+    match expression {
+        SyntaxExpression::Number { value, type_ } => {
+            let Some(syntax_type) = type_ else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins) else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            use std::fmt::Write as _;
+            match &type_ {
+                Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
+                    "p32" => match value.value.parse::<std::num::NonZeroU32>() {
+                        Ok(number) => {
+                            output.push_str("P32 { .positive = ");
+                            let _ = write!(output, "{}", number);
+                            output.push_str(" }");
+                        }
+                        Err(_) => zig_incomplete_expression(output),
+                    },
+                    "u32" => match value.value.parse::<u32>() {
+                        Ok(number) => {
+                            output.push_str("@as(u32, ");
+                            let _ = write!(output, "{}", number);
+                            output.push(')');
+                        }
+                        Err(_) => zig_incomplete_expression(output),
+                    },
+                    "i32" => match value.value.parse::<i32>() {
+                        Ok(number) => {
+                            output.push_str("@as(i32, ");
+                            let _ = write!(output, "{}", number);
+                            output.push(')');
+                        }
+                        Err(_) => zig_incomplete_expression(output),
+                    },
+                    "f32" => match value.value.parse::<f32>() {
+                        Ok(number) => {
+                            output.push_str("@as(f32, ");
+                            let _ = write!(output, "{}", number);
+                            output.push(')');
+                        }
+                        Err(_) => zig_incomplete_expression(output),
+                    },
+                    _ => zig_incomplete_expression(output),
+                },
+                _ => zig_incomplete_expression(output),
+            }
+        }
+        SyntaxExpression::Char {
+            open_quote_start: _,
+            content,
+            content_end: _,
+            closed_quote_exists: _,
+        } => {
+            let Some(content) = content else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            output.push_str("@as(Char, '");
+            output.extend(content.escape_debug());
+            output.push_str("\')");
+        }
+        SyntaxExpression::Str {
+            open_quote_start: _,
+            content,
+            content_end: _,
+            closed_quote_exists: _,
+        } => {
+            if content.is_empty() {
+                zig_incomplete_expression(output);
+                return;
+            };
+            output.push_str("Str.fromComptime(\"");
+            output.extend(content.escape_debug());
+            output.push_str("\")");
+        }
+        SyntaxExpression::Variable(name) => {
+            if let Some(pattern_variable_introduced_start) = pattern_variables.get(&name.value) {
+                name_to_lowercase_local_zig_introduced_at(
+                    output,
+                    &name.value,
+                    *pattern_variable_introduced_start,
+                );
+            } else {
+                name_to_lowercase_local_zig(output, &name.value);
+            }
+        }
+        SyntaxExpression::Call {
+            name,
+            type_arguments,
+            argument,
+        } => {
+            let Some(called_function) = project_fns.get(&name.value) else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            output.push_str("try ");
+            output.push_str(&name_to_lowercase_zig(&name.value));
+            output.push('(');
+            // TODO add type arguments
+            // from checked_calls
+            match argument {
+                None => {
+                    zig_incomplete_expression(output);
+                }
+                Some(argument) => {
+                    syntax_expression_to_zig(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(argument),
+                    );
+                }
+            }
+            output.push(')');
+        }
+        SyntaxExpression::Variant {
+            bar_start: _,
+            type_,
+            name,
+            value,
+        } => {
+            let Some(name) = name else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let Some(SyntaxBracedTypeArgument {
+                open_brace_start: _,
+                type_: Some(syntax_type),
+                closed_brace_start: _,
+            }) = type_
+            else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins) else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            type_to_zig(output, &type_);
+            output.push_str(" { .");
+            output.push_str(&name_to_lowercase_zig(&name.value));
+            output.push_str(" = ");
+            match value {
+                None => {
+                    zig_incomplete_expression(output);
+                }
+                Some(value) => {
+                    syntax_expression_to_zig(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(value),
+                    );
+                }
+            }
+            output.push_str(" }");
+        }
+        SyntaxExpression::Fn {
+            open_bracket_start,
+            parameter,
+            closed_bracket_start: _,
+            result,
+        } => {
+            let Some(syntax_parameter) = parameter else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let Some(checked_local_fn) = checked_local_fns.get(open_bracket_start) else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let function_parameter_name = format!(
+                "@\"%{}:{}\"",
+                open_bracket_start.line, open_bracket_start.character
+            );
+            output.push_str("struct { pub fn f(");
+            output.push_str(&function_parameter_name);
+            output.push_str(": ");
+            type_to_zig(output, &checked_local_fn.result_type);
+            output.push_str(") error{OutOfMemory}!");
+            type_to_zig(output, &checked_local_fn.parameter_type);
+            output.push_str(" {\n");
+            let mut parameter_introduced_variables = std::collections::HashMap::new();
+            syntax_pattern_to_zig_destructuring(
+                output,
+                syntax_parameter,
+                "@\"%\"",
+                &mut parameter_introduced_variables,
+                type_aliases,
+                checked_spread_records,
+                patterns,
+                types,
+            );
+            if parameter_introduced_variables.is_empty() {
+                output.push_str("_ = @\"%\";\n");
+            }
+            output.push_str("return ");
+            match result {
+                None => {
+                    zig_incomplete_expression(output);
+                }
+                Some(result) => {
+                    syntax_expression_to_zig(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(result),
+                    );
+                }
+            }
+            output.push_str(";\n}.f");
+        }
+        SyntaxExpression::RecordEmpty { dot_start: _ } => {
+            output.push_str("{}");
+        }
+        SyntaxExpression::Record { part0, part1_up } => {
+            fn record_spread_variable_name(output: &mut String, position: lsp_types::Position) {
+                use std::fmt::Write as _;
+                output.push_str("@\"%record_spread:");
+                let _ = write!(output, "{}", position.line);
+                output.push_str(":");
+                let _ = write!(output, "{}", position.character);
+                output.push_str("\"");
+            }
+            zig_block_label_for_start_position(output, expression_start(expression));
+            output.push_str(": {\n");
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { .. } => {}
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            output.push_str("const ");
+                            record_spread_variable_name(output, *dot_dot_start);
+                            output.push_str(" = ");
+                            syntax_expression_to_zig(
+                                output,
+                                type_aliases,
+                                project_fns,
+                                expressions,
+                                patterns,
+                                types,
+                                checked_local_fns,
+                                checked_queries,
+                                checked_spread_records,
+                                pattern_variables,
+                                origins,
+                                expressions.element(record),
+                            );
+                            output.push_str(";\n")
+                        }
+                    }
+                }
+            }
+            output.push_str("break :");
+            zig_block_label_for_start_position(output, expression_start(expression));
+            output.push_str(" record(.{ ");
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        if let Some(name) = &name.value {
+                            output.push('.');
+                            output.push_str(&name_to_lowercase_zig(name));
+                            output.push_str(" = ");
+                            match value {
+                                None => {
+                                    zig_incomplete_expression(output);
+                                }
+                                Some(value) => {
+                                    syntax_expression_to_zig(
+                                        output,
+                                        type_aliases,
+                                        project_fns,
+                                        expressions,
+                                        patterns,
+                                        types,
+                                        checked_local_fns,
+                                        checked_queries,
+                                        checked_spread_records,
+                                        pattern_variables,
+                                        origins,
+                                        expressions.element(value),
+                                    );
+                                }
+                            }
+                            output.push_str(", ");
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        if let Some(spread_field_names) = checked_spread_records.get(dot_dot_start)
+                            && record.is_some()
+                        {
+                            for spread_field_name in spread_field_names {
+                                output.push('.');
+                                output.push_str(&name_to_lowercase_zig(spread_field_name));
+                                output.push_str(" = ");
+                                record_spread_variable_name(output, *dot_dot_start);
+                                output.push_str(", ");
+                            }
+                        }
+                    }
+                }
+            }
+            output.push_str(" });\n}");
+        }
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => {
+            let Some(element0) = element0 else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            // does this tuple always coerce?
+            output.push_str(".{");
+            for element in std::iter::once(expressions.element(element0)).chain(
+                element1_up
+                    .iter()
+                    .filter_map(|element| element.element.as_ref()),
+            ) {
+                syntax_expression_to_zig(
+                    output,
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_local_fns,
+                    checked_queries,
+                    checked_spread_records,
+                    pattern_variables,
+                    origins,
+                    element,
+                );
+                output.push_str(", ");
+            }
+            output.push('}');
+        }
+        SyntaxExpression::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => {
+                zig_incomplete_expression(output);
+            }
+            Some(inner) => {
+                syntax_expression_to_zig(
+                    output,
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_local_fns,
+                    checked_queries,
+                    checked_spread_records,
+                    pattern_variables,
+                    origins,
+                    expressions.element(inner),
+                );
+            }
+        },
+        SyntaxExpression::Commented {
+            comments,
+            expression,
+        } => {
+            for comment_line in std::iter::once(&comments.line0).chain(&comments.line1_up) {
+                output.push_str("// ");
+                output.push_str(&comment_line.value);
+                output.push('\n')
+            }
+            match expression {
+                None => {
+                    zig_incomplete_expression(output);
+                }
+                Some(expression) => {
+                    syntax_expression_to_zig(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(expression),
+                    );
+                }
+            }
+        }
+        SyntaxExpression::Query {
+            question_mark_start,
+            queried,
+            cases,
+        } => {
+            let Some(checked_query) = checked_queries.get(question_mark_start) else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let queried_variable_name = {
+                let mut queried_variable_name = String::new();
+                use std::fmt::Write as _;
+                queried_variable_name.push_str("@\"%queried:");
+                let _ = write!(queried_variable_name, "{}", question_mark_start.line);
+                queried_variable_name.push_str(":");
+                let _ = write!(queried_variable_name, "{}", question_mark_start.character);
+                queried_variable_name.push_str("\"");
+                queried_variable_name
+            };
+            zig_block_label_for_start_position(output, *question_mark_start);
+            output.push_str(": {\nconst ");
+            output.push_str(&queried_variable_name);
+            output.push_str(" = ");
+            match queried {
+                None => {
+                    zig_incomplete_expression(output);
+                }
+                Some(queried) => {
+                    syntax_expression_to_zig(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(queried),
+                    );
+                }
+            }
+            output.push_str(";\n");
+            for (case_index, case) in cases.iter().enumerate() {
+                if !checked_query.invalid_case_indexes.contains(&case_index)
+                    && let Some(case_pattern) = &case.pattern
+                {
+                    if cases.len() >= 2 {
+                        output.push_str("if (");
+                        syntax_pattern_to_zig_matches_condition(
+                            output,
+                            case_pattern,
+                            &queried_variable_name,
+                            patterns,
+                        );
+                        output.push_str(") {\n");
+                    }
+                    let mut case_introduced_variables = std::collections::HashMap::new();
+                    syntax_pattern_to_zig_destructuring(
+                        output,
+                        case_pattern,
+                        &queried_variable_name,
+                        &mut case_introduced_variables,
+                        type_aliases,
+                        checked_spread_records,
+                        patterns,
+                        types,
+                    );
+                    output.push_str("break :");
+                    zig_block_label_for_start_position(output, *question_mark_start);
+                    output.push(' ');
+                    match &case.result {
+                        None => {
+                            zig_incomplete_expression(output);
+                        }
+                        Some(case_result) => {
+                            pattern_variables.extend(
+                                case_introduced_variables
+                                    .iter()
+                                    .map(|(name, start)| (*name, *start)),
+                            );
+                            syntax_expression_to_zig(
+                                output,
+                                type_aliases,
+                                project_fns,
+                                expressions,
+                                patterns,
+                                types,
+                                checked_local_fns,
+                                checked_queries,
+                                checked_spread_records,
+                                pattern_variables,
+                                origins,
+                                case_result,
+                            );
+                            pattern_variables
+                                .retain(|v, _| !case_introduced_variables.contains_key(v));
+                        }
+                    }
+                    output.push(';');
+                    if cases.len() >= 2 {
+                        output.push_str("\n}");
+                    }
+                }
+            }
+            output.push_str("\n}");
+            if !checked_query.is_exhaustive {
+                // in case none of the above patterns have matched, crash
+                output.push_str("\nbreak :");
+                zig_block_label_for_start_position(output, *question_mark_start);
+                output.push(' ');
+                zig_incomplete_expression(output);
+                output.push_str(";\n}");
+            }
+        }
+        SyntaxExpression::Origin {
+            caret_key_symbol_start,
+            name,
+            result,
+        } => {
+            let Some(name) = name else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            zig_block_label_for_start_position(output, *caret_key_symbol_start);
+            output.push_str(": {\nconst ");
+            origin_name_to_uppercase_local_zig(output, &name.value);
+            output.push_str(" = enum { origin };\nconst ");
+            name_to_lowercase_local_zig(output, &name.value);
+            output.push_str(" = ");
+            origin_name_to_uppercase_local_zig(output, &name.value);
+            output.push_str(".origin;\nbreak :");
+            zig_block_label_for_start_position(output, *caret_key_symbol_start);
+            output.push(' ');
+            match result {
+                None => {
+                    zig_incomplete_expression(output);
+                }
+                Some(result) => {
+                    syntax_expression_to_zig(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(result),
+                    );
+                }
+            }
+            output.push_str(";\n}")
+        }
+    }
+}
+fn zig_block_label_for_start_position(output: &mut String, position: lsp_types::Position) {
+    use std::fmt::Write as _;
+    output.push_str("@\"%block:");
+    let _ = write!(output, "{}", position.line);
+    output.push_str(":");
+    let _ = write!(output, "{}", position.character);
+    output.push_str("\"");
+}
+fn type_to_zig(output: &mut String, type_: &Type) {
+    match type_ {
+        Type::Variable(name) => name_to_uppercase_local_zig(output, name),
+        Type::Origin(name) => origin_name_to_uppercase_local_zig(output, name),
+        Type::Record(fields) => {
+            if fields.is_empty() {
+                output.push_str(record_empty_zig_type_name);
+            } else {
+                let mut fields_sorted = fields.iter().collect::<Vec<_>>();
+                fields_sorted.sort_by_key(|variant| &variant.name);
+                output.push_str("Record(struct { ");
+                for TypeField { name, value } in fields_sorted {
+                    output.push_str(&name_to_lowercase_zig(name));
+                    output.push_str(": ");
+                    type_to_zig(output, value);
+                    output.push_str(", ");
+                }
+                output.push_str("})")
+            }
+        }
+        Type::Choice(variants) => {
+            if variants.is_empty() {
+                output.push_str(choice_empty_zig_type_name);
+            } else {
+                let mut variants_sorted = variants.iter().collect::<Vec<_>>();
+                variants_sorted.sort_by_key(|variant| &variant.name);
+                variant_names_to_zig_choice_type_name(
+                    output,
+                    variants_sorted.iter().map(|variant| &variant.name),
+                );
+                output.push('(');
+                for TypeVariant { name: _, value } in variants_sorted {
+                    type_to_zig(output, value);
+                    output.push_str(", ");
+                }
+                output.push(')');
+            }
+        }
+        Type::CoreConstruct { name, arguments } => {
+            output.push_str(&name_to_uppercase_zig(name));
+            output.push('(');
+            for argument in arguments {
+                type_to_zig(output, argument);
+                output.push_str(", ");
+            }
+            output.push(')');
+        }
+    }
+}
+fn name_to_uppercase_zig(name: &str) -> String {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_uppercase();
+    }
+    // Not sure if type variables in core code can actually collide with generated type names?
+    match sanitized.as_str() {
+        record_empty_zig_type_name | "OccupancySet" | "OccupancyUnset" | "Record" => {
+            sanitized + "ø"
+        }
+        _ => sanitized,
+    }
+}
+fn name_to_uppercase_local_zig(output: &mut String, name: &str) {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_uppercase();
+    }
+    output.push_str("@\"%");
+    output.push_str(&sanitized);
+    output.push('"');
+}
+fn origin_name_to_uppercase_local_zig(output: &mut String, name: &str) {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_uppercase();
+    }
+    output.push_str("@\"^");
+    output.push_str(&sanitized);
+    output.push('"');
+}
+const record_empty_zig_type_name: &str = "void";
+const choice_empty_zig_type_name: &str = "Choice";
+fn name_to_lowercase_zig(name: &str) -> String {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_lowercase();
+    }
+    if zig_lowercase_keywords.contains(&sanitized.as_str()) {
+        format!("@\"{sanitized}\"")
+    } else if zig_unrelated_top_level_lowercase_names.contains(&sanitized.as_str()) {
+        sanitized + "ø"
+    } else {
+        sanitized
+    }
+}
+fn name_to_lowercase_local_zig(output: &mut String, name: &str) {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_lowercase();
+    }
+    output.push_str("@\"%");
+    output.push_str(&sanitized);
+    output.push('"');
+}
+fn name_to_lowercase_local_zig_introduced_at(
+    output: &mut String,
+    name: &str,
+    introduced_start: lsp_types::Position,
+) {
+    use std::fmt::Write as _;
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_lowercase();
+    }
+    output.push_str("@\"%");
+    output.push_str(&sanitized);
+    output.push_str(":");
+    let _ = write!(output, "{}", introduced_start.line);
+    output.push_str(":");
+    let _ = write!(output, "{}", introduced_start.character);
+    output.push('"');
+}
+const zig_unrelated_top_level_lowercase_names: [&str; 7] = [
+    local_unnamed_function_name,
+    "std",
+    "recordToArray",
+    "u32AddOrOutOfMem",
+    "usizeAddOrOutOfMem",
+    "strideOf",
+    "mathOrderToOrder",
+];
+/// see <https://ziglang.org/documentation/master/#Keyword-Reference>
+const zig_lowercase_keywords: [&str; 46] = [
+    "addrspace",
+    "align",
+    "allowzero",
+    "and",
+    "anyframe",
+    "anytype",
+    "asm",
+    "asm",
+    "asm",
+    "catch",
+    "comptime",
+    "const",
+    "continue",
+    "defer",
+    "else",
+    "enum",
+    "errdefer",
+    "error",
+    "export",
+    "extern",
+    "fn",
+    "for",
+    "if",
+    "inline",
+    "linksection",
+    "noalias",
+    "noinline",
+    "nosuspend",
+    "opaque",
+    "or",
+    "orelse",
+    "packed",
+    "pub",
+    "resume",
+    "return",
+    "struct",
+    "suspend",
+    "switch",
+    "test",
+    "threadlocal",
+    "try",
+    "union",
+    "unreachable",
+    "var",
+    "volatile",
+    "while",
+];
 
 #[derive(Clone, Debug)]
 struct CheckedPatternVariable {

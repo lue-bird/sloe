@@ -208,7 +208,7 @@ pub fn Array(@"%Element": type, @"%Record": type) type {
         }
     ]@"%Element";
 }
-pub fn record_to_array(@"%record": anytype) Array(
+pub fn recordToArray(@"%record": anytype) Array(
     @typeInfo(@TypeOf(@"%record")).@"struct".field_types[0],
     @TypeOf(@"%record"),
 ) {

@@ -57,11 +57,20 @@ Full help:
                 );
                 Ok(())
             }
-            "rs" | "rust" | "r" => {
+            "rust" | "rs" | "r" => {
                 let maybe_input_file_path: Option<String> = full_command.next();
                 let maybe_output_file_path: Option<String> = full_command.next();
                 build_main(
                     CompileOutputLanguage::Rust,
+                    maybe_input_file_path.as_ref().map(std::path::Path::new),
+                    maybe_output_file_path.as_ref().map(std::path::Path::new),
+                )
+            }
+            "zig" | "z" => {
+                let maybe_input_file_path: Option<String> = full_command.next();
+                let maybe_output_file_path: Option<String> = full_command.next();
+                build_main(
+                    CompileOutputLanguage::Zig,
                     maybe_input_file_path.as_ref().map(std::path::Path::new),
                     maybe_output_file_path.as_ref().map(std::path::Path::new),
                 )
@@ -314,6 +323,7 @@ fn default_output_file_path_for_sloe_input_file_path(
 ) -> std::path::PathBuf {
     match language {
         CompileOutputLanguage::Rust => input_file_path.with_extension("rs"),
+        CompileOutputLanguage::Zig => input_file_path.with_extension("zig"),
     }
 }
 fn rust_file_name_derive_mod_name(rust_file_name: &std::path::Path) -> Result<&str, ()> {
@@ -389,6 +399,7 @@ fn check_main(maybe_input_file_path: Option<&std::path::Path>) -> Result<(), ()>
 #[derive(Clone, Copy)]
 enum CompileOutputLanguage {
     Rust,
+    Zig,
 }
 fn build_main(
     output_language: CompileOutputLanguage,
@@ -468,6 +479,12 @@ fn build_main(
             );
             sloe::compiled_rust_to_file_content(&compiled_project, output_mod_name)
         }
+        CompileOutputLanguage::Zig => sloe::checked_project_to_zig(
+            &checked_project,
+            &syntax_expressions,
+            &syntax_patterns,
+            &syntax_types,
+        ),
     };
     if let Err(write_error) = std::fs::write(output_file_path, output_rust_file_string) {
         eprintln!(
