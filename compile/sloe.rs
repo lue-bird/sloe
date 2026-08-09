@@ -5662,7 +5662,7 @@ fn syntax_choice_to_zig(output: &mut String, variant_names: &[Name]) {
         name_to_uppercase_local_zig(output, variant_name);
         output.push_str(", ");
     }
-    output.push_str(" }; }");
+    output.push_str(" }; }\n\n");
 }
 fn variant_names_to_zig_choice_type_name<'a>(
     output: &mut String,
@@ -5685,7 +5685,7 @@ fn project_type_alias_to_zig(
 ) {
     if let Some(documentation) = maybe_documentation {
         for documentation_line in documentation.lines() {
-            output.push_str("/// ");
+            output.push_str("///");
             output.push_str(documentation_line);
             output.push('\n');
         }
@@ -5699,7 +5699,7 @@ fn project_type_alias_to_zig(
     }
     output.push_str(") type { return ");
     type_to_zig(output, aliased_type);
-    output.push_str("; }");
+    output.push_str("; }\n\n");
 }
 fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
     output: &mut String,
@@ -5722,7 +5722,7 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
 ) {
     if let Some(documentation) = maybe_documentation {
         for documentation_line in documentation.lines() {
-            output.push_str("/// ");
+            output.push_str("///");
             output.push_str(documentation_line);
             output.push('\n');
         }
@@ -5777,7 +5777,7 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
             ZigReturnContext::Expression,
         );
     }
-    output.push_str(";\n}");
+    output.push_str(";\n}\n\n");
 }
 fn zig_incomplete_expression(output: &mut String) {
     output.push_str("unreachable"); // or std.process.abort()
@@ -5897,7 +5897,11 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
                 );
             }
         }
-        SyntaxPattern::RecordEmpty { dot_start: _ } => {}
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {
+            output.push_str("_ = ");
+            output.push_str(to_destructure);
+            output.push_str(";\n");
+        }
         SyntaxPattern::Record { part0, part1_up } => {
             for part in std::iter::once(part0).chain(part1_up) {
                 match part {
@@ -6300,7 +6304,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
                 zig_break_start(output, label);
             }
-            output.push_str("struct { pub fn f(@\"%allocator\": std.mem.Allocator, ");
+            output.push_str("struct {\npub fn f(@\"%allocator\": std.mem.Allocator, ");
             output.push_str(&function_parameter_name);
             output.push_str(": ");
             type_to_zig(output, &checked_local_fn.result_type);
@@ -6345,7 +6349,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     );
                 }
             }
-            output.push_str(";\n}.f");
+            output.push_str(";\n}\n}.f");
             if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
                 zig_break_end(output);
             }
@@ -6376,10 +6380,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         SyntaxRecordPart::Spread { .. } => true,
                     });
             let label = match return_context {
-                ZigReturnContext::StatementsFollowedByBreak(label) => {
-                    zig_break_start(output, label);
-                    label
-                }
+                ZigReturnContext::StatementsFollowedByBreak(label) => label,
                 ZigReturnContext::Expression => {
                     let label = expression_start(expression);
                     if any_part_is_spread {
@@ -6761,14 +6762,22 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             origin_name_to_uppercase_local_zig(output, &name.value);
             output.push_str(" = enum { origin };\nconst ");
             name_to_lowercase_local_zig(output, &name.value);
-            output.push_str(" = ");
+            output.push_str(" = record(.{ .origin = ");
             origin_name_to_uppercase_local_zig(output, &name.value);
-            output.push_str(".origin;\n");
+            output.push_str(".origin, .part = record(.{ .");
+            output.push_str(&name_to_lowercase_zig(&name.value));
+            output.push_str(" = {} }) });\n");
             match result {
                 None => {
                     zig_incomplete_expression(output);
                 }
                 Some(result) => {
+                    origins.insert(
+                        &name.value,
+                        CheckedOrigin {
+                            origin_start: *caret_key_symbol_start,
+                        },
+                    );
                     syntax_expression_to_zig(
                         output,
                         type_aliases,
