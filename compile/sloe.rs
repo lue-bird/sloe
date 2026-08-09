@@ -5774,6 +5774,7 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
             &mut parameter_introduced_variables,
             &mut std::collections::HashMap::new(),
             syntax_result,
+            ZigReturnContext::Expression,
         );
     }
     output.push_str(";\n}");
@@ -5990,6 +5991,10 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
         }
     }
 }
+enum ZigReturnContext {
+    Expression,
+    StatementsFollowedByBreak(lsp_types::Position),
+}
 fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
     output: &mut String,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
@@ -6007,6 +6012,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
     pattern_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
+    return_context: ZigReturnContext,
 ) {
     match expression {
         SyntaxExpression::Number { value, type_ } => {
@@ -6023,33 +6029,65 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
                     "p32" => match value.value.parse::<std::num::NonZeroU32>() {
                         Ok(number) => {
+                            if let ZigReturnContext::StatementsFollowedByBreak(label) =
+                                return_context
+                            {
+                                zig_break_start(output, label);
+                            }
                             output.push_str("P32 { .positive = ");
                             let _ = write!(output, "{}", number);
                             output.push_str(" }");
+                            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                                zig_break_end(output);
+                            }
                         }
                         Err(_) => zig_incomplete_expression(output),
                     },
                     "u32" => match value.value.parse::<u32>() {
                         Ok(number) => {
+                            if let ZigReturnContext::StatementsFollowedByBreak(label) =
+                                return_context
+                            {
+                                zig_break_start(output, label);
+                            }
                             output.push_str("@as(u32, ");
                             let _ = write!(output, "{}", number);
                             output.push(')');
+                            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                                zig_break_end(output);
+                            }
                         }
                         Err(_) => zig_incomplete_expression(output),
                     },
                     "i32" => match value.value.parse::<i32>() {
                         Ok(number) => {
+                            if let ZigReturnContext::StatementsFollowedByBreak(label) =
+                                return_context
+                            {
+                                zig_break_start(output, label);
+                            }
                             output.push_str("@as(i32, ");
                             let _ = write!(output, "{}", number);
                             output.push(')');
+                            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                                zig_break_end(output);
+                            }
                         }
                         Err(_) => zig_incomplete_expression(output),
                     },
                     "f32" => match value.value.parse::<f32>() {
                         Ok(number) => {
+                            if let ZigReturnContext::StatementsFollowedByBreak(label) =
+                                return_context
+                            {
+                                zig_break_start(output, label);
+                            }
                             output.push_str("@as(f32, ");
                             let _ = write!(output, "{}", number);
                             output.push(')');
+                            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                                zig_break_end(output);
+                            }
                         }
                         Err(_) => zig_incomplete_expression(output),
                     },
@@ -6064,6 +6102,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             content_end: _,
             closed_quote_exists: _,
         } => {
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             let Some(content) = content else {
                 zig_incomplete_expression(output);
                 return;
@@ -6071,6 +6112,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             output.push_str("@as(Char, '");
             output.extend(content.escape_debug());
             output.push_str("\')");
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
+            }
         }
         SyntaxExpression::Str {
             open_quote_start: _,
@@ -6078,6 +6122,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             content_end: _,
             closed_quote_exists: _,
         } => {
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             if content.is_empty() {
                 zig_incomplete_expression(output);
                 return;
@@ -6085,8 +6132,14 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             output.push_str("Str.fromComptime(\"");
             output.extend(content.escape_debug());
             output.push_str("\")");
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
+            }
         }
         SyntaxExpression::Variable(name) => {
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             if let Some(pattern_variable_introduced_start) = pattern_variables.get(&name.value) {
                 name_to_lowercase_local_zig_introduced_at(
                     output,
@@ -6095,6 +6148,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 );
             } else {
                 name_to_lowercase_local_zig(output, &name.value);
+            }
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
             }
         }
         SyntaxExpression::Call {
@@ -6122,6 +6178,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         }),
                 ),
             );
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             output.push_str("try ");
             output.push_str(&name_to_lowercase_zig(&name.value));
             output.push('(');
@@ -6151,10 +6210,14 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(argument),
+                        ZigReturnContext::Expression,
                     );
                 }
             }
             output.push(')');
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
+            }
         }
         SyntaxExpression::Variant {
             bar_start: _,
@@ -6179,6 +6242,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             type_to_zig(output, &type_);
             output.push_str(" { .");
             output.push_str(&name_to_lowercase_zig(&name.value));
@@ -6202,10 +6268,14 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(value),
+                        ZigReturnContext::Expression,
                     );
                 }
             }
             output.push_str(" }");
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
+            }
         }
         SyntaxExpression::Fn {
             open_bracket_start,
@@ -6225,6 +6295,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 "@\"%{}:{}\"",
                 open_bracket_start.line, open_bracket_start.character
             );
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             output.push_str("struct { pub fn f(@\"%allocator\": std.mem.Allocator, ");
             output.push_str(&function_parameter_name);
             output.push_str(": ");
@@ -6266,13 +6339,23 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(result),
+                        ZigReturnContext::Expression,
                     );
                 }
             }
             output.push_str(";\n}.f");
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
+            }
         }
         SyntaxExpression::RecordEmpty { dot_start: _ } => {
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             output.push_str("{}");
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
+            }
         }
         SyntaxExpression::Record { part0, part1_up } => {
             fn record_spread_variable_name(output: &mut String, position: lsp_types::Position) {
@@ -6283,72 +6366,71 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 let _ = write!(output, "{}", position.character);
                 output.push_str("\"");
             }
-            zig_block_label_for_start_position(output, expression_start(expression));
-            output.push_str(": {\n");
-            for part in std::iter::once(part0).chain(part1_up) {
-                match part {
-                    SyntaxRecordPart::Field { .. } => {}
-                    SyntaxRecordPart::Spread {
-                        dot_dot_start,
-                        record,
-                    } => {
-                        if let Some(record) = record {
-                            output.push_str("const ");
-                            record_spread_variable_name(output, *dot_dot_start);
-                            output.push_str(" = ");
-                            syntax_expression_to_zig(
-                                output,
-                                type_aliases,
-                                project_fns,
-                                expressions,
-                                patterns,
-                                types,
-                                checked_calls,
-                                checked_local_fns,
-                                checked_queries,
-                                checked_spread_records,
-                                pattern_variables,
-                                origins,
-                                expressions.element(record),
-                            );
-                            output.push_str(";\n")
+            let any_part_is_spread =
+                std::iter::once(part0)
+                    .chain(part1_up)
+                    .any(|part| match part {
+                        SyntaxRecordPart::Field { .. } => false,
+                        SyntaxRecordPart::Spread { .. } => true,
+                    });
+            let label = match return_context {
+                ZigReturnContext::StatementsFollowedByBreak(label) => {
+                    zig_break_start(output, label);
+                    label
+                }
+                ZigReturnContext::Expression => {
+                    let label = expression_start(expression);
+                    if any_part_is_spread {
+                        zig_block_start(output, label);
+                    }
+                    label
+                }
+            };
+            if any_part_is_spread {
+                for part in std::iter::once(part0).chain(part1_up) {
+                    match part {
+                        SyntaxRecordPart::Field { .. } => {}
+                        SyntaxRecordPart::Spread {
+                            dot_dot_start,
+                            record,
+                        } => {
+                            if let Some(record) = record {
+                                output.push_str("const ");
+                                record_spread_variable_name(output, *dot_dot_start);
+                                output.push_str(" = ");
+                                syntax_expression_to_zig(
+                                    output,
+                                    type_aliases,
+                                    project_fns,
+                                    expressions,
+                                    patterns,
+                                    types,
+                                    checked_calls,
+                                    checked_local_fns,
+                                    checked_queries,
+                                    checked_spread_records,
+                                    pattern_variables,
+                                    origins,
+                                    expressions.element(record),
+                                    ZigReturnContext::Expression,
+                                );
+                                output.push_str(";\n")
+                            }
                         }
                     }
                 }
             }
-            output.push_str("break :");
-            zig_block_label_for_start_position(output, expression_start(expression));
-            output.push_str(" record(.{ ");
+            enum Setter<'a, Expressions> {
+                Value(Option<&'a core::Slot<Expressions>>),
+                FieldInSpread(lsp_types::Position),
+            }
+            let mut sorted_field_setters =
+                std::collections::BTreeMap::<&str, Setter<Expressions>>::new();
             for part in std::iter::once(part0).chain(part1_up) {
                 match part {
                     SyntaxRecordPart::Field { name, value } => {
                         if let Some(name) = &name.value {
-                            output.push('.');
-                            output.push_str(&name_to_lowercase_zig(name));
-                            output.push_str(" = ");
-                            match value {
-                                None => {
-                                    zig_incomplete_expression(output);
-                                }
-                                Some(value) => {
-                                    syntax_expression_to_zig(
-                                        output,
-                                        type_aliases,
-                                        project_fns,
-                                        expressions,
-                                        patterns,
-                                        types,
-                                        checked_calls,
-                                        checked_local_fns,
-                                        checked_queries,
-                                        checked_spread_records,
-                                        pattern_variables,
-                                        origins,
-                                        expressions.element(value),
-                                    );
-                                }
-                            }
-                            output.push_str(", ");
+                            sorted_field_setters.insert(name, Setter::Value(value.as_ref()));
                         }
                     }
                     SyntaxRecordPart::Spread {
@@ -6359,20 +6441,77 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                             && record.is_some()
                         {
                             for spread_field_name in spread_field_names {
-                                let zig_field_name = name_to_lowercase_zig(spread_field_name);
-                                output.push('.');
-                                output.push_str(&zig_field_name);
-                                output.push_str(" = ");
-                                record_spread_variable_name(output, *dot_dot_start);
-                                output.push('.');
-                                output.push_str(&zig_field_name);
-                                output.push_str(", ");
+                                sorted_field_setters.insert(
+                                    &spread_field_name,
+                                    Setter::FieldInSpread(*dot_dot_start),
+                                );
                             }
                         }
                     }
                 }
             }
-            output.push_str(" });\n}");
+            if match return_context {
+                ZigReturnContext::Expression => any_part_is_spread,
+                ZigReturnContext::StatementsFollowedByBreak(_) => true,
+            } {
+                zig_break_start(output, label);
+            }
+            output.push_str("record(.{ ");
+            for (name, part) in sorted_field_setters {
+                match part {
+                    Setter::Value(value) => {
+                        output.push('.');
+                        output.push_str(&name_to_lowercase_zig(name));
+                        output.push_str(" = ");
+                        match value {
+                            None => {
+                                zig_incomplete_expression(output);
+                            }
+                            Some(value) => {
+                                syntax_expression_to_zig(
+                                    output,
+                                    type_aliases,
+                                    project_fns,
+                                    expressions,
+                                    patterns,
+                                    types,
+                                    checked_calls,
+                                    checked_local_fns,
+                                    checked_queries,
+                                    checked_spread_records,
+                                    pattern_variables,
+                                    origins,
+                                    expressions.element(value),
+                                    ZigReturnContext::Expression,
+                                );
+                            }
+                        }
+                        output.push_str(", ");
+                    }
+                    Setter::FieldInSpread(dot_dot_start) => {
+                        let zig_field_name = name_to_lowercase_zig(name);
+                        output.push('.');
+                        output.push_str(&zig_field_name);
+                        output.push_str(" = ");
+                        record_spread_variable_name(output, dot_dot_start);
+                        output.push('.');
+                        output.push_str(&zig_field_name);
+                        output.push_str(", ");
+                    }
+                }
+            }
+            output.push_str(" })");
+            match return_context {
+                ZigReturnContext::Expression => {
+                    if any_part_is_spread {
+                        zig_break_end(output);
+                        zig_block_end(output);
+                    }
+                }
+                ZigReturnContext::StatementsFollowedByBreak(_) => {
+                    zig_break_end(output);
+                }
+            }
         }
         SyntaxExpression::Array {
             semicolon_start: _,
@@ -6383,6 +6522,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
+            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
+                zig_break_start(output, label);
+            }
             // does this tuple always coerce?
             output.push_str(".{");
             for element in std::iter::once(expressions.element(element0)).chain(
@@ -6404,10 +6546,14 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     pattern_variables,
                     origins,
                     element,
+                    ZigReturnContext::Expression,
                 );
                 output.push_str(", ");
             }
             output.push('}');
+            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
+                zig_break_end(output);
+            }
         }
         SyntaxExpression::Parenthesized {
             open_paren_start: _,
@@ -6432,6 +6578,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     pattern_variables,
                     origins,
                     expressions.element(inner),
+                    return_context,
                 );
             }
         },
@@ -6463,6 +6610,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(expression),
+                        return_context,
                     );
                 }
             }
@@ -6486,8 +6634,14 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 queried_variable_name.push_str("\"");
                 queried_variable_name
             };
-            zig_block_label_for_start_position(output, *question_mark_start);
-            output.push_str(": {\nconst ");
+            let label = match return_context {
+                ZigReturnContext::Expression => {
+                    zig_block_start(output, *question_mark_start);
+                    *question_mark_start
+                }
+                ZigReturnContext::StatementsFollowedByBreak(label) => label,
+            };
+            output.push_str("const ");
             output.push_str(&queried_variable_name);
             output.push_str(" = ");
             match queried {
@@ -6509,6 +6663,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(queried),
+                        ZigReturnContext::Expression,
                     );
                 }
             }
@@ -6538,9 +6693,6 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         patterns,
                         types,
                     );
-                    output.push_str("break :");
-                    zig_block_label_for_start_position(output, *question_mark_start);
-                    output.push(' ');
                     match &case.result {
                         None => {
                             zig_incomplete_expression(output);
@@ -6565,25 +6717,26 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 pattern_variables,
                                 origins,
                                 case_result,
+                                ZigReturnContext::StatementsFollowedByBreak(label),
                             );
                             pattern_variables
                                 .retain(|v, _| !case_introduced_variables.contains_key(v));
                         }
                     }
-                    output.push(';');
                     if cases.len() >= 2 {
                         output.push_str("\n}");
                     }
                 }
             }
-            output.push_str("\n}");
             if !checked_query.is_exhaustive {
                 // in case none of the above patterns have matched, crash
-                output.push_str("\nbreak :");
-                zig_block_label_for_start_position(output, *question_mark_start);
-                output.push(' ');
+                output.push_str("\n");
+                zig_break_start(output, label);
                 zig_incomplete_expression(output);
-                output.push_str(";\n}");
+                zig_break_end(output);
+            }
+            if let ZigReturnContext::Expression = return_context {
+                zig_block_end(output);
             }
         }
         SyntaxExpression::Origin {
@@ -6595,16 +6748,20 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
-            zig_block_label_for_start_position(output, *caret_key_symbol_start);
-            output.push_str(": {\nconst ");
+            let label = match return_context {
+                ZigReturnContext::StatementsFollowedByBreak(label) => label,
+                ZigReturnContext::Expression => {
+                    zig_block_start(output, *caret_key_symbol_start);
+                    *caret_key_symbol_start
+                }
+            };
+            output.push_str("const ");
             origin_name_to_uppercase_local_zig(output, &name.value);
             output.push_str(" = enum { origin };\nconst ");
             name_to_lowercase_local_zig(output, &name.value);
             output.push_str(" = ");
             origin_name_to_uppercase_local_zig(output, &name.value);
-            output.push_str(".origin;\nbreak :");
-            zig_block_label_for_start_position(output, *caret_key_symbol_start);
-            output.push(' ');
+            output.push_str(".origin;\n");
             match result {
                 None => {
                     zig_incomplete_expression(output);
@@ -6624,12 +6781,28 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(result),
+                        ZigReturnContext::StatementsFollowedByBreak(label),
                     );
                 }
             }
-            output.push_str(";\n}")
+            zig_block_end(output);
         }
     }
+}
+fn zig_block_start(output: &mut String, label: lsp_types::Position) {
+    zig_block_label_for_start_position(output, label);
+    output.push_str(": {\n");
+}
+fn zig_block_end(output: &mut String) {
+    output.push_str("\n}");
+}
+fn zig_break_start(output: &mut String, label: lsp_types::Position) {
+    output.push_str("break :");
+    zig_block_label_for_start_position(output, label);
+    output.push(' ');
+}
+fn zig_break_end(output: &mut String) {
+    output.push(';');
 }
 fn zig_block_label_for_start_position(output: &mut String, position: lsp_types::Position) {
     use std::fmt::Write as _;

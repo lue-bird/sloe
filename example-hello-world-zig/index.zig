@@ -17,4 +17,5 @@ pub fn main(init: std.process.Init) !void {
         try writer.interface.print("{u}", .{greeting_char});
     }
     try writer.flush();
+    greeting.buf.rid(init.gpa);
 }
