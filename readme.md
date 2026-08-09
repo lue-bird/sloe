@@ -626,41 +626,13 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- add more zig examples
+
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- implement conversion to zig. current annoyances (non-blockers, though):
-    - zig plans to add an `infer` syntax to replace the current `anytype`. This will (I think) enable us to not store any information about checked function call type variable replacements
-    - pattern matching. Probably easiest to start with
-      ```zig
-      if (some_magic(case0_pattern, value)) |case0_value| ...
-      else if (some_magic(case1_pattern, value)) |case1_value| ...
-      else unreachable
-      ```
-      where `some_magic(pattern, value)` is some expression like
-      ```zig
-      block_012000120012: {
-          const @"%matched_01022013:023130" = ..value..;
-          const @"intermediate_03020:2340" = switch @"%matched_01022013:023130".field0 {
-              .variant => |@"intermediate_03020:2340"| @"intermediate_03020:2340",
-              else => break :block_012000120012 null
-          };
-          const @"intermediate_03020:2345" = switch @"%matched_01022013:023130".field0 {
-              .variant => |@"intermediate_03020:2345"| @"intermediate_03020:2345",
-              else => break :block_012000120012 null
-          }
-          break :block_012000120012 .{
-              .pattern_variable0 = @"%intermediate_03020:2340",
-              .pattern_variable1 = @"%intermediate_03020:2345"
-          };
-      }
-      ```
-      (basically nested switches on the original value as a variable and temporaries, both field-accessed if necessary. Finally returning all pattern variables in an anonymous struct)
-      and then consider switching to manually generated decision-tree-like code with nested switches if the former doesn't optimize well (it kinda should, though)
-
-- fix bugs and TODOs
-
+- try to find and fix bugs and resolve todo comments
 
 # not coherently formulated thoughts
 In rust, collections tend to own their element data, so safely keeping references reaching inside is tough.
