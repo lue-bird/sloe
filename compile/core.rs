@@ -2224,6 +2224,7 @@ pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> Record·a·b<Fn<In, Out>, Fn<In, Out
     Record·a·b { a: fn_, b: fn_ }
 }
 pub fn fn_rid<In, Out>(_: Fn<In, Out>) -> Record {}
+#[inline]
 pub fn call<In, Out>(to_call: Record·fnø·inø<Fn<In, Out>, In>) -> Out {
     (to_call.fnø)(to_call.inø)
 }

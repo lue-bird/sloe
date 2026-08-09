@@ -1199,7 +1199,7 @@ pub fn fn_dup(
 ) error{OutOfMemory}!Record(struct { a: Fn(@"%In", @"%Out"), b: Fn(@"%In", @"%Out") }) {
     return .{ .a = @"%function", .b = @"%function" };
 }
-pub fn call(
+pub inline fn call(
     @"%In": type,
     @"%Out": type,
     @"%": Record(struct { @"fn": Fn(@"%In", @"%Out"), in: @"%In" }),
