@@ -6188,7 +6188,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 type_to_zig(output, &type_variable_argument);
                 output.push_str(", ");
             }
-            if is_core_fn_taking_allocator_in_zig(&name.value) {
+            if is_core_fn_taking_allocator_in_zig(&name.value)
+                || !core_fns.contains_key(&name.value)
+            {
                 output.push_str("@\"%allocator\", ");
             }
             match argument {
@@ -13354,7 +13356,14 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
     });
 pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
     match fn_name {
-        "Unset-slice-rid"
+        "Call"
+        | "Origin-erase"
+        | "Origin-unerase"
+        | "Span-fold"
+        | "Opt-span-fold"
+        | "Unset-span-fold"
+        | "Opt-unset-span-fold"
+        | "Unset-slice-rid"
         | "Unset-slice-cast-or-rid-and-allocate"
         | "Unset-slice-allocate-length"
         | "Buf-origin-unerase-with-elements"

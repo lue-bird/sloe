@@ -8,7 +8,11 @@ test "various trivial" {
     try core.f32_rid(-1.1);
     try core.char_rid('?');
     try core.str_rid(core.Str.fromComptime("moin"));
-    try core.fn_rid(i32, i32, core.i32_negate_clamp);
+    try core.fn_rid(i32, i32, struct {
+        pub fn f(_: std.mem.Allocator, n: core.I32) error{OutOfMemory}!core.I32 {
+            return core.i32_negate_clamp(n);
+        }
+    }.f);
     {
         const example_origin: core.Origin(enum { example }) = .example;
         try core.origin_rid(@TypeOf(example_origin), example_origin);
@@ -38,8 +42,13 @@ test "various trivial" {
         try std.testing.expectEqual(.{ duped.a.utf8.bytes, duped.b.utf8.bytes }, .{ "moin", "moin" });
     }
     {
-        const duped = try core.fn_dup(i32, i32, core.i32_negate_clamp);
-        try std.testing.expectEqual(.{ duped.a, duped.b }, .{ core.i32_negate_clamp, core.i32_negate_clamp });
+        const example_fn = struct {
+            pub fn f(_: std.mem.Allocator, n: core.I32) error{OutOfMemory}!core.I32 {
+                return core.i32_negate_clamp(n);
+            }
+        }.f;
+        const duped = try core.fn_dup(i32, i32, example_fn);
+        try std.testing.expectEqual(.{ duped.a, duped.b }, .{ example_fn, example_fn });
     }
     try std.testing.expectEqual(core.P32{ .positive = 20 }, core.p32_add_clamp(.{ .p = core.P32{ .positive = 11 }, .u = 9 }));
     try std.testing.expectEqual(20, core.u32_add_clamp(.{ .a = 11, .b = 9 }));
@@ -183,7 +192,7 @@ test "str_end empty before end" {
 }
 test "choice_empty_to" {
     const choice_empty_rid: core.Fn(core.Choice, void) = struct {
-        pub fn f(imp: core.Choice) error{OutOfMemory}!void {
+        pub fn f(_: std.mem.Allocator, imp: core.Choice) error{OutOfMemory}!void {
             try core.choice_empty_to(void, imp);
         }
     }.f;
@@ -259,12 +268,12 @@ test "span_end_of_length_positive, given length > given span length" {
 test "span_fold up" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const index_sum = try core.opt_span_fold(ExampleOrigin, u32, .{
+    const index_sum = try core.opt_span_fold(ExampleOrigin, u32, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
         .state = 0,
         .step = struct {
-            pub fn step(current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 })) error{OutOfMemory}!u32 {
+            pub fn step(_: std.mem.Allocator, current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 })) error{OutOfMemory}!u32 {
                 return current.state +| current.slot.index;
             }
         }.step,
@@ -274,20 +283,26 @@ test "span_fold up" {
 test "span_fold down" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    var reverse_indexes_array_list = try core.opt_span_fold(ExampleOrigin, std.ArrayList(u32), .{
-        .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
-        .direction = .{ .down = {} },
-        .state = std.ArrayList(u32).empty,
-        .step = struct {
-            pub fn step(
-                current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: std.ArrayList(u32) }),
-            ) error{OutOfMemory}!std.ArrayList(u32) {
-                var modified_array_list = current.state;
-                try modified_array_list.append(std.testing.allocator, current.slot.index);
-                return modified_array_list;
-            }
-        }.step,
-    });
+    var reverse_indexes_array_list = try core.opt_span_fold(
+        ExampleOrigin,
+        std.ArrayList(u32),
+        std.testing.allocator,
+        .{
+            .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
+            .direction = .{ .down = {} },
+            .state = std.ArrayList(u32).empty,
+            .step = struct {
+                pub fn step(
+                    _: std.mem.Allocator,
+                    current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: std.ArrayList(u32) }),
+                ) error{OutOfMemory}!std.ArrayList(u32) {
+                    var modified_array_list = current.state;
+                    try modified_array_list.append(std.testing.allocator, current.slot.index);
+                    return modified_array_list;
+                }
+            }.step,
+        },
+    );
     try std.testing.expectEqualSlices(
         u32,
         &.{ 13, 12, 11, 10, 9, 8, 7, 6, 5, 4 },
@@ -315,7 +330,7 @@ test "unset_span_end" {
 }
 test "array create" {
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
-    const example_array0 = core.record_to_array(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
     try std.testing.expectEqualSlices(u32, &[_]u32{ 0, 2 }, &example_array0);
     // we can just specify them as arrays directly
     const example_array1 = [_]u32{ @as(u32, 0), @as(u32, 2) };
@@ -324,7 +339,7 @@ test "array create" {
     // or as anonymus structs (unrelated record type, but nobody can care)
     // Which means sloe doesn't even need to collect and generate record types etc.
     // I do not think this is possible in rust but happy to be proven wrong
-    const example_array2 = core.record_to_array(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) });
+    const example_array2 = core.recordToArray(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) });
     try std.testing.expectEqualSlices(u32, &example_array2, &example_array0);
     try std.testing.expectEqual(@TypeOf(example_array2), @TypeOf(example_array0));
 }
@@ -333,7 +348,7 @@ test "buf_add_array" {
     const example_origin: ExampleOrigin = .origin;
     const example_buf = try core.buf_empty(u32, ExampleOrigin, example_origin);
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
-    const example_array0 = core.record_to_array(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
     const with_array = try core.buf_add_array(u32, ExampleOrigin, ExampleArrayRecord, std.testing.allocator, .{
         .buf = example_buf,
         .new = example_array0,
@@ -345,7 +360,7 @@ test "buf_opt_span_add_array" {
     const example_origin: ExampleOrigin = .origin;
     const example_buf = try core.buf_empty(u32, ExampleOrigin, example_origin);
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
-    const example_array0 = core.record_to_array(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
     const with_array = try core.buf_opt_span_add_array(u32, ExampleOrigin, ExampleArrayRecord, std.testing.allocator, .{
         .buf = example_buf,
         .span = .{ .no = {} },
@@ -708,7 +723,7 @@ test "buf origin erase with elements, same size and alignment" {
             .buf = buf,
             .eraser = eraser,
             .element_erase = struct {
-                pub fn f(erase: core.Record(struct {
+                pub fn f(_: std.mem.Allocator, erase: core.Record(struct {
                     element: u32,
                     eraser: core.Origin_eraser(@TypeOf(origin)),
                 })) error{OutOfMemory}!core.Record(struct {
@@ -731,7 +746,7 @@ test "buf origin erase with elements, same size and alignment" {
             .buf = buf_erased,
             .uneraser = uneraser,
             .element_unerase = struct {
-                pub fn f(unerase: core.Record(struct {
+                pub fn f(_: std.mem.Allocator, unerase: core.Record(struct {
                     element: u32,
                     uneraser: core.Origin_uneraser(@TypeOf(origin)),
                 })) error{OutOfMemory}!core.Record(struct {
@@ -762,7 +777,7 @@ test "buf origin erase with elements, different size and alignment" {
             .buf = buf,
             .eraser = eraser,
             .element_erase = struct {
-                pub fn f(erase: core.Record(struct {
+                pub fn f(_: std.mem.Allocator, erase: core.Record(struct {
                     element: u32,
                     eraser: core.Origin_eraser(@TypeOf(origin)),
                 })) error{OutOfMemory}!core.Record(struct {
@@ -785,7 +800,7 @@ test "buf origin erase with elements, different size and alignment" {
             .buf = buf_erased,
             .uneraser = uneraser,
             .element_unerase = struct {
-                pub fn f(unerase: core.Record(struct {
+                pub fn f(_: std.mem.Allocator, unerase: core.Record(struct {
                     element: u64,
                     uneraser: core.Origin_uneraser(@TypeOf(origin)),
                 })) error{OutOfMemory}!core.Record(struct {
@@ -815,10 +830,11 @@ test "origin_erase span + buf, then origin_unerase" {
         void,
         struct { @TypeOf(buf), @TypeOf(span) },
         struct { core.Buf(core.Erased, u32), core.Span(core.Erased) },
+        std.testing.allocator,
         .{
             .value = .{ buf, span },
             .erase = struct {
-                pub fn f(erase: core.Record(struct {
+                pub fn f(_: std.mem.Allocator, erase: core.Record(struct {
                     value: struct { @TypeOf(buf), @TypeOf(span) },
                     eraser: core.Origin_eraser(@TypeOf(origin)),
                 })) error{OutOfMemory}!struct { core.Buf(core.Erased, u32), core.Span(core.Erased) } {
@@ -848,11 +864,12 @@ test "origin_erase span + buf, then origin_unerase" {
             core.Span(@TypeOf(new_origin)),
         },
         struct { core.Buf(core.Erased, u32), core.Span(core.Erased) },
+        std.testing.allocator,
         .{
             .erased = erased,
             .origin = new_origin,
             .unerase = struct {
-                pub fn f(unerase: core.Record(struct {
+                pub fn f(_: std.mem.Allocator, unerase: core.Record(struct {
                     uneraser: core.Origin_uneraser(@TypeOf(new_origin)),
                     value: struct { core.Buf(core.Erased, u32), core.Span(core.Erased) },
                 })) error{OutOfMemory}!struct {
@@ -871,7 +888,7 @@ test "origin_erase span + buf, then origin_unerase" {
                 }
             }.f,
             .value_rid = struct {
-                pub fn f(_: struct {
+                pub fn f(_: std.mem.Allocator, _: struct {
                     core.Buf(@TypeOf(new_origin), u32),
                     core.Span(@TypeOf(new_origin)),
                 }) error{OutOfMemory}!void {}
@@ -965,4 +982,16 @@ fn expect_fn(thing: anytype) !void {
         .@"fn" => {},
         else => std.testing.expect(false),
     };
+}
+
+test "anonymous functions can access context types" {
+    var allocator = std.testing.allocator;
+    const T = @TypeOf(allocator);
+    const function = struct {
+        pub fn f() T {
+            return std.testing.allocator;
+        }
+    }.f;
+    allocator = std.testing.allocator;
+    _ = function();
 }
