@@ -2404,6 +2404,7 @@ If you wanted to start a project declaration, try one of:
         );
     }
 
+    // maybe instead start from 0 instead of cloning every time?
     let mut checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias> =
         core_type_aliases.clone();
     checked_type_aliases.reserve(project_type_by_graph_node.len());
@@ -2430,9 +2431,12 @@ If you wanted to start a project declaration, try one of:
         }
     }
 
+    // maybe instead start from 0 instead of cloning every time?
     let mut checked_project_fns: std::collections::HashMap<Name, CheckedProjectFn> =
         core_fns.clone();
     checked_project_fns.reserve(project_fn_graph.len());
+    let mut checked_calls: std::collections::HashMap<lsp_types::Position, CheckedCall> =
+        std::collections::HashMap::new();
     let mut checked_local_fns: std::collections::HashMap<lsp_types::Position, CheckedLocalFn> =
         std::collections::HashMap::new();
     let mut checked_queries: std::collections::HashMap<lsp_types::Position, CheckedQuery> =
@@ -2476,6 +2480,7 @@ If you wanted to start a project declaration, try one of:
                     patterns,
                     types,
                     project_fn,
+                    &mut checked_calls,
                     &mut checked_local_fns,
                     &mut checked_queries,
                     &mut checked_spread_records,
@@ -2495,6 +2500,7 @@ If you wanted to start a project declaration, try one of:
         choices_used: choices_used,
         checked_type_aliases: checked_type_aliases,
         checked_project_fns: checked_project_fns,
+        checked_calls: checked_calls,
         checked_local_fns: checked_local_fns,
         checked_queries: checked_queries,
         checked_spread_records: checked_spread_records,
@@ -2517,6 +2523,7 @@ pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     pub choices_used: std::collections::HashSet<Vec<Name>>,
     pub checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias>,
     pub checked_project_fns: std::collections::HashMap<Name, CheckedProjectFn>,
+    pub checked_calls: std::collections::HashMap<lsp_types::Position, CheckedCall>,
     pub checked_local_fns: std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     pub checked_queries: std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     pub checked_spread_records: std::collections::HashMap<lsp_types::Position, Vec<Name>>,
@@ -2951,6 +2958,7 @@ pub fn checked_project_to_rust<Expressions, Patterns, Types>(
         choices_used,
         checked_type_aliases,
         checked_project_fns,
+        checked_calls: _,
         checked_local_fns,
         checked_queries,
         checked_spread_records,
@@ -3358,6 +3366,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
     project_fn: SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
+    checked_calls: &mut std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &mut std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
@@ -3460,6 +3469,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
         &mut std::collections::HashMap::new(),
         &mut std::collections::HashMap::new(),
         syntax_result,
+        checked_calls,
         checked_local_fns,
         checked_queries,
         checked_spread_records,
@@ -3668,7 +3678,7 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
                         syntax_type_to_type(argument_type, type_aliases, types, origins)
                     })
                     .collect::<Option<Vec<Type>>>()?;
-                type_construct_resolve_type_alias(origin_type_alias, &argument_types)
+                type_construct_resolve_type_alias(origin_type_alias, argument_types)
             } else {
                 None
             }
@@ -3878,7 +3888,7 @@ pub fn syntax_type_check<Types>(
                         return None;
                     }
                 }
-                type_construct_resolve_type_alias(origin_type_alias, &argument_types)
+                type_construct_resolve_type_alias(origin_type_alias, argument_types)
             } else {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
@@ -4077,7 +4087,7 @@ pub fn syntax_type_check<Types>(
 }
 fn type_construct_resolve_type_alias(
     origin_type_alias: &CheckedTypeAlias,
-    argument_types: &[Type],
+    argument_types: Vec<Type>,
 ) -> Option<Type> {
     let Some(type_alias_type) = &origin_type_alias.type_ else {
         return None;
@@ -4085,26 +4095,25 @@ fn type_construct_resolve_type_alias(
     if origin_type_alias.parameters.is_empty() {
         return Some(type_alias_type.clone());
     }
-    let type_parameter_replacements: std::collections::BTreeMap<&str, std::borrow::Cow<Type>> =
-        origin_type_alias
-            .parameters
-            .iter()
-            .map(|n| n.as_str())
-            .zip(argument_types.iter().map(std::borrow::Cow::Borrowed))
-            .collect::<std::collections::BTreeMap<_, _>>();
+    let type_parameter_replacements: std::collections::BTreeMap<Name, Type> = origin_type_alias
+        .parameters
+        .iter()
+        .cloned()
+        .zip(argument_types)
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut peeled: Type = type_alias_type.clone();
     type_replace_variables(&type_parameter_replacements, &mut peeled);
     Some(peeled)
 }
 fn type_replace_variables(
-    type_parameter_replacements: &std::collections::BTreeMap<&str, std::borrow::Cow<Type>>,
+    type_parameter_replacements: &std::collections::BTreeMap<Name, Type>,
     type_: &mut Type,
 ) {
     match type_ {
         Type::Variable(variable) => {
             if let Some(replacement_type_node) = type_parameter_replacements.get(variable.as_str())
             {
-                *type_ = replacement_type_node.as_ref().clone();
+                *type_ = replacement_type_node.clone();
             }
         }
         Type::Origin(_) => {}
@@ -5564,6 +5573,7 @@ pub fn checked_project_to_zig<Expressions, Patterns, Types>(
         choices_used,
         checked_type_aliases,
         checked_project_fns,
+        checked_calls,
         checked_local_fns,
         checked_queries,
         checked_spread_records,
@@ -5610,11 +5620,12 @@ pub fn checked_project_to_zig<Expressions, Patterns, Types>(
         {
             syntax_project_fn_to_zig(
                 &mut output,
-                &checked_type_aliases,
-                &checked_project_fns,
-                &checked_local_fns,
-                &checked_queries,
-                &checked_spread_records,
+                checked_type_aliases,
+                checked_project_fns,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
                 expressions,
                 patterns,
                 types,
@@ -5694,6 +5705,7 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
     output: &mut String,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
@@ -5725,11 +5737,11 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
         name_to_uppercase_local_zig(output, type_parameter);
         output.push_str(": type, ");
     }
-    output.push_str("@\"%\": ");
+    output.push_str("@\"%allocator\": std.mem.Allocator, @\"%\": ");
     type_to_zig(output, parameter_type);
     output.push_str(") error{OutOfMemory}!");
     type_to_zig(output, result_type);
-    output.push_str(" {\n");
+    output.push_str(" {\n_ = @TypeOf(@\"%allocator\");\n");
     let mut parameter_introduced_variables = std::collections::HashMap::new();
     syntax_pattern_to_zig_destructuring(
         output,
@@ -5742,7 +5754,7 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
         types,
     );
     if parameter_introduced_variables.is_empty() {
-        output.push_str("_ = @\"%\";\n");
+        output.push_str("\n_ = @\"%\";\n");
     }
     output.push_str("return ");
     if result_expression_is_invalid {
@@ -5755,6 +5767,7 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
             expressions,
             patterns,
             types,
+            checked_calls,
             checked_local_fns,
             checked_queries,
             checked_spread_records,
@@ -5984,6 +5997,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
+    checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<
@@ -6092,11 +6106,32 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
+            let Some(checked_call) = checked_calls.get(&name.start) else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let mut type_variable_arguments =
+                checked_call.argument_type_variable_replacements.clone();
+            type_variable_arguments.extend(
+                called_function.type_parameters.iter().cloned().zip(
+                    type_arguments
+                        .iter()
+                        .filter_map(|type_argument| type_argument.type_.as_ref())
+                        .filter_map(|type_argument| {
+                            syntax_type_to_type(type_argument, type_aliases, types, origins)
+                        }),
+                ),
+            );
             output.push_str("try ");
             output.push_str(&name_to_lowercase_zig(&name.value));
             output.push('(');
-            // TODO add type arguments
-            // from checked_calls
+            for type_variable_argument in type_variable_arguments.into_values() {
+                type_to_zig(output, &type_variable_argument);
+                output.push_str(", ");
+            }
+            if is_core_fn_taking_allocator_in_zig(&name.value) {
+                output.push_str("@\"%allocator\", ");
+            }
             match argument {
                 None => {
                     zig_incomplete_expression(output);
@@ -6109,6 +6144,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
+                        checked_calls,
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
@@ -6159,6 +6195,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
+                        checked_calls,
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
@@ -6188,13 +6225,13 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 "@\"%{}:{}\"",
                 open_bracket_start.line, open_bracket_start.character
             );
-            output.push_str("struct { pub fn f(");
+            output.push_str("struct { pub fn f(@\"%allocator\": std.mem.Allocator, ");
             output.push_str(&function_parameter_name);
             output.push_str(": ");
             type_to_zig(output, &checked_local_fn.result_type);
             output.push_str(") error{OutOfMemory}!");
             type_to_zig(output, &checked_local_fn.parameter_type);
-            output.push_str(" {\n");
+            output.push_str(" {\n_ = @TypeOf(@\"%allocator\");\n");
             let mut parameter_introduced_variables = std::collections::HashMap::new();
             syntax_pattern_to_zig_destructuring(
                 output,
@@ -6207,7 +6244,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 types,
             );
             if parameter_introduced_variables.is_empty() {
-                output.push_str("_ = @\"%\";\n");
+                output.push_str("\n_ = @\"%\";\n");
             }
             output.push_str("return ");
             match result {
@@ -6222,6 +6259,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
+                        checked_calls,
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
@@ -6265,6 +6303,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 expressions,
                                 patterns,
                                 types,
+                                checked_calls,
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
@@ -6299,6 +6338,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                         expressions,
                                         patterns,
                                         types,
+                                        checked_calls,
                                         checked_local_fns,
                                         checked_queries,
                                         checked_spread_records,
@@ -6319,10 +6359,13 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                             && record.is_some()
                         {
                             for spread_field_name in spread_field_names {
+                                let zig_field_name = name_to_lowercase_zig(spread_field_name);
                                 output.push('.');
-                                output.push_str(&name_to_lowercase_zig(spread_field_name));
+                                output.push_str(&zig_field_name);
                                 output.push_str(" = ");
                                 record_spread_variable_name(output, *dot_dot_start);
+                                output.push('.');
+                                output.push_str(&zig_field_name);
                                 output.push_str(", ");
                             }
                         }
@@ -6354,6 +6397,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
+                    checked_calls,
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
@@ -6381,6 +6425,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
+                    checked_calls,
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
@@ -6411,6 +6456,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
+                        checked_calls,
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
@@ -6456,6 +6502,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
+                        checked_calls,
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
@@ -6511,6 +6558,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 expressions,
                                 patterns,
                                 types,
+                                checked_calls,
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
@@ -6569,6 +6617,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
+                        checked_calls,
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
@@ -6630,12 +6679,14 @@ fn type_to_zig(output: &mut String, type_: &Type) {
         }
         Type::CoreConstruct { name, arguments } => {
             output.push_str(&name_to_uppercase_zig(name));
-            output.push('(');
-            for argument in arguments {
-                type_to_zig(output, argument);
-                output.push_str(", ");
+            if !arguments.is_empty() {
+                output.push('(');
+                for argument in arguments {
+                    type_to_zig(output, argument);
+                    output.push_str(", ");
+                }
+                output.push(')');
             }
-            output.push(')');
         }
     }
 }
@@ -6798,6 +6849,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
         /* start */ lsp_types::Position,
     >,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
+    checked_calls: &mut std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &mut std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
@@ -7014,11 +7066,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
                     message: Box::from(
-                        if project_fns.contains_key(name.value.as_str()) {
-                            "functions always need to be called with an argument and start with an underscore, like _u32-add .a 0 u32 .b 1 u32. Otherwise check for typos."
-                        } else {
-                            "unknown variable name. No local variable has this name. Note that a local fn result can not refer to any variable from the outside. Otherwise check for typos."
-                        }
+                        "unknown variable name. No local variable has this name. Note that a local fn result can not refer to any variable from the outside. Otherwise check for typos."
                     )
                 });
                 None
@@ -7049,6 +7097,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 syntax_argument,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7171,12 +7220,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     .type_parameters
                     .iter()
                     .zip(type_arguments)
-                    .map(|(type_parameter, type_argument)| {
-                        (
-                            type_parameter.as_str(),
-                            std::borrow::Cow::Owned(type_argument),
-                        )
-                    })
+                    .map(|(type_parameter, type_argument)| (type_parameter.clone(), type_argument))
                     .collect();
                 let mut fn_parameter_type = project_fn_parameter_type.clone();
                 let mut fn_result_type = project_fn_result_type.clone();
@@ -7205,6 +7249,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     });
                     return None;
                 }
+                checked_calls.insert(
+                    name.start,
+                    CheckedCall {
+                        argument_type_variable_replacements: argument_type_variable_replacements,
+                    },
+                );
                 Some(result_type)
             }
         }
@@ -7298,6 +7348,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 value,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7370,6 +7421,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 &mut result_used_origin_variables,
                 expressions.element(result),
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7452,6 +7504,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                                 origins,
                                 used_origin_variables,
                                 expressions.element(field_value),
+                                checked_calls,
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
@@ -7498,6 +7551,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             origins,
                             used_origin_variables,
                             expressions.element(record),
+                            checked_calls,
                             checked_local_fns,
                             checked_queries,
                             checked_spread_records,
@@ -7588,6 +7642,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 expressions.element(element0),
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7621,6 +7676,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     origins,
                     used_origin_variables,
                     element,
+                    checked_calls,
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
@@ -7678,6 +7734,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 expressions.element(inner),
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7713,6 +7770,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 expressions.element(expression),
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7752,6 +7810,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 queried,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7812,6 +7871,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 &mut case0_result_used_origin_variables,
                 case0_result,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -7912,6 +7972,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     origins,
                     &mut case_result_used_origin_variables,
                     case_result,
+                    checked_calls,
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
@@ -8099,6 +8160,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 origins,
                 used_origin_variables,
                 expressions.element(result),
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -8151,14 +8213,17 @@ fn push_error_if_introduced_pattern_variable_is_unused(
         });
     }
 }
-pub struct CheckedQuery {
-    pub is_exhaustive: bool,
-    pub queried_type: Type,
-    pub invalid_case_indexes: Vec<usize>,
+pub struct CheckedCall {
+    argument_type_variable_replacements: std::collections::BTreeMap<Name, Type>,
 }
 pub struct CheckedLocalFn {
     pub parameter_type: Type,
     pub result_type: Type,
+}
+pub struct CheckedQuery {
+    pub is_exhaustive: bool,
+    pub queried_type: Type,
+    pub invalid_case_indexes: Vec<usize>,
 }
 fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
@@ -8377,13 +8442,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 let type_parameter_replacements = project_fn_info
                     .type_parameters
                     .iter()
+                    .cloned()
                     .zip(type_arguments)
-                    .map(|(type_parameter, type_argument)| {
-                        (
-                            type_parameter.as_str(),
-                            std::borrow::Cow::Owned(type_argument),
-                        )
-                    })
                     .collect();
                 let mut fn_parameter_type = project_fn_parameter_type.clone();
                 let mut fn_result_type = project_fn_result_type.clone();
@@ -9557,67 +9617,20 @@ struct TypeDiffVariant {
     value: TypeDiff,
 }
 
-#[cfg(test)]
-mod test_type_collect_variables_that_are_concrete_into {
-    use super::*;
-    #[test]
-    fn test_type_collect_variables_that_are_concrete_into() {
-        fn concrete_type_variables<'a>(
-            type_with_variables: &'a Type,
-            concrete_type: &'a Type,
-        ) -> std::collections::BTreeMap<&'a str, std::borrow::Cow<'a, Type>> {
-            let mut type_parameter_replacements = std::collections::BTreeMap::new();
-            type_collect_variables_that_are_concrete_into(
-                &mut type_parameter_replacements,
-                type_with_variables,
-                concrete_type,
-            );
-            type_parameter_replacements
-        }
-        fn type_variables_from<const N: usize>(
-            type_variables: [(&'static str, Type); N],
-        ) -> std::collections::BTreeMap<&'static str, std::borrow::Cow<'static, Type>> {
-            std::collections::BTreeMap::from_iter(
-                type_variables
-                    .into_iter()
-                    .map(|(name, type_)| (name, std::borrow::Cow::Owned(type_))),
-            )
-        }
-        assert_eq!(
-            concrete_type_variables(&type_variable("a"), &type_u32,),
-            type_variables_from([("a", type_u32)])
-        );
-        assert_eq!(
-            concrete_type_variables(
-                &type_fn(type_variable("a"), type_variable("a")),
-                &type_fn(type_variable("a"), type_u32),
-            ),
-            type_variables_from([("a", type_u32)])
-        );
-    }
-}
 fn type_collect_variables_that_are_concrete_into<'a>(
-    type_parameter_replacements: &mut std::collections::BTreeMap<
-        &'a str,
-        std::borrow::Cow<'a, Type>,
-    >,
+    type_parameter_replacements: &mut std::collections::BTreeMap<Name, Type>,
     type_with_variables: &'a Type,
     concrete_type: &'a Type,
 ) {
     match type_with_variables {
         Type::Origin(_) => {}
         Type::Variable(variable_name) => {
+            // if there is already a replacement for a variable name,
+            // ignore concrete_type. If they are not equivalent,
+            // this will be reported later
             type_parameter_replacements
-                .entry(variable_name.as_str())
-                .and_modify(|existing_type_variable_replacement| {
-                    // this feels too loose.
-                    // coming up with an example where this fails would be awesome
-                    *existing_type_variable_replacement = std::borrow::Cow::Owned(type_unify(
-                        existing_type_variable_replacement.as_ref(),
-                        concrete_type,
-                    ));
-                })
-                .or_insert_with(|| std::borrow::Cow::Borrowed(concrete_type));
+                .entry(variable_name.clone())
+                .or_insert_with(|| concrete_type.clone());
         }
         Type::CoreConstruct { name, arguments } => {
             if let Type::CoreConstruct {
@@ -9668,71 +9681,6 @@ fn type_collect_variables_that_are_concrete_into<'a>(
                         );
                     }
                 }
-            }
-        }
-    }
-}
-/// consider taking a_type: &mut Type instead
-fn type_unify(a_type: &Type, b_type: &Type) -> Type {
-    match a_type {
-        Type::Variable(_) => b_type.clone(),
-        Type::Origin(_) => b_type.clone(),
-        Type::CoreConstruct {
-            name: a_name,
-            arguments: a_arguments,
-        } => {
-            if let Type::CoreConstruct {
-                name: b_name,
-                arguments: b_arguments,
-            } = b_type
-                && a_name == b_name
-            {
-                Type::CoreConstruct {
-                    name: a_name.clone(),
-                    arguments: a_arguments
-                        .iter()
-                        .zip(b_arguments)
-                        .map(|(a, b)| type_unify(a, b))
-                        .collect(),
-                }
-            } else {
-                a_type.clone()
-            }
-        }
-        Type::Record(a_fields) => {
-            if let Type::Record(b_fields) = b_type {
-                Type::Record(
-                    a_fields
-                        .iter()
-                        .map(|a| TypeField {
-                            name: a.name.clone(),
-                            value: match b_fields.iter().find(|b| b.name == a.name) {
-                                None => a.value.clone(),
-                                Some(b) => type_unify(&a.value, &b.value),
-                            },
-                        })
-                        .collect(),
-                )
-            } else {
-                a_type.clone()
-            }
-        }
-        Type::Choice(a_variants) => {
-            if let Type::Choice(b_variants) = b_type {
-                Type::Choice(
-                    a_variants
-                        .iter()
-                        .map(|a| TypeVariant {
-                            name: a.name.clone(),
-                            value: match b_variants.iter().find(|b| b.name == a.name) {
-                                None => a.value.clone(),
-                                Some(b) => type_unify(&a.value, &b.value),
-                            },
-                        })
-                        .collect(),
-                )
-            } else {
-                a_type.clone()
             }
         }
     }
@@ -13231,6 +13179,57 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
         }
         variants
     });
+pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
+    match fn_name {
+        "Unset-slice-rid"
+        | "Unset-slice-cast-or-rid-and-allocate"
+        | "Unset-slice-allocate-length"
+        | "Buf-origin-unerase-with-elements"
+        | "Buf-rid"
+        | "Buf-to-unset"
+        | "Buf-opt-span-rid"
+        | "Buf-span-rid"
+        | "Buf-slot-rid"
+        | "Buf-opt-span-move-to-end"
+        | "Buf-span-move-to-end"
+        | "Buf-opt-span-move-to-vacant"
+        | "Buf-span-move-to-vacant"
+        | "Buf-opt-unset-span-add-own-opt-span"
+        | "Buf-unset-span-add-own-opt-span"
+        | "Buf-opt-unset-span-add-own-span"
+        | "Buf-unset-span-add-own-span"
+        | "Buf-opt-span-add-own-opt-span"
+        | "Buf-span-add-own-opt-span"
+        | "Buf-opt-span-add-own-span"
+        | "Buf-span-add-own-span"
+        | "Buf-opt-span-add-buf-span"
+        | "Buf-opt-span-add-buf-opt-span"
+        | "Buf-span-add-buf-span"
+        | "Buf-span-add-buf-opt-span"
+        | "Buf-opt-span-add-array"
+        | "Buf-span-add-array"
+        | "Buf-char-opt-span-add-f32"
+        | "Buf-char-span-add-f32"
+        | "Buf-char-opt-span-add-i32"
+        | "Buf-char-span-add-i32"
+        | "Buf-char-opt-span-add-u32"
+        | "Buf-char-span-add-u32"
+        | "Buf-char-span-add-str"
+        | "Buf-char-opt-span-add-str"
+        | "Buf-span-add"
+        | "Buf-opt-span-add"
+        | "Buf-remove"
+        | "Buf-add-array"
+        | "Buf-add-unset-length"
+        | "Buf-add-unset"
+        | "Buf-insert-unset"
+        | "Buf-add"
+        | "Buf-insert"
+        | "Buf-pre-allocation-rid"
+        | "Buf-pre-allocate-at-least" => true,
+        _ => false,
+    }
+}
 
 pub struct ErrorNode {
     // possible optimization: change to cow
