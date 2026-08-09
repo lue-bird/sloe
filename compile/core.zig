@@ -1639,8 +1639,9 @@ pub fn buf_insert(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), new: @"%Element" }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }) {
-    const @"%slot" = try @"%".buf.insert(@"%allocator", @"%".new);
-    return .{ .buf = @"%".buf, .slot = @"%slot" };
+    var @"%buf" = @"%".buf;
+    const @"%slot" = try @"%buf".insert(@"%allocator", @"%".new);
+    return .{ .buf = @"%buf", .slot = @"%slot" };
 }
 pub fn buf_add(
     @"%Element": type,
@@ -1648,8 +1649,9 @@ pub fn buf_add(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), new: @"%Element" }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }) {
-    const @"%slot" = try @"%".buf.add(@"%allocator", @"%".new);
-    return .{ .buf = @"%".buf, .slot = @"%slot" };
+    var @"%buf" = @"%".buf;
+    const @"%slot" = try @"%buf".add(@"%allocator", @"%".new);
+    return .{ .buf = @"%buf", .slot = @"%slot" };
 }
 pub fn buf_insert_unset(
     @"%Element": type,
@@ -1657,8 +1659,9 @@ pub fn buf_insert_unset(
     @"%allocator": std.mem.Allocator,
     @"%buf": Buf(@"%Origin", @"%Element"),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Unset_slot(@"%Origin") }) {
-    const @"%slot" = try @"%buf".insertUnset(@"%allocator");
-    return .{ .buf = @"%buf", .slot = @"%slot" };
+    var @"%buf_ptr" = &@"%buf";
+    const @"%slot" = try @"%buf_ptr".insertUnset(@"%allocator");
+    return .{ .buf = @"%buf_ptr", .slot = @"%slot" };
 }
 pub fn buf_add_unset(
     @"%Element": type,
@@ -1666,8 +1669,9 @@ pub fn buf_add_unset(
     @"%allocator": std.mem.Allocator,
     @"%buf": Buf(@"%Origin", @"%Element"),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Unset_slot(@"%Origin") }) {
-    const @"%slot" = try @"%buf".addUnset(@"%allocator");
-    return .{ .buf = @"%buf", .slot = @"%slot" };
+    var @"%buf_ptr" = &@"%buf";
+    const @"%slot" = try @"%buf_ptr".addUnset(@"%allocator");
+    return .{ .buf = @"%buf_ptr", .slot = @"%slot" };
 }
 pub fn buf_add_unset_length(
     @"%Element": type,
@@ -1675,8 +1679,9 @@ pub fn buf_add_unset_length(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), length: U32 }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Unset_span(@"%Origin")) }) {
-    const @"%unset_span" = try @"%".buf.addUnsetLength(@"%allocator", @"%".length);
-    return .{ .buf = @"%".buf, .span = @"%unset_span" };
+    var @"%buf" = @"%".buf;
+    const @"%unset_span" = try @"%buf".addUnsetLength(@"%allocator", @"%".length);
+    return .{ .buf = @"%buf", .span = @"%unset_span" };
 }
 pub fn buf_add_unset_length_positive(
     @"%Element": type,
@@ -1684,8 +1689,9 @@ pub fn buf_add_unset_length_positive(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), length: P32 }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Unset_span(@"%Origin") }) {
-    const @"%unset_span" = try @"%".buf.addUnsetLengthPositive(@"%allocator", @"%".length);
-    return .{ .buf = @"%".buf, .span = @"%unset_span" };
+    var @"%buf" = @"%".buf;
+    const @"%unset_span" = try @"%buf".addUnsetLengthPositive(@"%allocator", @"%".length);
+    return .{ .buf = @"%buf", .span = @"%unset_span" };
 }
 pub fn buf_add_array(
     @"%Element": type,
@@ -1710,8 +1716,9 @@ pub fn buf_remove(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), element: @"%Element" }) {
-    const @"%element" = @"%".buf.remove(@"%allocator", @"%".slot);
-    return .{ .buf = @"%".buf, .element = @"%element" };
+    var @"%buf" = @"%".buf;
+    const @"%element" = @"%buf".remove(@"%allocator", @"%".slot);
+    return .{ .buf = @"%buf", .element = @"%element" };
 }
 pub fn buf_unset(
     @"%Element": type,
