@@ -5727,6 +5727,7 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
             output.push('\n');
         }
     }
+    let function_scope_start = expression_start(syntax_result);
     output.push_str("pub fn ");
     output.push_str(&name_to_lowercase_zig(name));
     output.push('(');
@@ -5737,11 +5738,14 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
         name_to_uppercase_local_zig(output, type_parameter);
         output.push_str(": type, ");
     }
-    output.push_str("@\"%allocator\": std.mem.Allocator, @\"%\": ");
+    zig_allocator_variable(output, function_scope_start);
+    output.push_str(": std.mem.Allocator, @\"%\": ");
     type_to_zig(output, parameter_type);
     output.push_str(") error{OutOfMemory}!");
     type_to_zig(output, result_type);
-    output.push_str(" {\n_ = @TypeOf(@\"%allocator\");\n");
+    output.push_str(" {\n_ = @TypeOf(");
+    zig_allocator_variable(output, function_scope_start);
+    output.push_str(");\n");
     let mut parameter_introduced_variables = std::collections::HashMap::new();
     syntax_pattern_to_zig_destructuring(
         output,
@@ -5753,9 +5757,6 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
         patterns,
         types,
     );
-    if parameter_introduced_variables.is_empty() {
-        output.push_str("\n_ = @\"%\";\n");
-    }
     output.push_str("return ");
     if result_expression_is_invalid {
         zig_incomplete_expression(output)
@@ -5774,10 +5775,19 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
             &mut parameter_introduced_variables,
             &mut std::collections::HashMap::new(),
             syntax_result,
+            function_scope_start,
             ZigReturnContext::Expression,
         );
     }
     output.push_str(";\n}\n\n");
+}
+fn zig_allocator_variable(output: &mut String, scope_start: lsp_types::Position) {
+    use std::fmt::Write as _;
+    output.push_str("@\"%allocator:");
+    let _ = write!(output, "{}", scope_start.line);
+    output.push_str(":");
+    let _ = write!(output, "{}", scope_start.character);
+    output.push_str("\"");
 }
 fn zig_incomplete_expression(output: &mut String) {
     output.push_str("unreachable"); // or std.process.abort()
@@ -6016,6 +6026,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
     pattern_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
+    function_scope_start: lsp_types::Position,
     return_context: ZigReturnContext,
 ) {
     match expression {
@@ -6195,7 +6206,8 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             if is_core_fn_taking_allocator_in_zig(&name.value)
                 || !core_fns.contains_key(&name.value)
             {
-                output.push_str("@\"%allocator\", ");
+                zig_allocator_variable(output, function_scope_start);
+                output.push_str(", ");
             }
             match argument {
                 None => {
@@ -6216,6 +6228,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(argument),
+                        function_scope_start,
                         ZigReturnContext::Expression,
                     );
                 }
@@ -6274,6 +6287,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(value),
+                        function_scope_start,
                         ZigReturnContext::Expression,
                     );
                 }
@@ -6297,6 +6311,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
+            let function_scope_start = pattern_start(syntax_parameter);
             let function_parameter_name = format!(
                 "@\"%{}:{}\"",
                 open_bracket_start.line, open_bracket_start.character
@@ -6304,27 +6319,32 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
                 zig_break_start(output, label);
             }
-            output.push_str("struct {\npub fn f(@\"%allocator\": std.mem.Allocator, ");
+            output.push_str("@as(Fn(");
+            type_to_zig(output, &checked_local_fn.parameter_type);
+            output.push_str(", ");
+            type_to_zig(output, &checked_local_fn.result_type);
+            output.push_str(",), struct {\npub fn f(");
+            zig_allocator_variable(output, function_scope_start);
+            output.push_str(": std.mem.Allocator, ");
             output.push_str(&function_parameter_name);
             output.push_str(": ");
-            type_to_zig(output, &checked_local_fn.result_type);
-            output.push_str(") error{OutOfMemory}!");
             type_to_zig(output, &checked_local_fn.parameter_type);
-            output.push_str(" {\n_ = @TypeOf(@\"%allocator\");\n");
+            output.push_str(") error{OutOfMemory}!");
+            type_to_zig(output, &checked_local_fn.result_type);
+            output.push_str(" {\n_ = @TypeOf(");
+            zig_allocator_variable(output, function_scope_start);
+            output.push_str(");\n");
             let mut parameter_introduced_variables = std::collections::HashMap::new();
             syntax_pattern_to_zig_destructuring(
                 output,
                 syntax_parameter,
-                "@\"%\"",
+                &function_parameter_name,
                 &mut parameter_introduced_variables,
                 type_aliases,
                 checked_spread_records,
                 patterns,
                 types,
             );
-            if parameter_introduced_variables.is_empty() {
-                output.push_str("\n_ = @\"%\";\n");
-            }
             output.push_str("return ");
             match result {
                 None => {
@@ -6342,14 +6362,15 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
-                        pattern_variables,
+                        &mut parameter_introduced_variables,
                         origins,
                         expressions.element(result),
+                        function_scope_start,
                         ZigReturnContext::Expression,
                     );
                 }
             }
-            output.push_str(";\n}\n}.f");
+            output.push_str(";\n}\n}.f)");
             if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
                 zig_break_end(output);
             }
@@ -6415,6 +6436,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                     pattern_variables,
                                     origins,
                                     expressions.element(record),
+                                    function_scope_start,
                                     ZigReturnContext::Expression,
                                 );
                                 output.push_str(";\n")
@@ -6485,6 +6507,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                     pattern_variables,
                                     origins,
                                     expressions.element(value),
+                                    function_scope_start,
                                     ZigReturnContext::Expression,
                                 );
                             }
@@ -6549,6 +6572,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     pattern_variables,
                     origins,
                     element,
+                    function_scope_start,
                     ZigReturnContext::Expression,
                 );
                 output.push_str(", ");
@@ -6581,6 +6605,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     pattern_variables,
                     origins,
                     expressions.element(inner),
+                    function_scope_start,
                     return_context,
                 );
             }
@@ -6613,6 +6638,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(expression),
+                        function_scope_start,
                         return_context,
                     );
                 }
@@ -6666,6 +6692,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(queried),
+                        function_scope_start,
                         ZigReturnContext::Expression,
                     );
                 }
@@ -6720,6 +6747,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 pattern_variables,
                                 origins,
                                 case_result,
+                                function_scope_start,
                                 ZigReturnContext::StatementsFollowedByBreak(label),
                             );
                             pattern_variables
@@ -6731,12 +6759,11 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     }
                 }
             }
-            if !checked_query.is_exhaustive {
+            if cases.len() >= 2 {
                 // in case none of the above patterns have matched, crash
                 output.push_str("\n");
-                zig_break_start(output, label);
                 zig_incomplete_expression(output);
-                zig_break_end(output);
+                output.push(';');
             }
             if let ZigReturnContext::Expression = return_context {
                 zig_block_end(output);
@@ -6792,6 +6819,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         pattern_variables,
                         origins,
                         expressions.element(result),
+                        function_scope_start,
                         ZigReturnContext::StatementsFollowedByBreak(label),
                     );
                 }
