@@ -1717,7 +1717,7 @@ pub fn buf_remove(
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), element: @"%Element" }) {
     var @"%buf" = @"%".buf;
-    const @"%element" = @"%buf".remove(@"%allocator", @"%".slot);
+    const @"%element" = try @"%buf".remove(@"%allocator", @"%".slot);
     return .{ .buf = @"%buf", .element = @"%element" };
 }
 pub fn buf_unset(
@@ -1752,7 +1752,7 @@ pub fn buf_opt_span_add(
     }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }) {
     var @"%buf" = @"%".buf;
-    const @"%combined_span" = @"%buf".optSpanAdd(@"%allocator", @"%".span, @"%".new);
+    const @"%combined_span" = try @"%buf".optSpanAdd(@"%allocator", @"%".span, @"%".new);
     return .{ .span = @"%combined_span", .buf = @"%buf" };
 }
 pub fn buf_span_add(
@@ -1766,7 +1766,7 @@ pub fn buf_span_add(
     }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }) {
     var @"%buf" = @"%".buf;
-    const @"%combined_span" = @"%buf".spanAdd(@"%allocator", @"%".span, @"%".new);
+    const @"%combined_span" = try @"%buf".spanAdd(@"%allocator", @"%".span, @"%".new);
     return .{ .span = @"%combined_span", .buf = @"%buf" };
 }
 pub fn buf_char_opt_span_add_str(
