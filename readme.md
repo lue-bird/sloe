@@ -379,7 +379,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   ```
 - change unicode \u{hex} syntax to \u() because {} is used for types
 - combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth.
-  For extra convenience, it may be reasonable to implement some ByteDecode and ByteEncode traits in rust directly, so that in the common case that the state type is fully known you can hot reload with close to no glue code 
+  For extra convenience, it may be reasonable to implement some ByteDecode and ByteEncode traits in rust directly, so that in the common case that the state type is fully known you can hot reload with close to no glue code
 - add byte-level APIs, like `Buf-opt-span-take-i32 enianness` and `Buf-opt-span-take-f32 enianness`. Ultimately, these sould allow got reloading or simple byte protocols in general
 - (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
   `!u32 "3"` where `u32` is of type `_fn str, |success u32 |failure str` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`).

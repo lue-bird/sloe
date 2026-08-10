@@ -11306,7 +11306,7 @@ fn Three . : . =
             },
             CoreFnInfo {
                 name: "Choice-empty-to",
-                documentation: "The empty choice type (`|`) is a weird one
+                documentation: r#"The empty choice type (`|`) is a weird one
 (you may know it as never, noreturn, unreachable, uninhabited, bottom (⊥) or impossible).
 No value of this type can ever exist and it's only use is some type trickery.
 
@@ -11326,7 +11326,45 @@ fn Choice-empty-rid choice-empty | : . =
     Choice-empty-to{.} choice-empty
 fn Choice-empty-dup choice-empty | : .a | .b | =
     Choice-empty-to{.a | .b |} choice-empty
-```",
+```
+Another nice example: Creating a value whose only purpose is transporting type info:
+```sloe
+ty Type-only _type
+    # enables what is often called "phantom types"
+    |a .
+    |unconstructable .type _type .impossible |
+
+fn Type-only-rid type-only Type-only _type : . =
+    ? type-only
+    [|a .] .
+    [|unconstructable .type type .impossible imp]
+        # quite funny: To get rid of the type value
+        # which can never exist here, we use the imp value
+        # to pull us a generic _type rid function from the ether
+        Call .fn Choice-empty-to{Fn _type, .} imp .in type
+
+# usage example
+
+ty Weak-slot _origin
+    # Alternative to using a plain u32 which is tiny bit harder to abuse.
+    # Can still point out of bounds,
+    # alias another Weak-slot or be used for the wrong span.
+    # As a result, access will always return Opt and should be checked with care
+    .origin Type-only _origin
+    .index u32
+
+fn Index-to-weak-slot{_origin} index u32 : Weak-slot _origin =
+    .index index .origin |of{Type-only _origin} .
+
+fn Span-start-weak
+    span Span _origin
+    : .weak Weak-slot _origin .slot Slot _origin =
+    ? Span-start-index slot [.span span .index index]
+    .span span
+    .weak Index-to-weak-slot{_origin} index
+```
+This `Type-only` pattern is very easy to overuse,
+please limit your creativity for the rest of us mortals."#,
                 type_parameters: vec![],
                 parameter_type: type_variable("yes"),
                 result_type: type_opt(type_variable("yes"))
