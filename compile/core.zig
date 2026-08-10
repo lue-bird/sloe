@@ -365,14 +365,14 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                     }
                 },
                 .down => {
-                    // dear zig, add for in reverse
-                    var @"%index": u32 = try @"%span".endIndex();
-                    while (@"%index" >= @"%span".start.index) {
+                    // dear zig, add for (range) in reverse
+                    var @"%index": u32 = try u32AddOrOutOfMem(@"%span".start.index, @"%span".length.positive);
+                    while (@"%index" > @"%span".start.index) {
+                        @"%index" -= 1;
                         @"%state" = try @"%step"(@"%allocator", .{
                             .state = @"%state",
                             .slot = .{ .index = @"%index" },
                         });
-                        @"%index" -= 1;
                     }
                 },
             }

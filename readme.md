@@ -378,7 +378,9 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Ascii-is-upper ascii : Opt ascii # maybe |yes.|no. instead
   ```
 - change unicode \u{hex} syntax to \u() because {} is used for types
-- combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth
+- combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth.
+  For extra convenience, it may be reasonable to implement some ByteDecode and ByteEncode traits in rust directly, so that in the common case that the state type is fully known you can hot reload with close to no glue code 
+- add byte-level APIs, like `Buf-opt-span-take-i32 enianness` and `Buf-opt-span-take-f32 enianness`. Ultimately, these sould allow got reloading or simple byte protocols in general
 - (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
   `!u32 "3"` where `u32` is of type `_fn str, |success u32 |failure str` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`).
   This would allow userland to create e.g. hex parsing functions, arabic number systems, string raw bytes stuff etc.
@@ -407,7 +409,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
 - when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
-- add typescript backend or similar web support
+- add typescript backend or similar web support. Maybe c# as well if there is demand
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different bufs have the same origin_ but their slots can't intermix.
   ```sloe
