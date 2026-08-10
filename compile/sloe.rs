@@ -6881,9 +6881,7 @@ fn name_to_uppercase_zig(name: &str) -> String {
     }
     // Not sure if type variables in core code can actually collide with generated type names?
     match sanitized.as_str() {
-        record_empty_zig_type_name | "OccupancySet" | "OccupancyUnset" | "Record" => {
-            sanitized + "ø"
-        }
+        "OccupancySet" | "OccupancyUnset" | "Record" => sanitized + "ø",
         _ => sanitized,
     }
 }
@@ -6947,9 +6945,11 @@ fn name_to_lowercase_local_zig_introduced_at(
     let _ = write!(output, "{}", introduced_start.character);
     output.push('"');
 }
-const zig_unrelated_top_level_lowercase_names: [&str; 7] = [
+const zig_unrelated_top_level_lowercase_names: [&str; 9] = [
     local_unnamed_function_name,
+    record_empty_zig_type_name,
     "std",
+    "record",
     "recordToArray",
     "u32AddOrOutOfMem",
     "usizeAddOrOutOfMem",
