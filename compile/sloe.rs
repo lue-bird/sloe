@@ -10693,6 +10693,7 @@ fn type_record(fields: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
     )
 }
 const type_record_empty: Type = Type::Record(vec![]);
+const type_choice_empty: Type = Type::Choice(vec![]);
 fn type_choice(variants: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
     Type::Choice(
         variants
@@ -10739,7 +10740,7 @@ fn type_order() -> Type {
             value: type_record_empty,
         },
         TypeVariant {
-            name: Name::from_static("equals"),
+            name: Name::from_static("equal"),
             value: type_record_empty,
         },
         TypeVariant {
@@ -11005,10 +11006,10 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
             },
             CoreFnInfo {
                 name: "F32-ln",
-                documentation: "Its natural logarithm",
+                documentation: "Its natural logarithm if positive, otherwise |no .",
                 type_parameters: vec![],
                 parameter_type: type_f32,
-                result_type: type_f32,
+                result_type: type_opt(type_f32),
             },
             CoreFnInfo {
                 name: "F32-exp",
@@ -11365,9 +11366,9 @@ fn Span-start-weak
 ```
 This `Type-only` pattern is very easy to overuse,
 please limit your creativity for the rest of us mortals."#,
-                type_parameters: vec![],
-                parameter_type: type_variable("yes"),
-                result_type: type_opt(type_variable("yes"))
+                type_parameters: vec![Name::from_static("result")],
+                parameter_type: type_choice_empty,
+                result_type: type_variable("result")
             },
             CoreFnInfo {
                 name: "Origin-add",
@@ -11527,7 +11528,7 @@ because the Buf's origin will have changed",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("erased", type_origin_erased(type_variable("parts"), type_variable("value-erased"))),
-                    ("origin", type_origin_part(type_variable("origin"),type_variable("parts"))),
+                    ("origin", type_origin(type_origin_part(type_variable("origin"), type_variable("parts")))),
                     (
                         "unerase",
                         type_fn(
@@ -11541,7 +11542,7 @@ because the Buf's origin will have changed",
                                     )),
                                 )
                             ]),
-                            type_variable("value-erased")
+                            type_variable("value")
                         )
                     ),
                     ("value-rid", type_fn(type_variable("value"), type_record_empty))
@@ -11668,15 +11669,14 @@ fn Span-slot-at
 ```
 See also `Span-end-of-length-positive`, `Span-start`.",
                 type_parameters: vec![],
-                parameter_type: type_span(type_variable("origin")),
-                result_type:
-                    type_record([
-                        (
-                            "start",
-                            type_span(type_variable("origin"))
-                        ),
-                        ("after", type_opt(type_span(type_variable("origin"))))
-                    ]),
+                parameter_type: type_record([
+                    ("span", type_span(type_variable("origin"))),
+                    ("length", type_p32),
+                ]),
+                result_type: type_record([
+                    ("start", type_span(type_variable("origin"))),
+                    ("after", type_opt(type_span(type_variable("origin"))))
+                ]),
             },
             CoreFnInfo {
                 name: "Span-end-of-length-positive",
@@ -11684,15 +11684,35 @@ See also `Span-end-of-length-positive`, `Span-start`.",
 If the length is greater than the given span's length, .end will be the existing span and .before will be empty.
 See also `Span-start-of-length-positive`, `Span-end`.",
                 type_parameters: vec![],
-                parameter_type: type_span(type_variable("origin")),
-                result_type:
-                    type_record([
-                        (
-                            "end",
-                            type_span(type_variable("origin"))
-                        ),
-                        ("before", type_opt(type_span(type_variable("origin"))))
-                    ]),
+                parameter_type: type_record([
+                    ("span", type_span(type_variable("origin"))),
+                    ("length", type_p32),
+                ]),
+                result_type: type_record([
+                    ("end", type_span(type_variable("origin"))),
+                    ("before", type_opt(type_span(type_variable("origin"))))
+                ]),
+            },
+            CoreFnInfo {
+                name: "Span-fold",
+                documentation: "Step through all slots, updating the given initial state for each taken slot in line",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("span", type_span(type_variable("origin"))),
+                    ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
+                    ("state", type_variable("state")),
+                    (
+                        "step",
+                        type_fn(
+                            type_record([
+                                ("slot", type_slot(type_variable("origin"))),
+                                ("state", type_variable("state")),
+                            ]),
+                            type_variable("state")
+                        )
+                    )
+                ]),
+                result_type: type_variable("state"),
             },
             CoreFnInfo {
                 name: "Opt-span-fold",
@@ -11702,7 +11722,7 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                     type_record([
                         (
                             "span",
-                            type_span(type_variable("origin"))
+                            type_opt(type_span(type_variable("origin")))
                         ),
                         ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
                         ("state", type_variable("state")),
@@ -11710,8 +11730,8 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                             "step",
                             type_fn(
                                 type_record([
-                                    ("slot", type_variable("origin")),
-                                    ("state", type_slot(type_variable("state"))),
+                                    ("slot", type_slot(type_variable("origin"))),
+                                    ("state", type_variable("state")),
                                 ]),
                                 type_variable("state")
                             )
@@ -11850,15 +11870,14 @@ fn Unset-span-slot-at
 ```
 See also `Unset-span-end-of-length-positive`, `Inset-span-start`.",
                 type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("origin")),
-                result_type:
-                    type_record([
-                        (
-                            "start",
-                            type_unset_span(type_variable("origin"))
-                        ),
-                        ("after", type_opt(type_unset_span(type_variable("origin"))))
-                    ]),
+                parameter_type: type_record([
+                    ("span", type_unset_span(type_variable("origin"))),
+                    ("length", type_p32),
+                ]),
+                result_type: type_record([
+                    ("start", type_unset_span(type_variable("origin"))),
+                    ("after", type_opt(type_unset_span(type_variable("origin"))))
+                ]),
             },
             CoreFnInfo {
                 name: "Unset-span-end-of-length-positive",
@@ -11866,14 +11885,37 @@ See also `Unset-span-end-of-length-positive`, `Inset-span-start`.",
 If the length is greater than the given span's length, .end will be the existing span and .before will be empty.
 See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
                 type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("origin")),
-                result_type:
+                parameter_type: type_record([
+                    ("span", type_unset_span(type_variable("origin"))),
+                    ("length", type_p32),
+                ]),
+                result_type: type_record([
+                    ("end", type_unset_span(type_variable("origin"))),
+                    ("before", type_opt(type_unset_span(type_variable("origin"))))
+                ]),
+            },
+            CoreFnInfo {
+                name: "Unset-span-fold",
+                documentation: "Step through all unset slots, updating the given initial state for each taken slot in line",
+                type_parameters: vec![],
+                parameter_type:
                     type_record([
                         (
-                            "end",
-                            type_unset_span(type_variable("origin"))
+                            "span",
+                            type_opt(type_unset_span(type_variable("origin")))
                         ),
-                        ("before", type_opt(type_unset_span(type_variable("origin"))))
+                        ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
+                        ("state", type_variable("state")),
+                        (
+                            "step",
+                            type_fn(
+                                type_record([
+                                    ("slot", type_unset_slot(type_variable("origin"))),
+                                    ("state", type_variable("state")),
+                                ]),
+                                type_variable("state")
+                            )
+                        )
                     ]),
             },
             CoreFnInfo {
@@ -11884,7 +11926,7 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
                     type_record([
                         (
                             "span",
-                            type_unset_span(type_variable("origin") )
+                            type_unset_span(type_variable("origin"))
                         ),
                         ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
                         ("state", type_variable("state")),
@@ -11892,8 +11934,8 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
                             "step",
                             type_fn(
                                 type_record([
-                                    ("slot", type_variable("origin")),
-                                    ("state", type_unset_slot(type_variable("state"))),
+                                    ("slot", type_unset_slot(type_variable("origin"))),
+                                    ("state", type_variable("state")),
                                 ]),
                                 type_variable("state")
                             )
@@ -12154,27 +12196,7 @@ To remove the element entirely, use `Buf-take`",
                         type_buf(type_variable("origin"), type_variable("element")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
-                    ("new", type_slot(type_variable("origin"))),
-                ]),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
-                    ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-set",
-                documentation: "Put an element back into the given `Unset-slot` (the inverse of `Buf-unset`)",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
-                    ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
-                    ("new", type_slot(type_variable("origin"))),
+                    ("new", type_variable("element")),
                 ]),
                 result_type: type_record([
                     (
@@ -12981,6 +13003,27 @@ When building new strings at runtime, use functions like `Buf-char-opt-span-add-
             },
         ),
         (
+            Name::from_static("Fn"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "A transformation from _in to _out.
+It cannot access local variables from the outside; everything must be passed in and out explicitly.
+The parameter pattern must always have a known type.
+Project functions are called as `Function argument`.
+Functions values can be copied with `Fn-dup` and scrapped with `Fn-rid`.
+This is only possible because functions do not have access to variables from the outside.
+```sloe
+fn Three . : . =
+    ? ([n u32] U32-add-clamp .a n .b 1 u32) [increment]
+    Call .fn increment .in 2
+```"
+                )),
+                parameters: vec![Name::from_static("in"), Name::from_static("out")],
+                type_: Some(type_fn(type_variable("in"), type_variable("out"))),
+            },
+        ),
+        (
             Name::from_static("order"),
             CheckedTypeAlias {
                 name_range: None,
@@ -12995,8 +13038,7 @@ fn U32-max .a a u32 .b b u32 : u32 =
     [|less] (? U32-rid a [.] b)
     [|equal] (? U32-rid a [.] b)
     [|greater] (? U32-rid b [.] a)
-```
-"#,
+```"#,
                 )),
                 parameters: vec![],
                 type_: Some(type_str),
@@ -13288,6 +13330,23 @@ As this prevents other elements from filling these positions, you shouldn't keep
             },
         ),
         (
+            Name::from_static("Unset-slice"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "A heap-allocated array with unknown length and undefined contents.
+Can be constructed manually or as an intermediate type when recycling the allocated space of a collection,
+see `Buf-to-unset`.
+Since you can't read from it, you can also safely attempt to reuse this allocation for a different element type,
+see `Unset-slice-cast-or-rid-and-allocate`.
+Note that `Unset-slice` does not have a dup function to make heap allocation explicit.
+Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same effect."
+                )),
+                parameters: vec![Name::from_static("origin")],
+                type_: Some(type_unset_span(type_variable("origin"))),
+            },
+        ),
+        (
             Name::from_static("Array"),
             CheckedTypeAlias {
                 name_range: None,
@@ -13309,44 +13368,6 @@ Use a regular record instead!"
                 )),
                 parameters: vec![Name::from_static("element"), Name::from_static("record")],
                 type_: Some(type_array(type_variable("element"), type_variable("record"))),
-            },
-        ),
-        (
-            Name::from_static("Unset-slice"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "A heap-allocated array with unknown length and undefined contents.
-Can be constructed manually or as an intermediate type when recycling the allocated space of a collection,
-see `Buf-to-unset`.
-Since you can't read from it, you can also safely attempt to reuse this allocation for a different element type,
-see `Unset-slice-cast-or-rid-and-allocate`.
-Note that `Unset-slice` does not have a dup function to make heap allocation explicit.
-Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same effect."
-                )),
-                parameters: vec![Name::from_static("origin")],
-                type_: Some(type_unset_span(type_variable("origin"))),
-            },
-        ),
-        (
-            Name::from_static("Fn"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "A transformation from _in to _out.
-It cannot access local variables from the outside; everything must be passed in and out explicitly.
-The parameter pattern must always have a known type.
-Project functions are called as `Function argument`.
-Functions values can be copied with `Fn-dup` and scrapped with `Fn-rid`.
-This is only possible because functions do not have access to variables from the outside.
-```sloe
-fn Three . : . =
-    ? ([n u32] U32-add-clamp .a n .b 1 u32) [increment]
-    Call .fn increment .in 2
-```"
-                )),
-                parameters: vec![Name::from_static("in"), Name::from_static("out")],
-                type_: Some(type_fn(type_variable("in"), type_variable("out"))),
             },
         ),
     ])

@@ -2156,11 +2156,15 @@ pub fn f32_abs(n: F32) -> F32 {
 pub fn f32_negate(n: F32) -> F32 {
     -n
 }
-pub fn f32_ln(n: F32) -> F32 {
-    n.ln()
+pub fn f32_ln(n: F32) -> Opt<F32> {
+    if n <= 0.0 {
+        Opt::No(())
+    } else {
+        Opt::Yes(n.ln().max(F32::MIN))
+    }
 }
 pub fn f32_exp(n: F32) -> F32 {
-    n.exp()
+    n.exp().min(F32::MAX)
 }
 pub fn f32_sin(radians: F32) -> F32 {
     radians.sin()

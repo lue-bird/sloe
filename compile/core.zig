@@ -1068,11 +1068,11 @@ pub fn f32_negate(@"%n": F32) error{OutOfMemory}!F32 {
 pub fn f32_abs(@"%n": F32) error{OutOfMemory}!F32 {
     return @abs(@"%n");
 }
-pub fn f32_ln(@"%n": F32) error{OutOfMemory}!F32 {
-    return @log(@"%n");
+pub fn f32_ln(@"%n": F32) error{OutOfMemory}!Opt(F32) {
+    return if (@"%n" >= 0) .{ .no = {} } else @max(@log(@"%n"), std.math.floatMin(f32));
 }
 pub fn f32_exp(@"%n": F32) error{OutOfMemory}!F32 {
-    return @exp(@"%n");
+    return @min(@exp(@"%n"), std.math.floatMax(f32));
 }
 pub fn f32_sin(@"%n": F32) error{OutOfMemory}!F32 {
     return @sin(@"%n");
