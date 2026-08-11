@@ -11917,6 +11917,7 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
                             )
                         )
                     ]),
+                result_type: type_variable("state"),
             },
             CoreFnInfo {
                 name: "Opt-unset-span-fold",
@@ -13041,7 +13042,7 @@ fn U32-max .a a u32 .b b u32 : u32 =
 ```"#,
                 )),
                 parameters: vec![],
-                type_: Some(type_str),
+                type_: Some(type_order()),
             },
         ),
         (
