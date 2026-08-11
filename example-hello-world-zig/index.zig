@@ -8,7 +8,7 @@ pub fn main(init: std.process.Init) !void {
         .result_origin = result_origin,
         .name = sloe.Str.fromComptime("world"),
     });
-    var greeting_string_buffer: [100]u8 = undefined;
+    var greeting_string_buffer: [32]u8 = undefined;
     var writer = std.Io.File.stdout().writer(
         init.io,
         &greeting_string_buffer,
