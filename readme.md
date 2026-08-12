@@ -409,7 +409,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
 - when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
-- add typescript backend or similar web support. Maybe c# as well if there is demand
+- add c# compilation as well if there is demand
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different bufs have the same origin_ but their slots can't intermix.
   ```sloe
@@ -628,11 +628,93 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add more zig examples
-
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
+
+- consider `Unset-untracked` API to make deconstructing Bufs less reliant on opitimizers figuring out that allocating and tracking vacant spans is useless when all those spans are deallocated anyway at the end.
+  ```sloe
+  ty Unset-untracked _origin
+      # scattered memory spaces whose locations are not tracked.
+      # This is effectively temporarily leaked memory
+      # which will only be reclaimed when you call `Buf-with-unset-untracked-rid`.
+      # As a result, be very careful when trying to keep a value of this type
+      # in persistent memory or simply avoid it.
+      # 
+      # The usual way to give back slots and spans is to use operations like
+      # `Buf-remove`, `Buf-slot-rid`, `Buf-span-rid` etc.
+      # However, this internally marks these spaces as vacant,
+      # and doing this work may hinder the optimizer in figurinng out
+      # that you for example want to scrap the whole Buf (which should be a no-op).
+      # ```sloe
+      # ^origin
+      # ? Buf-empty{u32} origin [buf]
+      # ? Buf-add .buf buf .new 20 u32 [.buf buf .slot slot0]
+      # ? Buf-add-array .buf buf .new ; 1 u32 ; 2 u32 [.buf buf .span span12]
+      # ? Buf-untrack .buf buf .slot slot0 [.buf buf .untracked untracked .element sum]
+      # ? (
+      #     Span-fold
+      #     .span span12
+      #     .state (.buf buf .untracked untracked .sum sum)
+      #     .step
+      #     [
+      #     .state (.buf Buf _origin, u32 .untracked Unset-untracked origin .sum sum u32)
+      #     .slot Slot origin
+      #     ]
+      #     ? Buf-untrack .buf buf .slot slot [.element element]
+      #     .buf buf
+      #     .untracked untracked
+      #     .sum U32-add-clamp .a sum .b element
+      #     )
+      # [.buf buf .untracked untracked .sum sum]
+      # Buf-with-unset-untracked-rid .buf buf .untracked untracked
+      # ``
+      # If you're wondering why this even needs to be a value in the first place:
+      # - silently leaking memory of a persistent Buf is fairly nasty. Now you have to store an `Unset-untracked` as a ~mark of shame~ reminder of which Buf may have unreachable memory
+      # - `Origin-unerase` requires and checks that `Buf-unerase` and similar can't hit unset memory. Having an `Unset-untracked` makes it so you can't pass this check
+  
+  fn Unset-untracked-none . : Unset-untracked _origin
+  fn Unset-untracked-merge
+      .a Unset-untracked _origin
+      .b Unset-untracked _origin
+      : Unset-untracked _origin
+  fn Buf-untrack
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+      .element _element
+      # short for Buf-unset followed by Buf-unset-slot-untrack
+  fn Buf-unset-slot-untrack
+      .buf Buf _origin, _element
+      .span Unset-slot _origin
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-unset-span-untrack
+      .buf Buf _origin, _element
+      .span Unset-span _origin
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-opt-unset-span-untrack
+      .buf Buf _origin, _element
+      .span Opt Unset-span _origin
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-vacant-untrack
+      Buf _origin, _element
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-with-unset-untracked-rid
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+      : .
+  ```
+  This still works with `Origin-erase` due to not being rid-able without ridding the Buf.
+  Open question: there could be an API to recover untracked unset spaces.
+  Is there a use-case? I believe not because otherwise you could have just used 
 
 - try to find and fix bugs and resolve todo comments
 

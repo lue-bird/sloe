@@ -7034,6 +7034,1189 @@ const zig_lowercase_keywords: [&str; 46] = [
     "while",
 ];
 
+pub fn checked_project_to_js<Expressions, Patterns, Types>(
+    CheckedSyntaxProject {
+        type_graph: _,
+        project_type_by_graph_node: _,
+        project_fn_graph: _,
+        project_fn_graph_node_by_name,
+        project_fn_by_graph_node,
+        records_used: _,
+        choices_used: _,
+        checked_type_aliases,
+        checked_project_fns,
+        checked_calls,
+        checked_local_fns,
+        checked_queries,
+        checked_spread_records,
+    }: &CheckedSyntaxProject<Expressions, Patterns, Types>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+) -> String {
+    let mut output: String = format!(
+        "// jump to compiled code by searching for // compiled
+
+{}
+
+
+// compiled code //
+
+
+",
+        include_str!("core.mjs"),
+    );
+    output.reserve(checked_project_fns.len() * 12 + checked_type_aliases.len() * 5);
+
+    for (checked_type_alias_name, checked_type_alias) in checked_type_aliases {
+        // TODO a better solution is likely to set core .type_ = None
+        if let Some(checked_aliased_type) = &checked_type_alias.type_
+            && !core_type_aliases.contains_key(checked_type_alias_name)
+        {
+            project_type_alias_to_js(
+                &mut output,
+                checked_type_alias.documentation.as_deref(),
+                checked_type_alias_name,
+                &checked_type_alias.parameters,
+                checked_aliased_type,
+            );
+        }
+    }
+    for (project_fn_name, checked_project_fn) in checked_project_fns {
+        if let Some(syntax_project_fn_node) = project_fn_graph_node_by_name.get(project_fn_name)
+            && let Some(syntax_project_fn) = project_fn_by_graph_node.get(syntax_project_fn_node)
+            && let Some(parameter_type) = &checked_project_fn.parameter_type
+            && let Some(result_type) = &checked_project_fn.result_type
+            && let Some(parameter) = syntax_project_fn.parameter.as_ref()
+            && let Some(result) = syntax_project_fn.result.as_ref()
+        {
+            syntax_project_fn_to_js(
+                &mut output,
+                checked_type_aliases,
+                checked_project_fns,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                expressions,
+                patterns,
+                types,
+                project_fn_name,
+                checked_project_fn.documentation.as_deref(),
+                parameter_type,
+                result_type,
+                checked_project_fn.result_expression_is_invalid,
+                parameter,
+                result,
+            );
+        }
+    }
+    output
+}
+fn project_type_alias_to_js(
+    output: &mut String,
+    maybe_documentation: Option<&str>,
+    name: &Name,
+    parameters: &[Name],
+    aliased_type: &Type,
+) {
+    output.push_str("/** ");
+    if let Some(documentation) = maybe_documentation {
+        output.push_str(&documentation.replace("@", "(@)"));
+    }
+    output.push('\n');
+    for parameter in parameters {
+        output.push_str("@template ");
+        name_to_uppercase_local_js(output, parameter);
+    }
+    output.push_str(" @typedef {");
+    type_to_js(output, aliased_type);
+    output.push_str("} ");
+    output.push_str(&name_to_uppercase_js(name));
+    output.push_str("\n*/\n\n");
+}
+fn syntax_project_fn_to_js<Expressions, Patterns, Types>(
+    output: &mut String,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
+    checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    name: &Name,
+    maybe_documentation: Option<&str>,
+    parameter_type: &Type,
+    result_type: &Type,
+    result_expression_is_invalid: bool,
+    syntax_parameter: &SyntaxPattern<Patterns, Types>,
+    syntax_result: &SyntaxExpression<Expressions, Patterns, Types>,
+) {
+    output.push_str("/** ");
+    if let Some(documentation) = maybe_documentation {
+        output.push_str(&documentation.replace("@", "(@)"));
+    }
+    output.push('\n');
+    let mut type_parameters = std::collections::BTreeSet::new();
+    type_variables_into(&mut type_parameters, parameter_type);
+    type_variables_into(&mut type_parameters, result_type);
+    for type_parameter in type_parameters {
+        output.push_str("@template ");
+        name_to_uppercase_local_js(output, type_parameter);
+        output.push(' ');
+    }
+    output.push_str("@param {");
+    type_to_js(output, parameter_type);
+    output.push_str("} $ @returns {");
+    type_to_js(output, result_type);
+    output.push_str("}\n*/\n");
+    let function_scope_start = expression_start(syntax_result);
+    output.push_str("export function ");
+    output.push_str(&name_to_lowercase_js(name));
+    output.push_str("($) {\n");
+    let mut parameter_introduced_variables = std::collections::HashMap::new();
+    syntax_pattern_to_js_destructuring(
+        output,
+        syntax_parameter,
+        "$",
+        &mut parameter_introduced_variables,
+        type_aliases,
+        checked_spread_records,
+        patterns,
+        types,
+    );
+    output.push_str("let ");
+    js_scope_result_variable(output, function_scope_start);
+    output.push_str(";\n");
+    if result_expression_is_invalid {
+        js_incomplete_statement()
+    } else {
+        syntax_expression_to_js(
+            output,
+            type_aliases,
+            project_fns,
+            expressions,
+            patterns,
+            types,
+            checked_calls,
+            checked_local_fns,
+            checked_queries,
+            checked_spread_records,
+            &mut parameter_introduced_variables,
+            &mut std::collections::HashMap::new(),
+            syntax_result,
+            function_scope_start,
+        );
+    }
+    output.push_str("return ");
+    js_scope_result_variable(output, function_scope_start);
+    output.push_str(";\n}\n\n");
+}
+fn type_to_js(output: &mut String, type_: &Type) {
+    match type_ {
+        Type::Variable(name) => {
+            name_to_uppercase_local_js(output, name);
+        }
+        Type::Origin(name) => {
+            origin_name_to_uppercase_js(output, name);
+        }
+        Type::Record(fields) => {
+            output.push_str("{ ");
+            for field in fields {
+                output.push_str(&name_to_lowercase_js(&field.name));
+                output.push_str(": ");
+                type_to_js(output, &field.value);
+                output.push_str(", ");
+            }
+            output.push('}');
+        }
+        Type::Choice(variants) => match variants.split_first() {
+            None => {
+                output.push_str(choice_empty_js_type_name);
+            }
+            Some((variant0, variant1_up)) => {
+                output.push_str("{ ");
+                output.push_str(&name_to_lowercase_js(&variant0.name));
+                output.push_str(": ");
+                type_to_js(output, &variant0.value);
+                output.push_str(" }");
+                for variant in variant1_up {
+                    output.push_str(" | { ");
+                    output.push_str(&name_to_lowercase_js(&variant.name));
+                    output.push_str(": ");
+                    type_to_js(output, &variant.value);
+                    output.push_str(" }");
+                }
+            }
+        },
+        Type::CoreConstruct { name, arguments } => {
+            output.push_str(&name_to_uppercase_js(name));
+            if let Some((argument0, argument1_up)) = arguments.split_first() {
+                output.push('<');
+                type_to_js(output, argument0);
+                for argument in argument1_up {
+                    output.push_str(", ");
+                    type_to_js(output, argument);
+                }
+                output.push('>');
+            }
+        }
+    }
+}
+fn syntax_pattern_to_js_matches_condition<'a, Patterns, Types>(
+    output: &mut String,
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    to_match: &str,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+) {
+    match pattern {
+        SyntaxPattern::Variable { .. } => {
+            output.push_str("true");
+        }
+        SyntaxPattern::Variant { name, value } => {
+            if let Some(name) = &name.value
+                && let Some(value) = value
+            {
+                output.push('"');
+                output.push_str(&name_to_lowercase_js(name));
+                output.push_str("\" in ");
+                output.push_str(to_match);
+                output.push_str(" && ");
+                syntax_pattern_to_js_matches_condition(
+                    output,
+                    patterns.element(value),
+                    &format!("{to_match}.{}", name_to_lowercase_js(name)),
+                    patterns,
+                );
+            }
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {
+            output.push_str("true");
+        }
+        SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        if let Some(name) = &name.value
+                            && let Some(value) = value
+                        {
+                            syntax_pattern_to_js_matches_condition(
+                                output,
+                                patterns.element(value),
+                                &format!("{to_match}.{}", name_to_lowercase_js(name)),
+                                patterns,
+                            );
+                            output.push_str(" && ");
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            syntax_pattern_to_js_matches_condition(
+                                output,
+                                patterns.element(record),
+                                to_match,
+                                patterns,
+                            );
+                            output.push_str(" && ");
+                        }
+                    }
+                }
+            }
+            output.push_str("true");
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_pattern_to_js_matches_condition(
+                    output,
+                    patterns.element(inner),
+                    to_match,
+                    patterns,
+                );
+            }
+        }
+    }
+}
+fn syntax_pattern_to_js_destructuring<'a, Patterns, Types>(
+    output: &mut String,
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    to_destructure: &str,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+) {
+    match pattern {
+        SyntaxPattern::Variable { name, type_: _ } => {
+            output.push_str("const ");
+            name_to_lowercase_local_js_introduced_at(output, &name.value, name.start);
+            output.push_str(" = ");
+            output.push_str(to_destructure);
+            output.push_str(";\n");
+            introduced_variables.insert(&name.value, name.start);
+        }
+        SyntaxPattern::Variant { name, value } => {
+            if let Some(name) = &name.value
+                && let Some(value) = value
+            {
+                syntax_pattern_to_js_destructuring(
+                    output,
+                    patterns.element(value),
+                    &format!("{to_destructure}.{}", name_to_lowercase_js(name)),
+                    introduced_variables,
+                    type_aliases,
+                    checked_spread_records,
+                    patterns,
+                    types,
+                );
+            }
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => {
+            output.push_str(to_destructure);
+            output.push_str(";\n");
+        }
+        SyntaxPattern::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        if let Some(name) = &name.value
+                            && let Some(value) = value
+                        {
+                            syntax_pattern_to_js_destructuring(
+                                output,
+                                patterns.element(value),
+                                &format!("{to_destructure}.{}", name_to_lowercase_js(name)),
+                                introduced_variables,
+                                type_aliases,
+                                checked_spread_records,
+                                patterns,
+                                types,
+                            );
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        let Some(record) = record else {
+                            return;
+                        };
+                        let record = patterns.element(record);
+                        let Some(record_spread_field_names) =
+                            checked_spread_records.get(dot_dot_start)
+                        else {
+                            return;
+                        };
+                        let unspread_record_variable_name = {
+                            let mut unspread_record_variable_name = String::new();
+                            use std::fmt::Write as _;
+                            unspread_record_variable_name.push_str("$unspread_record$");
+                            let _ = write!(unspread_record_variable_name, "{}", dot_dot_start.line);
+                            unspread_record_variable_name.push_str("_");
+                            let _ = write!(
+                                unspread_record_variable_name,
+                                "{}",
+                                dot_dot_start.character
+                            );
+                            unspread_record_variable_name
+                        };
+                        output.push_str("const ");
+                        output.push_str(&unspread_record_variable_name);
+                        output.push_str(" = { ");
+                        for record_spread_field_name in record_spread_field_names {
+                            output.push_str(&name_to_lowercase_js(record_spread_field_name));
+                            output.push_str(": ");
+                            output.push_str(to_destructure);
+                            output.push('.');
+                            output.push_str(&name_to_lowercase_js(record_spread_field_name));
+                            output.push_str(", ");
+                        }
+                        output.push_str("};\n");
+                        syntax_pattern_to_js_destructuring(
+                            output,
+                            record,
+                            &unspread_record_variable_name,
+                            introduced_variables,
+                            type_aliases,
+                            checked_spread_records,
+                            patterns,
+                            types,
+                        );
+                    }
+                }
+            }
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                syntax_pattern_to_js_destructuring(
+                    output,
+                    patterns.element(inner),
+                    to_destructure,
+                    introduced_variables,
+                    type_aliases,
+                    checked_spread_records,
+                    patterns,
+                    types,
+                );
+            }
+        }
+    }
+}
+fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
+    output: &mut String,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
+    checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
+    checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
+    checked_spread_records: &std::collections::HashMap<
+        /* .. start */ lsp_types::Position,
+        Vec<Name>,
+    >,
+    pattern_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
+    origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
+    expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
+    scope_start: lsp_types::Position,
+) {
+    match expression {
+        SyntaxExpression::Number { value, type_ } => {
+            let Some(syntax_type) = type_ else {
+                js_incomplete_statement();
+                return;
+            };
+            let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins) else {
+                js_incomplete_statement();
+                return;
+            };
+            use std::fmt::Write as _;
+            match &type_ {
+                Type::CoreConstruct { name, arguments: _ } => match name.as_str() {
+                    "p32" => match value.value.parse::<std::num::NonZeroU32>() {
+                        Ok(number) => {
+                            js_scope_result_variable(output, scope_start);
+                            output.push_str(" = ");
+                            let _ = write!(output, "{}", number);
+                            output.push_str(";\n");
+                        }
+                        Err(_) => js_incomplete_statement(),
+                    },
+                    "u32" => match value.value.parse::<u32>() {
+                        Ok(number) => {
+                            js_scope_result_variable(output, scope_start);
+                            output.push_str(" = ");
+                            let _ = write!(output, "{}", number);
+                            output.push_str(";\n");
+                        }
+                        Err(_) => js_incomplete_statement(),
+                    },
+                    "i32" => match value.value.parse::<i32>() {
+                        Ok(number) => {
+                            js_scope_result_variable(output, scope_start);
+                            output.push_str(" = ");
+                            let _ = write!(output, "{}", number);
+                            output.push_str(";\n");
+                        }
+                        Err(_) => js_incomplete_statement(),
+                    },
+                    "f32" => match value.value.parse::<f32>() {
+                        Ok(number) => {
+                            js_scope_result_variable(output, scope_start);
+                            output.push_str(" = ");
+                            let _ = write!(output, "{}", number);
+                            output.push_str(";\n");
+                        }
+                        Err(_) => js_incomplete_statement(),
+                    },
+                    _ => js_incomplete_statement(),
+                },
+                _ => js_incomplete_statement(),
+            }
+        }
+        SyntaxExpression::Char {
+            open_quote_start: _,
+            content,
+            content_end: _,
+            closed_quote_exists: _,
+        } => {
+            let Some(content) = content else {
+                js_incomplete_statement();
+                return;
+            };
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = \"");
+            output.extend(content.escape_debug());
+            output.push_str("\";\n");
+        }
+        SyntaxExpression::Str {
+            open_quote_start: _,
+            content,
+            content_end: _,
+            closed_quote_exists: _,
+        } => {
+            if content.is_empty() {
+                js_incomplete_statement();
+                return;
+            };
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = \"");
+            output.extend(content.escape_debug());
+            output.push_str("\";\n");
+        }
+        SyntaxExpression::Variable(name) => {
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = ");
+            if let Some(pattern_variable_introduced_start) = pattern_variables.get(&name.value) {
+                name_to_lowercase_local_js_introduced_at(
+                    output,
+                    &name.value,
+                    *pattern_variable_introduced_start,
+                );
+            } else {
+                name_to_lowercase_local_js(output, &name.value);
+            }
+            output.push_str(";\n");
+        }
+        SyntaxExpression::Call {
+            name,
+            type_arguments: _,
+            argument,
+        } => {
+            let Some(argument) = argument else {
+                js_incomplete_statement();
+                return;
+            };
+            let argument = expressions.element(argument);
+            let argument_scope_start = expression_start(argument);
+            output.push_str("let ");
+            js_scope_result_variable(output, argument_scope_start);
+            output.push_str(";\n");
+            syntax_expression_to_js(
+                output,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                pattern_variables,
+                origins,
+                argument,
+                argument_scope_start,
+            );
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = ");
+            output.push_str(&name_to_lowercase_js(&name.value));
+            output.push('(');
+            js_scope_result_variable(output, argument_scope_start);
+            output.push_str(");\n");
+        }
+        SyntaxExpression::Variant {
+            bar_start: _,
+            type_: _,
+            name,
+            value,
+        } => {
+            let Some(name) = name else {
+                js_incomplete_statement();
+                return;
+            };
+            let Some(value) = value else {
+                js_incomplete_statement();
+                return;
+            };
+            let value = expressions.element(value);
+            let value_scope_start = expression_start(value);
+            output.push_str("let ");
+            js_scope_result_variable(output, value_scope_start);
+            output.push_str(";\n");
+            syntax_expression_to_js(
+                output,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                pattern_variables,
+                origins,
+                value,
+                value_scope_start,
+            );
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = { ");
+            output.push_str(&name_to_lowercase_js(&name.value));
+            output.push_str(": ");
+            js_scope_result_variable(output, value_scope_start);
+            output.push_str("};\n");
+        }
+        SyntaxExpression::Fn {
+            open_bracket_start: _,
+            parameter,
+            closed_bracket_start: _,
+            result,
+        } => {
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = ($) => {\n");
+            'in_function: {
+                let Some(syntax_parameter) = parameter else {
+                    js_incomplete_statement();
+                    break 'in_function;
+                };
+                let mut parameter_introduced_variables = std::collections::HashMap::new();
+                syntax_pattern_to_js_destructuring(
+                    output,
+                    syntax_parameter,
+                    "$",
+                    &mut parameter_introduced_variables,
+                    type_aliases,
+                    checked_spread_records,
+                    patterns,
+                    types,
+                );
+                let Some(result) = result else {
+                    js_incomplete_statement();
+                    break 'in_function;
+                };
+                let result = expressions.element(result);
+                let result_scope_start = expression_start(result);
+                output.push_str("let ");
+                js_scope_result_variable(output, result_scope_start);
+                output.push_str(";\n");
+                syntax_expression_to_js(
+                    output,
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_calls,
+                    checked_local_fns,
+                    checked_queries,
+                    checked_spread_records,
+                    &mut parameter_introduced_variables,
+                    origins,
+                    result,
+                    result_scope_start,
+                );
+                output.push_str("return ");
+                js_scope_result_variable(output, result_scope_start);
+            }
+            output.push_str(";\n};\n");
+        }
+        SyntaxExpression::RecordEmpty { dot_start: _ } => {
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = {};\n");
+        }
+        SyntaxExpression::Record { part0, part1_up } => {
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name: _, value } => {
+                        if let Some(value) = value {
+                            let value = expressions.element(value);
+                            output.push_str("let ");
+                            js_scope_result_variable(output, expression_start(value));
+                            output.push_str(";\n");
+                            syntax_expression_to_js(
+                                output,
+                                type_aliases,
+                                project_fns,
+                                expressions,
+                                patterns,
+                                types,
+                                checked_calls,
+                                checked_local_fns,
+                                checked_queries,
+                                checked_spread_records,
+                                pattern_variables,
+                                origins,
+                                value,
+                                expression_start(value),
+                            );
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start: _,
+                        record,
+                    } => {
+                        if let Some(record) = record {
+                            let record = expressions.element(record);
+                            output.push_str("let ");
+                            js_scope_result_variable(output, expression_start(record));
+                            output.push_str(";\n");
+                            syntax_expression_to_js(
+                                output,
+                                type_aliases,
+                                project_fns,
+                                expressions,
+                                patterns,
+                                types,
+                                checked_calls,
+                                checked_local_fns,
+                                checked_queries,
+                                checked_spread_records,
+                                pattern_variables,
+                                origins,
+                                record,
+                                expression_start(record),
+                            );
+                        }
+                    }
+                }
+            }
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = { ");
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        if let Some(name) = &name.value
+                            && let Some(value) = value
+                        {
+                            output.push_str(&name_to_lowercase_js(name));
+                            output.push_str(": ");
+                            js_scope_result_variable(
+                                output,
+                                expression_start(expressions.element(value)),
+                            );
+                            output.push_str(", ");
+                        }
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        if let Some(spread_field_names) = checked_spread_records.get(dot_dot_start)
+                            && let Some(record) = record
+                        {
+                            let record_scope_start = expression_start(expressions.element(record));
+                            for spread_field_name in spread_field_names {
+                                let js_field_name = name_to_lowercase_js(spread_field_name);
+                                output.push_str(&js_field_name);
+                                output.push_str(": ");
+                                js_scope_result_variable(output, record_scope_start);
+                                output.push('.');
+                                output.push_str(&js_field_name);
+                                output.push_str(", ");
+                            }
+                        }
+                    }
+                }
+            }
+            output.push_str("};\n");
+        }
+        SyntaxExpression::Array {
+            semicolon_start: _,
+            element0,
+            element1_up,
+        } => {
+            let Some(element0) = element0 else {
+                js_incomplete_statement();
+                return;
+            };
+            for element in std::iter::once(expressions.element(element0)).chain(
+                element1_up
+                    .iter()
+                    .filter_map(|element| element.element.as_ref()),
+            ) {
+                output.push_str("let ");
+                js_scope_result_variable(output, expression_start(element));
+                output.push_str(";\n");
+                syntax_expression_to_js(
+                    output,
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_calls,
+                    checked_local_fns,
+                    checked_queries,
+                    checked_spread_records,
+                    pattern_variables,
+                    origins,
+                    element,
+                    expression_start(element),
+                );
+            }
+            js_scope_result_variable(output, scope_start);
+            output.push_str(" = [ ");
+            for element in std::iter::once(expressions.element(element0)).chain(
+                element1_up
+                    .iter()
+                    .filter_map(|element| element.element.as_ref()),
+            ) {
+                js_scope_result_variable(output, expression_start(element));
+                output.push_str(", ");
+            }
+            output.push_str(" ];\n");
+        }
+        SyntaxExpression::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => {
+                js_incomplete_statement();
+            }
+            Some(inner) => {
+                syntax_expression_to_js(
+                    output,
+                    type_aliases,
+                    project_fns,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_calls,
+                    checked_local_fns,
+                    checked_queries,
+                    checked_spread_records,
+                    pattern_variables,
+                    origins,
+                    expressions.element(inner),
+                    scope_start,
+                );
+            }
+        },
+        SyntaxExpression::Commented {
+            comments,
+            expression,
+        } => {
+            for comment_line in std::iter::once(&comments.line0).chain(&comments.line1_up) {
+                output.push_str("// ");
+                output.push_str(&comment_line.value);
+                output.push('\n')
+            }
+            match expression {
+                None => {
+                    js_incomplete_statement();
+                }
+                Some(expression) => {
+                    syntax_expression_to_js(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_calls,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(expression),
+                        scope_start,
+                    );
+                }
+            }
+        }
+        SyntaxExpression::Query {
+            question_mark_start,
+            queried,
+            cases,
+        } => {
+            let Some(checked_query) = checked_queries.get(question_mark_start) else {
+                js_incomplete_statement();
+                return;
+            };
+            let Some(queried) = queried else {
+                js_incomplete_statement();
+                return;
+            };
+            let queried = expressions.element(queried);
+            let queried_scope_start = expression_start(queried);
+            let queried_variable_name = {
+                let mut queried_variable_name = String::new();
+                js_scope_result_variable(&mut queried_variable_name, queried_scope_start);
+                queried_variable_name
+            };
+            output.push_str("let ");
+            output.push_str(&queried_variable_name);
+            output.push_str(";\n");
+            syntax_expression_to_js(
+                output,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                pattern_variables,
+                origins,
+                queried,
+                queried_scope_start,
+            );
+            output.push_str(";\n");
+            for (case_index, case) in cases.iter().enumerate() {
+                if !checked_query.invalid_case_indexes.contains(&case_index)
+                    && let Some(case_pattern) = &case.pattern
+                {
+                    if cases.len() >= 2 {
+                        output.push_str("if (");
+                        syntax_pattern_to_js_matches_condition(
+                            output,
+                            case_pattern,
+                            &queried_variable_name,
+                            patterns,
+                        );
+                        output.push_str(") {\n");
+                    }
+                    let mut case_introduced_variables = std::collections::HashMap::new();
+                    syntax_pattern_to_js_destructuring(
+                        output,
+                        case_pattern,
+                        &queried_variable_name,
+                        &mut case_introduced_variables,
+                        type_aliases,
+                        checked_spread_records,
+                        patterns,
+                        types,
+                    );
+                    match &case.result {
+                        None => {
+                            js_incomplete_statement();
+                        }
+                        Some(case_result) => {
+                            pattern_variables.extend(
+                                case_introduced_variables
+                                    .iter()
+                                    .map(|(name, start)| (*name, *start)),
+                            );
+                            syntax_expression_to_js(
+                                output,
+                                type_aliases,
+                                project_fns,
+                                expressions,
+                                patterns,
+                                types,
+                                checked_calls,
+                                checked_local_fns,
+                                checked_queries,
+                                checked_spread_records,
+                                pattern_variables,
+                                origins,
+                                case_result,
+                                scope_start,
+                            );
+                            pattern_variables
+                                .retain(|v, _| !case_introduced_variables.contains_key(v));
+                        }
+                    }
+                    if cases.len() >= 2 {
+                        output.push_str("\n} else ");
+                    }
+                }
+            }
+            if cases.len() >= 2 {
+                // in case none of the above patterns have matched, crash
+                output.push_str("{\n");
+                js_incomplete_statement();
+                output.push_str("}");
+            }
+        }
+        SyntaxExpression::Origin {
+            caret_key_symbol_start: _,
+            name,
+            result,
+        } => {
+            if let Some(name) = name {
+                output.push_str("const ");
+                name_to_lowercase_local_js(output, &name.value);
+                output.push_str(" = {};\n");
+            }
+            match result {
+                None => {
+                    js_incomplete_statement();
+                }
+                Some(result) => {
+                    syntax_expression_to_js(
+                        output,
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_calls,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        expressions.element(result),
+                        scope_start,
+                    );
+                }
+            }
+        }
+    }
+}
+fn js_incomplete_statement() {
+    // just don't set the result to anything
+}
+const choice_empty_js_type_name: &str = "choice";
+fn name_to_uppercase_js(name: &str) -> String {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_uppercase();
+    }
+    sanitized
+}
+fn name_to_uppercase_local_js(output: &mut String, name: &str) {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_uppercase();
+    }
+    output.push('$');
+    output.push_str(&sanitized);
+}
+fn name_to_lowercase_js(name: &str) -> String {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_lowercase();
+    }
+    if js_lowercase_keywords.contains(&sanitized.as_str()) {
+        sanitized + "ø"
+    } else {
+        sanitized
+    }
+}
+fn name_to_lowercase_local_js(output: &mut String, name: &str) {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_lowercase();
+    }
+    output.push('$');
+    output.push_str(&sanitized);
+}
+fn js_scope_result_variable(output: &mut String, scope_start: lsp_types::Position) {
+    use std::fmt::Write as _;
+    output.push_str("$result$");
+    let _ = write!(output, "{}", scope_start.line);
+    output.push_str("_");
+    let _ = write!(output, "{}", scope_start.character);
+}
+fn name_to_lowercase_local_js_introduced_at(
+    output: &mut String,
+    name: &str,
+    introduced_start: lsp_types::Position,
+) {
+    use std::fmt::Write as _;
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_lowercase();
+    }
+    output.push_str(&sanitized);
+    output.push_str("$");
+    let _ = write!(output, "{}", introduced_start.line);
+    output.push_str("_");
+    let _ = write!(output, "{}", introduced_start.character);
+}
+fn origin_name_to_uppercase_js(output: &mut String, name: &str) {
+    let mut sanitized: String = name.replace("-", "_");
+    if let Some(first) = sanitized.get_mut(0..=0) {
+        first.make_ascii_uppercase();
+    }
+    output.push_str(&sanitized);
+    output.push_str("$origin");
+}
+/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
+const js_lowercase_keywords: [&str; 70] = [
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "new",
+    "null",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "let",
+    "static",
+    "yield",
+    "await",
+    "enum",
+    "implements",
+    "interface",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "abstract",
+    "boolean",
+    "byte",
+    "char",
+    "double",
+    "final",
+    "float",
+    "goto",
+    "int",
+    "long",
+    "native",
+    "short",
+    "synchronized",
+    "throws",
+    "transient",
+    "volatile",
+    "arguments",
+    "as",
+    "async",
+    "eval",
+    "from",
+    "get",
+    "of",
+    "set",
+];
+
 #[derive(Clone, Debug)]
 struct CheckedPatternVariable {
     origin_start: lsp_types::Position,

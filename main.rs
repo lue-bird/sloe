@@ -57,7 +57,18 @@ Full help:
                 );
                 Ok(())
             }
-            "rust" | "rs" | "r" => {
+            "typescript" | "tsc" | "ts" | "tsx" => {
+                println!(
+                    "Only `sloe js` exists.
+Generated js files include types in the form of jsdoc comments which just work with ts.
+A jsdoc overview: https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html
+
+Full help:
+{command_help}"
+                );
+                Ok(())
+            }
+            "rust" | "rs" | "rustc" | "rooster" | "roost" => {
                 let maybe_input_file_path: Option<String> = full_command.next();
                 let maybe_output_file_path: Option<String> = full_command.next();
                 build_main(
@@ -75,13 +86,22 @@ Full help:
                     maybe_output_file_path.as_ref().map(std::path::Path::new),
                 )
             }
+            "javascript" | "jsdoc" | "ecmascript" | "mjs" | "jsm" | "esm" | "js" | "es" | "j" => {
+                let maybe_input_file_path: Option<String> = full_command.next();
+                let maybe_output_file_path: Option<String> = full_command.next();
+                build_main(
+                    CompileOutputLanguage::Js,
+                    maybe_input_file_path.as_ref().map(std::path::Path::new),
+                    maybe_output_file_path.as_ref().map(std::path::Path::new),
+                )
+            }
             "check" | "analyze" | "errors" | "warn" | "warnings" | "examine" | "validate"
-            | "review" | "verify" | "c" => {
+            | "review" | "verify" | "chk" | "ch" => {
                 let maybe_input_file_path: Option<String> = full_command.next();
                 check_main(maybe_input_file_path.as_ref().map(std::path::Path::new))
             }
             "doc" | "docs" | "documentation" | "core" | "stdlib" | "core-doc" | "core-docs"
-            | "core-documentation" | "core-types" | "d" => {
+            | "core-documentation" | "core-types" | "dc" => {
                 println!("Here are all core declarations:\n");
                 print_core_docs();
                 Ok(())
@@ -96,6 +116,7 @@ Full help:
 const command_help: &str = "\
 To compile to a rust file: sloe rs [input-file.sloe [output-file.rs]]
 To compile to a zig file: sloe zig [input-file.sloe [output-file.zig]]
+To compile to a javascript (es2020) file: sloe js [input-file.sloe [output-file.mjs]]
 To copy the rust hello-world project setup into the current directory: sloe init
 To start the language server: sloe lsp
 To print core declaration documentation: sloe core-docs
@@ -324,6 +345,7 @@ fn default_output_file_path_for_sloe_input_file_path(
     match language {
         CompileOutputLanguage::Rust => input_file_path.with_extension("rs"),
         CompileOutputLanguage::Zig => input_file_path.with_extension("zig"),
+        CompileOutputLanguage::Js => input_file_path.with_extension("mjs"),
     }
 }
 fn rust_file_name_derive_mod_name(rust_file_name: &std::path::Path) -> Result<&str, ()> {
@@ -400,6 +422,7 @@ fn check_main(maybe_input_file_path: Option<&std::path::Path>) -> Result<(), ()>
 enum CompileOutputLanguage {
     Rust,
     Zig,
+    Js,
 }
 fn build_main(
     output_language: CompileOutputLanguage,
@@ -480,6 +503,12 @@ fn build_main(
             sloe::compiled_rust_to_file_content(&compiled_project, output_mod_name)
         }
         CompileOutputLanguage::Zig => sloe::checked_project_to_zig(
+            &checked_project,
+            &syntax_expressions,
+            &syntax_patterns,
+            &syntax_types,
+        ),
+        CompileOutputLanguage::Js => sloe::checked_project_to_js(
             &checked_project,
             &syntax_expressions,
             &syntax_patterns,
