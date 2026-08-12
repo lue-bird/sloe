@@ -12653,8 +12653,8 @@ The most common use case is re-combining spans that have been split up with e.g.
                         "buf",
                         type_buf(type_variable("origin"), type_variable("element")),
                     ),
-                    ("start", type_opt(type_span(type_variable("origin")))),
-                    ("end", type_span(type_variable("origin"))),
+                    ("start", type_span(type_variable("origin"))),
+                    ("end", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
