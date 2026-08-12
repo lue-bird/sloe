@@ -7223,14 +7223,18 @@ fn type_to_js(output: &mut String, type_: &Type) {
             origin_name_to_uppercase_js(output, name);
         }
         Type::Record(fields) => {
-            output.push_str("{ ");
-            for field in fields {
-                output.push_str(&name_to_lowercase_js(&field.name));
-                output.push_str(": ");
-                type_to_js(output, &field.value);
-                output.push_str(", ");
+            if fields.is_empty() {
+                output.push_str(record_empty_js_type_name);
+            } else {
+                output.push_str("{ ");
+                for field in fields {
+                    output.push_str(&name_to_lowercase_js(&field.name));
+                    output.push_str(": ");
+                    type_to_js(output, &field.value);
+                    output.push_str(", ");
+                }
+                output.push('}');
             }
-            output.push('}');
         }
         Type::Choice(variants) => match variants.split_first() {
             None => {
@@ -7726,8 +7730,10 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
             output.push_str(";\n};\n");
         }
         SyntaxExpression::RecordEmpty { dot_start: _ } => {
-            js_scope_result_variable(output, scope_start);
-            output.push_str(" = {};\n");
+            // Nothing to do: it's already undefined which is of type void :)
+
+            // js_scope_result_variable(output, scope_start);
+            // output.push_str(" = undefined;\n");
         }
         SyntaxExpression::Record { part0, part1_up } => {
             for part in std::iter::once(part0).chain(part1_up) {
@@ -8077,7 +8083,8 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
 fn js_incomplete_statement() {
     // just don't set the result to anything
 }
-const choice_empty_js_type_name: &str = "choice";
+const record_empty_js_type_name: &str = "void";
+const choice_empty_js_type_name: &str = "never";
 fn name_to_uppercase_js(name: &str) -> String {
     let mut sanitized: String = name.replace("-", "_");
     if let Some(first) = sanitized.get_mut(0..=0) {
