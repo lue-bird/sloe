@@ -12090,6 +12090,14 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_p32,
             },
             CoreFnInfo {
+                name: "U32-round-to-nearest-f32-else-even",
+                documentation: "Lossy cast to fit it into an f32.
+Chooses the closest f32 representation, breaking exact ties towards the even significand (\"mantissa\")",
+                type_parameters: vec![],
+                parameter_type: type_u32,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
                 name: "U32-add-clamp",
                 documentation: "Saturating a + b",
                 type_parameters: vec![],
@@ -12137,6 +12145,14 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 type_parameters: vec![],
                 parameter_type: type_i32,
                 result_type: type_record_empty,
+            },
+            CoreFnInfo {
+                name: "I32-round-to-nearest-f32-else-even",
+                documentation: "Lossy cast to fit it into an f32.
+Chooses the closest f32 representation, breaking exact ties towards the even significand (\"mantissa\")",
+                type_parameters: vec![],
+                parameter_type: type_i32,
+                result_type: type_f32,
             },
             CoreFnInfo {
                 name: "I32-add-clamp",
@@ -12196,7 +12212,8 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
             },
             CoreFnInfo {
                 name: "F32-ln",
-                documentation: "Its natural logarithm if positive, otherwise |no .",
+                documentation: "Its natural logarithm.
+If the result is too negative or the input is not positive, returns |no .",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_opt(type_f32),

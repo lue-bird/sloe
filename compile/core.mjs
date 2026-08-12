@@ -86,6 +86,10 @@ export function u32_rid(_) {}
 export function u32_dup(u) {
   return { a: u, b: u };
 }
+/** @param {U32} u @returns {F32} */
+export function u32_round_to_nearest_f32_else_even(u) {
+  return Math.fround(u);
+}
 /** @param {U32} u @returns {P32} */
 export function u32_successor_clamp(u) {
   return Math.min(U32$MAX, u + 1);
@@ -125,6 +129,10 @@ export function i32_rid(_) {}
 /** @param {I32} n @returns {{ a: I32, b: I32, }} */
 export function i32_dup(n) {
   return { a: n, b: n };
+}
+/** @param {I32} u @returns {F32} */
+export function i32_round_to_nearest_f32_else_even(u) {
+  return Math.fround(u);
 }
 /** @param {{ left: I32, right: I32, }} sides @returns {Order} */
 export function i32_order(sides) {
@@ -183,7 +191,14 @@ export function f32_exp(n) {
 }
 /** @param {F32} n @returns {Opt<F32>} */
 export function f32_ln(n) {
-  return n <= 0 ? { no: undefined } : { yes: Math.max(Math.log(n), Number.MIN_VALUE) };
+  if (n <= 0) {
+    return { no: undefined };
+  } else {
+    const ln_result = Math.log(n);
+    return Number.isFinite(ln_result)
+      ? { yes: Math.fround(ln_result) }
+      : { no: undefined };
+  }
 }
 /** @param {F32} n @returns {F32} */
 export function f32_sin(n) {

@@ -632,6 +632,8 @@ cargo install --offline --debug --path . sloe
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
+- add I32-to-u32, U32-to-p32
+
 - consider `Unset-untracked` API to make deconstructing Bufs less reliant on opitimizers figuring out that allocating and tracking vacant spans is useless when all those spans are deallocated anyway at the end.
   ```sloe
   ty Unset-untracked _origin
@@ -714,7 +716,7 @@ cargo install --offline --debug --path . sloe
   ```
   This still works with `Origin-erase` due to not being rid-able without ridding the Buf.
   Open question: there could be an API to recover untracked unset spaces.
-  Is there a use-case? I believe not because otherwise you could have just used 
+  Is there a use-case? I believe not because otherwise you could have just used
 
 - try to find and fix bugs and resolve todo comments
 

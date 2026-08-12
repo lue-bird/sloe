@@ -1013,6 +1013,10 @@ pub fn u32_dup(@"%n": U32) error{OutOfMemory}!Record(struct { a: U32, b: U32 }) 
 pub fn u32_to_i32_clamp(@"%n": U32) error{OutOfMemory}!I32 {
     return std.math.lossyCast(i32, @"%n");
 }
+pub fn u32_round_to_nearest_f32_else_even(@"%n": U32) error{OutOfMemory}!F32 {
+    // see i32_round_to_nearest_f32_else_even for details
+    return @floatFromInt(@"%n");
+}
 pub fn u32_successor_clamp(@"%n": U32) error{OutOfMemory}!P32 {
     return .{ .positive = @"%n" +| 1 };
 }
@@ -1038,6 +1042,14 @@ pub fn u32_order(@"%": Record(struct { left: U32, right: U32 })) error{OutOfMemo
 pub fn i32_rid(_: I32) error{OutOfMemory}!void {}
 pub fn i32_dup(@"%n": I32) error{OutOfMemory}!Record(struct { a: I32, b: I32 }) {
     return .{ .a = @"%n", .b = @"%n" };
+}
+pub fn i32_round_to_nearest_f32_else_even(@"%n": I32) error{OutOfMemory}!F32 {
+    // - custom backend: explicit round ties to even
+    //   https://codeberg.org/ziglang/zig/src/branch/master/lib/compiler_rt/float_from_int.zig#L508-L509
+    // - in llvm, this compiles to sitofp which uses the default rounding mode
+    //   @setRoundMode is set to strict by default which claims IEEE compliance
+    //   IEEE specifies round ties to even (see §4.3.3, §7.4 in IEEE 754-2008)
+    return @floatFromInt(@"%n");
 }
 pub fn i32_add_clamp(@"%": Record(struct { a: I32, b: I32 })) error{OutOfMemory}!I32 {
     return @"%".a +| @"%".b;
@@ -1069,7 +1081,12 @@ pub fn f32_abs(@"%n": F32) error{OutOfMemory}!F32 {
     return @abs(@"%n");
 }
 pub fn f32_ln(@"%n": F32) error{OutOfMemory}!Opt(F32) {
-    return if (@"%n" >= 0) .{ .no = {} } else @max(@log(@"%n"), std.math.floatMin(f32));
+    if (@"%n" <= 0) {
+        return .{ .no = {} };
+    } else {
+        const @"%ln_result" = @log(@"%n");
+        return if (std.math.isFinite(@"%ln_result")) .{ .yes = @"%ln_result" } else .{ .no = {} };
+    }
 }
 pub fn f32_exp(@"%n": F32) error{OutOfMemory}!F32 {
     return @min(@exp(@"%n"), std.math.floatMax(f32));

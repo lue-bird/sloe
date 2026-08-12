@@ -2011,7 +2011,7 @@ pub fn u32_dup(n: U32) -> Record·a·b<U32, U32> {
     Record·a·b { a: n, b: n }
 }
 #[expect(clippy::cast_precision_loss)]
-pub fn u32_to_f32(n: U32) -> F32 {
+pub fn u32_round_to_nearest_f32_else_even(n: U32) -> F32 {
     n as F32
 }
 pub fn u32_add_clamp(Record·a·b { a, b }: Record·a·b<U32, U32>) -> U32 {
@@ -2065,7 +2065,7 @@ pub fn i32_dup(n: I32) -> Record·a·b<I32, I32> {
 }
 pub fn i32_rid(_: I32) -> Record {}
 #[expect(clippy::cast_precision_loss)]
-pub fn i32_to_f32(n: I32) -> F32 {
+pub fn i32_round_to_nearest_f32_else_even(n: I32) -> F32 {
     n as F32
 }
 pub fn i32_to_u32(n: I32) -> Opt<U32> {
@@ -2159,8 +2159,12 @@ pub fn f32_negate(n: F32) -> F32 {
 pub fn f32_ln(n: F32) -> Opt<F32> {
     if n <= 0.0 {
         Opt::No(())
+    } else if let ln_result = n.ln()
+        && ln_result.is_finite()
+    {
+        Opt::Yes(ln_result)
     } else {
-        Opt::Yes(n.ln().max(F32::MIN))
+        Opt::No(())
     }
 }
 pub fn f32_exp(n: F32) -> F32 {
