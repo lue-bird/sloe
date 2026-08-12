@@ -67,6 +67,10 @@ test "various trivial" {
     try std.testing.expectEqual(std.math.maxInt(i32), core.u32_to_i32_clamp(std.math.maxInt(u32)));
     try std.testing.expectEqual(core.P32{ .positive = std.math.maxInt(u32) }, core.u32_successor_clamp(std.math.maxInt(u32)));
 }
+test "i32_to_u32" {
+    try std.testing.expectEqual(core.Opt(core.U32){ .yes = 1 }, try core.i32_to_u32(1));
+    try std.testing.expectEqual(core.Opt(core.U32){ .no = {} }, try core.i32_to_u32(-1));
+}
 test "trivial rounding" {
     try std.testing.expectEqual(-1, try core.f32_round_up(-1.5));
     try std.testing.expectEqual(-1, try core.f32_round_up_to_i32_clamp(-1.5));

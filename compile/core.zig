@@ -1043,6 +1043,9 @@ pub fn i32_rid(_: I32) error{OutOfMemory}!void {}
 pub fn i32_dup(@"%n": I32) error{OutOfMemory}!Record(struct { a: I32, b: I32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
+pub fn i32_to_u32(@"%i": I32) error{OutOfMemory}!Opt(U32) {
+    return if (std.math.cast(U32, @"%i")) |@"%u"| .{ .yes = @"%u" } else .{ .no = {} };
+}
 pub fn i32_round_to_nearest_f32_else_even(@"%n": I32) error{OutOfMemory}!F32 {
     // - custom backend: explicit round ties to even
     //   https://codeberg.org/ziglang/zig/src/branch/master/lib/compiler_rt/float_from_int.zig#L508-L509

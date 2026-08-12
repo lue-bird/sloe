@@ -12076,6 +12076,13 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_record_empty,
             },
             CoreFnInfo {
+                name: "U32-to-p32",
+                documentation: "Convert to a p32. If 0, returns |no .",
+                type_parameters: vec![],
+                parameter_type: type_u32,
+                result_type: type_opt(type_p32),
+            },
+            CoreFnInfo {
                 name: "U32-successor-clamp",
                 documentation: "Saturating n + 1, returning a p32",
                 type_parameters: vec![],
@@ -12147,6 +12154,13 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
                 result_type: type_record_empty,
             },
             CoreFnInfo {
+                name: "I32-to-u32",
+                documentation: "Convert to an u32. If negative, returns |no .",
+                type_parameters: vec![],
+                parameter_type: type_i32,
+                result_type: type_opt(type_u32),
+            },
+            CoreFnInfo {
                 name: "I32-round-to-nearest-f32-else-even",
                 documentation: "Lossy cast to fit it into an f32.
 Chooses the closest f32 representation, breaking exact ties towards the even significand (\"mantissa\")",
@@ -12191,7 +12205,8 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
             },
             CoreFnInfo {
                 name: "F32-rid",
-                documentation: "Mark the given f32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
+                documentation: "Mark the given f32 value as \"won't be used anymore\".
+This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_record_empty,

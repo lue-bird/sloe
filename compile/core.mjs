@@ -86,6 +86,10 @@ export function u32_rid(_) {}
 export function u32_dup(u) {
   return { a: u, b: u };
 }
+/** @param {U32} i @returns {Opt<P32>} */
+export function u32_to_p32(i) {
+  return i === 0 ? { no: undefined } : { yes: i };
+}
 /** @param {U32} u @returns {F32} */
 export function u32_round_to_nearest_f32_else_even(u) {
   return Math.fround(u);
@@ -130,9 +134,13 @@ export function i32_rid(_) {}
 export function i32_dup(n) {
   return { a: n, b: n };
 }
-/** @param {I32} u @returns {F32} */
-export function i32_round_to_nearest_f32_else_even(u) {
-  return Math.fround(u);
+/** @param {I32} i @returns {Opt<U32>} */
+export function i32_to_u32(i) {
+  return i < 0 ? { no: undefined } : { yes: i };
+}
+/** @param {I32} i @returns {F32} */
+export function i32_round_to_nearest_f32_else_even(i) {
+  return Math.fround(i);
 }
 /** @param {{ left: I32, right: I32, }} sides @returns {Order} */
 export function i32_order(sides) {
