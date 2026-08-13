@@ -18824,7 +18824,9 @@ pub fn syntax_type_highlight<Types>(
                 syntax_type_highlight(state, types, types.element(inner));
             }
         }
-        SyntaxType::RecordEmpty { dot_start: _ } => {}
+        SyntaxType::RecordEmpty { dot_start } => {
+            keyword_highlight(state, ".", *dot_start);
+        }
         SyntaxType::Record {
             field0_name,
             field0_value,
