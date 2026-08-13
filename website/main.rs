@@ -797,7 +797,7 @@ fn Buf-with-capacity{_element}
             explainer: "As seen in the last example, function declarations can also have type parameters if only the result type uses them.
 Each is specified in braces {_}. When calling, each type argument is aso wrapped in braces {}.
 
-Project fns are not values themselves, they must always be followed by an argument.
+Project fns are not values themselves; they must always be followed by an argument.
 To create a function value (of type Fn), put a typed pattern in brackets [] followed by its result.
 The simplest pattern is a variable name followed by its type.
 See the query example for other kinds of patterns.
@@ -959,7 +959,7 @@ fn Number-buffer-sum . : u32 =
     sum
 
 fn Example-array . : Array u32, .el0 u32 .el1 u32 .el2 u32 =
-    # arrays are not rupposed to be stored, just an example
+    # arrays are not supposed to be stored, just an example
     ; 3 u32 ; 2 u32 ; 1 u32
 
 fn U32s-sum
@@ -985,11 +985,11 @@ fn U32s-sum
 This is super convenient, as we can store it on the stack and pass it around freely,
 never having to think about hoow to free it. Create one by prefixing all elements with ;.
 
-A Buf hold a variable amount of elements of the same element type.
+A Buf holds a variable amount of elements of the same element type.
 To get its full power we need to store its elements on the heap.
 To refer to slices or specific elements inside the heap, one might think
-a simple pointer is enough. But...
-If the Buf has fully occupied its allotted space in the heap and a new element gets added,
+a simple pointer is enough but...
+If the Buf has fully occupied its allotted space on the heap and a new element gets added,
 the Buf must move its elements to a larger space, invalidating your pointers
 To combat this, you could move all slices and specific elements to each their own little space on the heap.
 This works well! But it can be slower as related memory is more fragmented and thus harder to find by the CPU.
