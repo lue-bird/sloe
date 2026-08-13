@@ -47,9 +47,8 @@ export default grammar({
         $.pattern_typed,
         $.key_symbol_colon,
         $.type,
+        repeat($.comment),
         $.key_symbol_equals,
-        // no repeat($.comment), these can already be prepended to the resulting expression
-        // which is syntactically equivalent
         $.expression,
       ),
     project_fn_name: ($) => $.upper_name,

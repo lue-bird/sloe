@@ -1281,6 +1281,8 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     parse_sloe_whitespace(state);
     let documentation = parse_sloe_comments(state);
     parse_sloe_whitespace(state);
+    let equals_start = parse_symbol_as_start(state, "=");
+    parse_sloe_whitespace(state);
     let result = parse_expression(state, expressions, patterns, types);
     Some(SyntaxProjectElement::Fn {
         fn_keyword_start: fn_keyword_start,

@@ -140,6 +140,13 @@
           "name": "type"
         },
         {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "comment"
+          }
+        },
+        {
           "type": "SYMBOL",
           "name": "key_symbol_equals"
         },
