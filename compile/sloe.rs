@@ -1240,7 +1240,7 @@ fn parse_ty_parameters(state: &mut ParseState) -> Option<TyParameters> {
         parameter1_up: parameter1_up,
     })
 }
-fn parse_brced_type_parameter(state: &mut ParseState) -> Option<SyntaxBracedTypeParameter> {
+fn parse_braced_type_parameter(state: &mut ParseState) -> Option<SyntaxBracedTypeParameter> {
     let Some(open_brace_start) = parse_symbol_as_start(state, "{") else {
         return None;
     };
@@ -1269,7 +1269,7 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     let name = parse_sloe_uppercase_name_with_start(state);
     parse_sloe_whitespace(state);
     let mut type_parameters = Vec::new();
-    while let Some(type_parameter) = parse_brced_type_parameter(state) {
+    while let Some(type_parameter) = parse_braced_type_parameter(state) {
         type_parameters.push(type_parameter);
         parse_sloe_whitespace(state);
     }
@@ -1278,8 +1278,6 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     let colon_start = parse_symbol_as_start(state, ":");
     parse_sloe_whitespace(state);
     let result_type = parse_type(state, types);
-    parse_sloe_whitespace(state);
-    let equals_start = parse_symbol_as_start(state, "=");
     parse_sloe_whitespace(state);
     let documentation = parse_sloe_comments(state);
     parse_sloe_whitespace(state);
@@ -1294,6 +1292,43 @@ fn parse_project_fn<Expressions, Patterns, Types>(
         equals_start: equals_start,
         documentation: documentation,
         result: result,
+    })
+}
+pub struct ProjectFnSignature<Types> {
+    pub fn_keyword_start: lsp_types::Position,
+    pub name: Option<WithStartPosition<Name>>,
+    pub type_parameters: Vec<SyntaxBracedTypeParameter>,
+    pub parameter_type: Option<SyntaxType<Types>>,
+    pub colon_start: Option<lsp_types::Position>,
+    pub result_type: Option<SyntaxType<Types>>,
+}
+pub fn parse_project_fn_signature<Types>(
+    state: &mut ParseState,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
+) -> Option<ProjectFnSignature<Types>> {
+    let Some(fn_keyword_start) = parse_symbol_as_start(state, "fn") else {
+        return None;
+    };
+    parse_sloe_whitespace(state);
+    let name = parse_sloe_uppercase_name_with_start(state);
+    parse_sloe_whitespace(state);
+    let mut type_parameters = Vec::new();
+    while let Some(type_parameter) = parse_braced_type_parameter(state) {
+        type_parameters.push(type_parameter);
+        parse_sloe_whitespace(state);
+    }
+    let parameter_type = parse_type(state, types);
+    parse_sloe_whitespace(state);
+    let colon_start = parse_symbol_as_start(state, ":");
+    parse_sloe_whitespace(state);
+    let result_type = parse_type(state, types);
+    Some(ProjectFnSignature {
+        fn_keyword_start: fn_keyword_start,
+        name: name,
+        type_parameters: type_parameters,
+        parameter_type: parameter_type,
+        colon_start: colon_start,
+        result_type: result_type,
     })
 }
 pub fn parse_pattern_typed<Patterns, Types>(
@@ -9406,7 +9441,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case_result_used_pattern_variable, start: case_result_used_pattern_variable_start }),
-                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..")
+                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
                         });
                     }
                 }
@@ -9421,7 +9456,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case0_result_used_pattern_variable, start: case0_result_used_pattern_variable_start }),
                             message: format!(
-                                "this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..",
+                                "this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
                                 index_to_th(case_index)
                             ).into_boxed_str()
                         });
@@ -9435,7 +9470,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     {
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case_result_used_origin_variable, start: case_result_used_origin_variable_start }),
-                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..")
+                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
                         });
                     }
                 }
@@ -9448,7 +9483,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case0_result_used_origin_variable, start: case0_result_used_origin_variable_start }),
                             message: format!(
-                                "this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result..",
+                                "this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
                                 index_to_th(case_index)
                             ).into_boxed_str()
                         });
@@ -9610,7 +9645,7 @@ fn push_error_if_introduced_pattern_variable_is_unused(
                 start: origin_start,
             }),
             message: Box::from(
-                "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? u32-rid your-variable [.] ..your existing case result.."
+                "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result.."
             )
         });
     }
@@ -11906,8 +11941,15 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 documentation:
                     "Mark the given p32 value as \"won't be used anymore\". This is usually done to scrap some function byproduct or to decompose some temporary storage at the end of some scope",
                 type_parameters: vec![],
-                parameter_type:  (type_p32),
+                parameter_type:  type_p32,
                 result_type: type_record_empty,
+            },
+            CoreFnInfo {
+                name: "P32-to-u32",
+                documentation: "Convert to u32",
+                type_parameters: vec![],
+                parameter_type:  type_p32,
+                result_type: type_u32,
             },
             CoreFnInfo {
                 name: "P32-add-clamp",
@@ -12424,7 +12466,7 @@ the failure variant could never have been created, we can safely unwrap it!
 fn Tried-unwrap tried |success _ok |failure | : _ok =
     ? tried
     [|success ok] ok
-    [|failure impossible] Choice-empty-to<_ok> impossible
+    [|failure impossible] Choice-empty-to{_ok} impossible
 ```
 You really can ask for any type of data, like emulating a dup or rid operation
 ```sloe
@@ -13262,8 +13304,8 @@ fn Buf-copy-u32-at
     .buf buf Buf _origin, u32
     .slot slot Slot _origin
     :
-    .buf buf Buf _origin, u32
-    .slot slot Slot _origin
+    .buf Buf _origin, u32
+    .slot Slot _origin
     .element u32
     =
     ? Buf-unset .buf buf .slot slot
@@ -13884,17 +13926,21 @@ To also unerase origins of the elements themselves, use `Buf-origin-unerase-with
 along with un-erasing the origin in its elements if necessary.
 An example of a `Buf inner, Opt Span inner`:
 ```sloe
-Buf-origin-unerase
-.buf buf-inner
-.uneraser uneraser
-.element-unerase
-[
-.element element Opt Span inner
-.uneraser uneraser Origin-uneraser inner
-]
-? Opt-span-origin-unerase .span element .uneraser uneraser
-[.span element-unerased .uneraser uneraser]
-.element element-unerased .uneraser uneraser
+fn Example-unerase
+    .buf buf-inner Buf erased, Opt Span erased
+    .uneraser uneraser Origin-uneraser inner
+    : Buf inner, Opt Span inner =
+    Buf-origin-unerase-with-elements
+    .buf buf-inner
+    .uneraser uneraser
+    .element-unerase
+    [
+    .element element Opt Span inner
+    .uneraser uneraser Origin-uneraser inner
+    ]
+    ? Opt-span-origin-unerase .span element .uneraser uneraser
+    [.span element-unerased .uneraser uneraser]
+    .element element-unerased .uneraser uneraser
 ```
 Small warning: while the function type allows completely changing the contents of each element,
 I strongly recommend against it.
@@ -14370,7 +14416,7 @@ See `Origin-erased`, `Slot-origin-unerase`, `Span-origin-unerase`, `Opt-span-ori
                     "A grow- and shrinkable buffered array of elements. Arrays have constant time access and update and constant time add.
 ```sloe
 fn Use-a-buf . : u32 =
-    origin my-elements-origin
+    ^my-elements-origin
     ? Buf-empty{u32} my-elements-origin [my-elements]
     ? Buf-add .buf my-elements .element 609 u32 [.buf my-elements .slot first-element-slot]
     ? Buf-remove .buf my-elements .slot first-element-slot
@@ -18422,7 +18468,10 @@ pub fn project_highlight<Expressions, Patterns, Types>(
                 if let Some(name) = name {
                     highlight_state_add_token_with_start_and_length(
                         state,
-                        lsp_types::SemanticTokenTypes::Type,
+                        match parameters {
+                            None => lsp_types::SemanticTokenTypes::Type,
+                            Some(_) => lsp_types::SemanticTokenTypes::Function,
+                        },
                         name.start,
                         name.value.len(),
                     );
@@ -18509,6 +18558,53 @@ pub fn project_highlight<Expressions, Patterns, Types>(
             }
             SyntaxProjectElement::Unrecognized { .. } => {}
         }
+    }
+}
+pub fn project_fn_signature_highlight<Types>(
+    state: &mut HighlightState,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    ProjectFnSignature {
+        fn_keyword_start,
+        name,
+        type_parameters,
+        parameter_type,
+        colon_start,
+        result_type,
+    }: &ProjectFnSignature<Types>,
+) {
+    keyword_highlight(state, "fn", *fn_keyword_start);
+    if let Some(name) = name {
+        highlight_state_add_token_with_start_and_length(
+            state,
+            lsp_types::SemanticTokenTypes::Variable,
+            name.start,
+            name.value.len(),
+        );
+    }
+    for SyntaxBracedTypeParameter {
+        open_brace_start: _,
+        underscore_start,
+        name: type_parameter_name,
+        closed_brace_start: _,
+    } in type_parameters
+    {
+        if let &Some(parameter_underscore_start) = underscore_start {
+            highlight_state_add_token_with_start_and_length(
+                state,
+                lsp_types::SemanticTokenTypes::TypeParameter,
+                parameter_underscore_start,
+                1 + type_parameter_name.encode_utf16().count(),
+            );
+        }
+    }
+    if let Some(parameter_type) = parameter_type {
+        syntax_type_highlight(state, types, parameter_type);
+    }
+    if let Some(colon_start) = colon_start {
+        keyword_highlight(state, ":", *colon_start);
+    }
+    if let Some(result_type) = result_type {
+        syntax_type_highlight(state, types, result_type);
     }
 }
 fn syntax_comments_highlight(state: &mut HighlightState, comments: &SyntaxComments) {
@@ -18804,11 +18900,17 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            bar_start,
             name,
             type_: type_argument,
             value,
         } => {
+            symbol_highlight(
+                state,
+                "|",
+                *bar_start,
+                lsp_types::SemanticTokenTypes::EnumMember,
+            );
             if let Some(type_argument) = type_argument
                 && let Some(type_) = &type_argument.type_
             {

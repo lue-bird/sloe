@@ -64,6 +64,10 @@ export function p32_rid(_) {}
 export function p32_dup(p) {
   return { a: p, b: p };
 }
+/** @param {P32} p @returns {U32} */
+export function p32_to_u32(p) {
+  return p;
+}
 /** @param {{ p: P32, u: U32, }} mul @returns {P32} */
 export function p32_mul_clamp(mul) {
   return Math.min(U32$MAX, mul.p * mul.u);
@@ -147,8 +151,8 @@ export function i32_abs_to_u32(i) {
   return Math.abs(i);
 }
 /** @param {I32} i @returns {U32} */
-export function i32_negate(i) {
-  return -i;
+export function i32_negate_clamp(i) {
+  return Math.max(I32$MIN, -i);
 }
 /** @param {{ left: I32, right: I32, }} sides @returns {Order} */
 export function i32_order(sides) {

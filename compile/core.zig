@@ -996,6 +996,9 @@ pub fn p32_rid(_: P32) error{OutOfMemory}!void {}
 pub fn p32_dup(@"%n": P32) error{OutOfMemory}!Record(struct { a: P32, b: P32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
+pub fn p32_to_u32(@"%n": P32) error{OutOfMemory}!Record(U32) {
+    return @"%n".positive;
+}
 pub fn p32_add_clamp(@"%": Record(struct { p: P32, u: U32 })) error{OutOfMemory}!P32 {
     return @"%".p.addClamp(@"%".u);
 }
