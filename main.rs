@@ -263,54 +263,26 @@ fn markdown_convert_indented_code_blocks_to_sloe(builder: &mut String, markdown_
     }
 }
 fn present_project_fn_with_complete_type_markdown(
-    name: &sloe::Name,
+    fn_name: &sloe::Name,
     fn_info: &sloe::CheckedProjectFn,
 ) -> String {
-    let mut type_parameters_string = String::new();
-    braced_type_parameters_format(&mut type_parameters_string, &fn_info.type_parameters);
-    let mut parameter_type_string: String = String::new();
-    let mut result_type_string: String = String::new();
-    if let Some(fn_parameter_type) = &fn_info.parameter_type {
-        sloe::type_format(&mut parameter_type_string, 4, fn_parameter_type);
-    }
-    if let Some(fn_result_type) = &fn_info.result_type {
-        sloe::type_format(&mut result_type_string, 4, fn_result_type);
-    }
+    let mut formatted = String::new();
+    sloe::checked_project_fn_format(&mut formatted, fn_name, fn_info);
     format!(
         "```sloe
-fn {}{}
-    {}
-    :
-    {}
+{}
 ```
 {}
 ",
-        name,
-        type_parameters_string,
-        parameter_type_string,
-        result_type_string,
+        formatted,
         documentation_comment_to_markdown(fn_info.documentation.as_deref().unwrap_or(""))
     )
 }
-fn present_type_alias_markdown(
-    name: &sloe::Name,
-    type_alias_info: &sloe::CheckedTypeAlias,
-) -> String {
-    let mut type_string: String = String::new();
-    if let Some(type_) = &type_alias_info.type_ {
-        sloe::type_format(&mut type_string, 4, type_);
-    }
-    let description = if type_alias_info.parameters.is_empty() {
-        format!("```sloe\nty {}\n    {}\n```\n", name, type_string)
-    } else {
-        format!(
-            "```sloe\nty {} _{}\n    {}\n```\n",
-            name,
-            type_alias_info.parameters.join(", _"),
-            type_string
-        )
-    };
-    match &type_alias_info.documentation {
+fn present_type_alias_markdown(name: &sloe::Name, type_alias: &sloe::CheckedTypeAlias) -> String {
+    let mut formatted = String::new();
+    sloe::checked_type_alias_format(&mut formatted, name, type_alias);
+    let description = format!("```sloe\n{formatted}\n```\n");
+    match &type_alias.documentation {
         None => description,
         Some(documentation) => {
             description + documentation_comment_to_markdown(documentation).as_str()
@@ -325,17 +297,6 @@ fn present_pattern_variable_markdown(type_: Option<&sloe::Type>) -> String {
             sloe::type_format(&mut type_string, 0, type_);
             type_string + "\n```\n"
         }
-    }
-}
-fn braced_type_parameters_format(formatted: &mut String, type_parameters: &[sloe::Name]) {
-    if let Some((type_parameter0, type_parameter1_up)) = type_parameters.split_first() {
-        formatted.push_str("{_");
-        formatted.push_str(type_parameter0);
-        for type_parameter in type_parameter1_up {
-            formatted.push_str(", _");
-            formatted.push_str(type_parameter);
-        }
-        formatted.push('}');
     }
 }
 fn default_output_file_path_for_sloe_input_file_path(
@@ -584,7 +545,7 @@ fn server_capabilities() -> lsp_types::ServerCapabilities {
                 },
                 legend: lsp_types::SemanticTokensLegend {
                     token_modifiers: vec![],
-                    token_types: token_types
+                    token_types: sloe::token_types
                         .iter()
                         .map(|token_type| token_type.as_str().to_string())
                         .collect(),
@@ -1115,12 +1076,11 @@ It's used for APIs like `Origin-add`/`Origin-part` and `Origin-erase`"
             origins: _,
         } => project_state.fns.iter().find_map(|(fn_name, fn_info)| {
             if fn_name == symbol_name.value {
-                let choice_type_formatted =
-                    present_project_fn_with_complete_type_markdown(fn_name, fn_info);
+                let formatted = present_project_fn_with_complete_type_markdown(fn_name, fn_info);
                 Some(lsp_types::Hover {
                     contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                         kind: lsp_types::MarkupKind::Markdown,
-                        value: choice_type_formatted,
+                        value: formatted,
                     }),
                     range: Some(sloe::name_range(symbol_name)),
                 })
@@ -1429,13 +1389,13 @@ fn respond_to_semantic_tokens_full<Expressions, Patterns, Types>(
         return None;
     };
     let mut highlight_state = sloe::HighlightState {
-        tokens: Vec::with_capacity(project_state.source.len() / 16),
+        tokens: Vec::with_capacity(project_state.source.len() / 2),
         previous_token_start: lsp_types::Position {
             line: 0,
             character: 0,
         },
     };
-    sloe_project_highlight(
+    sloe::project_highlight(
         &mut highlight_state,
         &project_state.syntax,
         &state.syntax_expressions,
@@ -1448,68 +1408,6 @@ fn respond_to_semantic_tokens_full<Expressions, Patterns, Types>(
     })
 }
 
-const token_types: [lsp_types::SemanticTokenTypes; 11] = [
-    lsp_types::SemanticTokenTypes::Number,
-    lsp_types::SemanticTokenTypes::String,
-    lsp_types::SemanticTokenTypes::Namespace,
-    lsp_types::SemanticTokenTypes::Variable,
-    lsp_types::SemanticTokenTypes::Type,
-    lsp_types::SemanticTokenTypes::TypeParameter,
-    lsp_types::SemanticTokenTypes::Keyword,
-    lsp_types::SemanticTokenTypes::EnumMember,
-    lsp_types::SemanticTokenTypes::Property,
-    lsp_types::SemanticTokenTypes::Comment,
-    lsp_types::SemanticTokenTypes::Function,
-];
-
-fn semantic_token_type_to_id(semantic_token: &lsp_types::SemanticTokenTypes) -> u32 {
-    token_types
-        .iter()
-        .enumerate()
-        .find_map(|(i, token)| {
-            if token == semantic_token {
-                Some(i as u32)
-            } else {
-                None
-            }
-        })
-        .unwrap_or(0_u32)
-}
-#[derive(Copy, Clone)]
-struct PositionDelta {
-    line: u32,
-    character: u32,
-}
-fn lsp_position_positive_delta(
-    before: lsp_types::Position,
-    after: lsp_types::Position,
-) -> Result<PositionDelta, String> {
-    match before.line.cmp(&after.line) {
-        std::cmp::Ordering::Greater => Err(format!(
-            "before line > after line (before: {}, after: {})",
-            lsp_position_to_string(before),
-            lsp_position_to_string(after)
-        )),
-        std::cmp::Ordering::Equal => {
-            if before.character > after.character {
-                Err(format!(
-                    "before character > after character (before: {}, after: {})",
-                    lsp_position_to_string(before),
-                    lsp_position_to_string(after)
-                ))
-            } else {
-                Ok(PositionDelta {
-                    line: 0,
-                    character: after.character - before.character,
-                })
-            }
-        }
-        std::cmp::Ordering::Less => Ok(PositionDelta {
-            line: after.line - before.line,
-            character: after.character,
-        }),
-    }
-}
 fn lsp_position_add_characters(
     position: lsp_types::Position,
     additional_characters: u32,
@@ -1518,9 +1416,6 @@ fn lsp_position_add_characters(
         line: position.line,
         character: position.character + additional_characters,
     }
-}
-fn lsp_position_to_string(lsp_position: lsp_types::Position) -> String {
-    format!("{}:{}", lsp_position.line, lsp_position.character)
 }
 
 fn respond_to_completion<Expressions, Patterns, Types>(
@@ -1755,175 +1650,141 @@ fn respond_to_completion<Expressions, Patterns, Types>(
             construct_info,
             pattern_variables,
             origins,
-        } => {
-            match construct_info {
-                sloe_compile::ConstructInfo::Declaration => None,
-                sloe_compile::ConstructInfo::NotExpectingArgument => {
-                    Some(lsp_types::CompletionResponse::CompletionItemList(
-                        project_state
-                            .fns
-                            .iter()
-                            .filter_map(|(fn_name, fn_info)| {
-                                if fn_info.type_parameters.is_empty() {
-                                    Some(lsp_types::CompletionItem {
-                                        label: format!("{}", fn_name),
-                                        kind: Some(lsp_types::CompletionItemKind::Function),
-                                        documentation: Some(lsp_documentation_markdown(
-                                            present_project_fn_with_complete_type_markdown(
-                                                fn_name, fn_info,
-                                            ),
-                                        )),
-                                        insert_text: Some(format!("{}", fn_name)),
-                                        ..lsp_types::CompletionItem::default()
-                                    })
-                                } else {
-                                    None
-                                }
-                            })
-                            .chain(pattern_variables.into_iter().map(
-                                |(pattern_variable, pattern_variable_origin)| {
-                                    lsp_types::CompletionItem {
-                                        label: pattern_variable.to_string(),
-                                        kind: Some(lsp_types::CompletionItemKind::Variable),
-                                        documentation: Some(lsp_documentation_markdown(
-                                            present_pattern_variable_markdown(
-                                                pattern_variable_origin.type_.as_ref(),
-                                            ),
-                                        )),
-                                        ..lsp_types::CompletionItem::default()
-                                    }
-                                },
-                            ))
-                            .chain(origins.into_keys().map(|origin_name| {
-                                lsp_types::CompletionItem {
-                                    label: origin_name.to_string(),
-                                    kind: Some(lsp_types::CompletionItemKind::Variable),
-                                    documentation: Some(lsp_documentation_markdown(
-                                        "^origin variable".to_string(),
-                                    )),
-                                    ..lsp_types::CompletionItem::default()
-                                }
-                            }))
-                            .collect(),
-                    ))
-                }
-                sloe_compile::ConstructInfo::ArgumentMissing => {
-                    Some(lsp_types::CompletionResponse::CompletionItemList(
-                        project_state
-                            .fns
-                            .iter()
-                            .map(|(fn_name, fn_info)| {
-                                let mut inserted_text = String::new();
-                                inserted_text.push_str("(_");
-                                inserted_text.push_str(fn_name);
-                                braced_type_parameters_format(
-                                    &mut inserted_text,
-                                    &fn_info.type_parameters,
-                                );
-                                match &fn_info.parameter_type {
-                                    None => {}
-                                    Some(parameter_type) => match parameter_type {
-                                        sloe::Type::Record(parameter_fields) => {
-                                            for field in parameter_fields {
-                                                inserted_text.push_str(" .");
-                                                inserted_text.push_str(&field.name);
-                                                inserted_text.push(' ');
-                                                inserted_text.push_str(&field.name);
-                                            }
-                                        }
-                                        sloe::Type::Variable(name) => {
-                                            inserted_text.push(' ');
-                                            let mut name_chars = name.chars();
-                                            if let Some(name_first_char) = name_chars.next() {
-                                                inserted_text
-                                                    .extend(name_first_char.to_uppercase());
-                                            }
-                                            inserted_text.extend(name_chars);
-                                        }
-                                        sloe::Type::Origin(origin_name) => {
-                                            inserted_text.push(' ');
-                                            inserted_text.push_str(origin_name);
-                                        }
-                                        sloe::Type::Choice(variants) => {
-                                            inserted_text.push(' ');
-                                            if let [variant] = variants.as_slice() {
-                                                inserted_text.push_str("(|{}");
-                                                inserted_text.push_str(&variant.name);
-                                                inserted_text.push_str(" )");
-                                            }
-                                        }
-                                        sloe::Type::CoreConstruct { .. } => {
-                                            inserted_text.push(' ');
-                                        }
-                                    },
-                                }
-                                inserted_text.push(')');
-                                lsp_types::CompletionItem {
-                                    label: format!("_{}", fn_name),
+        } => match construct_info {
+            sloe_compile::ConstructInfo::Declaration => None,
+            sloe_compile::ConstructInfo::NotExpectingArgument => {
+                Some(lsp_types::CompletionResponse::CompletionItemList(
+                    project_state
+                        .fns
+                        .iter()
+                        .filter_map(|(fn_name, fn_info)| {
+                            if fn_info.type_parameters.is_empty() {
+                                Some(lsp_types::CompletionItem {
+                                    label: format!("{}", fn_name),
                                     kind: Some(lsp_types::CompletionItemKind::Function),
                                     documentation: Some(lsp_documentation_markdown(
                                         present_project_fn_with_complete_type_markdown(
                                             fn_name, fn_info,
                                         ),
                                     )),
-                                    insert_text: Some(inserted_text),
+                                    insert_text: Some(format!("{}", fn_name)),
+                                    ..lsp_types::CompletionItem::default()
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .chain(pattern_variables.into_iter().map(
+                            |(pattern_variable, pattern_variable_origin)| {
+                                lsp_types::CompletionItem {
+                                    label: pattern_variable.to_string(),
+                                    kind: Some(lsp_types::CompletionItemKind::Variable),
+                                    documentation: Some(lsp_documentation_markdown(
+                                        present_pattern_variable_markdown(
+                                            pattern_variable_origin.type_.as_ref(),
+                                        ),
+                                    )),
                                     ..lsp_types::CompletionItem::default()
                                 }
-                            })
-                            .chain(pattern_variables.into_iter().map(
-                                |(pattern_variable, pattern_variable_origin)| {
-                                    // potential improvement: skip those with non-function type
-                                    lsp_types::CompletionItem {
-                                        label: format!("_{}", pattern_variable),
-                                        kind: Some(lsp_types::CompletionItemKind::Variable),
-                                        documentation: Some(lsp_documentation_markdown(
-                                            present_pattern_variable_markdown(
-                                                pattern_variable_origin.type_.as_ref(),
-                                            ),
-                                        )),
-                                        ..lsp_types::CompletionItem::default()
+                            },
+                        ))
+                        .chain(
+                            origins
+                                .into_keys()
+                                .map(|origin_name| lsp_types::CompletionItem {
+                                    label: origin_name.to_string(),
+                                    kind: Some(lsp_types::CompletionItemKind::Variable),
+                                    documentation: Some(lsp_documentation_markdown(
+                                        "^origin variable".to_string(),
+                                    )),
+                                    ..lsp_types::CompletionItem::default()
+                                }),
+                        )
+                        .collect(),
+                ))
+            }
+            sloe_compile::ConstructInfo::ArgumentMissing => {
+                Some(lsp_types::CompletionResponse::CompletionItemList(
+                    project_state
+                        .fns
+                        .iter()
+                        .map(|(fn_name, fn_info)| {
+                            let mut inserted_text = String::new();
+                            inserted_text.push('(');
+                            inserted_text.push_str(fn_name);
+                            sloe::braced_type_parameters_format(
+                                &mut inserted_text,
+                                &fn_info.type_parameters,
+                            );
+                            match &fn_info.parameter_type {
+                                None => {}
+                                Some(parameter_type) => match parameter_type {
+                                    sloe::Type::Record(parameter_fields) => {
+                                        for field in parameter_fields {
+                                            inserted_text.push_str(" .");
+                                            inserted_text.push_str(&field.name);
+                                            inserted_text.push(' ');
+                                            inserted_text.push_str(&field.name);
+                                        }
+                                    }
+                                    sloe::Type::Variable(name) => {
+                                        inserted_text.push(' ');
+                                        let mut name_chars = name.chars();
+                                        if let Some(name_first_char) = name_chars.next() {
+                                            inserted_text.extend(name_first_char.to_uppercase());
+                                        }
+                                        inserted_text.extend(name_chars);
+                                    }
+                                    sloe::Type::Origin(origin_name) => {
+                                        inserted_text.push(' ');
+                                        inserted_text.push_str(origin_name);
+                                    }
+                                    sloe::Type::Choice(variants) => {
+                                        inserted_text.push(' ');
+                                        if let [variant] = variants.as_slice() {
+                                            inserted_text.push_str("(|{}");
+                                            inserted_text.push_str(&variant.name);
+                                            inserted_text.push_str(" )");
+                                        }
+                                    }
+                                    sloe::Type::CoreConstruct { .. } => {
+                                        inserted_text.push(' ');
                                     }
                                 },
-                            ))
-                            .collect(),
-                    ))
-                }
-                sloe_compile::ConstructInfo::ArgumentExists => {
-                    Some(lsp_types::CompletionResponse::CompletionItemList(
-                        project_state
-                            .fns
-                            .iter()
-                            .map(|(fn_name, fn_info)| lsp_types::CompletionItem {
-                                label: format!("_{}", fn_name),
+                            }
+                            inserted_text.push(')');
+                            lsp_types::CompletionItem {
+                                label: fn_name.to_string(),
                                 kind: Some(lsp_types::CompletionItemKind::Function),
                                 documentation: Some(lsp_documentation_markdown(
                                     present_project_fn_with_complete_type_markdown(
                                         fn_name, fn_info,
                                     ),
                                 )),
-                                insert_text: Some(format!("_{}", fn_name)),
+                                insert_text: Some(inserted_text),
                                 ..lsp_types::CompletionItem::default()
-                            })
-                            .chain(pattern_variables.into_iter().map(
-                                |(pattern_variable, pattern_variable_origin)| {
-                                    // potential improvement: skip those with non-function type
-                                    lsp_types::CompletionItem {
-                                        label: format!("_{}", pattern_variable),
-                                        kind: Some(lsp_types::CompletionItemKind::Variable),
-                                        documentation: Some(lsp_documentation_markdown(
-                                            present_pattern_variable_markdown(
-                                                pattern_variable_origin.type_.as_ref(),
-                                            ),
-                                        )),
-                                        ..lsp_types::CompletionItem::default()
-                                    }
-                                },
-                            ))
-                            .collect(),
-                    ))
-                }
+                            }
+                        })
+                        .collect(),
+                ))
             }
-        }
+            sloe_compile::ConstructInfo::ArgumentExists => {
+                Some(lsp_types::CompletionResponse::CompletionItemList(
+                    project_state
+                        .fns
+                        .iter()
+                        .map(|(fn_name, fn_info)| lsp_types::CompletionItem {
+                            label: fn_name.to_string(),
+                            kind: Some(lsp_types::CompletionItemKind::Function),
+                            documentation: Some(lsp_documentation_markdown(
+                                present_project_fn_with_complete_type_markdown(fn_name, fn_info),
+                            )),
+                            ..lsp_types::CompletionItem::default()
+                        })
+                        .collect(),
+                ))
+            }
+        },
         sloe::SyntaxSymbol::PatternVariable {
             name: _,
             use_start: _,

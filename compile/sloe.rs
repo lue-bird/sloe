@@ -874,9 +874,9 @@ fn expression_query_case_end<Expressions, Patterns, Types>(
 }
 
 pub struct ParseState<'a> {
-    source: &'a str,
-    offset_utf8: usize,
-    position: lsp_types::Position,
+    pub source: &'a str,
+    pub offset_utf8: usize,
+    pub position: lsp_types::Position,
 }
 
 fn parse_linebreak(state: &mut ParseState) -> bool {
@@ -6933,7 +6933,7 @@ fn origin_name_to_uppercase_local_zig(output: &mut String, name: &str) {
 }
 const record_empty_zig_type_name: &str = "void";
 const choice_empty_zig_type_name: &str = "Choice";
-fn name_to_lowercase_zig(name: &str) -> String {
+pub fn name_to_lowercase_zig(name: &str) -> String {
     let mut sanitized: String = name.replace("-", "_");
     if let Some(first) = sanitized.get_mut(0..=0) {
         first.make_ascii_lowercase();
@@ -8100,7 +8100,7 @@ fn name_to_uppercase_local_js(output: &mut String, name: &str) {
     output.push('$');
     output.push_str(&sanitized);
 }
-fn name_to_lowercase_js(name: &str) -> String {
+pub fn name_to_lowercase_js(name: &str) -> String {
     let mut sanitized: String = name.replace("-", "_");
     if let Some(first) = sanitized.get_mut(0..=0) {
         first.make_ascii_lowercase();
@@ -8541,7 +8541,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     Type::CoreConstruct {
                         name: variable_type_name,
                         arguments: variable_type_arguments,
-                    } if variable_type_name == "fn" => variable_type_arguments,
+                    } if variable_type_name == "Fn" => variable_type_arguments,
                     variable_type => {
                         let mut error_message = String::from(
                             "calling a variable whose type is not a function. Maybe you forgot some parens or similar? Its full type is\n",
@@ -8574,7 +8574,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: Box::from("unknown function name. No project fn or local variable has this name. Note that a local fn expression can not refer to any variable from the outside. Otherwise check for typos.")
+                        message: Box::from("unknown function name. No fn in core or in this project has this name. Note that a local fn expression can not refer to any variable from the outside. Otherwise check for typos.")
                     });
                     return None;
                 };
@@ -11444,137 +11444,6 @@ fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
             .sum(),
     }
 }
-pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
-    match type_ {
-        Type::Variable(name) => {
-            formatted.push('_');
-            formatted.push_str(name);
-        }
-        Type::Origin(name) => {
-            formatted.push_str(name);
-        }
-        Type::CoreConstruct { name, arguments } => match arguments.as_slice() {
-            [] => {
-                formatted.push_str(name);
-            }
-            [argument0, argument1_up @ ..] => {
-                formatted.push_str(name);
-                let line_span: LineSpan = type_line_span(type_);
-                space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-                type_parenthesized_if_open_ended_format(formatted, next_indent(indent), argument0);
-                for argument in argument1_up {
-                    formatted.push(',');
-                    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-                    type_parenthesized_if_open_ended_format(
-                        formatted,
-                        next_indent(indent),
-                        argument,
-                    );
-                }
-            }
-        },
-        Type::Record(fields) => type_record_format(formatted, indent, fields),
-        Type::Choice(variants) => match variants.as_slice() {
-            [] => {
-                formatted.push('|');
-            }
-            [variant0, variant1_up @ ..] => {
-                type_variant_format(formatted, indent, variant0);
-                let line_span: LineSpan = type_line_span(type_);
-                for variant in variant1_up {
-                    space_or_linebreak_indented_into(formatted, line_span, indent);
-                    type_variant_format(formatted, indent, variant);
-                }
-            }
-        },
-    }
-}
-fn type_record_format(formatted: &mut String, indent: usize, fields: &[TypeField]) {
-    match fields {
-        [] => {
-            formatted.push('.');
-        }
-        [field0, field1_up @ ..] => {
-            type_field_format(formatted, indent, field0);
-            let line_span: LineSpan = type_record_line_span(fields);
-            for field in field1_up {
-                space_or_linebreak_indented_into(formatted, line_span, indent);
-                type_field_format(formatted, indent, field);
-            }
-        }
-    }
-}
-fn type_parenthesized_if_open_ended_format(formatted: &mut String, indent: usize, type_: &Type) {
-    let should_parenthesize_argument: bool = match type_ {
-        Type::Variable(_) => false,
-        Type::Origin(_) => false,
-        Type::Record(fields) => !fields.is_empty(),
-        Type::Choice(variants) => !variants.is_empty(),
-        Type::CoreConstruct { name: _, arguments } => !arguments.is_empty(),
-    };
-    if should_parenthesize_argument {
-        formatted.push('(');
-        type_format(formatted, indent + 1, type_);
-        if type_line_span(type_) == LineSpan::Multiple {
-            linebreak_indented_into(formatted, indent);
-        }
-        formatted.push(')');
-    } else {
-        type_format(formatted, next_indent(indent), type_);
-    }
-}
-fn type_field_format(formatted: &mut String, indent: usize, type_field: &TypeField) {
-    formatted.push('.');
-    formatted.push_str(&type_field.name);
-    let line_span = type_line_span(&type_field.value);
-    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-    type_parenthesized_if_open_ended_format(formatted, next_indent(indent), &type_field.value);
-}
-fn type_variant_format(formatted: &mut String, indent: usize, type_variant: &TypeVariant) {
-    formatted.push('|');
-    formatted.push_str(&type_variant.name);
-    let line_span = type_line_span(&type_variant.value);
-    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-    type_parenthesized_if_open_ended_format(formatted, next_indent(indent), &type_variant.value);
-}
-fn type_line_span(type_: &Type) -> LineSpan {
-    if type_length_estimate(type_) <= type_info_line_length_estimate_maximum {
-        LineSpan::Single
-    } else {
-        LineSpan::Multiple
-    }
-}
-fn type_record_line_span(fields: &[TypeField]) -> LineSpan {
-    if type_record_length_estimate(fields) <= type_info_line_length_estimate_maximum {
-        LineSpan::Single
-    } else {
-        LineSpan::Multiple
-    }
-}
-fn type_length_estimate(type_: &Type) -> usize {
-    match type_ {
-        Type::Variable(variable_name) => variable_name.len(),
-        Type::Origin(name) => name.len(),
-        Type::CoreConstruct { name, arguments } => {
-            1 + name.len()
-                + arguments
-                    .iter()
-                    .map(|argument| 2 + type_length_estimate(argument))
-                    .sum::<usize>()
-        }
-        Type::Record(fields) => type_record_length_estimate(fields),
-        Type::Choice(variants) => variants
-            .iter()
-            .map(|variant| 3 + variant.name.len() + type_length_estimate(&variant.value))
-            .sum(),
-    }
-}
-fn type_record_length_estimate(fields: &[TypeField]) -> usize {
-    fields
-        .iter()
-        .map(|field| 3 + field.name.len() + type_length_estimate(&field.value))
-        .sum()
-}
 
 fn syn_spread_expr_block_into_stmts(syn_expr: syn::Expr) -> Vec<syn::Stmt> {
     match syn_expr {
@@ -11605,7 +11474,7 @@ fn name_to_uppercase_rust(name: &str) -> String {
 }
 const record_empty_rust_struct_name: &str = "Record";
 const choice_empty_rust_struct_name: &str = "Choice";
-fn name_to_lowercase_rust(name: &str) -> String {
+pub fn name_to_lowercase_rust(name: &str) -> String {
     let mut sanitized: String = name.replace("-", "_");
     if let Some(first) = sanitized.get_mut(0..=0) {
         first.make_ascii_lowercase();
@@ -11865,12 +11734,6 @@ fn syn_expr_reference<const N: usize>(segments: [&str; N]) -> syn::Expr {
 const fn type_variable(name: &'static str) -> Type {
     Type::Variable(Name::from_static(name))
 }
-fn type_fn(in_: Type, out: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::from_static("fn"),
-        arguments: vec![in_, out],
-    }
-}
 fn type_record(fields: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
     Type::Record(
         fields
@@ -11923,6 +11786,9 @@ const type_erased: Type = Type::CoreConstruct {
     name: Name::from_static("erased"),
     arguments: vec![],
 };
+fn type_opt(yes: Type) -> Type {
+    type_choice([("no", type_record_empty), ("yes", yes)])
+}
 fn type_order() -> Type {
     Type::Choice(vec![
         TypeVariant {
@@ -11938,6 +11804,12 @@ fn type_order() -> Type {
             value: type_record_empty,
         },
     ])
+}
+fn type_fn(in_: Type, out: Type) -> Type {
+    Type::CoreConstruct {
+        name: Name::from_static("Fn"),
+        arguments: vec![in_, out],
+    }
 }
 fn type_origin(origin: Type) -> Type {
     Type::CoreConstruct {
@@ -12010,9 +11882,6 @@ fn type_unset_slice(element: Type) -> Type {
         name: Name::from_static("Unset-slice"),
         arguments: vec![element],
     }
-}
-fn type_opt(yes: Type) -> Type {
-    type_choice([("no", type_record_empty), ("yes", yes)])
 }
 struct CoreFnInfo {
     name: &'static str,
@@ -18530,22 +18399,19 @@ fn keyword_highlight(
         lsp_types::SemanticTokenTypes::Keyword,
     );
 }
-fn sloe_project_highlight<Expressions, Patterns, Types>(
+pub fn project_highlight<Expressions, Patterns, Types>(
     state: &mut HighlightState,
-    project: &sloe::SyntaxProject<Expressions, Patterns, Types>,
-    expressions: &sloe::core::Buf<
-        Expressions,
-        sloe::SyntaxExpression<Expressions, Patterns, Types>,
-    >,
-    patterns: &sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
+    project: &SyntaxProject<Expressions, Patterns, Types>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
 ) {
     for element in &project.elements {
         match element {
-            sloe::SyntaxProjectElement::Comments(comments) => {
-                sloe_syntax_comments_highlight(state, comments);
+            SyntaxProjectElement::Comments(comments) => {
+                syntax_comments_highlight(state, comments);
             }
-            sloe::SyntaxProjectElement::TypeAlias {
+            SyntaxProjectElement::TypeAlias {
                 ty_keyword_start,
                 name,
                 parameters,
@@ -18580,13 +18446,13 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                     }
                 }
                 if let Some(documentation) = documentation {
-                    sloe_syntax_comments_highlight(state, documentation);
+                    syntax_comments_highlight(state, documentation);
                 }
                 if let Some(type_) = type_ {
-                    sloe_syntax_type_highlight(state, types, type_);
+                    syntax_type_highlight(state, types, type_);
                 }
             }
-            sloe::SyntaxProjectElement::Fn {
+            SyntaxProjectElement::Fn {
                 fn_keyword_start,
                 name,
                 type_parameters,
@@ -18606,7 +18472,7 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                         name.value.len(),
                     );
                 }
-                for sloe::SyntaxBracedTypeParameter {
+                for SyntaxBracedTypeParameter {
                     open_brace_start: _,
                     underscore_start,
                     name: type_parameter_name,
@@ -18623,29 +18489,29 @@ fn sloe_project_highlight<Expressions, Patterns, Types>(
                     }
                 }
                 if let Some(parameter) = parameter {
-                    sloe_syntax_pattern_highlight(state, patterns, types, parameter);
+                    syntax_pattern_highlight(state, patterns, types, parameter);
                 }
                 if let Some(colon_start) = colon_start {
                     keyword_highlight(state, ":", *colon_start);
                 }
                 if let Some(result_type) = result_type {
-                    sloe_syntax_type_highlight(state, types, result_type);
+                    syntax_type_highlight(state, types, result_type);
                 }
                 if let Some(equals_start) = equals_start {
                     keyword_highlight(state, "=", *equals_start);
                 }
                 if let Some(documentation) = documentation {
-                    sloe_syntax_comments_highlight(state, documentation);
+                    syntax_comments_highlight(state, documentation);
                 }
                 if let Some(result) = result {
-                    sloe_syntax_expression_highlight(state, expressions, patterns, types, result);
+                    syntax_expression_highlight(state, expressions, patterns, types, result);
                 }
             }
-            sloe::SyntaxProjectElement::Unrecognized { .. } => {}
+            SyntaxProjectElement::Unrecognized { .. } => {}
         }
     }
 }
-fn sloe_syntax_comments_highlight(state: &mut HighlightState, comments: &sloe::SyntaxComments) {
+fn syntax_comments_highlight(state: &mut HighlightState, comments: &SyntaxComments) {
     for line in std::iter::once(&comments.line0).chain(comments.line1_up.iter()) {
         highlight_state_add_token_with_start_and_length(
             state,
@@ -18655,9 +18521,9 @@ fn sloe_syntax_comments_highlight(state: &mut HighlightState, comments: &sloe::S
         );
     }
 }
-fn sloe_syntax_name_highlight(
+fn syntax_name_highlight(
     state: &mut HighlightState,
-    name: &sloe::WithStartPosition<sloe::Name>,
+    name: &WithStartPosition<Name>,
     kind: lsp_types::SemanticTokenTypes,
 ) {
     highlight_state_add_token_with_start_and_length(
@@ -18667,89 +18533,86 @@ fn sloe_syntax_name_highlight(
         name.value.encode_utf16().count(),
     );
 }
-fn sloe_syntax_trailing_field_highlight<Value>(
+fn syntax_trailing_field_highlight<Value>(
     state: &mut HighlightState,
-    field: &sloe::SyntaxTrailingField<Value>,
+    field: &SyntaxTrailingField<Value>,
     value_highlight: impl FnOnce(&mut HighlightState, &Value),
 ) {
-    sloe_syntax_optional_field_name_highlight(state, &field.name);
+    syntax_optional_field_name_highlight(state, &field.name);
     if let Some(value) = &field.value {
         value_highlight(state, value);
     }
 }
-fn sloe_syntax_field_name_highlight(
+fn syntax_field_name_highlight(state: &mut HighlightState, field_name: &WithStartPosition<Name>) {
+    highlight_state_add_token_with_start_and_length(
+        state,
+        lsp_types::SemanticTokenTypes::Property,
+        field_name.start,
+        field_name_length(&field_name.value),
+    );
+}
+fn syntax_optional_field_name_highlight(
     state: &mut HighlightState,
-    field_name: &sloe::WithStartPosition<sloe::Name>,
+    field_name: &WithStartPosition<Option<Name>>,
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
         lsp_types::SemanticTokenTypes::Property,
         field_name.start,
-        sloe::field_name_length(&field_name.value),
+        optional_field_name_length(field_name.value.as_ref()),
     );
 }
-fn sloe_syntax_optional_field_name_highlight(
+fn syntax_variant_name_highlight(
     state: &mut HighlightState,
-    field_name: &sloe::WithStartPosition<Option<sloe::Name>>,
-) {
-    highlight_state_add_token_with_start_and_length(
-        state,
-        lsp_types::SemanticTokenTypes::Property,
-        field_name.start,
-        sloe::optional_field_name_length(field_name.value.as_ref()),
-    );
-}
-fn sloe_syntax_variant_name_highlight(
-    state: &mut HighlightState,
-    variant_name: &sloe::WithStartPosition<sloe::Name>,
+    variant_name: &WithStartPosition<Name>,
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
         lsp_types::SemanticTokenTypes::EnumMember,
         variant_name.start,
-        sloe::variant_name_length(&variant_name.value),
+        variant_name_length(&variant_name.value),
     );
 }
-fn sloe_syntax_optional_variant_name_highlight(
+fn syntax_optional_variant_name_highlight(
     state: &mut HighlightState,
-    variant_name: &sloe::WithStartPosition<Option<sloe::Name>>,
+    variant_name: &WithStartPosition<Option<Name>>,
 ) {
     highlight_state_add_token_with_start_and_length(
         state,
         lsp_types::SemanticTokenTypes::EnumMember,
         variant_name.start,
-        sloe::optional_variant_name_length(variant_name.value.as_ref()),
+        optional_variant_name_length(variant_name.value.as_ref()),
     );
 }
-fn sloe_syntax_pattern_highlight<Patterns, Types>(
+fn syntax_pattern_highlight<Patterns, Types>(
     state: &mut HighlightState,
-    patterns: &sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
-    pattern: &sloe::SyntaxPattern<Patterns, Types>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    pattern: &SyntaxPattern<Patterns, Types>,
 ) {
     match pattern {
-        sloe::SyntaxPattern::Variable { name, type_ } => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Parameter);
+        SyntaxPattern::Variable { name, type_ } => {
+            syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Parameter);
             if let Some(type_) = type_ {
-                sloe_syntax_type_highlight(state, types, type_);
+                syntax_type_highlight(state, types, type_);
             }
         }
-        sloe::SyntaxPattern::Variant { name, value } => {
-            sloe_syntax_optional_variant_name_highlight(state, name);
+        SyntaxPattern::Variant { name, value } => {
+            syntax_optional_variant_name_highlight(state, name);
             if let Some(value) = value {
-                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(value));
+                syntax_pattern_highlight(state, patterns, types, patterns.element(value));
             }
         }
-        sloe::SyntaxPattern::RecordEmpty { dot_start } => {
+        SyntaxPattern::RecordEmpty { dot_start } => {
             keyword_highlight(state, ".", *dot_start);
         }
-        sloe::SyntaxPattern::Record { part0, part1_up } => {
+        SyntaxPattern::Record { part0, part1_up } => {
             for part in std::iter::once(part0).chain(part1_up) {
                 match part {
-                    sloe::SyntaxRecordPart::Field { name, value } => {
-                        sloe_syntax_optional_field_name_highlight(state, name);
+                    SyntaxRecordPart::Field { name, value } => {
+                        syntax_optional_field_name_highlight(state, name);
                         if let Some(value) = value {
-                            sloe_syntax_pattern_highlight(
+                            syntax_pattern_highlight(
                                 state,
                                 patterns,
                                 types,
@@ -18757,13 +18620,13 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
                             );
                         }
                     }
-                    sloe::SyntaxRecordPart::Spread {
+                    SyntaxRecordPart::Spread {
                         dot_dot_start,
                         record,
                     } => {
                         keyword_highlight(state, "..", *dot_dot_start);
                         if let Some(record) = record {
-                            sloe_syntax_pattern_highlight(
+                            syntax_pattern_highlight(
                                 state,
                                 patterns,
                                 types,
@@ -18774,24 +18637,24 @@ fn sloe_syntax_pattern_highlight<Patterns, Types>(
                 }
             }
         }
-        sloe::SyntaxPattern::Parenthesized {
+        SyntaxPattern::Parenthesized {
             open_paren_start: _,
             inner,
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                sloe_syntax_pattern_highlight(state, patterns, types, patterns.element(inner));
+                syntax_pattern_highlight(state, patterns, types, patterns.element(inner));
             }
         }
     }
 }
-fn sloe_syntax_type_highlight<Types>(
+pub fn syntax_type_highlight<Types>(
     state: &mut HighlightState,
-    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
-    type_: &sloe::SyntaxType<Types>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    type_: &SyntaxType<Types>,
 ) {
     match type_ {
-        sloe::SyntaxType::Variable {
+        SyntaxType::Variable {
             underscore_start,
             name,
         } => {
@@ -18802,80 +18665,77 @@ fn sloe_syntax_type_highlight<Types>(
                 1 + name.encode_utf16().count(),
             );
         }
-        sloe::SyntaxType::ConstructWithoutArguments(name) => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Type);
+        SyntaxType::ConstructWithoutArguments(name) => {
+            syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Type);
         }
-        sloe::SyntaxType::ConstructWithArguments {
+        SyntaxType::ConstructWithArguments {
             name,
             argument0,
             argument1_up,
         } => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
+            syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
             if let Some(argument0) = argument0 {
-                sloe_syntax_type_highlight(state, types, types.element(argument0));
+                syntax_type_highlight(state, types, types.element(argument0));
             }
             for argument in argument1_up {
                 if let Some(argument_type) = &argument.type_ {
-                    sloe_syntax_type_highlight(state, types, argument_type);
+                    syntax_type_highlight(state, types, argument_type);
                 }
             }
         }
-        sloe::SyntaxType::Parenthesized {
+        SyntaxType::Parenthesized {
             open_paren_start: _,
             inner,
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                sloe_syntax_type_highlight(state, types, types.element(inner));
+                syntax_type_highlight(state, types, types.element(inner));
             }
         }
-        sloe::SyntaxType::RecordEmpty { dot_start: _ } => {}
-        sloe::SyntaxType::Record {
+        SyntaxType::RecordEmpty { dot_start: _ } => {}
+        SyntaxType::Record {
             field0_name,
             field0_value,
             field1_up,
         } => {
-            sloe_syntax_field_name_highlight(state, field0_name);
+            syntax_field_name_highlight(state, field0_name);
             if let Some(field0_value) = field0_value {
-                sloe_syntax_type_highlight(state, types, types.element(field0_value));
+                syntax_type_highlight(state, types, types.element(field0_value));
             }
             for field in field1_up {
-                sloe_syntax_trailing_field_highlight(state, field, |state, value| {
-                    sloe_syntax_type_highlight(state, types, value);
+                syntax_trailing_field_highlight(state, field, |state, value| {
+                    syntax_type_highlight(state, types, value);
                 });
             }
         }
-        sloe::SyntaxType::ChoiceEmpty { bar_start: _ } => {}
-        sloe::SyntaxType::Choice {
+        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::Choice {
             variant0_name,
             variant0_value,
             variant1_up,
         } => {
-            sloe_syntax_variant_name_highlight(state, variant0_name);
+            syntax_variant_name_highlight(state, variant0_name);
             if let Some(variant0_value) = variant0_value {
-                sloe_syntax_type_highlight(state, types, types.element(variant0_value));
+                syntax_type_highlight(state, types, types.element(variant0_value));
             }
             for variant in variant1_up {
-                sloe_syntax_optional_variant_name_highlight(state, &variant.name);
+                syntax_optional_variant_name_highlight(state, &variant.name);
                 if let Some(value) = &variant.value {
-                    sloe_syntax_type_highlight(state, types, value);
+                    syntax_type_highlight(state, types, value);
                 }
             }
         }
     }
 }
-fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
+fn syntax_expression_highlight<Expressions, Patterns, Types>(
     state: &mut HighlightState,
-    expressions: &sloe::core::Buf<
-        Expressions,
-        sloe::SyntaxExpression<Expressions, Patterns, Types>,
-    >,
-    patterns: &sloe::core::Buf<Patterns, sloe::SyntaxPattern<Patterns, Types>>,
-    types: &sloe::core::Buf<Types, sloe::SyntaxType<Types>>,
-    expression: &sloe::SyntaxExpression<Expressions, Patterns, Types>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    expression: &SyntaxExpression<Expressions, Patterns, Types>,
 ) {
     match expression {
-        sloe::SyntaxExpression::Number { value, type_ } => {
+        SyntaxExpression::Number { value, type_ } => {
             highlight_state_add_token_with_start_and_length(
                 state,
                 lsp_types::SemanticTokenTypes::Number,
@@ -18883,10 +18743,10 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 value.value.len(),
             );
             if let Some(type_) = type_ {
-                sloe_syntax_type_highlight(state, types, type_);
+                syntax_type_highlight(state, types, type_);
             }
         }
-        sloe::SyntaxExpression::Char {
+        SyntaxExpression::Char {
             open_quote_start,
             content: _,
             content_end,
@@ -18900,7 +18760,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     + (if *closed_quote_exists { 1 } else { 0 })) as usize,
             );
         }
-        sloe::SyntaxExpression::Str {
+        SyntaxExpression::Str {
             open_quote_start,
             content: _,
             content_end,
@@ -18914,27 +18774,27 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                     + (if *closed_quote_exists { 1 } else { 0 })) as usize,
             );
         }
-        sloe::SyntaxExpression::Variable(name) => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
+        SyntaxExpression::Variable(name) => {
+            syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
         }
-        sloe::SyntaxExpression::Call {
+        SyntaxExpression::Call {
             name,
             type_arguments,
             argument,
         } => {
-            sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
-            for sloe::SyntaxBracedTypeArgument {
+            syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
+            for SyntaxBracedTypeArgument {
                 open_brace_start: _,
                 type_,
                 closed_brace_start: _,
             } in type_arguments
             {
                 if let Some(type_) = type_ {
-                    sloe_syntax_type_highlight(state, types, type_);
+                    syntax_type_highlight(state, types, type_);
                 }
             }
             if let Some(argument) = argument {
-                sloe_syntax_expression_highlight(
+                syntax_expression_highlight(
                     state,
                     expressions,
                     patterns,
@@ -18943,7 +18803,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
         }
-        sloe::SyntaxExpression::Variant {
+        SyntaxExpression::Variant {
             bar_start: _,
             name,
             type_: type_argument,
@@ -18952,13 +18812,13 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             if let Some(type_argument) = type_argument
                 && let Some(type_) = &type_argument.type_
             {
-                sloe_syntax_type_highlight(state, types, type_);
+                syntax_type_highlight(state, types, type_);
             }
             if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::EnumMember);
+                syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::EnumMember);
             }
             if let Some(value) = value {
-                sloe_syntax_expression_highlight(
+                syntax_expression_highlight(
                     state,
                     expressions,
                     patterns,
@@ -18967,7 +18827,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
         }
-        sloe::SyntaxExpression::Fn {
+        SyntaxExpression::Fn {
             open_bracket_start,
             parameter,
             closed_bracket_start,
@@ -18975,13 +18835,13 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
         } => {
             keyword_highlight(state, "[", *open_bracket_start);
             if let Some(parameter) = parameter {
-                sloe_syntax_pattern_highlight(state, patterns, types, parameter);
+                syntax_pattern_highlight(state, patterns, types, parameter);
             }
             if let Some(closed_bracket_start) = closed_bracket_start {
                 keyword_highlight(state, "]", *closed_bracket_start);
             }
             if let Some(result) = result {
-                sloe_syntax_expression_highlight(
+                syntax_expression_highlight(
                     state,
                     expressions,
                     patterns,
@@ -18990,16 +18850,16 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
         }
-        sloe::SyntaxExpression::RecordEmpty { dot_start } => {
+        SyntaxExpression::RecordEmpty { dot_start } => {
             keyword_highlight(state, ".", *dot_start);
         }
-        sloe::SyntaxExpression::Record { part0, part1_up } => {
+        SyntaxExpression::Record { part0, part1_up } => {
             for part in std::iter::once(part0).chain(part1_up) {
                 match part {
-                    sloe::SyntaxRecordPart::Field { name, value } => {
-                        sloe_syntax_optional_field_name_highlight(state, name);
+                    SyntaxRecordPart::Field { name, value } => {
+                        syntax_optional_field_name_highlight(state, name);
                         if let Some(value) = value {
-                            sloe_syntax_expression_highlight(
+                            syntax_expression_highlight(
                                 state,
                                 expressions,
                                 patterns,
@@ -19008,13 +18868,13 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                             );
                         }
                     }
-                    sloe::SyntaxRecordPart::Spread {
+                    SyntaxRecordPart::Spread {
                         dot_dot_start,
                         record,
                     } => {
                         keyword_highlight(state, "..", *dot_dot_start);
                         if let Some(record) = record {
-                            sloe_syntax_expression_highlight(
+                            syntax_expression_highlight(
                                 state,
                                 expressions,
                                 patterns,
@@ -19026,7 +18886,7 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 }
             }
         }
-        sloe::SyntaxExpression::Array {
+        SyntaxExpression::Array {
             semicolon_start: _,
             element0,
             element1_up,
@@ -19040,16 +18900,16 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                         .filter_map(|element| element.element.as_ref()),
                 )
             {
-                sloe_syntax_expression_highlight(state, expressions, patterns, types, element);
+                syntax_expression_highlight(state, expressions, patterns, types, element);
             }
         }
-        sloe::SyntaxExpression::Parenthesized {
+        SyntaxExpression::Parenthesized {
             open_paren_start: _,
             inner,
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                sloe_syntax_expression_highlight(
+                syntax_expression_highlight(
                     state,
                     expressions,
                     patterns,
@@ -19058,13 +18918,13 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
         }
-        sloe::SyntaxExpression::Commented {
+        SyntaxExpression::Commented {
             comments,
             expression,
         } => {
-            sloe_syntax_comments_highlight(state, comments);
+            syntax_comments_highlight(state, comments);
             if let Some(expression) = expression {
-                sloe_syntax_expression_highlight(
+                syntax_expression_highlight(
                     state,
                     expressions,
                     patterns,
@@ -19073,14 +18933,14 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
                 );
             }
         }
-        sloe::SyntaxExpression::Query {
+        SyntaxExpression::Query {
             question_mark_start,
             queried,
             cases,
         } => {
             keyword_highlight(state, "?", *question_mark_start);
             if let Some(queried) = queried {
-                sloe_syntax_expression_highlight(
+                syntax_expression_highlight(
                     state,
                     expressions,
                     patterns,
@@ -19091,27 +18951,27 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             for case in cases {
                 keyword_highlight(state, "[", case.open_bracket_start);
                 if let Some(pattern) = &case.pattern {
-                    sloe_syntax_pattern_highlight(state, patterns, types, pattern);
+                    syntax_pattern_highlight(state, patterns, types, pattern);
                 }
                 if let Some(closed_bracket_start) = case.closed_bracket_start {
                     keyword_highlight(state, "]", closed_bracket_start);
                 }
                 if let Some(result) = &case.result {
-                    sloe_syntax_expression_highlight(state, expressions, patterns, types, result);
+                    syntax_expression_highlight(state, expressions, patterns, types, result);
                 }
             }
         }
-        sloe::SyntaxExpression::Origin {
+        SyntaxExpression::Origin {
             caret_key_symbol_start,
             name,
             result,
         } => {
             keyword_highlight(state, "^", *caret_key_symbol_start);
             if let Some(name) = name {
-                sloe_syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
+                syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
             }
             if let Some(result) = result {
-                sloe_syntax_expression_highlight(
+                syntax_expression_highlight(
                     state,
                     expressions,
                     patterns,
@@ -19121,6 +18981,244 @@ fn sloe_syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
     }
+}
+pub const token_types: [lsp_types::SemanticTokenTypes; 11] = [
+    lsp_types::SemanticTokenTypes::Number,
+    lsp_types::SemanticTokenTypes::String,
+    lsp_types::SemanticTokenTypes::Namespace,
+    lsp_types::SemanticTokenTypes::Variable,
+    lsp_types::SemanticTokenTypes::Type,
+    lsp_types::SemanticTokenTypes::TypeParameter,
+    lsp_types::SemanticTokenTypes::Keyword,
+    lsp_types::SemanticTokenTypes::EnumMember,
+    lsp_types::SemanticTokenTypes::Property,
+    lsp_types::SemanticTokenTypes::Comment,
+    lsp_types::SemanticTokenTypes::Function,
+];
+
+fn semantic_token_type_to_id(semantic_token: &lsp_types::SemanticTokenTypes) -> u32 {
+    token_types
+        .iter()
+        .enumerate()
+        .find_map(|(i, token)| {
+            if token == semantic_token {
+                Some(i as u32)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0_u32)
+}
+#[derive(Copy, Clone)]
+struct PositionDelta {
+    pub line: u32,
+    pub character: u32,
+}
+fn lsp_position_positive_delta(
+    before: lsp_types::Position,
+    after: lsp_types::Position,
+) -> Result<PositionDelta, String> {
+    match before.line.cmp(&after.line) {
+        std::cmp::Ordering::Greater => Err(format!(
+            "before line > after line (before: {}, after: {})",
+            position_to_string(before),
+            position_to_string(after)
+        )),
+        std::cmp::Ordering::Equal => {
+            if before.character > after.character {
+                Err(format!(
+                    "before character > after character (before: {}, after: {})",
+                    position_to_string(before),
+                    position_to_string(after)
+                ))
+            } else {
+                Ok(PositionDelta {
+                    line: 0,
+                    character: after.character - before.character,
+                })
+            }
+        }
+        std::cmp::Ordering::Less => Ok(PositionDelta {
+            line: after.line - before.line,
+            character: after.character,
+        }),
+    }
+}
+
+pub fn checked_project_fn_format(
+    formatted: &mut String,
+    name: &Name,
+    project_fn: &CheckedProjectFn,
+) {
+    formatted.push_str("fn ");
+    formatted.push_str(name);
+    braced_type_parameters_format(formatted, &project_fn.type_parameters);
+    formatted.push_str("\n    ");
+    if let Some(fn_parameter_type) = &project_fn.parameter_type {
+        type_format(formatted, 4, fn_parameter_type);
+    }
+    formatted.push_str("\n    :\n    ");
+    if let Some(fn_result_type) = &project_fn.result_type {
+        type_format(formatted, 4, fn_result_type);
+    }
+}
+pub fn braced_type_parameters_format(formatted: &mut String, type_parameters: &[Name]) {
+    for type_parameter in type_parameters {
+        formatted.push_str("{_");
+        formatted.push_str(type_parameter);
+        formatted.push('}');
+    }
+}
+pub fn checked_type_alias_format(
+    formatted: &mut String,
+    name: &Name,
+    type_alias: &CheckedTypeAlias,
+) {
+    formatted.push_str("ty ");
+    formatted.push_str(name);
+    if let Some((parameter0, parameter1_up)) = type_alias.parameters.split_first() {
+        formatted.push_str(" _");
+        formatted.push_str(parameter0);
+        for parameter in parameter1_up {
+            formatted.push_str(", _");
+            formatted.push_str(parameter);
+        }
+    }
+    formatted.push_str("\n    ");
+    if let Some(type_) = &type_alias.type_ {
+        type_format(formatted, 4, type_);
+    }
+}
+pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
+    match type_ {
+        Type::Variable(name) => {
+            formatted.push('_');
+            formatted.push_str(name);
+        }
+        Type::Origin(name) => {
+            formatted.push_str(name);
+        }
+        Type::CoreConstruct { name, arguments } => match arguments.as_slice() {
+            [] => {
+                formatted.push_str(name);
+            }
+            [argument0, argument1_up @ ..] => {
+                formatted.push_str(name);
+                let line_span: LineSpan = type_line_span(type_);
+                space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+                type_parenthesized_if_open_ended_format(formatted, next_indent(indent), argument0);
+                for argument in argument1_up {
+                    formatted.push(',');
+                    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+                    type_parenthesized_if_open_ended_format(
+                        formatted,
+                        next_indent(indent),
+                        argument,
+                    );
+                }
+            }
+        },
+        Type::Record(fields) => type_record_format(formatted, indent, fields),
+        Type::Choice(variants) => match variants.as_slice() {
+            [] => {
+                formatted.push('|');
+            }
+            [variant0, variant1_up @ ..] => {
+                type_variant_format(formatted, indent, variant0);
+                let line_span: LineSpan = type_line_span(type_);
+                for variant in variant1_up {
+                    space_or_linebreak_indented_into(formatted, line_span, indent);
+                    type_variant_format(formatted, indent, variant);
+                }
+            }
+        },
+    }
+}
+fn type_record_format(formatted: &mut String, indent: usize, fields: &[TypeField]) {
+    match fields {
+        [] => {
+            formatted.push('.');
+        }
+        [field0, field1_up @ ..] => {
+            type_field_format(formatted, indent, field0);
+            let line_span: LineSpan = type_record_line_span(fields);
+            for field in field1_up {
+                space_or_linebreak_indented_into(formatted, line_span, indent);
+                type_field_format(formatted, indent, field);
+            }
+        }
+    }
+}
+fn type_parenthesized_if_open_ended_format(formatted: &mut String, indent: usize, type_: &Type) {
+    let should_parenthesize_argument: bool = match type_ {
+        Type::Variable(_) => false,
+        Type::Origin(_) => false,
+        Type::Record(fields) => !fields.is_empty(),
+        Type::Choice(variants) => !variants.is_empty(),
+        Type::CoreConstruct { name: _, arguments } => !arguments.is_empty(),
+    };
+    if should_parenthesize_argument {
+        formatted.push('(');
+        type_format(formatted, indent + 1, type_);
+        if type_line_span(type_) == LineSpan::Multiple {
+            linebreak_indented_into(formatted, indent);
+        }
+        formatted.push(')');
+    } else {
+        type_format(formatted, next_indent(indent), type_);
+    }
+}
+fn type_field_format(formatted: &mut String, indent: usize, type_field: &TypeField) {
+    formatted.push('.');
+    formatted.push_str(&type_field.name);
+    let line_span = type_line_span(&type_field.value);
+    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+    type_parenthesized_if_open_ended_format(formatted, next_indent(indent), &type_field.value);
+}
+fn type_variant_format(formatted: &mut String, indent: usize, type_variant: &TypeVariant) {
+    formatted.push('|');
+    formatted.push_str(&type_variant.name);
+    let line_span = type_line_span(&type_variant.value);
+    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+    type_parenthesized_if_open_ended_format(formatted, next_indent(indent), &type_variant.value);
+}
+fn type_line_span(type_: &Type) -> LineSpan {
+    if type_length_estimate(type_) <= type_info_line_length_estimate_maximum {
+        LineSpan::Single
+    } else {
+        LineSpan::Multiple
+    }
+}
+fn type_record_line_span(fields: &[TypeField]) -> LineSpan {
+    if type_record_length_estimate(fields) <= type_info_line_length_estimate_maximum {
+        LineSpan::Single
+    } else {
+        LineSpan::Multiple
+    }
+}
+fn type_length_estimate(type_: &Type) -> usize {
+    match type_ {
+        Type::Variable(variable_name) => variable_name.len(),
+        Type::Origin(name) => name.len(),
+        Type::CoreConstruct { name, arguments } => {
+            1 + name.len()
+                + arguments
+                    .iter()
+                    .map(|argument| 2 + type_length_estimate(argument))
+                    .sum::<usize>()
+        }
+        Type::Record(fields) => type_record_length_estimate(fields),
+        Type::Choice(variants) => variants
+            .iter()
+            .map(|variant| 3 + variant.name.len() + type_length_estimate(&variant.value))
+            .sum(),
+    }
+}
+fn type_record_length_estimate(fields: &[TypeField]) -> usize {
+    fields
+        .iter()
+        .map(|field| 3 + field.name.len() + type_length_estimate(&field.value))
+        .sum()
 }
 
 pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
