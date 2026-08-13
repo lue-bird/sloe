@@ -142,6 +142,14 @@ export function i32_to_u32(i) {
 export function i32_round_to_nearest_f32_else_even(i) {
   return Math.fround(i);
 }
+/** @param {I32} i @returns {U32} */
+export function i32_abs_to_u32(i) {
+  return Math.abs(i);
+}
+/** @param {I32} i @returns {U32} */
+export function i32_negate(i) {
+  return -i;
+}
 /** @param {{ left: I32, right: I32, }} sides @returns {Order} */
 export function i32_order(sides) {
   return sides.left < sides.right

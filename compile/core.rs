@@ -2074,17 +2074,11 @@ pub fn i32_to_u32(n: I32) -> Opt<U32> {
         std::result::Result::Ok(u) => Opt::Yes(u),
     }
 }
-pub fn i32_to_p32(n: I32) -> Opt<P32> {
-    match <U32 as std::convert::TryFrom<I32>>::try_from(n) {
-        std::result::Result::Err(_) => Opt::No(()),
-        std::result::Result::Ok(u) => u32_to_p32(u),
-    }
-}
-pub fn i32_abs_u32(n: I32) -> U32 {
+pub fn i32_abs_to_u32(n: I32) -> U32 {
     n.unsigned_abs()
 }
-pub fn i32_negate(n: I32) -> I32 {
-    -n
+pub fn i32_negate_clamp(n: I32) -> I32 {
+    n.saturating_neg()
 }
 pub fn i32_add_clamp(Record·a·b { a, b }: Record·a·b<I32, I32>) -> I32 {
     a.saturating_add(b)
