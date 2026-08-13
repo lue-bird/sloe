@@ -547,17 +547,17 @@ fn highlighted_sloe_source_to_html(
 fn sloe_syntax_highlight_kind_to_css_color(kind: &lsp_types::SemanticTokenTypes) -> &'static str {
     match kind {
         lsp_types::SemanticTokenTypes::Type => "rgb(0,255,255)",
-        lsp_types::SemanticTokenTypes::TypeParameter => "rgb(0,170,255)",
+        lsp_types::SemanticTokenTypes::TypeParameter
+        | lsp_types::SemanticTokenTypes::Variable
+        | lsp_types::SemanticTokenTypes::Parameter => "rgb(130,140,255)",
         lsp_types::SemanticTokenTypes::EnumMember => "rgb(120,235,30)",
         lsp_types::SemanticTokenTypes::Property => "rgb(255, 145, 0)",
-        lsp_types::SemanticTokenTypes::Variable | lsp_types::SemanticTokenTypes::Function => {
-            "rgb(255, 225, 140)"
-        }
+        lsp_types::SemanticTokenTypes::Function => "rgb(255, 225, 140)",
         lsp_types::SemanticTokenTypes::Comment => "rgb(140,140,140)",
         lsp_types::SemanticTokenTypes::String | lsp_types::SemanticTokenTypes::Number => {
-            "rgb(180,100,255)"
+            "rgb(225,105,240)"
         }
-        lsp_types::SemanticTokenTypes::Keyword => "rgb(255,35,190)",
+        lsp_types::SemanticTokenTypes::Keyword => "rgb(255,60,100)",
         _ => "white",
     }
 }
@@ -949,22 +949,22 @@ To learn about empty choice types, go to `Choice-empty-to`",
             source: r#"
 fn Number-buffer-sum . : u32 =
     ^example-origin
-    ? Buf-empty{u32} example-origin
+    ? Buf-empty{u32} example-origin [buf]
     ? Buf-add .buf buf .new 1234 u32 [.buf buf .slot slot]
     ? Slot-to-span slot [span]
     ? Buf-span-add-array .buf buf .span span .new Example-array .
     [.buf buf .span span]
-    ? U32s-sum .buf buf .span span [sum]
-    ? Buf.rid buf [.]
+    ? U32s-sum .buf buf .span span [.buf buf .sum sum]
+    ? Buf-rid buf [.]
     sum
 
-fn Example-array . : Array u32, .e0 u32 .e1 u32 .e2 u21 =
+fn Example-array . : Array u32, .el0 u32 .el1 u32 .el2 u32 =
     # arrays are not rupposed to be stored, just an example
     ; 3 u32 ; 2 u32 ; 1 u32
 
 fn U32s-sum
-    .span Span _origin
-    .buf Buf _origin, u32
+    .span span Span _origin
+    .buf buf Buf _origin, u32
     :
     .sum u32
     .buf Buf _origin, u32
@@ -975,11 +975,11 @@ fn U32s-sum
     .state (.sum 0 u32 .buf buf)
     .step
     [
-    .state .sum u32 .buf buf Buf _origin, u32
+    .state (.sum so-far u32 .buf buf Buf _origin, u32)
     .slot slot Slot _origin
     ]
     ? Buf-remove .buf buf .slot slot [.buf buf .element element]
-    U32-add-clamp .a so-far .b element
+    .buf buf .sum U32-add-clamp .a so-far .b element
 "#,
             explainer: "an Array holds an exact amount of elements of the same type.
 This is super convenient, as we can store it on the stack and pass it around freely,
@@ -1020,6 +1020,8 @@ If you're wondering how to store `Buf`s persistently, check `Origin-erase`",
         Example::Comment => ExampleInfo {
             name: "comment",
             source: r#"
+#shegang
+
 fn Documented-after-the-type . : .
     # fn documentation.
     # All comments can span
@@ -1030,17 +1032,11 @@ fn Documented-after-the-type . : .
 ty string str
     # type documentation
 
-fn Nice
-    # in front of any pattern
-    .
-    :
-    .in-front-of-any-type
-    .
-    =
+fn Nice . : . =
     # in front of any expression
     .
 "#,
-            explainer: "Comments can be put in front of expressions, patterns, types or at the file level.
+            explainer: "Comments can be put in front of expressions or at the file level.
 Documentation comments can be put after the type of a ty or fn declaration.",
         },
         Example::Extras => ExampleInfo {
@@ -1050,7 +1046,7 @@ fn Make-it-3d xy .x f32 .y f32 : .x f32 .y f32 .z f32 =
     .. xy .z 0 f32
 "#,
             explainer: "Sloe has special syntax sugar for combining records and fields (\"spreading\" its fields into the record).
-Between, before or after the existing fields and spreads, add .. followed by a variable or general expression.
+Between, before or after the existing fields and spreads, add .. followed by a variable or any other expression.
 
 This feature is not strictly necessary but it can make builders that carry e.g. a buf and span at every step a bit nicer.",
         }

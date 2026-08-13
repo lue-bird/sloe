@@ -2285,7 +2285,7 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
                     range: *unknown_range,
                     message: format!("unrecognized syntax. {}
 If you wanted to start a project declaration, try one of:
-  - fn some-fn-name some-parameter some-parameter-type : some result type = some result value
+  - fn Some-fn-name some-parameter some-parameter-type : some-result-type = some-result-value
   - ty some-type-name some type",
                     if unknown_source
                         .starts_with(|c: char| c.is_ascii_lowercase())
@@ -18470,14 +18470,13 @@ pub fn project_highlight<Expressions, Patterns, Types>(
             } => {
                 keyword_highlight(state, "ty", *ty_keyword_start);
                 if let Some(name) = name {
-                    highlight_state_add_token_with_start_and_length(
+                    syntax_name_highlight(
                         state,
+                        name,
                         match parameters {
                             None => lsp_types::SemanticTokenTypes::Type,
                             Some(_) => lsp_types::SemanticTokenTypes::Function,
                         },
-                        name.start,
-                        name.value.len(),
                     );
                 }
                 if let Some(parameters) = parameters {
@@ -18487,13 +18486,18 @@ pub fn project_highlight<Expressions, Patterns, Types>(
                         parameters.parameter0_underscore_start,
                         1 + parameters.parameter0.encode_utf16().count(),
                     );
-                    for parameter in &parameters.parameter1_up {
-                        if let Some(parameter_underscore_start) = parameter.underscore_start {
+                    for SyntaxTrailingTypeParameter {
+                        comma_start: _,
+                        underscore_start,
+                        name,
+                    } in &parameters.parameter1_up
+                    {
+                        if let &Some(parameter_underscore_start) = underscore_start {
                             highlight_state_add_token_with_start_and_length(
                                 state,
                                 lsp_types::SemanticTokenTypes::TypeParameter,
                                 parameter_underscore_start,
-                                1 + parameter.name.encode_utf16().count(),
+                                1 + name.encode_utf16().count(),
                             );
                         }
                     }
@@ -18520,24 +18524,38 @@ pub fn project_highlight<Expressions, Patterns, Types>(
                 if let Some(name) = name {
                     highlight_state_add_token_with_start_and_length(
                         state,
-                        lsp_types::SemanticTokenTypes::Variable,
+                        lsp_types::SemanticTokenTypes::Function,
                         name.start,
                         name.value.len(),
                     );
                 }
                 for SyntaxBracedTypeParameter {
-                    open_brace_start: _,
+                    open_brace_start,
                     underscore_start,
                     name: type_parameter_name,
-                    closed_brace_start: _,
+                    closed_brace_start,
                 } in type_parameters
                 {
+                    symbol_highlight(
+                        state,
+                        "{",
+                        *open_brace_start,
+                        lsp_types::SemanticTokenTypes::Function,
+                    );
                     if let &Some(parameter_underscore_start) = underscore_start {
                         highlight_state_add_token_with_start_and_length(
                             state,
                             lsp_types::SemanticTokenTypes::TypeParameter,
                             parameter_underscore_start,
                             1 + type_parameter_name.encode_utf16().count(),
+                        );
+                    }
+                    if let &Some(closed_brace_start) = closed_brace_start {
+                        symbol_highlight(
+                            state,
+                            "}",
+                            closed_brace_start,
+                            lsp_types::SemanticTokenTypes::Function,
                         );
                     }
                 }
@@ -18550,11 +18568,11 @@ pub fn project_highlight<Expressions, Patterns, Types>(
                 if let Some(result_type) = result_type {
                     syntax_type_highlight(state, types, result_type);
                 }
-                if let Some(equals_start) = equals_start {
-                    keyword_highlight(state, "=", *equals_start);
-                }
                 if let Some(documentation) = documentation {
                     syntax_comments_highlight(state, documentation);
+                }
+                if let Some(equals_start) = equals_start {
+                    keyword_highlight(state, "=", *equals_start);
                 }
                 if let Some(result) = result {
                     syntax_expression_highlight(state, expressions, patterns, types, result);
@@ -18586,18 +18604,32 @@ pub fn project_fn_signature_highlight<Types>(
         );
     }
     for SyntaxBracedTypeParameter {
-        open_brace_start: _,
+        open_brace_start,
         underscore_start,
         name: type_parameter_name,
-        closed_brace_start: _,
+        closed_brace_start,
     } in type_parameters
     {
+        symbol_highlight(
+            state,
+            "{",
+            *open_brace_start,
+            lsp_types::SemanticTokenTypes::Function,
+        );
         if let &Some(parameter_underscore_start) = underscore_start {
             highlight_state_add_token_with_start_and_length(
                 state,
                 lsp_types::SemanticTokenTypes::TypeParameter,
                 parameter_underscore_start,
                 1 + type_parameter_name.encode_utf16().count(),
+            );
+        }
+        if let &Some(closed_brace_start) = closed_brace_start {
+            symbol_highlight(
+                state,
+                "}",
+                closed_brace_start,
+                lsp_types::SemanticTokenTypes::Function,
             );
         }
     }
@@ -18615,9 +18647,9 @@ fn syntax_comments_highlight(state: &mut HighlightState, comments: &SyntaxCommen
     for line in std::iter::once(&comments.line0).chain(comments.line1_up.iter()) {
         highlight_state_add_token_with_start_and_length(
             state,
-            lsp_types::SemanticTokenTypes::Variable,
+            lsp_types::SemanticTokenTypes::Comment,
             line.start,
-            line.value.encode_utf16().count(),
+            1 + line.value.encode_utf16().count(),
         );
     }
 }
@@ -18884,13 +18916,27 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
         } => {
             syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
             for SyntaxBracedTypeArgument {
-                open_brace_start: _,
+                open_brace_start,
                 type_,
-                closed_brace_start: _,
+                closed_brace_start,
             } in type_arguments
             {
+                symbol_highlight(
+                    state,
+                    "{",
+                    *open_brace_start,
+                    lsp_types::SemanticTokenTypes::Function,
+                );
                 if let Some(type_) = type_ {
                     syntax_type_highlight(state, types, type_);
+                }
+                if let &Some(closed_brace_start) = closed_brace_start {
+                    symbol_highlight(
+                        state,
+                        "}",
+                        closed_brace_start,
+                        lsp_types::SemanticTokenTypes::Function,
+                    );
                 }
             }
             if let Some(argument) = argument {
@@ -18915,10 +18961,24 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                 *bar_start,
                 lsp_types::SemanticTokenTypes::EnumMember,
             );
-            if let Some(type_argument) = type_argument
-                && let Some(type_) = &type_argument.type_
-            {
-                syntax_type_highlight(state, types, type_);
+            if let Some(type_argument) = type_argument {
+                symbol_highlight(
+                    state,
+                    "{",
+                    type_argument.open_brace_start,
+                    lsp_types::SemanticTokenTypes::EnumMember,
+                );
+                if let Some(type_) = &type_argument.type_ {
+                    syntax_type_highlight(state, types, type_);
+                }
+                if let Some(closed_brace_start) = type_argument.closed_brace_start {
+                    symbol_highlight(
+                        state,
+                        "{",
+                        closed_brace_start,
+                        lsp_types::SemanticTokenTypes::EnumMember,
+                    );
+                }
             }
             if let Some(name) = name {
                 syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::EnumMember);
@@ -19088,7 +19148,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
         }
     }
 }
-pub const token_types: [lsp_types::SemanticTokenTypes; 11] = [
+pub const token_types: [lsp_types::SemanticTokenTypes; 12] = [
     lsp_types::SemanticTokenTypes::Number,
     lsp_types::SemanticTokenTypes::String,
     lsp_types::SemanticTokenTypes::Namespace,
@@ -19100,6 +19160,7 @@ pub const token_types: [lsp_types::SemanticTokenTypes; 11] = [
     lsp_types::SemanticTokenTypes::Property,
     lsp_types::SemanticTokenTypes::Comment,
     lsp_types::SemanticTokenTypes::Function,
+    lsp_types::SemanticTokenTypes::Parameter,
 ];
 
 fn semantic_token_type_to_id(semantic_token: &lsp_types::SemanticTokenTypes) -> u32 {
