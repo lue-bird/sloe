@@ -287,57 +287,53 @@ fn playground_html(
     );
     let compiled_project =
         sloe::checked_project_to_js(&checked_project, &expressions, &patterns, &types);
-    for (project_fn_name, project_fn) in checked_project
-        .checked_project_fns
-        .iter()
-        .filter(|(fn_name, _)| !sloe::core_fns.contains_key(*fn_name))
+    for (project_fn_name, _project_fn) in
+        checked_project
+            .checked_project_fns
+            .iter()
+            .filter(|(fn_name, project_fn)| {
+                !sloe::core_fns.contains_key(*fn_name)
+                    && match &project_fn.parameter_type {
+                        Some(sloe::Type::Record(fields)) => fields.is_empty(),
+                        Some(sloe::Type::CoreConstruct { name, arguments: _ }) => name == "Origin",
+                        _ => false,
+                    }
+            })
     {
-        match &project_fn.parameter_type {
-            Some(sloe::Type::Record(fields)) if fields.is_empty() => {
-                // is there a way to make this faster?
-                let to_evaluate = format!(
-                    "{}\n\nreturn {}({{}});",
-                    compiled_project.replace("export ", ""),
-                    sloe::name_to_lowercase_js(project_fn_name),
-                );
-                let mut evaluated_variable_html = yew::virtual_dom::VTag::new("li");
+        // would be faster if we only use one return for all results.
+        // If performance is bad, do that instead
+        let to_evaluate = format!(
+            "{}\n\nreturn {}({{}});",
+            compiled_project.replace("export ", ""),
+            sloe::name_to_lowercase_js(project_fn_name),
+        );
+        let mut evaluated_variable_html = yew::virtual_dom::VTag::new("li");
+        evaluated_variable_html.add_child(html_element(
+            "code",
+            [],
+            [html_text_dynamic(project_fn_name)],
+        ));
+        evaluated_variable_html.add_child(html_text(" is "));
+        let function_to_evaluate = web_sys::js_sys::Function::new_no_args(&to_evaluate);
+        let evaluated = function_to_evaluate.call(&web_sys::wasm_bindgen::JsValue::NULL, ());
+        match evaluated {
+            Ok(evaluated) => {
+                let mut result_as_sloe = String::new();
+                sloe_value_as_js_value_print(&mut result_as_sloe, &evaluated);
                 evaluated_variable_html.add_child(html_element(
                     "code",
                     [],
-                    [html_text_dynamic(project_fn_name)],
+                    [html_text_dynamic(result_as_sloe)],
                 ));
-                evaluated_variable_html.add_child(html_text(" is "));
-                let function_to_evaluate = web_sys::js_sys::Function::new_no_args(&to_evaluate);
-                let evaluated =
-                    function_to_evaluate.call(&web_sys::wasm_bindgen::JsValue::NULL, ());
-                match evaluated {
-                    Ok(evaluated) => {
-                        // TODO recursively try to recover as a sloe value with the help of the type
-                        evaluated_variable_html.add_child(html_element(
-                            "code",
-                            [],
-                            [html_text_dynamic(
-                                format!("{:?}", evaluated)
-                                    .trim_start_matches("JsValue(")
-                                    .trim_start_matches("Object(")
-                                    .trim_start_matches("Function(")
-                                    .trim_end_matches(")"),
-                            )],
-                        ));
-                    }
-                    Err(error) => evaluated_variable_html.add_child(html_text_dynamic(
-                        match web_sys::wasm_bindgen::JsCast::dyn_ref::<web_sys::js_sys::Error>(
-                            &error,
-                        ) {
-                            Some(error) => format!("error: {:?}", error.message()),
-                            None => format!("error: {:?}", error),
-                        },
-                    )),
-                }
-                evaluated_variables_html.add_child(evaluated_variable_html.into());
             }
-            _ => {}
+            Err(error) => evaluated_variable_html.add_child(html_text_dynamic(
+                match web_sys::wasm_bindgen::JsCast::dyn_ref::<web_sys::js_sys::Error>(&error) {
+                    Some(error) => format!("error: {:?}", error.message()),
+                    None => format!("error: {:?}", error),
+                },
+            )),
         }
+        evaluated_variables_html.add_child(evaluated_variable_html.into());
     }
     full.add_child(evaluated_variables_html.into());
     let mut errors_html = yew::virtual_dom::VTag::new("ul");
@@ -363,6 +359,59 @@ fn playground_html(
         ],
     ));
     full.into()
+}
+fn sloe_value_as_js_value_print(formatted: &mut String, js_value: &web_sys::wasm_bindgen::JsValue) {
+    use std::fmt::Write as _;
+    if let Some(number) = js_value.as_f64() {
+        let _ = write!(formatted, "{}", number);
+    } else if let Some(str) = js_value.as_string() {
+        let _ = write!(formatted, "{:?}", str);
+    } else if js_value.is_function() {
+        formatted.push_str("[function]");
+    } else if js_value.is_undefined() {
+        formatted.push('.');
+    } else if js_value.is_array() {
+        formatted.push('(');
+        let array = web_sys::js_sys::Array::from(js_value);
+        let mut elements = array.iter();
+        if let Some(element0) = elements.next() {
+            if element0.is_string() {
+                formatted.push_str("chars in ");
+                let _ = write!(formatted, "{:?}", array.join(""));
+            } else {
+                formatted.push_str("; ");
+                sloe_value_as_js_value_print(formatted, &element0);
+                for element in elements {
+                    formatted.push_str(" ; ");
+                    sloe_value_as_js_value_print(formatted, &element);
+                }
+            }
+        } else {
+            formatted.push_str("Buf-empty");
+        }
+        formatted.push(')');
+    } else if let Some(object) = web_sys::wasm_bindgen::JsCast::dyn_ref(js_value)
+        && let Ok(entries) =
+            web_sys::js_sys::Object::entries_typed::<web_sys::wasm_bindgen::JsValue>(object)
+        && let mut entries_iterator = entries.iter()
+        && let Some(entry0) = entries_iterator.next()
+    {
+        formatted.push('(');
+        formatted.push(if entries.length() == 1 { '|' } else { '.' });
+        formatted.push_str(&ToString::to_string(&entry0.get0()).replace("_", "-"));
+        formatted.push(' ');
+        sloe_value_as_js_value_print(formatted, &entry0.get1());
+        for entry in entries_iterator {
+            formatted.push(' ');
+            formatted.push(if entries.length() == 1 { '|' } else { '.' });
+            formatted.push_str(&ToString::to_string(&entry.get0()).replace("_", "-"));
+            formatted.push(' ');
+            sloe_value_as_js_value_print(formatted, &entry.get1());
+        }
+        formatted.push(')');
+    } else {
+        let _ = write!(formatted, "{:?}", js_value);
+    }
 }
 fn sloe_core_declarations_html() -> yew::Html {
     let mut section = yew::virtual_dom::VTag::new("section");
@@ -664,6 +713,11 @@ const fn example_info(example: Example) -> ExampleInfo {
         Example::HelloWorld => ExampleInfo {
             name:"hello world",
             source: r#"
+fn Hi
+    origin Origin _origin
+    : .buf Buf _origin, char .span Span _origin =
+    Greet .name "world" .origin origin
+
 fn Greet
     .name name str .origin origin Origin _origin
     : .buf Buf _origin, char .span Span _origin =
@@ -679,7 +733,7 @@ For more details, click through the examples above and try changing things.",
         Example::Variable => ExampleInfo {
             name: "declare a function",
             source: r#"
-fn Your-project-variable-name . : str =
+fn Your-project-function-name . : str =
     "Yahallo there, cutie"
 "#,
             explainer: "Add a new function to your project by choosing an uppercase name consisting of a-z, A-Z, 0-9 or - after `fn` at the start of a line,
