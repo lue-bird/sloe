@@ -14415,12 +14415,14 @@ See `Origin-erased`, `Slot-origin-unerase`, `Span-origin-unerase`, `Opt-span-ori
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A grow- and shrinkable buffered array of elements. Arrays have constant time access and update and constant time add.
+                    "A grow- and shrinkable array buffer of elements.
+Has constant time access and update and constant time add.
 ```sloe
 fn Use-a-buf . : u32 =
     ^my-elements-origin
     ? Buf-empty{u32} my-elements-origin [my-elements]
-    ? Buf-add .buf my-elements .element 609 u32 [.buf my-elements .slot first-element-slot]
+    ? Buf-add .buf my-elements .element 609 u32
+    [.buf my-elements .slot first-element-slot]
     ? Buf-remove .buf my-elements .slot first-element-slot
     [.buf my-elements .element first-element]
     ? Buf-rid my-elements [.]
