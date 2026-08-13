@@ -1046,17 +1046,13 @@ Documentation comments can be put after the type of a ty or fn declaration.",
         Example::Extras => ExampleInfo {
             name: "extras",
             source: r#"
-local-variables-and-rebinding
-    = local-variable 0
-    = local-variable^
-        unt-add local-variable 1
-    local-variable
+fn Make-it-3d xy .x f32 .y f32 : .x f32 .y f32 .z f32 =
+    .. xy .z 0 f32
 "#,
-            explainer: "2 niceties you may not need
-- local variable declarations: =, name, expression
-- shadow a local variable name: attach ^ after a pattern or local variable declaration name
+            explainer: "Sloe has special syntax sugar for combining records and fields (\"spreading\" its fields into the record).
+Between, before or after the existing fields and spreads, add .. followed by a variable or general expression.
 
-None are strictly necessary but are probably stylistically.",
+This feature is not strictly necessary but it can make builders that carry e.g. a buf and span at every step a bit nicer.",
         }
     }
 }
