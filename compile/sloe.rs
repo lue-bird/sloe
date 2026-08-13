@@ -14510,7 +14510,7 @@ Arrays make adding multiple elements of the same type much less cumbersome,
 see `Buf-add-array`/`Buf-span-add-array`/`Buf-opt-span-add-array`.
 This is a very bare-bones feature because of sloe's simple type system.
 
-How does arry work then? The second record argument is set to an equivalent record
+How does Array work then? The second record argument is set to an equivalent record
 that the runtime knows how to interpret as an actual array.
 ```sloe
 fn Example-array . : Array u32, .e0 u32 .e1 u32 =
