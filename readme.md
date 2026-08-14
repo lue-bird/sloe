@@ -1,39 +1,49 @@
 Small, fast programming language where indexes are valid and values can't be shared.
 
-The goal is representing tree-like data structures without segmented, non-pre-allocatable memory or plain integer indexes (along with the need to handle failure and generations).
-Sloe offers a safe, infallible way to refer to elements and slices stored in consecutive memory.
+Goal: representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
+Sloe offers an infallible, safe way to refer to elements and slices stored in consecutive memory.
 
-[skip to examples](#examples)
+```sloe
+fn Hi
+    origin Origin _origin
+    : .buf Buf _origin, char .span Span _origin =
+    Greet .name "world" .buf Buf-empty{char} origin
 
-Note that while as a side effect this avoids any bounds checks,
-bounds-checking in general is not slow.
+fn Greet
+    .name name str .buf buf Buf _origin, char
+    : .buf Buf _origin, char .span Span _origin =
+    ? .buf buf .span |{Opt Span _origin}no . [string]
+    ? Buf-char-opt-span-add-str .. string .new "Hello, " [string]
+    ? Buf-char-span-add-str .. string .new name [string]
+    Buf-char-span-add-str .. string .new "!\n"
+```
+[skip to more examples](#examples)
 
-Install with
-
+Install with (requires having [rust installed](https://rust-lang.org/tools/install/))
 ```bash
 cargo install --git https://github.com/lue-bird/sloe sloe
 ```
 
-# concept: each value must be used used exctly once
+## concept: each value must be used used exctly once
 Matching a value? Consumes it. Passing a value as an argument? Consumes it.
 Even variables holding plain numbers for example have to be explicitly duplicated to use them in multiple places.
 
 This allows
-- values know when they aren't used anymore at compile time. Their memory is always explicitly reclaimed without garbage collection or similar
+- values know when they aren't used anymore at compile time. Their memory is always explicitly reclaimed. No need for garbage collection or similar
 - values can be mutated internally without mutation being detectable
 - representing things that should only be consumed once, like thread join handles
 - representing things that should be cleaned up in a specific way, like memory that should be freed from a specific origin
 - guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compiles to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515))
 
 This can feel annoying and clunky. Think e.g. `Span-length` which takes a span and gives back its size and the given span.
-Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Vec in rust) because `Buf-allocated-length` could return a changed `Buf` (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
+Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Span in rust) because `Span-length` could behind your back return a changed `Span` (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
 Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
 Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
-# concept: consecutive memory collection `Buf`
+## concept: consecutive memory collection `Buf`
 A collection which can mark some ranges within itself as vacant without moving existing elemnts around.
 This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-slot-rid` and `Buf-span-rid`.
 Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
@@ -43,7 +53,7 @@ In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
 [Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
 There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
 
-# concept: collections do not handle their elements
+## concept: collections do not handle their elements
 Similar to allocators, you cannot access, alter or iterate their contained values.
 Collections are seen as storage into which you can add elements, build slices etc.
 Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your right to access and alter the referenced elements as well as your responsibility to announce their release at some point.
@@ -311,6 +321,89 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 # potential improvements in the future
 - add field and variant rename and references
 - add "add remaining query cases" code action
+- add `Unset-untracked` API to make deconstructing Bufs less reliant on opitimizers figuring out that allocating and tracking vacant spans is useless when all those spans are deallocated anyway at the end.
+  ```sloe
+  ty Unset-untracked _origin
+      # scattered memory spaces whose locations are not tracked.
+      # This is effectively temporarily leaked memory
+      # which will only be reclaimed when you call `Buf-with-unset-untracked-rid`.
+      # As a result, be very careful when trying to keep a value of this type
+      # in persistent memory or simply avoid it.
+      # 
+      # The usual way to give back slots and spans is to use operations like
+      # `Buf-remove`, `Buf-slot-rid`, `Buf-span-rid` etc.
+      # However, this internally marks these spaces as vacant,
+      # and doing this work may hinder the optimizer in figurinng out
+      # that you for example want to scrap the whole Buf (which should be a no-op).
+      # ```sloe
+      # ^origin
+      # ? Buf-empty{u32} origin [buf]
+      # ? Buf-add .buf buf .new 20 u32 [.buf buf .slot slot0]
+      # ? Buf-add-array .buf buf .new ; 1 u32 ; 2 u32 [.buf buf .span span12]
+      # ? Buf-untrack .buf buf .slot slot0 [.buf buf .untracked untracked .element sum]
+      # ? (
+      #     Span-fold
+      #     .span span12
+      #     .state (.buf buf .untracked untracked .sum sum)
+      #     .step
+      #     [
+      #     .state (.buf Buf _origin, u32 .untracked Unset-untracked origin .sum sum u32)
+      #     .slot Slot origin
+      #     ]
+      #     ? Buf-untrack .buf buf .slot slot [.element element]
+      #     .buf buf
+      #     .untracked untracked
+      #     .sum U32-add-clamp .a sum .b element
+      #     )
+      # [.buf buf .untracked untracked .sum sum]
+      # Buf-with-unset-untracked-rid .buf buf .untracked untracked
+      # ``
+      # If you're wondering why this even needs to be a value in the first place:
+      # - silently leaking memory of a persistent Buf is fairly nasty. Now you have to store an `Unset-untracked` as a ~mark of shame~ reminder of which Buf may have unreachable memory
+      # - `Origin-unerase` requires and checks that `Buf-unerase` and similar can't hit unset memory. Having an `Unset-untracked` makes it so you can't pass this check
+  
+  fn Unset-untracked-none . : Unset-untracked _origin
+  fn Unset-untracked-merge
+      .a Unset-untracked _origin
+      .b Unset-untracked _origin
+      : Unset-untracked _origin
+  fn Buf-untrack
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+      .element _element
+      # short for Buf-unset followed by Buf-unset-slot-untrack
+  fn Buf-unset-slot-untrack
+      .buf Buf _origin, _element
+      .span Unset-slot _origin
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-unset-span-untrack
+      .buf Buf _origin, _element
+      .span Unset-span _origin
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-opt-unset-span-untrack
+      .buf Buf _origin, _element
+      .span Opt Unset-span _origin
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-vacant-untrack
+      Buf _origin, _element
+      :
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+  fn Buf-with-unset-untracked-rid
+      .buf Buf _origin, _element
+      .untracked Unset-untracked _origin
+      : .
+  ```
+  This still works with `Origin-erase` due to not being rid-able without ridding the Buf.
+  Open question: there could be an API to recover untracked unset spaces.
+  Is there a use-case? I believe not because otherwise you could have just used
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions Buf _expressions, Expression _expressions _patterns _types` doesn't exactly roll easily over one's keyboard
 - add `Set _origin, _element` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _element` where key is derived from element) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
   Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `Buf` is fast enough
@@ -633,90 +726,6 @@ cargo install --offline --debug --path . sloe
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
 - (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
-
-- consider `Unset-untracked` API to make deconstructing Bufs less reliant on opitimizers figuring out that allocating and tracking vacant spans is useless when all those spans are deallocated anyway at the end.
-  ```sloe
-  ty Unset-untracked _origin
-      # scattered memory spaces whose locations are not tracked.
-      # This is effectively temporarily leaked memory
-      # which will only be reclaimed when you call `Buf-with-unset-untracked-rid`.
-      # As a result, be very careful when trying to keep a value of this type
-      # in persistent memory or simply avoid it.
-      # 
-      # The usual way to give back slots and spans is to use operations like
-      # `Buf-remove`, `Buf-slot-rid`, `Buf-span-rid` etc.
-      # However, this internally marks these spaces as vacant,
-      # and doing this work may hinder the optimizer in figurinng out
-      # that you for example want to scrap the whole Buf (which should be a no-op).
-      # ```sloe
-      # ^origin
-      # ? Buf-empty{u32} origin [buf]
-      # ? Buf-add .buf buf .new 20 u32 [.buf buf .slot slot0]
-      # ? Buf-add-array .buf buf .new ; 1 u32 ; 2 u32 [.buf buf .span span12]
-      # ? Buf-untrack .buf buf .slot slot0 [.buf buf .untracked untracked .element sum]
-      # ? (
-      #     Span-fold
-      #     .span span12
-      #     .state (.buf buf .untracked untracked .sum sum)
-      #     .step
-      #     [
-      #     .state (.buf Buf _origin, u32 .untracked Unset-untracked origin .sum sum u32)
-      #     .slot Slot origin
-      #     ]
-      #     ? Buf-untrack .buf buf .slot slot [.element element]
-      #     .buf buf
-      #     .untracked untracked
-      #     .sum U32-add-clamp .a sum .b element
-      #     )
-      # [.buf buf .untracked untracked .sum sum]
-      # Buf-with-unset-untracked-rid .buf buf .untracked untracked
-      # ``
-      # If you're wondering why this even needs to be a value in the first place:
-      # - silently leaking memory of a persistent Buf is fairly nasty. Now you have to store an `Unset-untracked` as a ~mark of shame~ reminder of which Buf may have unreachable memory
-      # - `Origin-unerase` requires and checks that `Buf-unerase` and similar can't hit unset memory. Having an `Unset-untracked` makes it so you can't pass this check
-  
-  fn Unset-untracked-none . : Unset-untracked _origin
-  fn Unset-untracked-merge
-      .a Unset-untracked _origin
-      .b Unset-untracked _origin
-      : Unset-untracked _origin
-  fn Buf-untrack
-      :
-      .buf Buf _origin, _element
-      .untracked Unset-untracked _origin
-      .element _element
-      # short for Buf-unset followed by Buf-unset-slot-untrack
-  fn Buf-unset-slot-untrack
-      .buf Buf _origin, _element
-      .span Unset-slot _origin
-      :
-      .buf Buf _origin, _element
-      .untracked Unset-untracked _origin
-  fn Buf-unset-span-untrack
-      .buf Buf _origin, _element
-      .span Unset-span _origin
-      :
-      .buf Buf _origin, _element
-      .untracked Unset-untracked _origin
-  fn Buf-opt-unset-span-untrack
-      .buf Buf _origin, _element
-      .span Opt Unset-span _origin
-      :
-      .buf Buf _origin, _element
-      .untracked Unset-untracked _origin
-  fn Buf-vacant-untrack
-      Buf _origin, _element
-      :
-      .buf Buf _origin, _element
-      .untracked Unset-untracked _origin
-  fn Buf-with-unset-untracked-rid
-      .buf Buf _origin, _element
-      .untracked Unset-untracked _origin
-      : .
-  ```
-  This still works with `Origin-erase` due to not being rid-able without ridding the Buf.
-  Open question: there could be an API to recover untracked unset spaces.
-  Is there a use-case? I believe not because otherwise you could have just used
 
 - avoid generating error{OutOfMemory}! for many core calls and maybe sloe calls if possible. Verify that types coerce correctly
 
