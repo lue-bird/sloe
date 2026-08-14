@@ -188,6 +188,10 @@ export function f32_rid(_) {}
 export function f32_dup(n) {
   return { a: n, b: n };
 }
+/** @param {void} _ @returns {F32} */
+export function f32_pi(_) {
+  return Math.PI;
+}
 /** @param {{ a: F32; b: F32 }} add @returns {F32} */
 export function f32_add_clamp(add) {
   return add.a + add.b;

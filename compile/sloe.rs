@@ -12139,6 +12139,13 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 result_type: type_record_empty,
             },
             CoreFnInfo {
+                name: "F32-pi",
+                documentation: "Archimedes’ constant π",
+                type_parameters: vec![],
+                parameter_type:  type_record_empty,
+                result_type: type_f32,
+            },
+            CoreFnInfo {
                 name: "F32-abs",
                 documentation: "Set its sign to positive",
                 type_parameters: vec![],

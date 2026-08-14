@@ -996,7 +996,7 @@ pub fn p32_rid(_: P32) error{OutOfMemory}!void {}
 pub fn p32_dup(@"%n": P32) error{OutOfMemory}!Record(struct { a: P32, b: P32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
-pub fn p32_to_u32(@"%n": P32) error{OutOfMemory}!Record(U32) {
+pub fn p32_to_u32(@"%n": P32) error{OutOfMemory}!U32 {
     return @"%n".positive;
 }
 pub fn p32_add_clamp(@"%": Record(struct { p: P32, u: U32 })) error{OutOfMemory}!P32 {
@@ -1079,6 +1079,9 @@ pub fn i32_order(@"%": Record(struct { left: I32, right: I32 })) error{OutOfMemo
 pub fn f32_rid(_: F32) error{OutOfMemory}!void {}
 pub fn f32_dup(@"%n": F32) error{OutOfMemory}!Record(struct { a: F32, b: F32 }) {
     return .{ .a = @"%n", .b = @"%n" };
+}
+pub fn f32_pi(_: void) error{OutOfMemory}!F32 {
+    return std.math.pi;
 }
 pub fn f32_negate(@"%n": F32) error{OutOfMemory}!F32 {
     return -@"%n";

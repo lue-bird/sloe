@@ -2111,6 +2111,9 @@ pub fn f32_dup(n: F32) -> Record·a·b<F32, F32> {
     Record·a·b { a: n, b: n }
 }
 pub fn f32_rid(_: F32) -> Record {}
+pub fn f32_pi((): Record) -> F32 {
+    return std::f32::consts::PI;
+}
 pub fn f32_add_clamp(Record·a·b { a, b }: Record·a·b<F32, F32>) -> F32 {
     (a + b).clamp(f32::MIN, f32::MAX)
 }

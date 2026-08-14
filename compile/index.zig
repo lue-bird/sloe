@@ -50,6 +50,7 @@ test "various trivial" {
         const duped = try core.fn_dup(i32, i32, example_fn);
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ example_fn, example_fn });
     }
+    try std.testing.expectEqual(314.0, @trunc(try core.f32_pi({}) * 100));
     try std.testing.expectEqual(core.P32{ .positive = 20 }, core.p32_add_clamp(.{ .p = core.P32{ .positive = 11 }, .u = 9 }));
     try std.testing.expectEqual(20, core.u32_add_clamp(.{ .a = 11, .b = 9 }));
     try std.testing.expectEqual(2, core.u32_add_i32_clamp(.{ .u = 11, .i = -9 }));
