@@ -86,7 +86,8 @@ Full help:
                     maybe_output_file_path.as_ref().map(std::path::Path::new),
                 )
             }
-            "javascript" | "jsdoc" | "ecmascript" | "mjs" | "jsm" | "esm" | "js" | "es" | "j" => {
+            "javascript" | "jsdoc" | "ecmascript" | "ecma" | "mjs" | "jsm" | "esm" | "js"
+            | "es" => {
                 let maybe_input_file_path: Option<String> = full_command.next();
                 let maybe_output_file_path: Option<String> = full_command.next();
                 build_main(
@@ -116,7 +117,7 @@ Full help:
 const command_help: &str = "\
 To compile to a rust file: sloe rs [input-file.sloe [output-file.rs]]
 To compile to a zig file: sloe zig [input-file.sloe [output-file.zig]]
-To compile to a javascript (es2020) file: sloe js [input-file.sloe [output-file.mjs]]
+To compile to a javascript module: sloe js [input-file.sloe [output-file.mjs]]
 To copy the rust hello-world project setup into the current directory: sloe init
 To start the language server: sloe lsp
 To print core declaration documentation: sloe core-docs

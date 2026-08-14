@@ -1,4 +1,7 @@
-// void is assumed to not be null as per https://www.typescriptlang.org/tsconfig/#strictNullChecks
+// - void is assumed to not be null
+// - null is assumed to not be undefined
+// as per https://www.typescriptlang.org/tsconfig/#strictNullChecks
+
 /** @typedef {number} P32 */
 /** @typedef {number} U32 */
 /** @typedef {number} I32 */

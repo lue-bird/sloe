@@ -1,7 +1,9 @@
 target
 *.wasm
 *.obj
+obj/
 *.o
+*.out
 *.tar.gz
 *.tgz
 *.zip

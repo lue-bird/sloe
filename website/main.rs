@@ -149,23 +149,14 @@ fn usage_html() -> yew::Html {
                 "ul",
                 [],
                 [
-                    html_element(
-                        "span",
-                        [],
-                        [
-                            html_element("code", [], [html_text("sloe init")]),
-                            html_text(" to start with a hello world from within a directory, "),
-                            html_element("code", [], [html_text("sloe build")]),
-                            html_text(" to compile, "),
-                            html_element("code", [], [html_text("cargo run")]),
-                            html_text(" to run"),
-                        ],
-                    ),
                     html_link_to(
                         "https://codeberg.org/lue-bird/sloe#editor-setups",
                         "detailed lsp setups and extensions",
                     ),
-                    html_link_to("https://codeberg.org/lue-bird/sloe", "more examples"),
+                    html_link_to(
+                        "https://codeberg.org/lue-bird/sloe",
+                        "more examples of e.g. compiling to zig or rust",
+                    ),
                 ]
                 .map(|item| html_element("li", [], [item])),
             ),
@@ -716,18 +707,19 @@ const fn example_info(example: Example) -> ExampleInfo {
 fn Hi
     origin Origin _origin
     : .buf Buf _origin, char .span Span _origin =
-    Greet .name "world" .origin origin
+    Greet .name "world" .buf Buf-empty{char} origin
 
 fn Greet
-    .name name str .origin origin Origin _origin
+    .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? .buf Buf-empty{char} origin .span |{Opt Span _origin}no . [string]
+    ? .buf buf .span |{Opt Span _origin}no . [string]
     ? Buf-char-opt-span-add-str .. string .new "Hello, " [string]
     ? Buf-char-span-add-str .. string .new name [string]
     Buf-char-span-add-str .. string .new "!\n"
 "#,
-            explainer: "We declare a Greet function that takes a string argument
-and concatenates it with other strings into a buffer to form a message and return it.
+            explainer: "What a mouthful!
+We declare a Greet function which takes a name string and a buffer to add the message to.
+We then append the name along with other strings to buffer to form a message span in the buffer.
 For more details, click through the examples above and try changing things.",
         },
         Example::Variable => ExampleInfo {

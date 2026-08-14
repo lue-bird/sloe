@@ -8458,7 +8458,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             *content_end
                         },
                     },
-                    message: Box::from("missing characters between the double quotes \"here\". A `Str` always needs at least one char, otherwise switch to an Opt Str"),
+                    message: Box::from("missing characters between the double quotes \"here\". A `str` always needs at least one char, otherwise switch to an `Opt str`"),
                 });
                 None
             } else {
