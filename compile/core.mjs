@@ -1,26 +1,31 @@
+// void is assumed to not be null as per https://www.typescriptlang.org/tsconfig/#strictNullChecks
 /** @typedef {number} P32 */
 /** @typedef {number} U32 */
 /** @typedef {number} I32 */
 /** @typedef {number} F32 */
-/** @typedef {string} Char */
-/** @typedef {string} Str */
+/** @typedef {string} Char
+ * Assumed to contain exactly one codepoint
+ */
+/** @typedef {string} Str
+ * Assumed to contain at least one codepoint
+ */
 /** @template $In, $Out @typedef {(_: $In) => $Out} Fn */
 /** @template $Yes @typedef {{ yes: $Yes } | { no: void }} Opt */
 /** @typedef {{ less: void } | { equal: void } | { greater: void }} Order */
-/** @template $Origin @typedef {{}} Origin */
-/** @typedef {never} Erased */
+/** @template $Origin @typedef {{} & { readonly origin?:  $Origin }} Origin */
+/** @typedef {{ erased: never }} Erased */
 /** @template $Part, $Rest @typedef {{ part: $Part, rest: $Rest }} Part_rest */
 /** @template $Origin, $Part @typedef {{ origin: $Origin, part: $Part }} Origin_part */
-/** @template $Parts, $Value @typedef {$Value} Origin_erased */
-/** @template $Origin @typedef {{}} Origin_eraser */
-/** @template $Origin @typedef {{}} Origin_uneraser */
-/** @template $Origin, $Element @typedef {($Element | undefined)[]} Buf */
-/** @template $Element @typedef {($Element | undefined)[]} Unset_slice */
-/** @template $Origin @typedef {U32} Slot */
-/** @template $Origin @typedef {U32} Unset_slot */
-/** @template $Origin @typedef {{ start: Slot<$Origin>, length: U32 }} Span */
-/** @template $Origin @typedef {{ start: Unset_slot<$Origin>, length: U32 }} Unset_span */
-/** @template $Element, $Record @typedef {$Element[]} Array */
+/** @template $Parts, $Value @typedef {$Value & { readonly parts?: $Parts }} Origin_erased */
+/** @template $Origin @typedef {{} & { readonly eraser_origin?:  $Origin }} Origin_eraser */
+/** @template $Origin @typedef {{} & { readonly uneraser_origin?:  $Origin }} Origin_uneraser */
+/** @template $Origin, $Element @typedef {($Element | null)[] & { readonly origin?:  $Origin }} Buf */
+/** @template $Element @typedef {($Element | null)[]} Unset_slice */
+/** @template $Origin @typedef {U32 & { readonly slot_origin?:  $Origin }} Slot */
+/** @template $Origin @typedef {U32 & { readonly unset_slot_origin?:  $Origin }} Unset_slot */
+/** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly span_origin?:  $Origin }} Span */
+/** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly unset_span_origin?:  $Origin }} Unset_span */
+/** @template $Element, _$Record @typedef {[$Element, ...$Element[]]} Array */
 
 const I32$MIN = -2147483648;
 const I32$MAX = 2147483647;
@@ -399,7 +404,9 @@ export function origin_part(_) {
 }
 /** @template $Origin, $Parts, $Value, $Value_erased @param {{ value: $Value, erase: Fn<{ value: $Value, eraser: Origin_eraser<{ origin: $Origin, part: $Parts, }>, }, $Value_erased>, }} erase @returns {Origin_erased<$Parts, $Value_erased>} */
 export function origin_erase(erase) {
-  return erase.erase({ value: erase.value, eraser: {} });
+  return /** @type Origin_erased<$Parts, $Value_erased>  */ (
+    erase.erase({ value: erase.value, eraser: {} })
+  );
 }
 /** @template $Origin, $Parts, $Value, $Value_erased @param {{ erased: Origin_erased<$Parts, $Value_erased>, origin: Origin<{ origin: $Origin, part: $Parts, }>, unerase: Fn<{ value: $Value_erased, uneraser: Origin_uneraser<{ origin: $Origin, part: $Parts, }>, }, $Value>, value_rid: Fn<$Value, {}>, }} unerase @returns {$Value} */
 export function origin_unerase(unerase) {
@@ -420,13 +427,15 @@ export function origin_uneraser_part(_) {
 export function slot_to_span(slot) {
   return { start: slot, length: 1 };
 }
-/** @template $Origin @param {{ slot: Slot<$Origin>, eraser: Origin_eraser<$Origin>, }} slot @returns {{ slot: Slot<Erased>, eraser: Origin_eraser<$Origin>, }} */
-export function slot_origin_erase(slot) {
-  return slot;
+/** @template $Origin @param {{ slot: Slot<$Origin>, eraser: Origin_eraser<$Origin>, }} erase @returns {{ slot: Slot<Erased>, eraser: Origin_eraser<$Origin>, }} */
+export function slot_origin_erase(erase) {
+  return /** @type {{ slot: Slot<Erased>, eraser: Origin_eraser<$Origin> }} */ (erase);
 }
-/** @template $Origin @param {{ slot: Slot<Erased>, uneraser: Origin_uneraser<$Origin>, }} slot @returns {{ slot: Slot<$Origin>, uneraser: Origin_uneraser<$Origin>, }} */
-export function slot_origin_unerase(slot) {
-  return slot;
+/** @template $Origin @param {{ slot: Slot<Erased>, uneraser: Origin_uneraser<$Origin>, }} unerase @returns {{ slot: Slot<$Origin>, uneraser: Origin_uneraser<$Origin>, }} */
+export function slot_origin_unerase(unerase) {
+  return /** @type {{ slot: Slot<$Origin>, uneraser: Origin_uneraser<$Origin> }} */ (
+    unerase
+  );
 }
 /** @template $Origin @param {Unset_slot<$Origin>} slot @returns {Unset_span<$Origin>} */
 export function unset_slot_to_span(slot) {
@@ -435,19 +444,25 @@ export function unset_slot_to_span(slot) {
 
 /** @template $Origin @param {{ span: Span<$Origin>, eraser: Origin_eraser<$Origin>, }} span @returns {{ span: Span<Erased>, eraser: Origin_eraser<$Origin>, }} */
 export function span_origin_erase(span) {
-  return span;
+  return /** @type {{ span: Span<Erased>, eraser: Origin_eraser<$Origin> }} */ (span);
 }
 /** @template $Origin @param {{ span: Opt<Span<$Origin>>, eraser: Origin_eraser<$Origin>, }} span @returns {{ span: Opt<Span<Erased>>, eraser: Origin_eraser<$Origin>, }} */
 export function opt_span_origin_erase(span) {
-  return span;
+  return /** @type {{ span: Opt<Span<Erased>>, eraser: Origin_eraser<$Origin> }} */ (
+    span
+  );
 }
 /** @template $Origin @param {{ span: Span<Erased>, uneraser: Origin_uneraser<$Origin>, }} span @returns {{ span: Span<$Origin>, uneraser: Origin_uneraser<$Origin>, }} */
 export function span_origin_unerase(span) {
-  return span;
+  return /** @type {{ span: Span<$Origin>, uneraser: Origin_uneraser<$Origin> }} */ (
+    span
+  );
 }
 /** @template $Origin @param {{ span: Opt<Span<Erased>>, uneraser: Origin_uneraser<$Origin>, }} span @returns {{ span: Opt<Span<$Origin>>, uneraser: Origin_uneraser<$Origin>, }} */
 export function opt_span_origin_unerase(span) {
-  return span;
+  return /** @type {{ span: Opt<Span<$Origin>>, uneraser: Origin_uneraser<$Origin> }} */ (
+    span
+  );
 }
 /** @template $Origin @param {Span<$Origin>} span @returns {{ span: Span<$Origin>, length: P32, }} */
 export function span_length(span) {
@@ -578,7 +593,7 @@ export function buf_slot_rid(rid) {
   if (rid.slot + 1 === rid.buf.length) {
     rid.buf.pop();
   } else {
-    rid.buf[rid.slot] = undefined;
+    rid.buf[rid.slot] = null;
   }
   return rid.buf;
 }
@@ -588,7 +603,7 @@ export function buf_span_rid(rid) {
     rid.buf.length -= rid.span.length;
   } else {
     for (let i = rid.span.start; i < rid.span.start + rid.span.length; i++) {
-      rid.buf[i] = undefined;
+      rid.buf[i] = null;
     }
   }
   return rid.buf;
@@ -597,7 +612,7 @@ export function buf_span_rid(rid) {
 export function buf_opt_span_rid(rid) {
   if ("yes" in rid.span) {
     for (let i = rid.span.yes.start; i < rid.span.yes.start + rid.span.yes.length; i++) {
-      rid.buf[i] = undefined;
+      rid.buf[i] = null;
     }
   }
   return rid.buf;
@@ -608,17 +623,17 @@ export function buf_pre_allocation_rid(buf) {
 }
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, eraser: Origin_eraser<$Origin>, }} erase @returns {Buf<Erased, $Element>} */
 export function buf_origin_erase(erase) {
-  return erase.buf;
+  return /** @type Buf<Erased, $Element> */ (erase.buf);
 }
 /** @template $Element, $Origin @param {{ buf: Buf<Erased, $Element>, uneraser: Origin_uneraser<$Origin>, }} unerase @returns {Buf<$Origin, $Element>} */
 export function buf_origin_unerase(unerase) {
-  return unerase.buf;
+  return /** @type Buf<$Origin, $Element> */ (unerase.buf);
 }
 /** @template $Element, $Element_erased, $Origin @param {{ buf: Buf<$Origin, $Element>, eraser: Origin_eraser<$Origin>, element_erase: Fn<{ element: $Element, eraser: Origin_eraser<$Origin>, }, { element: $Element_erased, eraser: Origin_eraser<$Origin>, }>, }} erase @returns {Buf<Erased, $Element_erased>} */
 export function buf_origin_erase_with_elements(erase) {
   return erase.buf.map((element) =>
-    element === undefined
-      ? undefined
+    element === null
+      ? null
       : erase.element_erase({
           element: element,
           eraser: erase.eraser,
@@ -628,8 +643,8 @@ export function buf_origin_erase_with_elements(erase) {
 /** @template $Element, $Element_erased @template $Origin @param {{ buf: Buf<Erased, $Element_erased>, uneraser: Origin_uneraser<$Origin>, element_unerase: Fn<{ element: $Element_erased, uneraser: Origin_uneraser<$Origin>, }, { element: $Element, uneraser: Origin_uneraser<$Origin>, }>, }} unerase @returns {Buf<$Origin, $Element>} */
 export function buf_origin_unerase_with_elements(unerase) {
   return unerase.buf.map((element) =>
-    element === undefined
-      ? undefined
+    element === null
+      ? null
       : unerase.element_unerase({
           element: element,
           uneraser: unerase.uneraser,
@@ -666,14 +681,14 @@ export function buf_add(add) {
 /** @template $Element, $Origin @param {Buf<$Origin, $Element>} buf @returns {{ buf: Buf<$Origin, $Element>, slot: Unset_slot<$Origin>, }} */
 export function buf_add_unset(buf) {
   let new_index = buf.length;
-  buf.push(undefined);
+  buf.push(null);
   if (buf.length > U32$MAX)
     throw Error("Array length " + buf.length + " not representable as a u32");
   return { buf: buf, slot: new_index };
 }
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, newø: $Element, }} insert @returns {{ buf: Buf<$Origin, $Element>, slot: Slot<$Origin>, }} */
 export function buf_insert(insert) {
-  const existing_vacant_index = insert.buf.findIndex((el) => el === undefined);
+  const existing_vacant_index = insert.buf.findIndex((el) => el === null);
   if (existing_vacant_index >= 0) {
     insert.buf[existing_vacant_index] = insert.newø;
     return { buf: insert.buf, slot: existing_vacant_index };
@@ -687,13 +702,13 @@ export function buf_insert(insert) {
 }
 /** @template $Element, $Origin @param {Buf<$Origin, $Element>} buf @returns {{ buf: Buf<$Origin, $Element>, slot: Unset_slot<$Origin>, }} */
 export function buf_insert_unset(buf) {
-  const existing_vacant_index = buf.findIndex((el) => el === undefined);
+  const existing_vacant_index = buf.findIndex((el) => el === null);
   if (existing_vacant_index >= 0) {
-    buf[existing_vacant_index] = undefined;
+    buf[existing_vacant_index] = null;
     return { buf: buf, slot: existing_vacant_index };
   } else {
     let new_index = buf.length;
-    buf.push(undefined);
+    buf.push(null);
     if (buf.length > U32$MAX)
       throw Error("Array length " + buf.length + " not representable as a u32");
     return { buf: buf, slot: new_index };
@@ -704,7 +719,7 @@ export function buf_add_unset_length(add) {
   if (add.length === 0) return { buf: add.buf, span: { no: undefined } };
   let start = add.buf.length;
   for (let count = 0; count < add.length; count++) {
-    add.buf.push(undefined);
+    add.buf.push(null);
   }
   if (add.buf.length > U32$MAX)
     throw Error("Array length " + add.buf.length + " not representable as a u32");
@@ -717,7 +732,7 @@ export function buf_add_unset_length(add) {
 export function buf_add_unset_length_positive(add) {
   let start = add.buf.length;
   for (let count = 0; count < add.length; count++) {
-    add.buf.push(undefined);
+    add.buf.push(null);
   }
   if (add.buf.length > U32$MAX)
     throw Error("Array length " + add.buf.length + " not representable as a u32");
@@ -739,7 +754,7 @@ export function buf_span_add(add) {
     // move span to end
     for (let i = add.span.start; i < add.span.start + add.span.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = undefined;
+      add.buf[i] = null;
     }
   }
   add.buf.push(add.newø);
@@ -767,7 +782,7 @@ export function buf_span_add_array(add) {
     // move span to end
     for (let i = add.span.start; i < add.span.start + add.span.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = undefined;
+      add.buf[i] = null;
     }
   }
   add.buf.push(...add.newø);
@@ -800,7 +815,7 @@ export function buf_opt_span_add_array(add) {
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, slot: Slot<$Origin>, }} remove @returns {{ buf: Buf<$Origin, $Element>, element: $Element, }} */
 export function buf_remove(remove) {
   let element = /** @type {$Element} */ (remove.buf[remove.slot]);
-  remove.buf[remove.slot] = undefined;
+  remove.buf[remove.slot] = null;
   return { buf: remove.buf, element: element };
 }
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, span: Span<$Origin>, }} move @returns {{ buf: Buf<$Origin, $Element>, span: Span<$Origin>, }} */
@@ -809,7 +824,7 @@ export function buf_span_move_to_end(move) {
     // move span to end
     for (let i = move.span.start; i < move.span.start + move.span.length; i++) {
       move.buf.push(move.buf[i]);
-      move.buf[i] = undefined;
+      move.buf[i] = null;
     }
     if (move.buf.length > U32$MAX)
       throw Error("Array length " + move.buf.length + " not representable as a u32");
@@ -827,7 +842,7 @@ export function buf_opt_span_move_to_end(move) {
     // move span to end
     for (let i = span.start; i < span.start + span.length; i++) {
       move.buf.push(move.buf[i]);
-      move.buf[i] = undefined;
+      move.buf[i] = null;
     }
     if (move.buf.length > U32$MAX)
       throw Error("Array length " + move.buf.length + " not representable as a u32");
@@ -842,7 +857,7 @@ export function buf_span_move_to_vacant(move) {
   if (move.span.start + move.span.length < move.buf.length) return move;
   let vacant_length = 0;
   for (let i = 0; i < move.buf.length; i++) {
-    if (move.buf[i] === undefined) {
+    if (move.buf[i] === null) {
       vacant_length++;
       if (vacant_length === move.span.length) {
         const vacant_start = i - move.span.length + 1;
@@ -865,7 +880,7 @@ export function buf_opt_span_move_to_vacant(move) {
   if (span.start + span.length < move.buf.length) return move;
   let vacant_length = 0;
   for (let i = 0; i < move.buf.length; i++) {
-    if (move.buf[i] === undefined) {
+    if (move.buf[i] === null) {
       vacant_length++;
       if (vacant_length === span.length) {
         const vacant_start = i - span.length + 1;
@@ -915,13 +930,13 @@ export function buf_span_add_own_span(add) {
     // move start span to end
     for (let i = add.start.start; i < add.start.start + add.start.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = undefined;
+      add.buf[i] = null;
     }
   }
   // move end span to end after the start elements
   for (let i = add.end.start; i < add.end.start + add.end.length; i++) {
     add.buf.push(add.buf[i]);
-    add.buf[i] = undefined;
+    add.buf[i] = null;
   }
   return {
     buf: add.buf,
@@ -971,12 +986,12 @@ export function buf_opt_span_add_own_opt_span(add) {
       i++
     ) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = undefined;
+      add.buf[i] = null;
     }
   }
   for (let i = add.end.yes.start; i < add.end.yes.start + add.end.yes.length; i++) {
     add.buf.push(add.buf[i]);
-    add.buf[i] = undefined;
+    add.buf[i] = null;
   }
   return {
     buf: add.buf,
@@ -1010,7 +1025,7 @@ export function buf_char_span_add_str(add) {
     // move span to end
     for (let i = add.span.start; i < add.span.start + add.span.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = undefined;
+      add.buf[i] = null;
     }
   }
   const new_start = add.buf.length;
@@ -1100,10 +1115,10 @@ export function unset_slice_length(unset_slice) {
 }
 /** @template $Element @param {U32} length @returns {Unset_slice<$Element>} */
 export function unset_slice_allocate_length(length) {
-  return Array(length).fill(undefined);
+  return Array(length).fill(null);
 }
 /** @template $Element, $New_element @param {Unset_slice<$Element>} unset_slice @returns {Unset_slice<$New_element>} */
 export function unset_slice_cast_or_rid_and_allocate(unset_slice) {
   // for once equal type sizes comes in clutch
-  return /** @type ($New_element | undefined)[] */ (unset_slice);
+  return /** @type ($New_element | null)[] */ (unset_slice);
 }

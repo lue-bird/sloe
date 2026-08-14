@@ -280,7 +280,7 @@ ty Pair _potential, _type-parameters
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
-Writing these down has already helped a lot in coming up with fixes (e.g. `Unset-slot`, `Buf-span-add-own-span`, `Origin-erased` etc. did not exist at one point but were created in response to a now deleted list items).
+Writing these down has already helped a lot in coming up with fixes (e.g. `Unset-slot`, `Buf-span-add-own-span`, `Origin-erased` etc. did not exist at one point but were created in response to now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
 
 - it seems quite natural to represent a span of structs as e.g. `.field-names Span _field-names .field-values Span _values`. This pattern is more memory efficient and can reduce the amount of origins and Bufs necessary.
