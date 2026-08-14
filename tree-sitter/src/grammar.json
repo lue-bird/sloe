@@ -217,10 +217,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "expression_origin"
-        },
-        {
-          "type": "SYMBOL",
           "name": "expression_array"
         }
       ]

@@ -68,7 +68,6 @@ export default grammar({
         $.expression_record,
         $.expression_fn,
         $.expression_query,
-        $.expression_origin,
         $.expression_array,
       ),
     expression_not_open_ending_in_query: ($) =>
