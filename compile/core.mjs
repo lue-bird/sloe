@@ -19,14 +19,14 @@
 /** @typedef {{ erased: never }} Erased */
 /** @template $Part, $Rest @typedef {{ part: $Part, rest: $Rest }} Part_rest */
 /** @template $Parts, $Value @typedef {$Value & { readonly parts?: $Parts }} Origin_erased */
-/** @template $Origin @typedef {{} & { readonly eraser_origin?:  $Origin }} Origin_eraser */
-/** @template $Origin @typedef {{} & { readonly uneraser_origin?:  $Origin }} Origin_uneraser */
-/** @template $Origin, $Element @typedef {($Element | null)[] & { readonly origin?:  $Origin }} Buf */
+/** @template $Origin, $Part @typedef {{} & { readonly eraser_origin?: $Origin, readonly part?: $Part }} Origin_eraser */
+/** @template $Origin, $Part @typedef {{} & { readonly uneraser_origin?: $Origin, readonly part?: $Part }} Origin_uneraser */
+/** @template $Origin, $Element @typedef {($Element | null)[] & { readonly origin?: $Origin }} Buf */
 /** @template $Element @typedef {($Element | null)[]} Unset_slice */
-/** @template $Origin @typedef {U32 & { readonly slot_origin?:  $Origin }} Slot */
-/** @template $Origin @typedef {U32 & { readonly unset_slot_origin?:  $Origin }} Unset_slot */
-/** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly span_origin?:  $Origin }} Span */
-/** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly unset_span_origin?:  $Origin }} Unset_span */
+/** @template $Origin @typedef {U32 & { readonly origin?: $Origin }} Slot */
+/** @template $Origin @typedef {U32 & { readonly unset_origin?: $Origin }} Unset_slot */
+/** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly origin?: $Origin }} Span */
+/** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly unset_origin?: $Origin }} Unset_span */
 /** @template $Element, _$Record @typedef {[$Element, ...$Element[]]} Array */
 
 const I32$MIN = -2147483648;
@@ -410,23 +410,23 @@ export function origin_add(_) {
 export function origin_part(_) {
   return { part: {}, rest: {} };
 }
-/** @template $Origin, $Parts, $Value, $Value_erased @param {{ value: $Value, erase: Fn<{ value: $Value, eraser: Origin_eraser<Origin<$Origin, $Parts>>, }, $Value_erased>, }} erase @returns {Origin_erased<$Parts, $Value_erased>} */
+/** @template $Origin, $Parts, $Value, $Value_erased @param {{ value: $Value, erase: Fn<{ value: $Value, eraser: Origin_eraser<$Origin, $Parts>, }, $Value_erased>, }} erase @returns {Origin_erased<$Parts, $Value_erased>} */
 export function origin_erase(erase) {
   return /** @type Origin_erased<$Parts, $Value_erased>  */ (
     erase.erase({ value: erase.value, eraser: {} })
   );
 }
-/** @template $Origin, $Parts, $Value, $Value_erased @param {{ erased: Origin_erased<$Parts, $Value_erased>, origin: Origin<$Origin, $Parts>, unerase: Fn<{ value: $Value_erased, uneraser: Origin_uneraser<Origin<$Origin, $Parts>>, }, $Value>, value_rid: Fn<$Value, {}>, }} unerase @returns {$Value} */
+/** @template $Origin, $Parts, $Value, $Value_erased @param {{ erased: Origin_erased<$Parts, $Value_erased>, origin: Origin<$Origin, $Parts>, unerase: Fn<{ value: $Value_erased, uneraser: Origin_uneraser<$Origin, $Parts>, }, $Value>, value_rid: Fn<$Value, {}>, }} unerase @returns {$Value} */
 export function origin_unerase(unerase) {
   return unerase.unerase({ value: unerase.erased, uneraser: {} });
 }
 
-/** @template $Origin, $Part, $Rest @param {Origin_eraser<Origin<$Origin, { part: $Part, rest: $Rest, }>>} _ @returns {{ part: Origin_eraser<Origin<$Origin, $Part>>, rest: Origin_eraser<Origin<$Origin, $Rest>>, }} */
+/** @template $Origin, $Part, $Rest @param {Origin_eraser<$Origin, { part: $Part, rest: $Rest, }>} _ @returns {{ part: Origin_eraser<$Origin, $Part>, rest: Origin_eraser<$Origin, $Rest>, }} */
 export function origin_eraser_part(_) {
   return { part: {}, rest: {} };
 }
 
-/** @template $Origin, $Part, $Rest @param {Origin_uneraser<Origin<$Origin, { part: $Part, rest: $Rest, }>>} _ @returns {{ part: Origin_uneraser<Origin<$Origin, $Part>>, rest: Origin_uneraser<Origin<$Origin, $Rest>>, }} */
+/** @template $Origin, $Part, $Rest @param {Origin_uneraser<$Origin, { part: $Part, rest: $Rest, }>} _ @returns {{ part: Origin_uneraser<$Origin, $Part>, rest: Origin_uneraser<$Origin, $Rest>, }} */
 export function origin_uneraser_part(_) {
   return { part: {}, rest: {} };
 }
@@ -435,15 +435,15 @@ export function origin_uneraser_part(_) {
 export function slot_to_span(slot) {
   return { start: slot, length: 1 };
 }
-/** @template $Origin, $Part @param {{ slot: Slot<Origin<$Origin, $Part>>, eraser: Origin_eraser<Origin<$Origin, $Part>>, }} erase @returns {{ slot: Slot<Origin<Erased, $Part>>, eraser: Origin_eraser<Origin<$Origin, $Part>>, }} */
+/** @template $Origin, $Part @param {{ slot: Slot<Origin<$Origin, $Part>>, eraser: Origin_eraser<$Origin, $Part>, }} erase @returns {{ slot: Slot<Origin<Erased, $Part>>, eraser: Origin_eraser<$Origin, $Part>, }} */
 export function slot_origin_erase(erase) {
-  return /** @type {{ slot: Slot<Origin<Erased, $Part>>, eraser: Origin_eraser<Origin<$Origin, $Part>> }} */ (
+  return /** @type {{ slot: Slot<Origin<Erased, $Part>>, eraser: Origin_eraser<$Origin, $Part> }} */ (
     erase
   );
 }
-/** @template $Origin, $Part @param {{ slot: Slot<{ origin: Erased, part: $Part }>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }} unerase @returns {{ slot: Slot<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }} */
+/** @template $Origin, $Part @param {{ slot: Slot<Origin<Erased, $Part>>, uneraser: Origin_uneraser<$Origin, $Part>, }} unerase @returns {{ slot: Slot<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin, $Part>, }} */
 export function slot_origin_unerase(unerase) {
-  return /** @type {{ slot: Slot<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>> }} */ (
+  return /** @type {{ slot: Slot<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin, $Part> }} */ (
     unerase
   );
 }
@@ -452,27 +452,27 @@ export function unset_slot_to_span(slot) {
   return slot_to_span(slot);
 }
 
-/** @template $Origin, $Part @param {{ span: Span<Origin<$Origin, $Part>>, eraser: Origin_eraser<Origin<$Origin, $Part>>, }} span @returns {{ span: Span<Origin<Erased, $Part>>, eraser: Origin_eraser<Origin<$Origin, $Part>>, }} */
+/** @template $Origin, $Part @param {{ span: Span<Origin<$Origin, $Part>>, eraser: Origin_eraser<$Origin, $Part>, }} span @returns {{ span: Span<Origin<Erased, $Part>>, eraser: Origin_eraser<$Origin, $Part>, }} */
 export function span_origin_erase(span) {
-  return /** @type {{ span: Span<Origin<Erased, $Part>>, eraser: Origin_eraser<Origin<$Origin, $Part>> }} */ (
+  return /** @type {{ span: Span<Origin<Erased, $Part>>, eraser: Origin_eraser<$Origin, $Part> }} */ (
     span
   );
 }
-/** @template $Origin, $Part @param {{ span: Opt<Span<Origin<$Origin, $Part>>>, eraser: Origin_eraser<Origin<$Origin, $Part>>, }} span @returns {{ span: Opt<Span<Origin<Erased, $Part>>>, eraser: Origin_eraser<Origin<$Origin, $Part>>, }} */
+/** @template $Origin, $Part @param {{ span: Opt<Span<Origin<$Origin, $Part>>>, eraser: Origin_eraser<$Origin, $Part>, }} span @returns {{ span: Opt<Span<Origin<Erased, $Part>>>, eraser: Origin_eraser<$Origin, $Part>, }} */
 export function opt_span_origin_erase(span) {
-  return /** @type {{ span: Opt<Span<Origin<Erased, $Part>>>, eraser: Origin_eraser<Origin<$Origin, $Part>> }} */ (
+  return /** @type {{ span: Opt<Span<Origin<Erased, $Part>>>, eraser: Origin_eraser<$Origin, $Part> }} */ (
     span
   );
 }
-/** @template $Origin, $Part @param {{ span: Span<Origin<Erased, $Part>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }} span @returns {{ span: Span<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }} */
+/** @template $Origin, $Part @param {{ span: Span<Origin<Erased, $Part>>, uneraser: Origin_uneraser<$Origin, $Part>, }} span @returns {{ span: Span<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin, $Part>, }} */
 export function span_origin_unerase(span) {
-  return /** @type {{ span: Span<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>> }} */ (
+  return /** @type {{ span: Span<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin, $Part> }} */ (
     span
   );
 }
-/** @template $Origin, $Part @param {{ span: Opt<Span<Origin<Erased, $Part>>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }} span @returns {{ span: Opt<Span<Origin<$Origin, $Part>>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }} */
+/** @template $Origin, $Part @param {{ span: Opt<Span<Origin<Erased, $Part>>>, uneraser: Origin_uneraser<$Origin, $Part>, }} span @returns {{ span: Opt<Span<Origin<$Origin, $Part>>>, uneraser: Origin_uneraser<$Origin, $Part>, }} */
 export function opt_span_origin_unerase(span) {
-  return /** @type {{ span: Opt<Span<Origin<$Origin, $Part>>>, uneraser: Origin_uneraser<Origin<$Origin, $Part>> }} */ (
+  return /** @type {{ span: Opt<Span<Origin<$Origin, $Part>>>, uneraser: Origin_uneraser<$Origin, $Part> }} */ (
     span
   );
 }
@@ -633,15 +633,15 @@ export function buf_opt_span_rid(rid) {
 export function buf_pre_allocation_rid(buf) {
   return buf;
 }
-/** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, eraser: Origin_eraser<$Origin>, }} erase @returns {Buf<Erased, $Element>} */
+/** @template $Element, $Origin, $Part @param {{ buf: Buf<Origin<$Origin, $Part>, $Element>, eraser: Origin_eraser<$Origin, $Part>, }} erase @returns {Buf<Origin<Erased, $Part>, $Element>} */
 export function buf_origin_erase(erase) {
-  return /** @type Buf<Erased, $Element> */ (erase.buf);
+  return /** @type Buf<Origin<Erased, $Part>, $Element> */ (erase.buf);
 }
-/** @template $Element, $Origin, $Part @param {{ buf: Buf<Origin<Erased, $Part>, $Element>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }} unerase @returns {Buf<Origin<$Origin, $Part>, $Element>} */
+/** @template $Element, $Origin, $Part @param {{ buf: Buf<Origin<Erased, $Part>, $Element>, uneraser: Origin_uneraser<$Origin, $Part>, }} unerase @returns {Buf<Origin<$Origin, $Part>, $Element>} */
 export function buf_origin_unerase(unerase) {
   return /** @type Buf<Origin<$Origin, $Part>, $Element> */ (unerase.buf);
 }
-/** @template $Element, $Element_erased, $Origin, $Part @param {{ buf: Buf<Origin<$Origin, $Part>, $Element>, eraser: Origin_eraser<Origin<$Origin, $Part>>, element_erase: Fn<{ element: $Element, eraser: Origin_eraser<Origin<$Origin, $Part>>, }, { element: $Element_erased, eraser: Origin_eraser<Origin<$Origin, $Part>>, }>, }} erase @returns {Buf<Origin<Erased, $Part>, $Element_erased>} */
+/** @template $Element, $Element_erased, $Origin, $Part @param {{ buf: Buf<Origin<$Origin, $Part>, $Element>, eraser: Origin_eraser<$Origin, $Part>, element_erase: Fn<{ element: $Element, eraser: Origin_eraser<$Origin, $Part>, }, { element: $Element_erased, eraser: Origin_eraser<$Origin, $Part>, }>, }} erase @returns {Buf<Origin<Erased, $Part>, $Element_erased>} */
 export function buf_origin_erase_with_elements(erase) {
   return erase.buf.map((element) =>
     element === null
@@ -652,7 +652,7 @@ export function buf_origin_erase_with_elements(erase) {
         }).element,
   );
 }
-/** @template $Element, $Element_erased, $Origin, $Part @param {{ buf: Buf<Origin<Erased, $Part>, $Element_erased>, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, element_unerase: Fn<{ element: $Element_erased, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }, { element: $Element, uneraser: Origin_uneraser<Origin<$Origin, $Part>>, }>, }} unerase @returns {Buf<Origin<$Origin, $Part>, $Element>} */
+/** @template $Element, $Element_erased, $Origin, $Part @param {{ buf: Buf<Origin<Erased, $Part>, $Element_erased>, uneraser: Origin_uneraser<$Origin, $Part>, element_unerase: Fn<{ element: $Element_erased, uneraser: Origin_uneraser<$Origin, $Part>, }, { element: $Element, uneraser: Origin_uneraser<$Origin, $Part>, }>, }} unerase @returns {Buf<Origin<$Origin, $Part>, $Element>} */
 export function buf_origin_unerase_with_elements(unerase) {
   return unerase.buf.map((element) =>
     element === null
