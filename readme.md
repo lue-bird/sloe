@@ -2,13 +2,7 @@ Small, fast programming language where indexes are valid and values can't be sha
 
 Goal: representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
 Sloe offers an infallible, safe way to refer to elements and slices stored in consecutive memory.
-
 ```sloe
-fn Hi
-    origin Origin _origin
-    : .buf Buf _origin, char .span Span _origin =
-    Greet .name "world" .buf Buf-empty{char} origin
-
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
@@ -44,9 +38,9 @@ Further reading if interested: "linear types", [article "must move types"](https
 Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
 ## concept: consecutive memory collection `Buf`
-A collection which can mark some ranges within itself as vacant without moving existing elemnts around.
+A collection which can mark some ranges within itself as vacant without moving existing elements around (thus invalidating their indexes).
 This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-slot-rid` and `Buf-span-rid`.
-Note that this functionality is entirely optional and you can at no cost just use it for temporary builders etc. which never vacate anything before they are scrapped.
+Note that this functionality is entirely optional and you can just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
 Further reading if interested: This concept is often called slot map, reusing memory.
 In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
@@ -56,11 +50,11 @@ There are even fast general purpose allocators based on this concept, for exampl
 ## concept: collections do not handle their elements
 Similar to allocators, you cannot access, alter or iterate their contained values.
 Collections are seen as storage into which you can add elements, build slices etc.
-Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your right to access and alter the referenced elements as well as your responsibility to announce their release at some point.
+Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your permission to access and alter the referenced elements as well as your responsibility to announce their release at some point.
 
 The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types.
 This is not uncommon in languages like rust.
-However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead, store a big array of each kind and point into it.
+However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead, store a big array buffer of each kind and point into it.
 
 # concept: distinct origin of a collection in your code
 Every created collection has a correlated origin.
@@ -141,9 +135,9 @@ fn Use-opt opt Opt u32 : ... =
     ...
 
 # tree structure. every slot and span exclusively belongs to that expression
-ty Expression _expressions-origin, _patterns-origin, Chars-origin
+ty Expression _expressions-origin, _patterns-origin, _chars-origin
     |int i32
-    |string Opt Span Chars-origin
+    |string Opt Span _chars-origin
     |buf Opt Span _expressions-origin
     |call
         .function Slot _expressions-origin
@@ -153,20 +147,20 @@ ty Expression _expressions-origin, _patterns-origin, Chars-origin
         .result Slot _expressions-origin
 
 ty State _expressions-origin
-    # ...patterns, strings, positions etc
+    # ...patterns, chars, positions etc
     .expressions Buf _expressions-origin, Expression _expressions-origin
     .root-expression Expression _expressions-origin
 
 fn Initial-state
-    .expressions-origin expressions-origin Origin _expressions-origin
-    : State _expressions-origin =
+    .expressions-origin expressions-origin Origin _expressions-origin, _expressions_part
+    : State (Origin _expressions-origin, _expressions_part) =
     .expressions Buf-empty{Expression _expressions-origin} expressions-origin
     .root-expression (..do parsing..)
 
 fn State-to-interfaces-into
     .interfaces interfaces Buf _interfaces-origin, Interface State _expressions-origin
     .state state State _expressions-origin
-    : Buf Interfaces-origin, _interface State _expressions-origin =
+    : Buf _interfaces-origin, Interface State _expressions-origin =
     ? (
         Buf-one
         .origin interfaces-origin
@@ -180,14 +174,14 @@ fn State-to-interfaces-into
 ## pass in origins or collections from the outside
 
 ```sloe
-fn Buf-empty{_element} Origin _origin : Buf _origin, _element
+fn Buf-empty{_element} Origin _origin, _part : Buf (Origin _origin, _part), _element
 ```
 Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection that you want to edit.
-(There is even a way to create an origin inside the function and still pass collections etc using that origin out of the function. Its called `Origin-erased`. Look it up if you think the existing origin stuff is too restrictive)
+(If you're wondering what `_part` is here: It enables creating an origin inside the function and still passing collections etc using that origin out of the function via `Origin-erased`. Look it up if you think the existing origin stuff is too restrictive)
 
 # syntax
-Syntax is secondary but I tried to make it coherent, practical and compact, avoiding parens and indentation when possible, especially for trailing syntax.
+Goal: coherent, practical and compact, avoiding parens and indentation especially for trailing syntax.
 Sloe is a very explicit language, so any extra verbosity is not tolerable.
 ```sloe
 # line comment
@@ -303,7 +297,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - introducing special syntax and crashing at runtime if lengths differ
     - only storing the length in one of multiple slices and documenting the expected length for the other start pointers
   
-  I think introducing `Span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes a bunch of sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
+  I think something like introducing `Span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
   The sad thing is that this is positional and individual span slots then do not have an associated name.
   Also, how would this work with existing buf APIs? Something like `Buf2-opt-span-add`
 - minor: sometimes, you really own all the elements of a buf in one place (especially when the buf elements can be trivially copied).
