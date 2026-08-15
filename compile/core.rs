@@ -721,7 +721,7 @@ macro_rules! origin_new {
             }
         }
         struct $type_name;
-        let $variable_name: $crate::core::Origin::<$crate::core::Origin<$type_name, $crate::core::$part_name_record_type<()>>> = unsafe {
+        let $variable_name: $crate::core::Origin::<$type_name, $crate::core::$part_name_record_type<()>> = unsafe {
             $crate::core::Origin::new()
         };
     };
