@@ -715,10 +715,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- report fn declaration with missing result type
-
-- report "missing query cases" only if queried expression exists
-
 - detect missing variable name in typed pattern more rigerously
 
 - when providing type construct and function construct completions, set the cursor to the first argument

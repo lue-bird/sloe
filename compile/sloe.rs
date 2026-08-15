@@ -3321,43 +3321,61 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
 ) -> CheckedProjectFn {
-    let maybe_parameter_type = project_fn.parameter.as_ref().and_then(|parameter| {
-        syntax_pattern_check(
-            parameter,
-            None,
-            errors,
-            &mut std::collections::HashMap::new(),
-            type_aliases,
-            patterns,
-            types,
-            &std::collections::HashMap::new(),
-            checked_spread_records,
-            records_used,
-            choices_used,
-        )
-        .map(|checked_parameter| checked_parameter.type_)
-    });
-    let result_type: Option<Type> =
-        project_fn
-            .result_type
-            .as_ref()
-            .and_then(|syntax_result_type| {
-                syntax_type_check(
-                    syntax_result_type,
-                    errors,
-                    type_aliases,
-                    types,
-                    &std::collections::HashMap::new(),
-                    records_used,
-                    choices_used,
-                )
-            });
+    let parameter_type = {
+        match &project_fn.parameter {
+            Some(parameter) => syntax_pattern_check(
+                parameter,
+                None,
+                errors,
+                &mut std::collections::HashMap::new(),
+                type_aliases,
+                patterns,
+                types,
+                &std::collections::HashMap::new(),
+                checked_spread_records,
+                records_used,
+                choices_used,
+            )
+            .map(|checked_parameter| checked_parameter.type_),
+            None => {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(project_fn.name)),
+                    message: Box::from(
+                        "missing function parameter pattern after this name. An example of a pattern is  your-variable-name str. An example of a full function is fn My-function . : str = \":)\", where . is an empty record as the parameter",
+                    ),
+                });
+                None
+            }
+        }
+    };
+    let result_type: Option<Type> = {
+        match &project_fn.result_type {
+            Some(syntax_result_type) => syntax_type_check(
+                syntax_result_type,
+                errors,
+                type_aliases,
+                types,
+                &std::collections::HashMap::new(),
+                records_used,
+                choices_used,
+            ),
+            None => {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(project_fn.name)),
+                    message: Box::from(
+                        "missing function result type. An example of a full function is fn My-function . : str = \":)\", where str is the result type",
+                    ),
+                });
+                None
+            }
+        }
+    };
     match result_type {
         Some(result_type) => {
             let mut type_variables_exclusively_used_in_result =
                 std::collections::BTreeSet::<&Name>::new();
             type_variables_into(&mut type_variables_exclusively_used_in_result, &result_type);
-            if let Some(parameter_type) = &maybe_parameter_type {
+            if let Some(parameter_type) = &parameter_type {
                 // can be optimized
                 let mut parameter_type_variables = std::collections::BTreeSet::<&Name>::new();
                 type_variables_into(&mut parameter_type_variables, parameter_type);
@@ -3377,7 +3395,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
             CheckedProjectFn {
                 documentation: None,
                 type_parameters: actually_used_parameters,
-                parameter_type: maybe_parameter_type,
+                parameter_type,
                 result_type: Some(result_type),
                 result_expression_is_invalid: false,
             }
@@ -3389,7 +3407,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
                 .iter()
                 .map(|parameter| parameter.name.clone())
                 .collect(),
-            parameter_type: maybe_parameter_type,
+            parameter_type,
             result_type: result_type,
             result_expression_is_invalid: false,
         },
@@ -3458,7 +3476,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
         errors.push(ErrorNode {
             range: name_range(with_start_position_as_ref(project_fn.name)),
             message: Box::from(
-                "missing expression after the fn result type. An example would be fn my-function . str \":)\", where . is an empty record as the parameter",
+                "missing expression after the fn result type. An example would be fn My-function . : str = \":)\", where . is an empty record as the parameter",
             ),
         });
         return CheckedProjectFn {
