@@ -524,10 +524,14 @@ fn lsp_main_or_error() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn initial_state<Expressions, Patterns, Types>(
-    expressions: sloe::core::Origin<Expressions>,
-    patterns: sloe::core::Origin<Patterns>,
-    types: sloe::core::Origin<Types>,
-) -> State<Expressions, Patterns, Types> {
+    expressions: sloe::core::Origin<Expressions, Expressions>,
+    patterns: sloe::core::Origin<Patterns, Patterns>,
+    types: sloe::core::Origin<Types, Types>,
+) -> State<
+    sloe::core::Origin<Expressions, Expressions>,
+    sloe::core::Origin<Patterns, Patterns>,
+    sloe::core::Origin<Types, Types>,
+> {
     State {
         projects: std::collections::HashMap::with_capacity(1),
         syntax_expressions: sloe::core::Buf::new(expressions),

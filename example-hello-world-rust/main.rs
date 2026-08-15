@@ -2,9 +2,9 @@ mod sloe;
 
 fn main() {
     sloe::origin_new!(result, Result);
-    let greeting = sloe::greet(sloe::Record·name·result_origin {
+    let greeting = sloe::greet(sloe::Record·buf·name {
         name: sloe::Str::from_str("world").unwrap(),
-        result_origin: result,
+        buf: sloe::Buf::new(result),
     });
     print!(
         "{}",

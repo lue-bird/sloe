@@ -65,9 +65,6 @@ pub fn @"|equal|greater|less"(@"%Equal": type, @"%Greater": type, @"%Less": type
 /// would preferably be noreturn but it isn't allowed in parameters for some reason
 pub const Choice = enum {};
 
-pub fn Origin_part(@"%Origin": type, @"%Part": type) type {
-    return Record(struct { origin: @"%Origin", part: @"%Part" });
-}
 pub fn Part_rest(@"%Part": type, @"%Rest": type) type {
     return Record(struct { part: @"%Part", rest: @"%Rest" });
 }
@@ -220,41 +217,34 @@ pub fn recordToArray(@"%record": anytype) Array(
     }
     return @"%actual_array";
 }
-/// This wrapper is largely meaningless in zig. It exists to make it safe on the rust side.
-/// I have tried to patch in some mechanisms to avoid having multiple origins with the same name in a scope
-/// but due to the (reasonable) lack of comptime mutable variables/mutable pointers it can't be done
-pub fn Origin(@"%Origin": type) type {
-    const @"%is_valid" = switch (@typeInfo(@"%Origin")) {
-        .@"enum" => |enum_info| (enum_info.field_names.len == 1 and @sizeOf(@"%Origin") == 0),
-        else => @sizeOf(@"%Origin") == 0,
+pub fn Origin(@"%Origin": type, @"%Part": type) type {
+    return struct {
+        pub const origin = @"%Origin";
+        pub const part = @"%Part";
     };
-    if (!@"%is_valid") @compileError(std.fmt.comptimePrint(
-        "Only zero-sized values should be used as origins, as they are stored within slots, spans, bufs etc. and should be safe to copy and free (found bit size {} for origin type {}). Easiest is to just put `enum {{ origin }}`",
-        .{ @bitSizeOf(@"%Origin"), @"%Origin" },
-    ));
-    return @"%Origin";
 }
 pub const Erased = struct {};
 pub fn Origin_erased(@"%Parts": type, @"%ValueErased": type) type {
     return struct {
         erased: @"%ValueErased",
-        const parts = @"%Parts";
+        pub const parts = @"%Parts";
     };
 }
 pub fn Origin_eraser(@"%Origin": type) type {
     return struct {
-        const origin = @"%Origin";
+        pub const origin = @"%Origin";
     };
 }
 pub fn Origin_uneraser(@"%Origin": type) type {
-    // TODO make origin const
-    return struct { origin: @"%Origin" };
+    return struct {
+        pub const origin = @"%Origin";
+    };
 }
 pub fn Slot_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
     return struct {
         index: u32,
-        const origin = @"%Origin";
-        const occupancy = @"%Occupancy";
+        pub const origin = @"%Origin";
+        pub const occupancy = @"%Occupancy";
         pub fn to_span(@"%slot": @This()) Span_with_occupancy(@"%Origin", @"%Occupancy") {
             return .{ .start = @"%slot", .length = P32.one };
         }
@@ -444,20 +434,6 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
         vacant: std.ArrayList(Unset_span(@"%Origin")),
         const origin = @"%Origin";
 
-        pub fn empty(_: Origin(@"%Origin")) @This() {
-            return .{
-                .elements = std.ArrayList(@"%Element").empty,
-                .vacant = std.ArrayList(Unset_span(@"%Origin")).empty,
-            };
-        }
-        pub fn reuse(_: Origin(@"%Origin"), @"%unset_slice": Unset_slice(@"%Element")) @This() {
-            var elements = std.ArrayList(@"%Element").fromOwnedSlice(@"%unset_slice".undefined_items);
-            elements.clearRetainingCapacity();
-            return .{
-                .elements = elements,
-                .vacant = std.ArrayList(Unset_span(@"%Origin")).empty,
-            };
-        }
         pub fn preAllocateAtLeast(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
@@ -1250,40 +1226,37 @@ pub fn opt_yes(@"%Yes": type, @"%yes": @"%Yes") Opt(@"%Yes") {
     return .{ .present = @"%yes" };
 }
 
-pub fn origin_rid(@"%Origin": type, _: Origin(@"%Origin")) error{OutOfMemory}!void {}
+pub fn origin_rid(@"%Origin": type, @"%Part": type, _: Origin(@"%Origin", @"%Part")) error{OutOfMemory}!void {}
 pub fn origin_add(
     @"%PartName": type,
     @"%PartOrigin": type,
     @"%RestName": type,
     @"%RestOrigin": type,
     @"%": Record(struct {
-        part: Origin(Record(struct {
-            origin: @"%PartOrigin",
-            part: @"%PartName",
-        })),
-        rest: Origin(Record(struct {
-            origin: @"%RestOrigin",
-            part: @"%RestName",
-        })),
+        part: Origin(@"%PartOrigin", @"%PartName"),
+        rest: Origin(@"%RestOrigin", @"%RestName"),
     }),
-) error{OutOfMemory}!Origin(Record(struct {
-    origin: Record(struct { part: @"%PartOrigin", rest: @"%RestOrigin" }),
-    part: Record(struct { part: @"%PartName", rest: @"%RestName" }),
-})) {
+) error{OutOfMemory}!Origin(
+    Record(struct { part: @"%PartOrigin", rest: @"%RestOrigin" }),
+    Record(struct { part: @"%PartName", rest: @"%RestName" }),
+) {
     return .{
         .origin = .{ .rest = @"%".rest.origin, .part = @"%".part.origin },
         .part = .{ .rest = @"%".rest.part, .part = @"%".part.part },
     };
 }
-pub fn origin_part(@"%Origin": type, @"%Part": type, @"%Rest": type, @"%origin": Origin(
-    Record(struct { origin: @"%Origin", part: Record(struct { part: @"%Part", rest: @"%Rest" }) }),
-)) error{OutOfMemory}!Record(struct {
-    part: Origin(Record(struct { origin: @"%Origin", part: @"%Part" })),
-    rest: Origin(Record(struct { origin: @"%Origin", part: @"%Rest" })),
+pub fn origin_part(
+    @"%Origin": type,
+    @"%Part": type,
+    @"%Rest": type,
+    _: Origin(@"%Origin", Record(struct { part: @"%Part", rest: @"%Rest" })),
+) error{OutOfMemory}!Record(struct {
+    part: Origin(@"%Origin", @"%Part"),
+    rest: Origin(@"%Origin", @"%Rest"),
 }) {
     return .{
-        .part = .{ .origin = @"%origin".origin, .part = @"%origin".part.part },
-        .rest = .{ .origin = @"%origin".origin, .part = @"%origin".part.rest },
+        .part = .{},
+        .rest = .{},
     };
 }
 
@@ -1298,7 +1271,7 @@ pub fn origin_erase(
         erase: Fn(
             Record(struct {
                 value: @"%Value",
-                eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Parts" })),
+                eraser: Origin_eraser(Origin(@"%Origin", @"%Parts")),
             }),
             @"%ValueErased",
         ),
@@ -1314,10 +1287,10 @@ pub fn origin_unerase(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
         erased: Origin_erased(@"%Parts", @"%ValueErased"),
-        origin: Origin(Record(struct { origin: @"%Origin", part: @"%Parts" })),
+        origin: Origin(@"%Origin", @"%Parts"),
         unerase: Fn(
             Record(struct {
-                uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Parts" })),
+                uneraser: Origin_uneraser(Origin(@"%Origin", @"%Parts")),
                 value: @"%ValueErased",
             }),
             @"%Value",
@@ -1326,34 +1299,34 @@ pub fn origin_unerase(
     }),
 ) error{OutOfMemory}!@"%Value" {
     return try @"%".unerase(@"%allocator", .{
-        .uneraser = .{ .origin = @"%".origin },
+        .uneraser = .{},
         .value = @"%".erased.erased,
     });
 }
 
-pub fn origin_eraser_part(@"%Origin": type, @"%Part": type, @"%Rest": type, _: Origin_eraser(
-    Record(struct { origin: @"%Origin", part: Record(struct { part: @"%Part", rest: @"%Rest" }) }),
-)) error{OutOfMemory}!Record(struct {
-    part: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
-    rest: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Rest" })),
+pub fn origin_eraser_part(
+    @"%Origin": type,
+    @"%Part": type,
+    @"%Rest": type,
+    _: Origin_eraser(Origin(@"%Origin", Record(struct { part: @"%Part", rest: @"%Rest" }))),
+) error{OutOfMemory}!Record(struct {
+    part: Origin_eraser(Origin(@"%Origin", @"%Part")),
+    rest: Origin_eraser(Origin(@"%Origin", @"%Rest")),
 }) {
     return .{ .part = .{}, .rest = .{} };
 }
-pub fn origin_uneraser_part(@"%Origin": type, @"%Part": type, @"%Rest": type, @"%uneraser": Origin_uneraser(
-    Record(struct { origin: @"%Origin", part: Record(struct { part: @"%Part", rest: @"%Rest" }) }),
-)) error{OutOfMemory}!Record(struct {
-    part: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
-    rest: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Rest" })),
+pub fn origin_uneraser_part(
+    @"%Origin": type,
+    @"%Part": type,
+    @"%Rest": type,
+    _: Origin_uneraser(Origin(@"%Origin", Record(struct { part: @"%Part", rest: @"%Rest" }))),
+) error{OutOfMemory}!Record(struct {
+    part: Origin_uneraser(Origin(@"%Origin", @"%Part")),
+    rest: Origin_uneraser(Origin(@"%Origin", @"%Rest")),
 }) {
     return .{
-        .part = .{ .origin = .{
-            .origin = @"%uneraser".origin.origin,
-            .part = @"%uneraser".origin.part.part,
-        } },
-        .rest = .{ .origin = .{
-            .origin = @"%uneraser".origin.origin,
-            .part = @"%uneraser".origin.part.rest,
-        } },
+        .part = .{},
+        .rest = .{},
     };
 }
 
@@ -1367,11 +1340,11 @@ pub fn slot_to_span(@"%Origin": type, @"%slot": Slot(@"%Origin")) error{OutOfMem
     return @"%slot".to_span();
 }
 pub fn slot_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    slot: Slot(Record(struct { origin: @"%Origin", part: @"%Part" })),
-    eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    slot: Slot(Origin(@"%Origin", @"%Part")),
+    eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
 })) error{OutOfMemory}!Record(struct {
-    slot: Slot(Record(struct { origin: Erased, part: @"%Part" })),
-    eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    slot: Slot(Origin(Erased, @"%Part")),
+    eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
 }) {
     return .{
         .slot = .{ .index = @"%".slot.index },
@@ -1379,11 +1352,11 @@ pub fn slot_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     };
 }
 pub fn slot_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    slot: Slot(Record(struct { origin: Erased, part: @"%Part" })),
-    uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    slot: Slot(Origin(Erased, @"%Part")),
+    uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
 })) error{OutOfMemory}!Record(struct {
-    slot: Slot(Record(struct { origin: @"%Origin", part: @"%Part" })),
-    uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    slot: Slot(Origin(@"%Origin", @"%Part")),
+    uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
 }) {
     return .{
         .slot = .{ .index = @"%".slot.index },
@@ -1479,11 +1452,11 @@ pub fn span_fold(
     return @"%".span.fold(@"%allocator", @"%".direction, @"%".state, @"%".step);
 }
 pub fn span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    span: Span(Record(struct { origin: @"%Origin", part: @"%Part" })),
-    eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Span(Origin(@"%Origin", @"%Part")),
+    eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
 })) error{OutOfMemory}!Record(struct {
-    span: Span(Record(struct { origin: Erased, part: @"%Part" })),
-    eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Span(Origin(Erased, @"%Part")),
+    eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
 }) {
     return .{
         .span = .{ .start = .{ .index = @"%".span.start.index }, .length = @"%".span.length },
@@ -1491,11 +1464,11 @@ pub fn span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     };
 }
 pub fn opt_span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    span: Opt(Span(Record(struct { origin: @"%Origin", part: @"%Part" }))),
-    eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Opt(Span(Origin(@"%Origin", @"%Part"))),
+    eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
 })) error{OutOfMemory}!Record(struct {
-    span: Opt(Span(Record(struct { origin: Erased, part: @"%Part" }))),
-    eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Opt(Span(Origin(Erased, @"%Part"))),
+    eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
 }) {
     return .{
         .eraser = @"%".eraser,
@@ -1509,11 +1482,11 @@ pub fn opt_span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(stru
     };
 }
 pub fn span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    span: Span(Record(struct { origin: Erased, part: @"%Part" })),
-    uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Span(Origin(Erased, @"%Part")),
+    uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
 })) error{OutOfMemory}!Record(struct {
-    span: Span(Record(struct { origin: @"%Origin", part: @"%Part" })),
-    uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Span(Origin(@"%Origin", @"%Part")),
+    uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
 }) {
     return .{
         .span = .{ .start = .{ .index = @"%".span.start.index }, .length = @"%".span.length },
@@ -1521,11 +1494,11 @@ pub fn span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct
     };
 }
 pub fn opt_span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    span: Opt(Span(Record(struct { origin: Erased, part: @"%Part" }))),
-    uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Opt(Span(Origin(Erased, @"%Part"))),
+    uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
 })) error{OutOfMemory}!Record(struct {
-    span: Opt(Span(Record(struct { origin: @"%Origin", part: @"%Part" }))),
-    uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+    span: Opt(Span(Origin(@"%Origin", @"%Part"))),
+    uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
 }) {
     return .{
         .uneraser = @"%".uneraser,
@@ -1627,16 +1600,26 @@ pub fn array_rid(
 pub fn buf_empty(
     @"%Element": type,
     @"%Origin": type,
-    @"%origin": Origin(@"%Origin"),
-) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    return Buf(@"%Origin", @"%Element").empty(@"%origin");
+    @"%Part": type,
+    _: Origin(@"%Origin", @"%Part"),
+) error{OutOfMemory}!Buf(Origin(@"%Origin", @"%Part"), @"%Element") {
+    return .{
+        .elements = std.ArrayList(@"%Element").empty,
+        .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))).empty,
+    };
 }
 pub fn buf_reuse(
     @"%Element": type,
     @"%Origin": type,
-    @"%": Record(struct { origin: Origin(@"%Origin"), slice: Unset_slice(@"%Element") }),
+    @"%Part": type,
+    @"%": Record(struct { origin: Origin(@"%Origin", @"%Part"), slice: Unset_slice(@"%Element") }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    return Buf(@"%Origin", @"%Element").reuse(@"%".origin, @"%".slice);
+    var elements = std.ArrayList(@"%Element").fromOwnedSlice(@"%".slice.undefined_items);
+    elements.clearRetainingCapacity();
+    return .{
+        .elements = elements,
+        .vacant = std.ArrayList(Unset_span(@"%Origin")).empty,
+    };
 }
 pub fn buf_pre_allocate_at_least(
     @"%Element": type,
@@ -2349,12 +2332,12 @@ pub fn buf_origin_erase(
     @"%Origin": type,
     @"%Part": type,
     @"%": Record(struct {
-        buf: Buf(Record(struct { origin: @"%Origin", part: @"%Part" }), @"%Element"),
-        eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+        buf: Buf(Origin(@"%Origin", @"%Part"), @"%Element"),
+        eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
     }),
-) error{OutOfMemory}!Buf(Record(struct { origin: Erased, part: @"%Part" }), @"%Element") {
+) error{OutOfMemory}!Buf(Origin(Erased, @"%Part"), @"%Element") {
     return .{
-        .vacant = std.ArrayList(Unset_span(Record(struct { origin: Erased, part: @"%Part" }))){
+        .vacant = std.ArrayList(Unset_span(Origin(Erased, @"%Part"))){
             .capacity = @"%".buf.vacant.capacity,
             .items = @ptrCast(@"%".buf.vacant.items),
         },
@@ -2366,12 +2349,12 @@ pub fn buf_origin_unerase(
     @"%Origin": type,
     @"%Part": type,
     @"%": Record(struct {
-        buf: Buf(Record(struct { origin: Erased, part: @"%Part" }), @"%Element"),
-        uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+        buf: Buf(Origin(Erased, @"%Part"), @"%Element"),
+        uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
     }),
-) error{OutOfMemory}!Buf(Record(struct { origin: @"%Origin", part: @"%Part" }), @"%Element") {
+) error{OutOfMemory}!Buf(Origin(@"%Origin", @"%Part"), @"%Element") {
     return .{
-        .vacant = std.ArrayList(Unset_span(Record(struct { origin: @"%Origin", part: @"%Part" }))){
+        .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
             .capacity = @"%".buf.vacant.capacity,
             .items = @ptrCast(@"%".buf.vacant.items),
         },
@@ -2386,20 +2369,20 @@ pub fn buf_origin_erase_with_elements(
     @"%Part": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
-        buf: Buf(Record(struct { origin: @"%Origin", part: @"%Part" }), @"%Element"),
-        eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+        buf: Buf(Origin(@"%Origin", @"%Part"), @"%Element"),
+        eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
         element_erase: Fn(
             Record(struct {
                 element: @"%Element",
-                eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+                eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
             }),
             Record(struct {
                 element: @"%ElementErased",
-                eraser: Origin_eraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+                eraser: Origin_eraser(Origin(@"%Origin", @"%Part")),
             }),
         ),
     }),
-) error{OutOfMemory}!Buf(Record(struct { origin: Erased, part: @"%Part" }), @"%ElementErased") {
+) error{OutOfMemory}!Buf(Origin(Erased, @"%Part"), @"%ElementErased") {
     const elements_erased: std.ArrayList(@"%ElementErased") = elements_erased: {
         if (comptime can_reuse: {
             break :can_reuse (@sizeOf(@"%Element") == @sizeOf(@"%ElementErased")) and
@@ -2433,7 +2416,7 @@ pub fn buf_origin_erase_with_elements(
         }
     };
     return .{
-        .vacant = std.ArrayList(Unset_span(Record(struct { origin: Erased, part: @"%Part" }))){
+        .vacant = std.ArrayList(Unset_span(Origin(Erased, @"%Part"))){
             .capacity = @"%".buf.vacant.capacity,
             .items = @ptrCast(@"%".buf.vacant.items),
         },
@@ -2447,20 +2430,20 @@ pub fn buf_origin_unerase_with_elements(
     @"%Part": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
-        buf: Buf(Record(struct { origin: Erased, part: @"%Part" }), @"%ElementErased"),
-        uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+        buf: Buf(Origin(Erased, @"%Part"), @"%ElementErased"),
+        uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
         element_unerase: Fn(
             Record(struct {
                 element: @"%ElementErased",
-                uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+                uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
             }),
             Record(struct {
                 element: @"%Element",
-                uneraser: Origin_uneraser(Record(struct { origin: @"%Origin", part: @"%Part" })),
+                uneraser: Origin_uneraser(Origin(@"%Origin", @"%Part")),
             }),
         ),
     }),
-) error{OutOfMemory}!Buf(Record(struct { origin: @"%Origin", part: @"%Part" }), @"%Element") {
+) error{OutOfMemory}!Buf(Origin(@"%Origin", @"%Part"), @"%Element") {
     const @"%elements_erased": std.ArrayList(@"%Element") = elements_erased: {
         if (comptime can_reuse: {
             break :can_reuse (@sizeOf(@"%Element") == @sizeOf(@"%ElementErased")) and
@@ -2494,7 +2477,7 @@ pub fn buf_origin_unerase_with_elements(
         }
     };
     return .{
-        .vacant = std.ArrayList(Unset_span(Record(struct { origin: @"%Origin", part: @"%Part" }))){
+        .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
             .capacity = @"%".buf.vacant.capacity,
             .items = @ptrCast(@"%".buf.vacant.items),
         },

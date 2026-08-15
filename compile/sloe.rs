@@ -6824,13 +6824,13 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             };
             output.push_str("const ");
             origin_name_to_uppercase_local_zig(output, &name.value);
-            output.push_str(" = enum { origin };\nconst ");
+            output.push_str(" = enum {};\nconst ");
             name_to_lowercase_local_zig(output, &name.value);
-            output.push_str(" = record(.{ .origin = ");
+            output.push_str(" : Origin(");
             origin_name_to_uppercase_local_zig(output, &name.value);
-            output.push_str(".origin, .part = record(.{ .");
+            output.push_str(", Record(struct { ");
             output.push_str(&name_to_lowercase_zig(&name.value));
-            output.push_str(" = {} }) });\n");
+            output.push_str(" : void })) = .{};\n");
             match result {
                 None => {
                     zig_incomplete_expression(output);
@@ -8478,13 +8478,13 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     });
                     return None;
                 }
-                Some(type_origin(type_origin_part(
+                Some(type_origin(
                     Type::Origin(name.value.clone()),
                     Type::Record(vec![TypeField {
                         name: name.value.clone(),
                         value: type_record_empty,
                     }]),
-                )))
+                ))
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
                     used_pattern_variables.insert(&name.value, name.start);
@@ -11848,17 +11848,14 @@ fn type_fn(in_: Type, out: Type) -> Type {
         arguments: vec![in_, out],
     }
 }
-fn type_origin(origin: Type) -> Type {
+fn type_origin(origin: Type, part: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Origin"),
-        arguments: vec![origin],
+        arguments: vec![origin, part],
     }
 }
 fn type_part_rest(part: Type, rest: Type) -> Type {
     type_record([("part", part), ("rest", rest)])
-}
-fn type_origin_part(origin: Type, part: Type) -> Type {
-    type_record([("origin", origin), ("part", part)])
 }
 fn type_origin_erased(parts: Type, value_erased: Type) -> Type {
     Type::CoreConstruct {
@@ -12542,8 +12539,8 @@ type aliases instead of one parameter per origin:
 ? Origin-add .part htmls .rest Origin-add .part modifiers .rest chars [view-origin]
 # Now view-origin is of type
 # Origin
-# Origin-part (Part-rest htmls, Part-rest modifiers, chars),
-# Part-rest .htmls ., Part-rest .modifiers ., .chars .
+#   (Part-rest htmls, Part-rest modifiers, chars)
+#   , (Part-rest .htmls ., Part-rest .modifiers ., .chars .)
 
 # deconstruct them in order
 ? Origin-part view-origin [.origin view-origin .part htmls]
@@ -12555,46 +12552,46 @@ used like this
 ty Html _view
     |element
         .tag str
-        .modifiers (Opt Span Origin-part _view, .modifiers .)
-        .subs (Opt Span Origin-part _view, .html .)
-    |text-dynamic Opt Span Origin-part _view, .chars .
+        .modifiers (Opt Span Origin _view, .modifiers .)
+        .subs (Opt Span Origi _view, .html .)
+    |text-dynamic Opt Span Origin _view, .chars .
     |text-static str
 ```
-See for example `.modifiers (Opt Span Origin-part _view, .modifiers .)`
+See for example `.modifiers (Opt Span Origin _view, .modifiers .)`
 which you otherwise would have represented as `.modifiers (Opt Span _modifiers)`.
-`Origin-part` refers to the `modifier` origin that was combined into an Origin with `_view`.
+`Origin` refers to the `modifier` origin that was combined into an Origin with `_view`.
 
 A more advanced use-case is `Origin-erased` which only allows one set of part names
 per erased value.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("part", type_origin(type_origin_part(type_variable("part-origin"), type_variable("part-name")))),
-                    ("rest", type_origin(type_origin_part(type_variable("rest-origin"), type_variable("rest-name"))))
+                    ("part", type_origin(type_variable("part-origin"), type_variable("part-name"))),
+                    ("rest", type_origin(type_variable("rest-origin"), type_variable("rest-name")))
                 ]),
-                result_type: type_origin(type_origin_part(
+                result_type: type_origin(
                     type_part_rest(type_variable("part-origin"), type_variable("rest-origin")),
                     type_part_rest(type_variable("part-name"), type_variable("rest-name"))
-                )),
+                ),
             },
             CoreFnInfo {
                 name: "Origin-part",
                 documentation: "Create a new derived `Origin` and remove that part from the original `Origin`",
                 type_parameters: vec![],
                 parameter_type:
-                    type_origin(type_origin_part(
+                    type_origin(
                         type_variable("origin"),
                         type_part_rest(type_variable("part"), type_variable("rest"))
-                    )),
+                    ),
                 result_type: type_record([
-                    ("part", type_origin(type_origin_part(type_variable("origin"), type_variable("part")))),
-                    ("rest", type_origin(type_origin_part(type_variable("origin"), type_variable("rest"))))
+                    ("part", type_origin(type_variable("origin"), type_variable("part"))),
+                    ("rest", type_origin(type_variable("origin"), type_variable("rest")))
                 ]),
             },
             CoreFnInfo {
                 name: "Origin-rid",
                 documentation: "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case",
                 type_parameters: vec![],
-                parameter_type: type_origin(type_variable("origin")),
+                parameter_type: type_origin(type_variable("origin"), type_variable("part")),
                 result_type: type_record_empty,
             },
             CoreFnInfo {
@@ -12602,13 +12599,13 @@ per erased value.",
                 documentation: "Create a new derived `Origin-eraser` and remove that part from the original `Origin-eraser`",
                 type_parameters: vec![],
                 parameter_type:
-                    type_origin_eraser(type_origin_part(
+                    type_origin_eraser(type_origin(
                         type_variable("origin"),
                         type_part_rest(type_variable("part"), type_variable("rest"))
                     )),
                 result_type: type_record([
-                    ("part", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
-                    ("rest", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("rest"))))
+                    ("part", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
+                    ("rest", type_origin_eraser(type_origin(type_variable("origin"), type_variable("rest"))))
                 ]),
             },
             CoreFnInfo {
@@ -12616,13 +12613,13 @@ per erased value.",
                 documentation: "Create a new derived `Origin-uneraser` and remove that part from the original `Origin-uneraser`",
                 type_parameters: vec![],
                 parameter_type:
-                    type_origin_uneraser(type_origin_part(
+                    type_origin_uneraser(type_origin(
                         type_variable("origin"),
                         type_part_rest(type_variable("part"), type_variable("rest"))
                     )),
                 result_type: type_record([
-                    ("part", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
-                    ("rest", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("rest"))))
+                    ("part", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
+                    ("rest", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("rest"))))
                 ]),
             },
             CoreFnInfo {
@@ -12643,7 +12640,7 @@ To convert an `Origin-erased` value into a normal value with an origin again, us
                                 ("value", type_variable("value")),
                                 (
                                     "eraser",
-                                    type_origin_eraser(type_origin_part(
+                                    type_origin_eraser(type_origin(
                                         type_variable("origin"),
                                         type_variable("parts")
                                     )),
@@ -12684,7 +12681,7 @@ because the Buf's origin will have changed",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("erased", type_origin_erased(type_variable("parts"), type_variable("value-erased"))),
-                    ("origin", type_origin(type_origin_part(type_variable("origin"), type_variable("parts")))),
+                    ("origin", type_origin(type_variable("origin"), type_variable("parts"))),
                     (
                         "unerase",
                         type_fn(
@@ -12692,7 +12689,7 @@ because the Buf's origin will have changed",
                                 ("value", type_variable("value-erased")),
                                 (
                                     "uneraser",
-                                    type_origin_uneraser(type_origin_part(
+                                    type_origin_uneraser(type_origin(
                                         type_variable("origin"),
                                         type_variable("parts")
                                     )),
@@ -12717,12 +12714,12 @@ because the Buf's origin will have changed",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("slot", type_slot(type_origin_part(type_variable("origin"), type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("slot", type_slot(type_origin(type_variable("origin"), type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("slot", type_slot(type_origin_part(type_erased, type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("slot", type_slot(type_origin(type_erased, type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12730,12 +12727,12 @@ because the Buf's origin will have changed",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("slot", type_slot(type_origin_part(type_erased, type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("slot", type_slot(type_origin(type_erased, type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("slot", type_slot(type_origin_part(type_variable("origin"), type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("slot", type_slot(type_origin(type_variable("origin"), type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12899,12 +12896,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_span(type_origin_part(type_variable("origin"), type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_span(type_origin(type_variable("origin"), type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_span(type_origin_part(type_erased, type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_span(type_origin(type_erased, type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12912,12 +12909,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_opt(type_span(type_origin_part(type_variable("origin"), type_variable("part"))))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_opt(type_span(type_origin(type_variable("origin"), type_variable("part"))))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_opt(type_span(type_origin_part(type_erased, type_variable("part"))))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_opt(type_span(type_origin(type_erased, type_variable("part"))))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12925,12 +12922,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type from `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_span(type_origin_part(type_erased, type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_span(type_origin(type_erased, type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_span(type_origin_part(type_variable("origin"), type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_span(type_origin(type_variable("origin"), type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12938,12 +12935,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type from `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_opt(type_span(type_origin_part(type_erased, type_variable("part"))))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_opt(type_span(type_origin(type_erased, type_variable("part"))))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_opt(type_span(type_origin_part(type_variable("origin"), type_variable("part"))))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("span", type_opt(type_span(type_origin(type_variable("origin"), type_variable("part"))))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -13104,8 +13101,8 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
                 documentation: "Initialize a `Buf` with 0 elements.
 Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-array`, `Buf-add-unset` etc.",
                 type_parameters: vec![Name::from_static("element")],
-                parameter_type: type_origin(type_variable("origin")),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                parameter_type: type_origin(type_variable("origin"), type_variable("part")),
+                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-reuse",
@@ -13121,10 +13118,10 @@ fn Buf-recycle-empty
 ```",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("origin", type_origin(type_variable("origin"))),
+                    ("origin", type_origin(type_variable("origin"), type_variable("part"))),
                     ("slice", type_unset_slice(type_variable("element"))),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-pre-allocate-at-least",
@@ -13868,10 +13865,10 @@ If start and end spans are not already connected, both are appended at the end a
 To also erase origins of the elements themselves, use `Buf-origin-erase-with-elements`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element"))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("buf", type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element"))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
-                result_type: type_buf(type_origin_part(type_erased, type_variable("part")), type_variable("element")),
+                result_type: type_buf(type_origin(type_erased, type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-origin-erase-with-elements",
@@ -13899,23 +13896,23 @@ For two, this may be seen as spooky action at a distance (albeit not that great 
 Changing an element that is referenced by an outside slot/span etc. may be unexpected.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element"))),
-                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("buf", type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element"))),
+                    ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                     (
                         "element-erase",
                         type_fn(
                             type_record([
                                 ("element", type_variable("element")),
-                                ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                                ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                             ]),
                             type_record([
                                 ("element", type_variable("element-erased")),
-                                ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                                ("eraser", type_origin_eraser(type_origin(type_variable("origin"), type_variable("part")))),
                             ]),
                         )
                     )
                 ]),
-                result_type: type_buf(type_origin_part(type_erased, type_variable("part")), type_variable("element-erased")),
+                result_type: type_buf(type_origin(type_erased, type_variable("part")), type_variable("element-erased")),
             },
             CoreFnInfo {
                 name: "Buf-origin-unerase",
@@ -13923,28 +13920,28 @@ Changing an element that is referenced by an outside slot/span etc. may be unexp
 To also unerase origins of the elements themselves, use `Buf-origin-unerase-with-elements`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_origin_part(type_erased, type_variable("part")), type_variable("element"))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("buf", type_buf(type_origin(type_erased, type_variable("part")), type_variable("element"))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                 ]),
-                result_type: type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element")),
+                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-origin-unerase-with-elements",
                 documentation: "Replace its origin type from `erased`,
 along with un-erasing the origin in its elements if necessary.
-An example of a `Buf inner, Opt Span inner`:
+An example:
 ```sloe
 fn Example-unerase
-    .buf buf-inner Buf erased, Opt Span erased
-    .uneraser uneraser Origin-uneraser inner
-    : Buf inner, Opt Span inner =
+    .buf buf-inner Buf (Origin erased, .inner .), Opt Span Origin erased, (.inner .)
+    .uneraser uneraser Origin-uneraser Origin _inner, .inner .
+    : Buf (Origin _inner, .inner .), Opt Span Origin _inner, (.inner .) =
     Buf-origin-unerase-with-elements
     .buf buf-inner
     .uneraser uneraser
     .element-unerase
     [
-    .element element Opt Span inner
-    .uneraser uneraser Origin-uneraser inner
+    .element element Opt Span Origin erased, (.inner .)
+    .uneraser uneraser Origin-uneraser Origin _inner, (.inner .)
     ]
     ? Opt-span-origin-unerase .span element .uneraser uneraser
     [.span element-unerased .uneraser uneraser]
@@ -13959,22 +13956,22 @@ Changing an element that is referenced by an outside slot/span etc. may be unexp
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("buf", type_buf(type_erased, type_variable("element-erased"))),
-                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                     (
                         "element-unerase",
                         type_fn(
                             type_record([
                                 ("element", type_variable("element-erased")),
-                                ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                                ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                             ]),
                             type_record([
                                 ("element", type_variable("element")),
-                                ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
+                                ("uneraser", type_origin_uneraser(type_origin(type_variable("origin"), type_variable("part")))),
                             ]),
                         )
                     )
                 ]),
-                result_type: type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element")),
+                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-to-unset",
@@ -14225,16 +14222,19 @@ Origins can not be arbitrary values because values like `u32` could be duplicate
 This is not possible for values of type `Origin`.
 
 When you create an `Origin` with `^some-origin expression`,
-`some-origin` will be of type `Origin .origin some-origin, .part .some-origin .`
-(or using a core type alias `Origin Origin-part some-origin, .some-origin .`),
-The `.part` type specifies that the `Origin` value cannot be subdivided.
-The type given to `.origin` here uniquely identifies the `Origin` with type `some-origin`.
+`some-origin` will be of type `Origin some-origin, .some-origin .`.
+The second type specifies that the `Origin` value cannot be subdivided.
+The first type uniquely identifies the `Origin` with type `some-origin`.
 
-The type argument of an `Origin` is what will also be present in `Slot`, `Span`, `Buf`, `Unset-slot`, `Unset-span` as the first type argument.
+An `Origin` type will also be present in `Slot`, `Span`, `Buf`, `Unset-slot`, `Unset-span` as the first type argument.
+For example `Slot Origin some-origin, .some-origin .`
+could refer to an index in a `Buf (Origin some-origin, .some-origin .), char`.
 
-The second type argument in `Origin Origin-part some-origin, ??`
-is usually just an empty record with a field of the same name as the origin.
-But if the origin was created with for example
+Origins combined with `Origin-add` additionally have the ability
+to make indivual origins look like derived origins using `Origin-part` (similar: `Origin-eraser-part` or `Origin-uneraser-part`).
+For example `Slot Origin _combined-origin, .chars .`
+could refer to an index in a `Buf (Origin _combined-origin, .chars .), char`
+which was derived from a combined `Origin (Part-rest chars, positions), Part-rest .chars ., .positions .`.
 ```sloe
 ^a
 ^b
@@ -14247,15 +14247,16 @@ Then you can use `Origin-part` to pop origin parts from the origin one by one:
 ```sloe
 ? Origin-part origin-origin [.part a .rest origin-origin]
 ? Origin-part origin-origin [.part b .rest c]
-# a is of type Origin Origin-part origin-origin, .a .
-# b is of type Origin Origin-part origin-origin, .b .
-# c is of type Origin Origin-part origin-origin, .c .
+# a is of type Origin origin-origin, .a .
+# b is of type Origin origin-origin, .b .
+# c is of type Origin origin-origin, .c .
 ```
 giving you a way to for example just pass one origin to a type alias and
-inside of the type alias use the .a ., .b . or .c . to choose the part you want"
+inside of the type alias use the .a ., .b . or .c . to choose the part you want.
+It's also extremely important for `Origin-erased`"
                 )),
-                parameters: vec![Name::from_static("origin")],
-                type_: Some(type_origin(type_variable("origin"))),
+                parameters: vec![Name::from_static("origin"), Name::from_static("part")],
+                type_: Some(type_origin(type_variable("origin"), type_variable("part"))),
             },
         ),
         (
@@ -14280,15 +14281,15 @@ See `Origin`, `Origin-add` and `Origin-part` for further explanations.
 
 `Part-rest` specifically is basically a stack of types that can be popped from the front:
 ```sloe
-Origin-part some-origin, Part-rest .a ., Part-rest .b ., .c .
--> Origin-part some-origin, Part-rest .a ., .b .
--> Origin-part some-origin, .b .
+Origin some-origin, Part-rest .a ., Part-rest .b ., .c .
+-> Origin some-origin, Part-rest .a ., .b .
+-> Origin some-origin, .b .
 ```
 In the end, you will have created three origins of types
 ```sloe
-Origin-part some-origin, .a .
-Origin-part some-origin, .b .
-Origin-part some-origin, .c .
+Origin some-origin, .a .
+Origin some-origin, .b .
+Origin some-origin, .c .
 ```
 This exact operation is used in `Origin-part`, `Origin-eraser-part`, `Origin-uneraser-part`."
                 )),
@@ -14297,80 +14298,60 @@ This exact operation is used in `Origin-part`, `Origin-eraser-part`, `Origin-une
             },
         ),
         (
-            Name::from_static("Origin-part"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "Simple origins created with `^some-origin` are of type `Origin-part some-origin, .some-origin .`.
-For example `Slot Origin-part some-origin, .some-origin .`
-could refer to an index in a `Buf (Origin-part some-origin, .some-origin .), char`.
-
-Origins combined with `Origin-add` additionally have the ability
-to make indivual origins look like derived origins using `Origin-part` (similar: `Origin-eraser-part` or `Origin-uneraser-part`).
-For example `Slot (Origin-part _combined-origin, .chars .)`
-could refer to an index in a `Buf (Origin-part _combined-origin, .chars .), char`
-which was derived from a combined `Origin (Part-rest chars, positions), Part-rest .chars ., .positions .`.
-
-The ability for one origin origin type to be used is very valuable to avoid
-passing endless origin type variables into type aliases.
-It's also extremely important for `Origin-erased`"
-                )),
-                parameters: vec![Name::from_static("origin"), Name::from_static("part")],
-                type_: Some(type_origin_part(type_variable("origin"), type_variable("part"))),
-            },
-        ),
-        (
             Name::from_static("Origin-erased"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
                     "Self-contained value that contains all uses of a certain origin.
-Can be used to create Bufs containing Bufs without having inner origins collide between elements.
+Can be used to for example create Bufs containing Bufs without having inner incompatible origin types between elements.
 An `Origin-erased` value can be turned back into a proper value with a new specific origin on demand.
-If none if this sounded useful to you, you don't need this (yet).
+If none of this sounded useful to you, you don't need this (yet).
 ```sloe
 ^outer
-? Buf-empty{Origin-erased ., .buf Buf erased, u32 .slot Slot erased} outer [buf-outer]
+? Buf-empty{Origin-erased ., .buf Buf (Origin erased, .inner .), u32 .slot Slot erased} outer [buf-outer]
 
-^inner0
-? Buf-empty{u32} inner0 [buf-inner0]
-? Buf-add .buf buf-inner0 .new 0 u32 [.buf buf-inner0 .slot slot-inner0]
 ? (
+    ^inner
+    ? Buf-empty{u32} inner [buf-inner]
+    ? Buf-add .buf buf-inner .new 0 u32 [.buf buf-inner .slot slot-inner]
     Origin-erase
-    .value (.buf buf-inner0 .slot slot-inner0)
+    .value (.buf buf-inner .slot slot-inner)
     .erase
     [
         .value (
             value
-            .buf Buf (Origin-part inner0, .), u32
-            .slot Slot (Origin-part inner0, .)
+            .buf Buf (Origin inner, .inner .), u32
+            .slot Slot (Origin inner, .inner .)
             )
-        .eraser eraser Origin-eraser Origin-part inner0, .
+        .eraser eraser Origin-eraser Origin inner0, .
     ]
-    ? Slot-origin-erase .slot slot-inner0 .eraser eraser
+    ? Slot-origin-erase .slot slot-inner .eraser eraser
     [.slot slot-erased .eraser eraser]
-    ? Buf-origin-erase .buf buf-inner0 .eraser eraser [buf-erased]
+    ? Buf-origin-erase .buf buf-inner .eraser eraser [buf-erased]
     .buf buf-erased .slot slot-erased
     )
 [erased-inner0]
 
-^inner1
-? Buf-empty{u32} inner1 [buf-inner1]
-? Buf-add .buf buf-inner1 .new 0 u32 [.buf buf-inner1 .slot slot-inner1]
-? ..do the same as in Origin-erase for slot0.. [erased-inner1]
+? (
+    ^inner
+    ? Buf-empty{u32} inner1 [buf-inner1]
+    ? Buf-add .buf buf-inner1 .new 0 u32 [.buf buf-inner1 .slot slot-inner1]
+    ? ..do the same as in Origin-erase for slot0..
+    )
+[erased-inner1]
 
 # now both erased-inner0 erased-inner1 have the same type :)
 Buf-add-array .buf buf-outer .new ; erased-inner0 ; erased-inner1
 
 # example of how to recover an erased value
-^inner0
+^inner
 Origin-unerase
-    .erased erased-inner0
-    .origin inner0
+    .erased erased-inner
+    .origin inner
     .unerase
     [
-    .value (value .buf Buf erased, u32 .slot Slot erased)
-    .uneraser uneraser Origin-uneraser Origin-part inner0, .
+    .value (value .buf Buf (Origin erased, .inner .), u32 .slot Slot (Origin erased, .inner .))
+    .uneraser uneraser Origin-uneraser Origin inner, (.inner .)
     ]
     ? Slot-origin-erase .slot slot-erased .uneraser uneraser
     [.slot slot-inner0 .uneraser uneraser]

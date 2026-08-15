@@ -705,8 +705,11 @@ const fn example_info(example: Example) -> ExampleInfo {
             name:"hello world",
             source: r#"
 fn Hi
-    origin Origin _origin
-    : .buf Buf _origin, char .span Span _origin =
+    origin Origin _origin, _part
+    :
+    .buf Buf (Origin _origin, _part), char
+    .span Span _origin
+    =
     Greet .name "world" .buf Buf-empty{char} origin
 
 fn Greet

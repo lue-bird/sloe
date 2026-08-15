@@ -721,8 +721,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- simplify `Origin-part` by letting `Origin` itself take 2 parameters: origin and part. Then ask ask eraser, uneraser, span, slot, buf etc. to take that exact origin type as the first parameter. For uneraser and eraser it may even make more sense to directly take both parameters of Origin directly.
-  Then remove Origin-part type alias
+- for uneraser and eraser: directly take origin and part parameters
 
 - for typed variable patterns, put a linebreak if type is multiline
 
