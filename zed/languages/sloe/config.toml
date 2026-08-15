@@ -8,8 +8,7 @@ brackets = [
   { start = "'", end = "'", close = true, newline = false, not_in = ["string", "char", "comment"] },
   { start = "\"", end = "\"", close = true, newline = false, not_in = ["string", "char"] },
   { start = "(", end = ")", close = true, newline = false, not_in = [] },
-  { start = "<", end = ">", close = true, newline = false, not_in = ["comment"] },
+  { start = "{", end = "}", close = true, newline = false, not_in = [] },
   { start = "[", end = "]", close = true, newline = false, not_in = [] },
-  { start = "?", end = "[]\n", close = true, newline = false, not_in = ["comment"] },
-  { start = ":>", end = ">\n", close = true, newline = false, not_in = ["comment"] },
+  { start = ":", end = " =\n", close = true, newline = false, not_in = ["string", "char", "comment"] },
 ]

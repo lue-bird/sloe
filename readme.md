@@ -727,8 +727,6 @@ cargo install --offline --debug --path . sloe
 
 - report "missing query cases" only if queried expression exists
 
-- when typing ?, don't insert []\n because this messes with function suggestions
-
 - detect missing variable name in typed pattern more rigerously
 
 - when providing type construct and function construct completions, set the cursor to the first argument
