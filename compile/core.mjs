@@ -416,9 +416,9 @@ export function origin_erase(erase) {
     erase.erase({ value: erase.value, eraser: {} })
   );
 }
-/** @template $Origin, $Parts, $Value, $Value_erased @param {{ erased: Origin_erased<$Parts, $Value_erased>, origin: Origin<$Origin, $Parts>, unerase: Fn<{ value: $Value_erased, uneraser: Origin_uneraser<$Origin, $Parts>, }, $Value>, value_rid: Fn<$Value, {}>, }} unerase @returns {$Value} */
+/** @template $Origin, $Parts, $Value, $Value_erased @param {{ erased: Origin_erased<$Parts, $Value_erased>, origin: Origin<$Origin, $Parts>, unerase: Fn<{ erased: $Value_erased, uneraser: Origin_uneraser<$Origin, $Parts>, }, $Value>, value_rid: Fn<$Value, {}>, }} unerase @returns {$Value} */
 export function origin_unerase(unerase) {
-  return unerase.unerase({ value: unerase.erased, uneraser: {} });
+  return unerase.unerase({ erased: unerase.erased, uneraser: {} });
 }
 
 /** @template $Origin, $Part, $Rest @param {Origin_eraser<$Origin, { part: $Part, rest: $Rest, }>} _ @returns {{ part: Origin_eraser<$Origin, $Part>, rest: Origin_eraser<$Origin, $Rest>, }} */

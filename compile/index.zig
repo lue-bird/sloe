@@ -900,11 +900,11 @@ test "origin_erase span + buf, then origin_unerase" {
             .origin = new_origin,
             .unerase = struct {
                 pub fn f(_: std.mem.Allocator, unerase: core.Record(struct {
-                    uneraser: core.Origin_uneraser(NewOrigin, void),
-                    value: struct {
+                    erased: struct {
                         core.Buf(core.Origin(core.Erased, void), u32),
                         core.Span(core.Origin(core.Erased, void)),
                     },
+                    uneraser: core.Origin_uneraser(NewOrigin, void),
                 })) error{OutOfMemory}!struct {
                     core.Buf(@TypeOf(new_origin), u32),
                     core.Span(@TypeOf(new_origin)),
@@ -913,7 +913,7 @@ test "origin_erase span + buf, then origin_unerase" {
                         NewOrigin,
                         void,
                         .{
-                            .span = unerase.value.@"1",
+                            .span = unerase.erased.@"1",
                             .uneraser = unerase.uneraser,
                         },
                     );
@@ -922,7 +922,7 @@ test "origin_erase span + buf, then origin_unerase" {
                         NewOrigin,
                         void,
                         .{
-                            .buf = unerase.value.@"0",
+                            .buf = unerase.erased.@"0",
                             .uneraser = span_unerased.uneraser,
                         },
                     );

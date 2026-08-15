@@ -721,8 +721,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- for uneraser and eraser: directly take origin and part parameters
-
 - for typed variable patterns, put a linebreak if type is multiline
 
 - report fn declaration with missing result type
@@ -732,8 +730,6 @@ cargo install --offline --debug --path . sloe
 - when typing ?, don't insert []\n because this messes with function suggestions
 
 - detect missing variable name in typed pattern more rigerously
-
-- rename the parameter field to `.unerase` to `.erased`
 
 - when providing type construct and function construct completions, set the cursor to the first argument
 

@@ -109,9 +109,9 @@ pub struct Record·erased·origin·unerase·value_rid<Erased, Origin, Unerase, V
     pub value_rid: Value_rid,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·uneraser·value<Uneraser, Value> {
+pub struct Record·erased·uneraser<Erased, Uneraser> {
+    pub erased: Erased,
     pub uneraser: Uneraser,
-    pub value: Value,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·slot·uneraser<Slot, Uneraser> {
@@ -2704,16 +2704,16 @@ fn origin_unerase<LocalOrigin, Parts, Value, ValueErased>(
     }: Record·erased·origin·unerase·value_rid<
         Origin_erased<Parts, ValueErased>,
         Origin<LocalOrigin, Parts>,
-        Fn<Record·uneraser·value<Origin_uneraser<Origin<LocalOrigin, Parts>>, ValueErased>, Value>,
+        Fn<Record·erased·uneraser<ValueErased, Origin_uneraser<Origin<LocalOrigin, Parts>>>, Value>,
         Fn<Value, Record>,
     >,
 ) -> Value {
     // safe because origin_unerase is not public
     // and called only from sloe which follows stricter rules (linear types)
     unsafe {
-        erased.unerase(origin, |value, uneraser| {
-            unerase(Record·uneraser·value {
-                value: value,
+        erased.unerase(origin, |erased, uneraser| {
+            unerase(Record·erased·uneraser {
+                erased: erased,
                 uneraser: uneraser,
             })
         })

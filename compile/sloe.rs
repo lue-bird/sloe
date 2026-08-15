@@ -12686,7 +12686,7 @@ because the Buf's origin will have changed",
                         "unerase",
                         type_fn(
                             type_record([
-                                ("value", type_variable("value-erased")),
+                                ("erased", type_variable("value-erased")),
                                 (
                                     "uneraser",
                                     type_origin_uneraser(

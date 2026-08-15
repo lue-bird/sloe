@@ -1292,8 +1292,8 @@ pub fn origin_unerase(
         origin: Origin(@"%Origin", @"%Parts"),
         unerase: Fn(
             Record(struct {
+                erased: @"%ValueErased",
                 uneraser: Origin_uneraser(@"%Origin", @"%Parts"),
-                value: @"%ValueErased",
             }),
             @"%Value",
         ),
@@ -1302,7 +1302,7 @@ pub fn origin_unerase(
 ) error{OutOfMemory}!@"%Value" {
     return try @"%".unerase(@"%allocator", .{
         .uneraser = .{},
-        .value = @"%".erased.erased,
+        .erased = @"%".erased.erased,
     });
 }
 
