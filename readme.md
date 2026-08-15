@@ -721,7 +721,28 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `f32-pi`
+- simplify `Origin-part` by letting `Origin` itself take 2 parameters: origin and part. Then ask ask eraser, uneraser, span, slot, buf etc. to take that exact origin type as the first parameter. For uneraser and eraser it may even make more sense to directly take both parameters of Origin directly.
+  Then remove Origin-part type alias
+
+- for typed variable patterns, put a linebreak if type is multiline
+
+- report fn declaration with missing result type
+
+- report "missing query cases" only if queried expression exists
+
+- when typing ?, don't insert []\n because this messes with function suggestions
+
+- detect missing variable name in typed pattern more rigerously
+
+- rename the parameter field to `.unerase` to `.erased`
+
+- when providing type construct and function construct completions, set the cursor to the first argument
+
+- rename `Buf-slot-rid` to `Buf-unset-slot-rid`, same for spans and opt spans
+
+- (not sure) add `Buf-span-rid` which asks for `.span Span _origin .element-rid Fn _element, .`. This functionality is already possible but unnecessarily inconvenient
+
+- add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
 
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 

@@ -12717,12 +12717,12 @@ because the Buf's origin will have changed",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("slot", type_slot(type_variable("origin"))),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("slot", type_slot(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("slot", type_slot(type_erased)),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("slot", type_slot(type_origin_part(type_erased, type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12730,12 +12730,12 @@ because the Buf's origin will have changed",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("slot", type_slot(type_erased)),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("slot", type_slot(type_origin_part(type_erased, type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("slot", type_slot(type_variable("origin"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("slot", type_slot(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12874,25 +12874,24 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 name: "Opt-span-fold",
                 documentation: "Step through all slots, updating the given initial state for each taken slot in line",
                 type_parameters: vec![],
-                parameter_type:
-                    type_record([
-                        (
-                            "span",
-                            type_opt(type_span(type_variable("origin")))
-                        ),
-                        ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
-                        ("state", type_variable("state")),
-                        (
-                            "step",
-                            type_fn(
-                                type_record([
-                                    ("slot", type_slot(type_variable("origin"))),
-                                    ("state", type_variable("state")),
-                                ]),
-                                type_variable("state")
-                            )
+                parameter_type: type_record([
+                    (
+                        "span",
+                        type_opt(type_span(type_variable("origin")))
+                    ),
+                    ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
+                    ("state", type_variable("state")),
+                    (
+                        "step",
+                        type_fn(
+                            type_record([
+                                ("slot", type_slot(type_variable("origin"))),
+                                ("state", type_variable("state")),
+                            ]),
+                            type_variable("state")
                         )
-                    ]),
+                    )
+                ]),
                 result_type: type_variable("state"),
             },
             CoreFnInfo {
@@ -12900,12 +12899,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_span(type_variable("origin"))),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("span", type_span(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_span(type_erased)),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("span", type_span(type_origin_part(type_erased, type_variable("part")))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12913,12 +12912,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_opt(type_span(type_variable("origin")))),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("span", type_opt(type_span(type_origin_part(type_variable("origin"), type_variable("part"))))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_opt(type_span(type_erased))),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("span", type_opt(type_span(type_origin_part(type_erased, type_variable("part"))))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12926,12 +12925,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type from `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_span(type_erased)),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("span", type_span(type_origin_part(type_erased, type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_span(type_variable("origin"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("span", type_span(type_origin_part(type_variable("origin"), type_variable("part")))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -12939,12 +12938,12 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 documentation: "Replace its origin type from `erased`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("span", type_opt(type_span(type_erased))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("span", type_opt(type_span(type_origin_part(type_erased, type_variable("part"))))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
                 result_type: type_record([
-                    ("span", type_opt(type_span(type_variable("origin")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("span", type_opt(type_span(type_origin_part(type_variable("origin"), type_variable("part"))))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
             },
             CoreFnInfo {
@@ -13869,10 +13868,10 @@ If start and end spans are not already connected, both are appended at the end a
 To also erase origins of the elements themselves, use `Buf-origin-erase-with-elements`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("buf", type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element"))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
-                result_type: type_buf(type_erased, type_variable("element")),
+                result_type: type_buf(type_origin_part(type_erased, type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-origin-erase-with-elements",
@@ -13900,23 +13899,23 @@ For two, this may be seen as spooky action at a distance (albeit not that great 
 Changing an element that is referenced by an outside slot/span etc. may be unexpected.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
-                    ("eraser", type_origin_eraser(type_variable("origin"))),
+                    ("buf", type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element"))),
+                    ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                     (
                         "element-erase",
                         type_fn(
                             type_record([
                                 ("element", type_variable("element")),
-                                ("eraser", type_origin_eraser(type_variable("origin"))),
+                                ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                             ]),
                             type_record([
                                 ("element", type_variable("element-erased")),
-                                ("eraser", type_origin_eraser(type_variable("origin"))),
+                                ("eraser", type_origin_eraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                             ]),
                         )
                     )
                 ]),
-                result_type: type_buf(type_erased, type_variable("element-erased")),
+                result_type: type_buf(type_origin_part(type_erased, type_variable("part")), type_variable("element-erased")),
             },
             CoreFnInfo {
                 name: "Buf-origin-unerase",
@@ -13924,10 +13923,10 @@ Changing an element that is referenced by an outside slot/span etc. may be unexp
 To also unerase origins of the elements themselves, use `Buf-origin-unerase-with-elements`",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_erased, type_variable("element"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("buf", type_buf(type_origin_part(type_erased, type_variable("part")), type_variable("element"))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-origin-unerase-with-elements",
@@ -13960,22 +13959,22 @@ Changing an element that is referenced by an outside slot/span etc. may be unexp
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("buf", type_buf(type_erased, type_variable("element-erased"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                    ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                     (
                         "element-unerase",
                         type_fn(
                             type_record([
                                 ("element", type_variable("element-erased")),
-                                ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                                ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                             ]),
                             type_record([
                                 ("element", type_variable("element")),
-                                ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                                ("uneraser", type_origin_uneraser(type_origin_part(type_variable("origin"), type_variable("part")))),
                             ]),
                         )
                     )
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_origin_part(type_variable("origin"), type_variable("part")), type_variable("element")),
             },
             CoreFnInfo {
                 name: "Buf-to-unset",

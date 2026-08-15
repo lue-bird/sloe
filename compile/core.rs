@@ -887,7 +887,7 @@ impl<Element> Unset_slice<Element> {
     }
 }
 
-impl<LocalOrigin, Element> Buf<LocalOrigin, Element> {
+impl<Element, LocalOrigin> Buf<LocalOrigin, Element> {
     pub fn new(_: Origin<LocalOrigin>) -> Self {
         Buf::<LocalOrigin, Element> {
             elements: std::vec::Vec::new(),
@@ -1643,27 +1643,49 @@ impl<LocalOrigin, Element> Buf<LocalOrigin, Element> {
     pub fn into_unset_slice(self) -> Unset_slice<Element> {
         Unset_slice::from_buf_maybe_uninit(self.elements)
     }
-    pub fn origin_erase<Origin>(self, _: Origin_eraser<Origin>) -> Buf<Erased, Element> {
+}
+impl<Origin> Buf<Origin, Char> {
+    pub fn add_str(&mut self, new_str: Str) -> Span<Origin> {
+        let (new_start, new_after) = new_str.split_start();
+        self.add_one_then_iterator(new_start, new_after.chars())
+    }
+    pub fn opt_span_add_str(&mut self, span: Opt<Span<Origin>>, new_str: Str) -> Span<Origin> {
+        match span {
+            Opt::No(()) => self.add_str(new_str),
+            Opt::Yes(span) => self.span_add_iterator(span, new_str.str.chars()),
+        }
+    }
+}
+impl<Element, Origin, Part> Buf<Record·origin·part<Origin, Part>, Element> {
+    pub fn origin_erase(
+        self,
+        _: Origin_eraser<Record·origin·part<Origin, Part>>,
+    ) -> Buf<Record·origin·part<Erased, Part>, Element> {
         Buf {
             elements: self.elements,
             vacant: std::iter::Iterator::collect(std::iter::Iterator::map(
                 std::iter::IntoIterator::into_iter(self.vacant),
                 |vacant_span| Unset_span {
-                    start: Unset_slot::<Erased>::from_index(vacant_span.start.index),
+                    start: Unset_slot::<Record·origin·part<Erased, Part>>::from_index(
+                        vacant_span.start.index,
+                    ),
                     length: vacant_span.length,
                 },
             )),
         }
     }
     /// safe if no Unset_slot or Unset_span into the Buf with the same origin exists
-    pub unsafe fn origin_erase_with_elements_assume_no_unset<Origin, ElementErased>(
+    pub unsafe fn origin_erase_with_elements_assume_no_unset<ElementErased>(
         self,
-        eraser: Origin_eraser<Origin>,
+        eraser: Origin_eraser<Record·origin·part<Origin, Part>>,
         element_erase: impl std::ops::Fn(
             Element,
-            Origin_eraser<Origin>,
-        ) -> (ElementErased, Origin_eraser<Origin>),
-    ) -> Buf<Erased, ElementErased> {
+            Origin_eraser<Record·origin·part<Origin, Part>>,
+        ) -> (
+            ElementErased,
+            Origin_eraser<Record·origin·part<Origin, Part>>,
+        ),
+    ) -> Buf<Record·origin·part<Erased, Part>, ElementErased> {
         Buf {
             // the optimizer should be able to figure out that the atual memory does not change here
             // when the `element_erase` really justs erases origins.
@@ -1692,20 +1714,11 @@ impl<LocalOrigin, Element> Buf<LocalOrigin, Element> {
         .origin_erase(eraser)
     }
 }
-impl<Origin> Buf<Origin, Char> {
-    pub fn add_str(&mut self, new_str: Str) -> Span<Origin> {
-        let (new_start, new_after) = new_str.split_start();
-        self.add_one_then_iterator(new_start, new_after.chars())
-    }
-    pub fn opt_span_add_str(&mut self, span: Opt<Span<Origin>>, new_str: Str) -> Span<Origin> {
-        match span {
-            Opt::No(()) => self.add_str(new_str),
-            Opt::Yes(span) => self.span_add_iterator(span, new_str.str.chars()),
-        }
-    }
-}
-impl<Element> Buf<Erased, Element> {
-    pub fn origin_unerase<Origin>(self, _: Origin_uneraser<Origin>) -> Buf<Origin, Element> {
+impl<Element, Part> Buf<Record·origin·part<Erased, Part>, Element> {
+    pub fn origin_unerase<Origin>(
+        self,
+        _: Origin_uneraser<Record·origin·part<Origin, Part>>,
+    ) -> Buf<Record·origin·part<Origin, Part>, Element> {
         Buf {
             // the optimizer should be able to figure out that the atual memory does not change here
             // when the `element_unerase` really justs unerases origins.
@@ -1715,7 +1728,9 @@ impl<Element> Buf<Erased, Element> {
             vacant: std::iter::Iterator::collect(std::iter::Iterator::map(
                 std::iter::IntoIterator::into_iter(self.vacant),
                 |vacant_span| Unset_span {
-                    start: Unset_slot::<Origin>::from_index(vacant_span.start.index),
+                    start: Unset_slot::<Record·origin·part<Origin, Part>>::from_index(
+                        vacant_span.start.index,
+                    ),
                     length: vacant_span.length,
                 },
             )),
@@ -1723,12 +1738,15 @@ impl<Element> Buf<Erased, Element> {
     }
     pub fn origin_unerase_with_elements<Origin, ElementUnerased>(
         self,
-        uneraser: Origin_uneraser<Origin>,
+        uneraser: Origin_uneraser<Record·origin·part<Origin, Part>>,
         element_unerase: impl std::ops::Fn(
             Element,
-            Origin_uneraser<Origin>,
-        ) -> (ElementUnerased, Origin_uneraser<Origin>),
-    ) -> Buf<Origin, ElementUnerased> {
+            Origin_uneraser<Record·origin·part<Origin, Part>>,
+        ) -> (
+            ElementUnerased,
+            Origin_uneraser<Record·origin·part<Origin, Part>>,
+        ),
+    ) -> Buf<Record·origin·part<Origin, Part>, ElementUnerased> {
         Buf {
             // the optimizer should be able to figure out that the atual memory does not change here
             // when the `element_unerase` really justs unerases origins.
@@ -1777,17 +1795,23 @@ impl<Origin, Occupancy> Slot_with_occupancy<Origin, Occupancy> {
         }
     }
 }
-impl<Origin> Slot<Origin> {
-    pub fn origin_erase(self, _: &Origin_eraser<Origin>) -> Slot<Erased> {
+impl<Origin, Part> Slot<Record·origin·part<Origin, Part>> {
+    pub fn origin_erase(
+        self,
+        _: &Origin_eraser<Record·origin·part<Origin, Part>>,
+    ) -> Slot<Record·origin·part<Erased, Part>> {
         Slot {
-            origin: std::marker::PhantomData::<Erased>,
+            origin: std::marker::PhantomData::<Record·origin·part<Erased, Part>>,
             occupancy: self.occupancy,
             index: self.index,
         }
     }
 }
-impl Slot<Erased> {
-    pub fn origin_unerase<Origin>(self, uneraser: &Origin_uneraser<Origin>) -> Slot<Origin> {
+impl<Part> Slot<Record·origin·part<Erased, Part>> {
+    pub fn origin_unerase<Origin>(
+        self,
+        uneraser: &Origin_uneraser<Record·origin·part<Origin, Part>>,
+    ) -> Slot<Record·origin·part<Origin, Part>> {
         Slot {
             origin: uneraser.0,
             occupancy: self.occupancy,
@@ -1904,16 +1928,22 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
         }
     }
 }
-impl<Origin> Span<Origin> {
-    pub fn origin_erase(self, eraser: &Origin_eraser<Origin>) -> Span<Erased> {
+impl<Origin, Part> Span<Record·origin·part<Origin, Part>> {
+    pub fn origin_erase(
+        self,
+        eraser: &Origin_eraser<Record·origin·part<Origin, Part>>,
+    ) -> Span<Record·origin·part<Erased, Part>> {
         Span {
             start: self.start.origin_erase(eraser),
             length: self.length,
         }
     }
 }
-impl Span<Erased> {
-    pub fn origin_unerase<Origin>(self, uneraser: &Origin_uneraser<Origin>) -> Span<Origin> {
+impl<Part> Span<Record·origin·part<Erased, Part>> {
+    pub fn origin_unerase<Origin>(
+        self,
+        uneraser: &Origin_uneraser<Record·origin·part<Origin, Part>>,
+    ) -> Span<Record·origin·part<Origin, Part>> {
         Span {
             start: self.start.origin_unerase(uneraser),
             length: self.length,
@@ -1941,16 +1971,22 @@ impl<Origin, Occupancy> Opt<&Span_with_occupancy<Origin, Occupancy>> {
         }
     }
 }
-impl<Origin> Opt<Span<Origin>> {
-    pub fn origin_erase(self, eraser: &Origin_eraser<Origin>) -> Opt<Span<Erased>> {
+impl<Origin, Part> Opt<Span<Record·origin·part<Origin, Part>>> {
+    pub fn origin_erase(
+        self,
+        eraser: &Origin_eraser<Record·origin·part<Origin, Part>>,
+    ) -> Opt<Span<Record·origin·part<Erased, Part>>> {
         match self {
             Opt::No(()) => Opt::No(()),
             Opt::Yes(span) => Opt::Yes(span.origin_erase(eraser)),
         }
     }
 }
-impl Opt<Span<Erased>> {
-    pub fn origin_unerase<Origin>(self, uneraser: &Origin_uneraser<Origin>) -> Opt<Span<Origin>> {
+impl<Part> Opt<Span<Record·origin·part<Erased, Part>>> {
+    pub fn origin_unerase<Origin>(
+        self,
+        uneraser: &Origin_uneraser<Record·origin·part<Origin, Part>>,
+    ) -> Opt<Span<Record·origin·part<Origin, Part>>> {
         match self {
             Opt::No(()) => Opt::No(()),
             Opt::Yes(span) => Opt::Yes(span.origin_unerase(uneraser)),
@@ -2352,21 +2388,30 @@ pub fn slot_index<Origin>(slot: Slot<Origin>) -> Record·index·slot<u32, Slot<O
         slot: slot,
     }
 }
-pub fn slot_origin_erase<Origin>(
-    Record·eraser·slot { slot, eraser }: Record·eraser·slot<Origin_eraser<Origin>, Slot<Origin>>,
-) -> Record·eraser·slot<Origin_eraser<Origin>, Slot<Erased>> {
+pub fn slot_origin_erase<Origin, Part>(
+    Record·eraser·slot { slot, eraser }: Record·eraser·slot<
+        Origin_eraser<Record·origin·part<Origin, Part>>,
+        Slot<Record·origin·part<Origin, Part>>,
+    >,
+) -> Record·eraser·slot<
+    Origin_eraser<Record·origin·part<Origin, Part>>,
+    Slot<Record·origin·part<Erased, Part>>,
+> {
     let slot = slot.origin_erase(&eraser);
     Record·eraser·slot {
         slot: slot,
         eraser: eraser,
     }
 }
-pub fn slot_origin_unerase<Origin>(
+pub fn slot_origin_unerase<Origin, Part>(
     Record·slot·uneraser { slot, uneraser }: Record·slot·uneraser<
-        Slot<Erased>,
-        Origin_uneraser<Origin>,
+        Slot<Record·origin·part<Erased, Part>>,
+        Origin_uneraser<Record·origin·part<Origin, Part>>,
     >,
-) -> Record·slot·uneraser<Slot<Origin>, Origin_uneraser<Origin>> {
+) -> Record·slot·uneraser<
+    Slot<Record·origin·part<Origin, Part>>,
+    Origin_uneraser<Record·origin·part<Origin, Part>>,
+> {
     let slot = slot.origin_unerase(&uneraser);
     Record·slot·uneraser {
         slot: slot,
@@ -2516,45 +2561,60 @@ pub fn span_fold_while<Exit, GoOn, Origin>(
         }
     }
 }
-pub fn span_origin_erase<Origin>(
-    Record·eraser·span { span, eraser }: Record·eraser·span<Origin_eraser<Origin>, Span<Origin>>,
-) -> Record·eraser·span<Origin_eraser<Origin>, Span<Erased>> {
+pub fn span_origin_erase<Origin, Part>(
+    Record·eraser·span { span, eraser }: Record·eraser·span<
+        Origin_eraser<Record·origin·part<Origin, Part>>,
+        Span<Record·origin·part<Origin, Part>>,
+    >,
+) -> Record·eraser·span<
+    Origin_eraser<Record·origin·part<Origin, Part>>,
+    Span<Record·origin·part<Erased, Part>>,
+> {
     let span = span.origin_erase(&eraser);
     Record·eraser·span {
         span: span,
         eraser: eraser,
     }
 }
-pub fn span_origin_unerase<Origin>(
+pub fn span_origin_unerase<Origin, Part>(
     Record·span·uneraser { span, uneraser }: Record·span·uneraser<
-        Span<Erased>,
-        Origin_uneraser<Origin>,
+        Span<Record·origin·part<Erased, Part>>,
+        Origin_uneraser<Record·origin·part<Origin, Part>>,
     >,
-) -> Record·span·uneraser<Span<Origin>, Origin_uneraser<Origin>> {
+) -> Record·span·uneraser<
+    Span<Record·origin·part<Origin, Part>>,
+    Origin_uneraser<Record·origin·part<Origin, Part>>,
+> {
     let span = span.origin_unerase(&uneraser);
     Record·span·uneraser {
         span: span,
         uneraser: uneraser,
     }
 }
-pub fn opt_span_origin_erase<Origin>(
+pub fn opt_span_origin_erase<Origin, Part>(
     Record·eraser·span { span, eraser }: Record·eraser·span<
-        Origin_eraser<Origin>,
-        Opt<Span<Origin>>,
+        Origin_eraser<Record·origin·part<Origin, Part>>,
+        Opt<Span<Record·origin·part<Origin, Part>>>,
     >,
-) -> Record·eraser·span<Origin_eraser<Origin>, Opt<Span<Erased>>> {
+) -> Record·eraser·span<
+    Origin_eraser<Record·origin·part<Origin, Part>>,
+    Opt<Span<Record·origin·part<Erased, Part>>>,
+> {
     let span = span.origin_erase(&eraser);
     Record·eraser·span {
         span: span,
         eraser: eraser,
     }
 }
-pub fn opt_span_origin_unerase<Origin>(
+pub fn opt_span_origin_unerase<Origin, Part>(
     Record·span·uneraser { span, uneraser }: Record·span·uneraser<
-        Opt<Span<Erased>>,
-        Origin_uneraser<Origin>,
+        Opt<Span<Record·origin·part<Erased, Part>>>,
+        Origin_uneraser<Record·origin·part<Origin, Part>>,
     >,
-) -> Record·span·uneraser<Opt<Span<Origin>>, Origin_uneraser<Origin>> {
+) -> Record·span·uneraser<
+    Opt<Span<Record·origin·part<Origin, Part>>>,
+    Origin_uneraser<Record·origin·part<Origin, Part>>,
+> {
     let span = span.origin_unerase(&uneraser);
     Record·span·uneraser {
         span: span,
@@ -3370,28 +3430,28 @@ pub fn buf_reuse<LocalOrigin, Element>(
 ) -> Buf<LocalOrigin, Element> {
     Buf::<LocalOrigin, Element>::reuse(origin, slice)
 }
-pub fn buf_origin_erase<Origin, Element>(
+pub fn buf_origin_erase<Element, Origin, Part>(
     Record·buf·eraser { buf, eraser }: Record·buf·eraser<
-        Buf<Origin, Element>,
-        Origin_eraser<Origin>,
+        Buf<Record·origin·part<Origin, Part>, Element>,
+        Origin_eraser<Record·origin·part<Origin, Part>>,
     >,
-) -> Buf<Erased, Element> {
+) -> Buf<Record·origin·part<Erased, Part>, Element> {
     buf.origin_erase(eraser)
 }
-fn buf_origin_erase_with_elements<Origin, Element, ElementErased>(
+fn buf_origin_erase_with_elements<Element, ElementErased, Origin, Part>(
     Record·buf·element_erase·eraser {
         buf,
         element_erase,
         eraser,
     }: Record·buf·element_erase·eraser<
-        Buf<Origin, Element>,
+        Buf<Record·origin·part<Origin, Part>, Element>,
         Fn<
-            Record·element·eraser<Element, Origin_eraser<Origin>>,
-            Record·element·eraser<ElementErased, Origin_eraser<Origin>>,
+            Record·element·eraser<Element, Origin_eraser<Record·origin·part<Origin, Part>>>,
+            Record·element·eraser<ElementErased, Origin_eraser<Record·origin·part<Origin, Part>>>,
         >,
-        Origin_eraser<Origin>,
+        Origin_eraser<Record·origin·part<Origin, Part>>,
     >,
-) -> Buf<Erased, ElementErased> {
+) -> Buf<Record·origin·part<Erased, Part>, ElementErased> {
     // safe because origin_unerase is not public
     // and called only from sloe which follows stricter rules (linear types)
     unsafe {
@@ -3407,28 +3467,31 @@ fn buf_origin_erase_with_elements<Origin, Element, ElementErased>(
         })
     }
 }
-pub fn buf_origin_unerase<Origin, Element>(
+pub fn buf_origin_unerase<Element, Origin, Part>(
     Record·buf·uneraser { buf, uneraser }: Record·buf·uneraser<
-        Buf<Erased, Element>,
-        Origin_uneraser<Origin>,
+        Buf<Record·origin·part<Erased, Part>, Element>,
+        Origin_uneraser<Record·origin·part<Origin, Part>>,
     >,
-) -> Buf<Origin, Element> {
+) -> Buf<Record·origin·part<Origin, Part>, Element> {
     buf.origin_unerase(uneraser)
 }
-pub fn buf_origin_unerase_with_elements<Origin, Element, ElementErased>(
+pub fn buf_origin_unerase_with_elements<Element, ElementErased, Origin, Part>(
     Record·buf·element_unerase·uneraser {
         buf,
         element_unerase,
         uneraser,
     }: Record·buf·element_unerase·uneraser<
-        Buf<Erased, ElementErased>,
+        Buf<Record·origin·part<Erased, Part>, ElementErased>,
         Fn<
-            Record·element·uneraser<ElementErased, Origin_uneraser<Origin>>,
-            Record·element·uneraser<Element, Origin_uneraser<Origin>>,
+            Record·element·uneraser<
+                ElementErased,
+                Origin_uneraser<Record·origin·part<Origin, Part>>,
+            >,
+            Record·element·uneraser<Element, Origin_uneraser<Record·origin·part<Origin, Part>>>,
         >,
-        Origin_uneraser<Origin>,
+        Origin_uneraser<Record·origin·part<Origin, Part>>,
     >,
-) -> Buf<Origin, Element> {
+) -> Buf<Record·origin·part<Origin, Part>, Element> {
     buf.origin_unerase_with_elements(uneraser, |element, uneraser| {
         let Record·element·uneraser {
             element: element_erased,
