@@ -20,22 +20,19 @@ impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
         let state = self.sloe_state.take().expect("state is initialized");
         let updated_state = sloe::update(sloe::Record·event·state { event, state });
         self.sloe_state.set(Some(updated_state));
-        // uncomment to debug
-        // web_sys::console::log_1(
-        //     &web_sys::js_sys::JsString::from(format!(
-        //         "sloe event {:?} → updated state {:?}",
-        //         new_sloe_event, self.sloe_state
-        //     )),
-        // );
         sauron::Cmd::none()
     }
     fn view(&self) -> sauron::prelude::Node<Self::MSG> {
-        sloe::origin_new!(view_origin, View, Record·html, Record·modifier, Record·char);
+        sloe::origin_new!(html, Html, Record·html);
+        sloe::origin_new!(modifier, Modifier, Record·modifier);
+        sloe::origin_new!(char, Char, Record·char);
+        let view_origin = char.add(modifier).add(html);
+        type View = sloe::Part_rest<Html, sloe::Part_rest<Modifier, Char>>;
         let (htmls_origin, view_origin) = view_origin.split_part();
         let (modifiers_origin, chars_origin) = view_origin.split_part();
         let htmls = sloe::Buf::new(htmls_origin);
         let modifiers: sloe::Buf<
-            sloe::Origin_part<View, sloe::Record·modifier<()>>,
+            sloe::Origin<View, sloe::Record·modifier<()>>,
             sloe::Modifier<sloe::Event, View>,
         > = sloe::Buf::new(modifiers_origin);
         let chars = sloe::Buf::new(chars_origin);
@@ -59,12 +56,12 @@ impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
 
 fn sloe_dom_node_to_sauron<View: 'static>(
     sloe_dom_node: &sloe::Html<View>,
-    htmls: &sloe::Buf<sloe::Origin_part<View, sloe::Record·html<()>>, sloe::Html<View>>,
+    htmls: &sloe::Buf<sloe::Origin<View, sloe::Record·html<()>>, sloe::Html<View>>,
     modifiers: &sloe::Buf<
-        sloe::Origin_part<View, sloe::Record·modifier<()>>,
+        sloe::Origin<View, sloe::Record·modifier<()>>,
         sloe::Modifier<sloe::Event, View>,
     >,
-    chars: &sloe::Buf<sloe::Origin_part<View, sloe::Record·char<()>>, char>,
+    chars: &sloe::Buf<sloe::Origin<View, sloe::Record·char<()>>, char>,
 ) -> sauron::Node<sloe::Event> {
     match sloe_dom_node {
         sloe::Html::Text_static(text) => sauron::Node::Leaf(sauron::vdom::Leaf::Text(
@@ -93,7 +90,7 @@ fn sloe_dom_node_to_sauron<View: 'static>(
 }
 fn sloe_dom_modifier_to_sauron<View: 'static>(
     sloe_dom_modifier: &sloe::Modifier<sloe::Event, View>,
-    chars: &sloe::Buf<sloe::Origin_part<View, sloe::Record·char<()>>, char>,
+    chars: &sloe::Buf<sloe::Origin<View, sloe::Record·char<()>>, char>,
 ) -> sauron::Attribute<sloe::Event> {
     match sloe_dom_modifier {
         sloe::Modifier::Attribute_static(attribute) => sauron::Attribute {
@@ -145,8 +142,8 @@ fn sloe_dom_modifier_to_sauron<View: 'static>(
         },
         &sloe::Modifier::On_mouse_move(listen) => sauron::on_mousemove(move |event| {
             listen(sloe::Record·x·y {
-                x: event.x().abs() as u32,
-                y: event.y().abs() as u32,
+                x: event.x().unsigned_abs(),
+                y: event.y().unsigned_abs(),
             })
         }),
     }

@@ -10,12 +10,14 @@ ty event
     |counter-clicked .
     |mouse-moved .x u32 .y u32
 
-fn Initial-state mouse-trail-origin Origin _mouse-trail-origin : State _mouse-trail-origin =
+fn Initial-state
+    mouse-trail-origin Origin _mouse-trail-origin, _mouse-trail-part
+    : State Origin _mouse-trail-origin, _mouse-trail-part =
     .count 0 u32
     .mouse-x 0 u32
     .mouse-y 0 u32
     .mouse-trail Buf-empty{.x u32 .y u32} mouse-trail-origin
-    .mouse-trail-span |{Opt Span _mouse-trail-origin}no .
+    .mouse-trail-span |{Opt Span Origin _mouse-trail-origin, _mouse-trail-part}no .
 
 fn Update
     .state state State _mouse-trail-origin
@@ -47,20 +49,20 @@ fn Update
 
 fn View
     .state state State _mouse-trail-origin
-    .htmls htmls Buf (Origin-part _view, .html .), Html _view
+    .htmls htmls Buf (Origin _view, .html .), Html _view
     .modifiers
-        modifiers Buf (Origin-part _view, .modifier .), Modifier event, _view
-    .chars chars Buf (Origin-part _view, .char .), char
+        modifiers Buf (Origin _view, .modifier .), Modifier event, _view
+    .chars chars Buf (Origin _view, .char .), char
     :
     .state State _mouse-trail-origin
     .html Html _view
-    .htmls Buf (Origin-part _view, .html .), Html _view
+    .htmls Buf (Origin _view, .html .), Html _view
     .modifiers
-        Buf (Origin-part _view, .modifier .), Modifier event, _view
-    .chars Buf (Origin-part _view, .char .), char
+        Buf (Origin _view, .modifier .), Modifier event, _view
+    .chars Buf (Origin _view, .char .), char
     =
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
-    ? .buf chars .span |{Opt Span Origin-part _view, .char .}no . [text]
+    ? .buf chars .span |{Opt Span Origin _view, .char .}no . [text]
     ? Buf-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
     ? U32-dup mouse-x [.a mouse-x .b mouse-x-use]
     ? Buf-char-span-add-u32 .. text .new mouse-x-use [text]
@@ -99,17 +101,17 @@ ty Html _view
     # for namespace, use xmlns attribute
     |element
         .tag str
-        .modifiers (Opt Span Origin-part _view, .modifier .)
-        .subs (Opt Span Origin-part _view, .html .)
-    |text-dynamic Opt Span Origin-part _view, .char .
+        .modifiers (Opt Span Origin _view, .modifier .)
+        .subs (Opt Span Origin _view, .html .)
+    |text-dynamic Opt Span Origin _view, .char .
     |text-static str
 
 ty Modifier _event, _view
     |style-static .key str .value str
-    |style-dynamic .key str .value (Opt Span Origin-part _view, .char .)
+    |style-dynamic .key str .value (Opt Span Origin _view, .char .)
     |attribute-static .key str .value str
-    |attribute-dynamic .key str .value (Opt Span Origin-part _view, .char .)
-    |property .key str .value (Modifier-property-value Origin-part _view, .char .)
+    |attribute-dynamic .key str .value (Opt Span Origin _view, .char .)
+    |property .key str .value (Modifier-property-value Origin _view, .char .)
     |on-mouse-move Fn .x u32 .y u32, _event
 
 ty Modifier-property-value _chars
