@@ -715,8 +715,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- for typed variable patterns, put a linebreak if type is multiline
-
 - report fn declaration with missing result type
 
 - report "missing query cases" only if queried expression exists

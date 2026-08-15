@@ -12527,8 +12527,9 @@ please limit your creativity for the rest of us mortals."#,
                 name: "Origin-add",
                 documentation: "Combine two `Origin`s, including the part names.
 Combining origins, then taking the combined Origin apart again
-gives an interesting property: All resulting Origins Have the same first parameter to `.origin`
-and a distinct name in `.part`. This means you only have to pass one origin type to
+gives an interesting property: All resulting Origins Have the same first argument
+and a distinct name as the second argument.
+This means you only have to pass one origin type to
 type aliases instead of one parameter per origin:
 ```sloe
 # introduce origins
@@ -12543,9 +12544,8 @@ type aliases instead of one parameter per origin:
 #   , (Part-rest .htmls ., Part-rest .modifiers ., .chars .)
 
 # deconstruct them in order
-? Origin-part view-origin [.origin view-origin .part htmls]
-? Origin-part view-origin [.origin view-origin .part modifiers]
-? Origin-part view-origin [.origin view-origin .part chars]
+? Origin-part view-origin [.rest view-origin .part htmls]
+? Origin-part view-origin [.rest chars .part modifiers]
 ```
 used like this
 ```sloe
@@ -14318,12 +14318,12 @@ If none of this sounded useful to you, you don't need this (yet).
     .value (.buf buf-inner .slot slot-inner)
     .erase
     [
-        .value (
-            value
-            .buf Buf (Origin inner, .inner .), u32
-            .slot Slot (Origin inner, .inner .)
-            )
-        .eraser eraser Origin-eraser Origin inner0, .
+    .value (
+        value
+        .buf Buf (Origin inner, .inner .), u32
+        .slot Slot (Origin inner, .inner .)
+        )
+    .eraser eraser Origin-eraser inner, inner .
     ]
     ? Slot-origin-erase .slot slot-inner .eraser eraser
     [.slot slot-erased .eraser eraser]
@@ -14351,7 +14351,7 @@ Origin-unerase
     .unerase
     [
     .value (value .buf Buf (Origin erased, .inner .), u32 .slot Slot (Origin erased, .inner .))
-    .uneraser uneraser Origin-uneraser Origin inner, (.inner .)
+    .uneraser uneraser Origin-uneraser inner, (.inner .)
     ]
     ? Slot-origin-erase .slot slot-erased .uneraser uneraser
     [.slot slot-inner0 .uneraser uneraser]
@@ -15864,14 +15864,22 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
         SyntaxPattern::Variable { name, type_ } => {
             formatted.push_str(&name.value);
             if let Some(type_) = type_ {
-                formatted.push(' ');
+                space_or_linebreak_indented_into(
+                    formatted,
+                    range_line_span(pattern_range(pattern, patterns, types)),
+                    indent,
+                );
                 syntax_type_unparenthesized_format(formatted, indent, types, type_);
             }
         }
         SyntaxPattern::Variant { name, value } => {
             optional_variant_name_format(formatted, name.value.as_ref());
             if let Some(value) = value {
-                formatted.push(' ');
+                space_or_linebreak_indented_into(
+                    formatted,
+                    range_line_span(pattern_range(pattern, patterns, types)),
+                    indent,
+                );
                 syntax_pattern_unparenthesized_format(
                     formatted,
                     indent,

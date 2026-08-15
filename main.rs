@@ -1047,10 +1047,10 @@ fn respond_to_hover<Expressions, Patterns, Types>(
                 value: format!(
                     "Origin `^{name}` whose variable is of type
 ```sloe
-Origin .origin {name}, .part .{name} .
+Origin {name}, .{name} .
 ```
-The type after `.origin` is a unique, local type with the same name as the variable.
-The type after `.part` is an empty record with a field of the same name.
+The first argument is a unique, local type with the same name as the variable.
+The second argument is an empty record with a field of the same name.
 It's used for APIs like `Origin-add`/`Origin-part` and `Origin-erase`"
                 ),
             }),
