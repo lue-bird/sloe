@@ -421,7 +421,7 @@ test "buf unset slot" {
     try std.testing.expectEqual(321, buf.element(slot0_new).*);
     try std.testing.expectEqual(0, slot0_new.index);
     const element1 = buf.unset(slot1);
-    try buf.slotRid(allocator, element1.slot);
+    try buf.unsetSlotRid(allocator, element1.slot);
     buf.rid(allocator);
 }
 test "buf add to span" {

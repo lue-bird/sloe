@@ -601,7 +601,7 @@ export function buf_empty(_) {
 /** @template $Element, $Origin @param {Buf<$Origin, $Element>} _ @returns {void} */
 export function buf_rid(_) {}
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, slot: Unset_slot<$Origin>, }} rid @returns {Buf<$Origin, $Element>} */
-export function buf_slot_rid(rid) {
+export function buf_unset_slot_rid(rid) {
   if (rid.slot + 1 === rid.buf.length) {
     rid.buf.pop();
   } else {
@@ -610,7 +610,7 @@ export function buf_slot_rid(rid) {
   return rid.buf;
 }
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, span: Unset_span<$Origin>, }} rid @returns {Buf<$Origin, $Element>} */
-export function buf_span_rid(rid) {
+export function buf_unset_span_rid(rid) {
   if (rid.span.start + rid.span.length === rid.buf.length) {
     rid.buf.length -= rid.span.length;
   } else {
@@ -621,7 +621,7 @@ export function buf_span_rid(rid) {
   return rid.buf;
 }
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, span: Opt<Unset_span<$Origin>>, }} rid @returns {Buf<$Origin, $Element>} */
-export function buf_opt_span_rid(rid) {
+export function buf_opt_unset_span_rid(rid) {
   if ("yes" in rid.span) {
     for (let i = rid.span.yes.start; i < rid.span.yes.start + rid.span.yes.length; i++) {
       rid.buf[i] = null;

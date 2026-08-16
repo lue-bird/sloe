@@ -429,7 +429,7 @@ pub struct Buf<LocalOrigin, Element> {
     //
     //   However, just overwriting the Drop implementation is far from enough
     //   as many Buf functions somewhat willy-nilly drop elements if you're not careful.
-    //   An example is `truncate` which is used in `span_rid`.
+    //   An example is `truncate` which is used in `unset_span_rid`.
     elements: std::vec::Vec<std::mem::MaybeUninit<Element>>,
     // Performance assumption:
     // Neighboring elements are way more likely to be vacated together.
@@ -961,7 +961,7 @@ impl<Element, LocalOrigin> Buf<LocalOrigin, Element> {
     pub fn remove(&mut self, slot: Slot<LocalOrigin>) -> Element {
         // vacated opt_span elements are never accessed, not even while vacating them
         let element = self.unset(slot);
-        self.slot_rid(element.slot);
+        self.unset_slot_rid(element.slot);
         element.element
     }
     pub fn unset(
@@ -982,16 +982,16 @@ impl<Element, LocalOrigin> Buf<LocalOrigin, Element> {
         unsafe { self.elements.get_unchecked_mut(slot.index as usize) }.write(element);
         Slot::<LocalOrigin>::from_index(slot.index)
     }
-    pub fn slot_rid(&mut self, slot_to_vacate: Unset_slot<LocalOrigin>) {
+    pub fn unset_slot_rid(&mut self, slot_to_vacate: Unset_slot<LocalOrigin>) {
         // can maybe be optimized
-        self.span_rid(slot_to_vacate.to_span());
+        self.unset_span_rid(slot_to_vacate.to_span());
     }
-    pub fn opt_span_rid(&mut self, span_to_vacate: Opt<Unset_span<LocalOrigin>>) {
+    pub fn opt_unset_span_rid(&mut self, span_to_vacate: Opt<Unset_span<LocalOrigin>>) {
         if let Opt::Yes(span_to_vacate) = span_to_vacate {
-            self.span_rid(span_to_vacate);
+            self.unset_span_rid(span_to_vacate);
         }
     }
-    pub fn span_rid(&mut self, span_to_vacate: Unset_span<LocalOrigin>) {
+    pub fn unset_span_rid(&mut self, span_to_vacate: Unset_span<LocalOrigin>) {
         let maybe_vacant_span_index_connecting_earlier: std::option::Option<usize> =
             std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
                 std::cmp::PartialEq::<usize>::eq(
@@ -1451,7 +1451,7 @@ impl<Element, LocalOrigin> Buf<LocalOrigin, Element> {
             unsafe { before_move_destination.get_unchecked_mut(span.to_range()) }
                 .swap_with_slice(from_move_destination);
         }
-        self.span_rid(Unset_span {
+        self.unset_span_rid(Unset_span {
             start: Unset_slot::<LocalOrigin>::from_index(span.start.index),
             length: span.length,
         });
@@ -2800,31 +2800,31 @@ pub fn buf_set<Element, Origin>(
         slot: set_slot,
     }
 }
-pub fn buf_slot_rid<Element, Origin>(
+pub fn buf_unset_slot_rid<Element, Origin>(
     Record·buf·slot {
         mut buf,
         slot: slot_to_vacate,
     }: Record·buf·slot<Buf<Origin, Element>, Unset_slot<Origin>>,
 ) -> Buf<Origin, Element> {
-    buf.slot_rid(slot_to_vacate);
+    buf.unset_slot_rid(slot_to_vacate);
     buf
 }
-pub fn buf_span_rid<Element, Origin>(
+pub fn buf_unset_span_rid<Element, Origin>(
     Record·buf·span {
         span: span_to_vacate,
         mut buf,
     }: Record·buf·span<Buf<Origin, Element>, Unset_span<Origin>>,
 ) -> Buf<Origin, Element> {
-    buf.span_rid(span_to_vacate);
+    buf.unset_span_rid(span_to_vacate);
     buf
 }
-pub fn buf_opt_span_rid<Element, Origin>(
+pub fn buf_opt_unset_span_rid<Element, Origin>(
     Record·buf·span {
         span: span_to_vacate,
         mut buf,
     }: Record·buf·span<Buf<Origin, Element>, Opt<Unset_span<Origin>>>,
 ) -> Buf<Origin, Element> {
-    buf.opt_span_rid(span_to_vacate);
+    buf.opt_unset_span_rid(span_to_vacate);
     buf
 }
 pub fn buf_rid<Element, Origin>(_: Buf<Origin, Element>) -> Record {}

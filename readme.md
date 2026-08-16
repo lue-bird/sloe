@@ -364,7 +364,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       # in persistent memory or simply avoid it.
       # 
       # The usual way to give back slots and spans is to use operations like
-      # `Buf-remove`, `Buf-slot-rid`, `Buf-span-rid` etc.
+      # `Buf-remove`, `Buf-unset-slot-rid`, `Buf-unset-span-rid` etc.
       # However, this internally marks these spaces as vacant,
       # and doing this work may hinder the optimizer in figurinng out
       # that you for example want to scrap the whole Buf (which should be a no-op).
@@ -754,9 +754,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- rename `Buf-slot-rid` to `Buf-unset-slot-rid`, same for spans and opt spans
-
-- (not sure) add `Buf-span-rid` which asks for `.span Span _origin .element-rid Fn _element, .`. This functionality is already possible but unnecessarily inconvenient
+- add `Buf-span-rid` which asks for `.span Span _origin .element-rid Fn _element, .`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
 

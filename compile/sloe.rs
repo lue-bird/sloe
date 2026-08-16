@@ -13163,7 +13163,7 @@ fn Buf-recycle-empty
                 documentation: "Reserves spare capacity for at least `.length` more elements to be added.
 This can prevent frequent re-allocation of the underlying array.
 If you can guesstimate a lower bound of how many elements are ultimately added, this is always worth it!
-Equivalent to `Buf-add-unset-length` followed by `Buf-opt-span-rid`",
+Equivalent to `Buf-add-unset-length` followed by `Buf-opt-unset-span-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13258,7 +13258,7 @@ Assign an unset-slot with `Buf-set` or vacate it with `Buf-vacate`",
             CoreFnInfo {
                 name: "Buf-add-unset-length-positive",
                 documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `Buf-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.",
+Combined with `Buf-unset-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13278,7 +13278,7 @@ Combined with `Buf-span-rid` this has the same effect as `Buf-pre-allocate-at-le
             CoreFnInfo {
                 name: "Buf-add-unset-length",
                 documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `Buf-opt-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.
+Combined with `Buf-opt-unset-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.
 To get non-empty spans use `Buf-add-length-positive`",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13319,7 +13319,7 @@ Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
             CoreFnInfo {
                 name: "Buf-remove",
                 documentation: "Vacate and retrieve an element from the `Buf` at a given slot (the inverse of `Buf-insert`/`Buf-add`).
-Short for `Buf-unset` followed by `Buf-slot-rid`",
+Short for `Buf-unset` followed by `Buf-unset-slot-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13395,7 +13395,7 @@ To remove the element entirely, use `Buf-take`",
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-slot-rid",
+                name: "Buf-unset-slot-rid",
                 documentation: "Return an `Unset-slot` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13408,7 +13408,7 @@ To remove the element entirely, use `Buf-take`",
                 result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Buf-span-rid",
+                name: "Buf-unset-span-rid",
                 documentation: "Return an `Unset-span` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13421,7 +13421,7 @@ To remove the element entirely, use `Buf-take`",
                 result_type: type_buf(type_variable("origin"), type_variable("element")),
             },
             CoreFnInfo {
-                name: "Buf-opt-span-rid",
+                name: "Buf-opt-unset-span-rid",
                 documentation: "Return an `Opt Unset-span` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -14630,8 +14630,12 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
     });
 pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
     match fn_name {
-        "Unset-slice-rid" | "Buf-rid" | "Buf-to-unset" | "Buf-opt-span-rid" | "Buf-span-rid"
-        | "Buf-slot-rid" => true,
+        "Unset-slice-rid"
+        | "Buf-rid"
+        | "Buf-to-unset"
+        | "Buf-opt-unset-span-rid"
+        | "Buf-unset-span-rid"
+        | "Buf-unset-slot-rid" => true,
         _ => is_core_fn_that_can_run_out_of_memory_in_zig(fn_name),
     }
 }
