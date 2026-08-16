@@ -85,12 +85,11 @@ pub const P32 = struct {
     pub fn predecessor(@"%p": @This()) u32 {
         return @"%p".positive - 1;
     }
-    // when dealing with memory, use `addOrOutOfMem` instead
+    pub fn addAssumeNoOverflow(@"%p": @This(), @"%increase": u32) P32 {
+        return .{ .positive = @"%p".positive + @"%increase" };
+    }
     pub fn addClamp(@"%p": @This(), @"%increase": u32) P32 {
         return .{ .positive = @"%p".positive +| @"%increase" };
-    }
-    pub fn addOrOutOfMem(@"%p": @This(), @"%increase": u32) error{OutOfMemory}!P32 {
-        return .{ .positive = try u32AddOrOutOfMem(@"%p".positive, @"%increase") };
     }
     pub fn mulClamp(@"%p": @This(), @"%increase": P32) P32 {
         return .{ .positive = @"%p".positive *| @"%increase".positive };
@@ -117,6 +116,7 @@ pub const Str = struct {
     pub fn fromComptime(comptime @"%bytes": []const u8) Str {
         return comptime str: {
             const @"%utf8_view" = std.unicode.Utf8View.initComptime(@"%bytes");
+            if (std.math.cast(u32, @"%bytes".len) == null) @compileError(std.fmt.comptimePrint("Str byte length must fit in a u32, is {}", .{@"%bytes".len}));
             break :str if (Str.fromUtf8View(@"%utf8_view")) |@"%str"| @"%str" else @compileError("Str must contain at least one codepoint");
         };
     }
@@ -126,14 +126,14 @@ pub const Str = struct {
         else
             null;
     }
-    pub fn utf8_byte_count_p32(@"%str": Str) error{OutOfMemory}!P32 {
-        return P32.fromU32(std.math.cast(u32, @"%str".utf8.bytes.len) orelse return error.OutOfMemory).?;
+    pub fn utf8_byte_count_p32(@"%str": Str) P32 {
+        return P32.fromU32(std.math.cast(u32, @"%str".utf8.bytes.len).?).?;
     }
-    pub fn codepoint_count_p32(@"%str": Str) error{OutOfMemory}!P32 {
+    pub fn codepoint_count_p32(@"%str": Str) P32 {
         return P32.fromU32(std.math.cast(
             u32,
             std.unicode.utf8CountCodepoints(@"%str".utf8.bytes) catch unreachable,
-        ) orelse return error.OutOfMemory).?;
+        ).?).?;
     }
     pub fn splitStart(@"%str": Str) struct { start: Char, after: std.unicode.Utf8View } {
         var @"%codepoint_iterator" = @"%str".utf8.iterator();
@@ -172,14 +172,6 @@ pub fn Opt(@"%Yes": type) type {
     return @"|no|yes"(void, @"%Yes");
 }
 
-fn u32AddOrOutOfMem(@"%a": u32, @"%b": u32) error{OutOfMemory}!u32 {
-    const sum, const overflow = @addWithOverflow(@"%a", @"%b");
-    return if (overflow != 0) error.OutOfMemory else sum;
-}
-fn usizeAddOrOutOfMem(@"%a": usize, @"%b": usize) error{OutOfMemory}!usize {
-    const sum, const overflow = @addWithOverflow(@"%a", @"%b");
-    return if (overflow != 0) error.OutOfMemory else sum;
-}
 fn strideOf(@"%Element": type) comptime_int {
     // at the time of writing, this is the same as
     // @sizeOf(@"%Element")
@@ -264,13 +256,10 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
     return struct {
         start: Slot_with_occupancy(@"%Origin", @"%Occupancy"),
         length: P32,
-        pub fn endIndexUsize(@"%span": @This()) usize {
-            return @as(usize, @"%span".start.index) + @as(usize, @"%span".length.predecessor());
+        pub fn endIndex(@"%span": @This()) u32 {
+            return @"%span".start.index + @"%span".length.predecessor();
         }
-        pub fn endIndex(@"%span": @This()) error{OutOfMemory}!u32 {
-            return u32AddOrOutOfMem(@"%span".start.index, @"%span".length.predecessor());
-        }
-        pub fn splitStart(@"%span": @This()) error{OutOfMemory}!struct {
+        pub fn splitStart(@"%span": @This()) struct {
             after: Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
             start: Slot_with_occupancy(@"%Origin", @"%Occupancy"),
         } {
@@ -278,19 +267,19 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                 .start = @"%span".start,
                 .after = if (P32.fromU32(@"%span".length.predecessor())) |@"%end_length"|
                     .{ .yes = .{
-                        .start = .{ .index = try u32AddOrOutOfMem(@"%span".start.index, 1) },
+                        .start = .{ .index = @"%span".start.index + 1 },
                         .length = @"%end_length",
                     } }
                 else
                     .{ .no = {} },
             };
         }
-        pub fn splitEnd(@"%span": @This()) error{OutOfMemory}!struct {
+        pub fn splitEnd(@"%span": @This()) struct {
             before: Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
             end: Slot_with_occupancy(@"%Origin", @"%Occupancy"),
         } {
             return .{
-                .end = .{ .index = try @"%span".endIndex() },
+                .end = .{ .index = @"%span".endIndex() },
                 .before = if (P32.fromU32(@"%span".length.predecessor())) |@"%start_length"|
                     .{ .yes = .{
                         .start = @"%span".start,
@@ -350,7 +339,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             var @"%state" = @"%initial_state";
             switch (@"%direction") {
                 .up => {
-                    for (@"%span".start.index..(try @"%span".length.addOrOutOfMem(@"%span".start.index)).positive) |@"%index"| {
+                    for (@"%span".start.index..(@"%span".start.index + @"%span".length.positive)) |@"%index"| {
                         @"%state" = try @"%step"(@"%allocator", .{
                             .state = @"%state",
                             .slot = .{ .index = @intCast(@"%index") },
@@ -359,7 +348,7 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
                 },
                 .down => {
                     // dear zig, add for (range) in reverse
-                    var @"%index": u32 = try u32AddOrOutOfMem(@"%span".start.index, @"%span".length.positive);
+                    var @"%index": u32 = @"%span".start.index + @"%span".length.positive;
                     while (@"%index" > @"%span".start.index) {
                         @"%index" -= 1;
                         @"%state" = try @"%step"(@"%allocator", .{
@@ -419,19 +408,16 @@ pub fn Unset_slice(@"%Element": type) type {
         }
     };
 }
-/// Usage is only safe when
-/// - each buf has a unique origin
-/// - returned slots, spans, origin-rids are never mem-copied
-/// - vacated spans are respected when accesssing elements
-///
-/// Additionally, when any of the given-out slots and spans are not returned,
-/// be aware that the indexes they pointed to are now stale.
-/// So: do not ignore them when they point into a persistent `Buf`
-///
-/// in general, if you really want to directly access .elements,
-/// be extra aware of the ABA problem (e.g. a pointer to an element could point to a wrong, new element instead of invalid memory when its index was vacated and re-populated in between)
+/// Not thread-safe.
 pub fn Buf(@"%Origin": type, @"%Element": type) type {
     return struct {
+        /// Assumed to have a .items.len that fits into a u32.
+        /// .items.capacity has no such constraint.
+        /// if you want to directly access .elements, be extra aware of
+        ///   - considering .vacant
+        ///   - considering newly-created Unset_slots and similar
+        ///   - the ABA problem
+        ///     (e.g. a pointer to an element could point to a wrong, new element instead of invalid memory when its index was vacated and re-populated in between)
         elements: std.ArrayList(@"%Element"),
         vacant: std.ArrayList(Unset_span(@"%Origin")),
         const origin = @"%Origin";
@@ -462,21 +448,21 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
             @"%new_element": @"%Element",
         ) error{OutOfMemory}!Slot(@"%Origin") {
-            const @"%new_slot" = Slot(@"%Origin"){
-                .index = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory,
-            };
             try @"%buf".elements.append(@"%allocator", @"%new_element");
-            return @"%new_slot";
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
+            return Slot(@"%Origin"){
+                .index = std.math.cast(u32, @"%buf".elements.items.len - 1).?,
+            };
         }
         pub fn addUnset(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
         ) error{OutOfMemory}!Unset_slot(@"%Origin") {
-            const @"%new_slot" = Unset_slot(@"%Origin"){
-                .index = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory,
-            };
             try @"%buf".elements.append(@"%allocator", undefined);
-            return @"%new_slot";
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
+            return Unset_slot(@"%Origin"){
+                .index = std.math.cast(u32, @"%buf".elements.items.len - 1).?,
+            };
         }
         pub fn addUnsetLength(
             @"%buf": *@This(),
@@ -495,10 +481,10 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
             @"%length": P32,
         ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            const @"%start" = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory;
-            try @"%buf".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%buf".elements.items.len, @"%length".positive));
+            try @"%buf".elements.resize(@"%allocator", @"%buf".elements.items.len + @"%length".positive);
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
             return Unset_span(@"%Origin"){
-                .start = .{ .index = @"%start" },
+                .start = .{ .index = std.math.cast(u32, @"%buf".elements.items.len).? },
                 .length = @"%length",
             };
         }
@@ -510,17 +496,12 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             const @"%unset_slot" = try @"%buf".insertUnset(@"%allocator");
             return @"%buf".set(@"%unset_slot", @"%new_element");
         }
-        fn arrayListLast(T: type, array_list: std.ArrayList(T)) ?*T {
-            return array_list.lastPtr();
-        }
         pub fn insertUnset(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
         ) error{OutOfMemory}!Unset_slot(@"%Origin") {
-            _ = arrayListLast(Unset_span(@"%Origin"), @"%buf".vacant);
-            // I couldn't get .last() to return a pointer :/
             if (@"%buf".vacant.lastPtr()) |@"%vacant_span_ptr"| {
-                const @"%vacant_span_start_end" = try @"%vacant_span_ptr".splitStart();
+                const @"%vacant_span_start_end" = @"%vacant_span_ptr".splitStart();
                 switch (@"%vacant_span_start_end".after) {
                     .no => {
                         _ = @"%buf".vacant.pop();
@@ -647,9 +628,10 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
                 var @"%vacant_span_connecting_earlier" = &@"%buf".vacant.items[@"%vacant_span_index_connecting_earlier"];
                 if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
                     const @"%vacant_span_connecting_later" = @"%buf".vacant.items[@"%vacant_span_index_connecting_later"];
-                    @"%vacant_span_connecting_earlier".length = try @"%vacant_span_connecting_earlier".length.addOrOutOfMem(
-                        (try @"%span_to_vacate".length.addOrOutOfMem(@"%vacant_span_connecting_later".length.positive)).positive,
-                    );
+                    @"%vacant_span_connecting_earlier".length =
+                        @"%vacant_span_connecting_earlier".length
+                            .addAssumeNoOverflow(@"%span_to_vacate".length.positive)
+                            .addAssumeNoOverflow(@"%vacant_span_connecting_later".length.positive);
                     _ = @"%buf".vacant.swapRemove(@"%vacant_span_index_connecting_later");
                 } else {
                     // maybeVacantSpanIndexConnectingLater == null
@@ -659,17 +641,17 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
                         );
                         _ = @"%buf".vacant.swapRemove(@"%vacant_span_index_connecting_earlier");
                     } else {
-                        @"%vacant_span_connecting_earlier".length = try @"%vacant_span_connecting_earlier".length.addOrOutOfMem(@"%span_to_vacate".length.positive);
+                        @"%vacant_span_connecting_earlier".length = @"%vacant_span_connecting_earlier".length
+                            .addAssumeNoOverflow(@"%span_to_vacate".length.positive);
                     }
                 }
             } else if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
                 // maybeVacantSpanIndexConnectingEarlier == null
-                var @"%vacant_span_connecting_later" = &@"%buf".vacant.items[@"%vacant_span_index_connecting_later"];
+                const @"%vacant_span_connecting_later" = &@"%buf".vacant.items[@"%vacant_span_index_connecting_later"];
                 @"%vacant_span_connecting_later".* = Unset_span(@"%Origin"){
                     .start = @"%span_to_vacate".start,
-                    .length = try @"%vacant_span_connecting_later".length.addOrOutOfMem(
-                        @"%span_to_vacate".length.positive,
-                    ),
+                    .length = @"%vacant_span_connecting_later".length
+                        .addAssumeNoOverflow(@"%span_to_vacate".length.positive),
                 };
             } else {
                 // maybeVacantSpanIndexConnectingEarlier == null and maybeVacantSpanIndexConnectingLater == null
@@ -691,15 +673,15 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
                 return @"%span";
             }
             // span is not at the end already
-            const @"%move_destination_start" = std.math.cast(u32, @"%buf".elements.items.len) orelse return error.OutOfMemory;
             try @"%buf".elements.ensureUnusedCapacity(@"%allocator", @"%span".length.positive);
             @"%buf".elements.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
             try @"%buf".spanRid(@"%allocator", Unset_span(@"%Origin"){
                 .start = .{ .index = @"%span".start.index },
                 .length = @"%span".length,
             });
             return Span(@"%Origin"){
-                .start = .{ .index = @"%move_destination_start" },
+                .start = .{ .index = std.math.cast(u32, @"%buf".elements.items.len - @"%span".length.positive).? },
                 .length = @"%span".length,
             };
         }
@@ -729,13 +711,15 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%start": Span(@"%Origin"),
             @"%end": Span(@"%Origin"),
         ) error{OutOfMemory}!Span(@"%Origin") {
-            const @"%combined_length" = @"%start".length.addOrOutOfMem(@"%end".length.positive);
-            if (u32AddOrOutOfMem(@"%start".start.index, @"%start".length.positive) == @"%end".start.index) {
-                return Span(@"%Origin"){ .start = @"%start".start, .length = @"%combined_length" };
+            if (@"%start".start.index + @"%start".length.positive == @"%end".start.index) {
+                return Span(@"%Origin"){ .start = @"%start".start, .length = @"%start".length.positive + @"%end".length.positive };
             } else {
                 const @"%moved_start" = try @"%buf".spanMoveToEnd(@"%allocator", @"%start");
                 _ = try @"%buf".spanMoveToEnd(@"%allocator", @"%end");
-                return Span(@"%Origin"){ .start = @"%moved_start".start, .length = @"%combined_length" };
+                return Span(@"%Origin"){
+                    .start = @"%moved_start".start,
+                    .length = @"%start".length.positive + @"%end".length.positive,
+                };
             }
         }
         pub fn unsetSpanAddOwnSpan(
@@ -744,11 +728,16 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%start": Unset_span(@"%Origin"),
             @"%end": Unset_span(@"%Origin"),
         ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            const @"%combined_length" = @"%start".length.addOrOutOfMem(@"%end".length.positive);
-            if (u32AddOrOutOfMem(@"%start".start.index, @"%start".length.positive) == @"%end".start.index) {
-                return Unset_span(@"%Origin"){ .start = @"%start".start, .length = @"%combined_length" };
+            if (@"%start".start.index + @"%start".length.positive == @"%end".start.index) {
+                return Unset_span(@"%Origin"){
+                    .start = @"%start".start,
+                    .length = @"%start".length.positive + @"%end".length.positive,
+                };
             } else {
-                return @"%buf".addUnsetLengthPositive(@"%allocator", @"%combined_length");
+                return @"%buf".addUnsetLengthPositive(
+                    @"%allocator",
+                    @"%start".length.positive + @"%end".length.positive,
+                );
             }
         }
         pub fn unsetSpanAdd(
@@ -757,14 +746,20 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%span": Unset_span(@"%Origin"),
             @"%length_increase": Unset_span(@"%Origin"),
         ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            const @"%combined_length" = @"%span".length.addOrOutOfMem(@"%length_increase");
-            if (@as(usize, @"%span".start.index) + @as(usize, @"%span".length.positive) < @"%buf".elements.items.len) {
+            if (@"%span".start.index + @"%span".length.positive < @"%buf".elements.items.len) {
                 try @"%buf".spanRid(@"%span");
-                return @"%buf".addUnsetLengthPositive(@"%allocator", @"%combined_length");
+                return @"%buf".addUnsetLengthPositive(@"%allocator", @"%span".length.positive + @"%length_increase");
             }
             // span is at the end of elements
-            try @"%buf".elements.resize(@"%allocator", try u32AddOrOutOfMem(@"%buf".elements.items.len, @"%span".length.positive));
-            return Unset_span(@"%Origin"){ .start = @"%span".start, .length = @"%combined_length" };
+            try @"%buf".elements.resize(
+                @"%allocator",
+                @"%buf".elements.items.len + @"%length_increase",
+            );
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
+            return Unset_span(@"%Origin"){
+                .start = @"%span".start,
+                .length = @"%span".length.positive + @"%length_increase",
+            };
         }
         fn markLengthPositiveAsOccupied(@"%buf": *@This(), @"%length_to_occupy": P32) ?u32 {
             for (@"%buf".vacant.items, 0..) |*@"%vacant", @"%vacant_index"| {
@@ -783,14 +778,17 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%allocator": std.mem.Allocator,
             @"%new_elements": []const @"%Element",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
-            if (P32.fromU32(std.math.cast(u32, @"%new_elements".len) orelse return error.OutOfMemory)) |@"%new_length"| {
-                const @"%length_before_add" = @"%buf".elements.items.len;
+            if (@"%new_elements".len >= 1) {
                 try @"%buf".elements.appendSlice(@"%allocator", @"%new_elements");
+                if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
                 return .{ .yes = .{
                     .start = .{
-                        .index = std.math.cast(u32, @"%length_before_add") orelse return error.OutOfMemory,
+                        .index = std.math.cast(
+                            u32,
+                            @"%buf".elements.items.len - @"%new_elements".len,
+                        ).?,
                     },
-                    .length = @"%new_length",
+                    .length = P32.fromU32(std.math.cast(u32, @"%new_elements".len).?).?,
                 } };
             } else return .{ .no = {} };
         }
@@ -801,17 +799,18 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%new_elements": anytype,
             @"%next_element": fn (*@TypeOf(@"%new_elements")) ?@"%Element",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
-            const @"%length_before_add" = @"%buf".elements.items.len;
+            const @"%length_before_add" = std.math.cast(u32, @"%buf".elements.items.len).?;
             var @"%new_elements_iterator" = @"%new_elements";
             while (@"%next_element"(&@"%new_elements_iterator")) |@"%new_element"| {
                 try @"%buf".elements.append(@"%allocator", @"%new_element");
             }
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
             return if (P32.fromU32(
-                std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse return error.OutOfMemory,
+                std.math.cast(u32, @"%buf".elements.items.len).? - @"%length_before_add",
             )) |@"%new_length"|
                 .{ .yes = .{
                     .start = .{
-                        .index = std.math.cast(u32, @"%length_before_add") orelse return error.OutOfMemory,
+                        .index = @"%length_before_add",
                     },
                     .length = @"%new_length",
                 } }
@@ -826,12 +825,13 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%length_before_add" = @"%buf".elements.items.len;
             try @"%buf".elements.appendSlice(@"%allocator", &@"%new_elements");
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
             return .{
                 .start = .{
-                    .index = std.math.cast(u32, @"%length_before_add") orelse return error.OutOfMemory,
+                    .index = std.math.cast(u32, @"%length_before_add").?,
                 },
                 .length = P32.fromU32(
-                    std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse return error.OutOfMemory,
+                    std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add").?,
                 ).?,
             };
         }
@@ -854,7 +854,11 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
             try @"%buf".elements.append(@"%allocator", @"%new_element");
-            return Span(@"%Origin"){ .start = @"%moved_span".start, .length = try @"%moved_span".length.addOrOutOfMem(1) };
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
+            return Span(@"%Origin"){
+                .start = @"%moved_span".start,
+                .length = @"%moved_span".length.addAssumeNoOverflow(1),
+            };
         }
         pub fn optSpanAddSlice(
             @"%buf": *@This(),
@@ -875,10 +879,11 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
             try @"%buf".elements.appendSlice(@"%allocator", @"%new_elements");
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
-                .length = try @"%moved_span".length.addOrOutOfMem(
-                    std.math.cast(u32, @"%new_elements".len) orelse return error.OutOfMemory,
+                .length = @"%moved_span".length.addAssumeNoOverflow(
+                    std.math.cast(u32, @"%new_elements".len).?,
                 ),
             };
         }
@@ -919,10 +924,11 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             while (@"%next_element"(&@"%new_elements_iterator")) |@"%new_element"| {
                 try @"%buf".elements.append(@"%allocator", @"%new_element");
             }
-            const @"%new_length" = std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add") orelse return error.OutOfMemory;
+            if (std.math.cast(u32, @"%buf".elements.items.len) == null) return error.OutOfMemory;
+            const @"%new_length" = std.math.cast(u32, @"%buf".elements.items.len - @"%length_before_add").?;
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
-                .length = try @"%moved_span".length.addOrOutOfMem(@"%new_length"),
+                .length = @"%moved_span".length.addAssumeNoOverflow(@"%new_length"),
             };
         }
         pub fn spanReverse(@"%buf": @This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
@@ -1398,13 +1404,13 @@ pub fn span_start(
     @"%Origin": type,
     @"%span": Span(@"%Origin"),
 ) error{OutOfMemory}!Record(struct { after: Opt(Span(@"%Origin")), start: Slot(@"%Origin") }) {
-    return record(try @"%span".splitStart());
+    return record(@"%span".splitStart());
 }
 pub fn span_end(
     @"%Origin": type,
     @"%span": Span(@"%Origin"),
 ) error{OutOfMemory}!Record(struct { before: Opt(Span(@"%Origin")), end: Slot(@"%Origin") }) {
-    return record(try @"%span".splitEnd());
+    return record(@"%span".splitEnd());
 }
 pub fn span_start_of_length_positive(
     @"%Origin": type,
@@ -1537,13 +1543,13 @@ pub fn unset_span_start(@"%Origin": type, @"%span": Unset_span(@"%Origin")) erro
     after: Opt(Unset_span(@"%Origin")),
     start: Unset_slot(@"%Origin"),
 }) {
-    return record(try @"%span".splitStart());
+    return record(@"%span".splitStart());
 }
 pub fn unset_span_end(@"%Origin": type, @"%span": Unset_span(@"%Origin")) error{OutOfMemory}!Record(struct {
     before: Opt(Unset_span(@"%Origin")),
     end: Unset_slot(@"%Origin"),
 }) {
-    return record(try @"%span".splitEnd());
+    return record(@"%span".splitEnd());
 }
 pub fn unset_span_start_of_length_positive(
     @"%Origin": type,

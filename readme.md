@@ -715,7 +715,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- avoid generating error{OutOfMemory}! for many core calls and maybe sloe calls if possible. Verify that types coerce correctly
+- avoid generating error{OutOfMemory}! for as many core calls and maybe sloe calls if possible (those that allocate and those that take function parameters). Verify that types coerce correctly
 
 - rename `Buf-slot-rid` to `Buf-unset-slot-rid`, same for spans and opt spans
 
