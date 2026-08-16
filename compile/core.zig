@@ -429,7 +429,7 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
         ) error{OutOfMemory}!void {
             return @"%buf".elements.ensureUnusedCapacity(@"%allocator", @"%min_pre_allocated_length");
         }
-        pub fn preAllocationRid(@"%buf": *@This(), @"%allocator": std.mem.Allocator) void {
+        pub fn preAllocationRid(@"%buf": *@This(), @"%allocator": std.mem.Allocator) error{OutOfMemory}!void {
             return @"%buf".elements.shrinkAndFreePrecise(@"%allocator", @"%buf".elements.items.len);
         }
         pub fn vacantSlotCount(@"%buf": @This()) u32 {
@@ -975,64 +975,64 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
 // If this is not an option, try to e.g. keep deep-cloned state value "backups" or similar.
 // (or just don't use sloe)
 
-pub fn p32_rid(_: P32) error{OutOfMemory}!void {}
-pub fn p32_dup(@"%n": P32) error{OutOfMemory}!Record(struct { a: P32, b: P32 }) {
+pub fn p32_rid(_: P32) void {}
+pub fn p32_dup(@"%n": P32) Record(struct { a: P32, b: P32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
-pub fn p32_to_u32(@"%n": P32) error{OutOfMemory}!U32 {
+pub fn p32_to_u32(@"%n": P32) U32 {
     return @"%n".positive;
 }
-pub fn p32_add_clamp(@"%": Record(struct { p: P32, u: U32 })) error{OutOfMemory}!P32 {
+pub fn p32_add_clamp(@"%": Record(struct { p: P32, u: U32 })) P32 {
     return @"%".p.addClamp(@"%".u);
 }
-pub fn p32_mul_clamp(@"%": Record(struct { a: P32, b: P32 })) error{OutOfMemory}!P32 {
+pub fn p32_mul_clamp(@"%": Record(struct { a: P32, b: P32 })) P32 {
     return @"%".a.mulClamp(@"%".b);
 }
-pub fn p32_order(@"%": Record(struct { left: P32, right: P32 })) error{OutOfMemory}!Order {
+pub fn p32_order(@"%": Record(struct { left: P32, right: P32 })) Order {
     return mathOrderToOrder(std.math.order(@"%".left.positive, @"%".right.positive));
 }
 
-pub fn u32_rid(_: U32) error{OutOfMemory}!void {}
-pub fn u32_dup(@"%n": U32) error{OutOfMemory}!Record(struct { a: U32, b: U32 }) {
+pub fn u32_rid(_: U32) void {}
+pub fn u32_dup(@"%n": U32) Record(struct { a: U32, b: U32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
-pub fn u32_to_i32_clamp(@"%n": U32) error{OutOfMemory}!I32 {
+pub fn u32_to_i32_clamp(@"%n": U32) I32 {
     return std.math.lossyCast(i32, @"%n");
 }
-pub fn u32_round_to_nearest_f32_else_even(@"%n": U32) error{OutOfMemory}!F32 {
+pub fn u32_round_to_nearest_f32_else_even(@"%n": U32) F32 {
     // see i32_round_to_nearest_f32_else_even for details
     return @floatFromInt(@"%n");
 }
-pub fn u32_successor_clamp(@"%n": U32) error{OutOfMemory}!P32 {
+pub fn u32_successor_clamp(@"%n": U32) P32 {
     return .{ .positive = @"%n" +| 1 };
 }
-pub fn u32_add_clamp(@"%": Record(struct { a: U32, b: U32 })) error{OutOfMemory}!U32 {
+pub fn u32_add_clamp(@"%": Record(struct { a: U32, b: U32 })) U32 {
     return @"%".a +| @"%".b;
 }
-pub fn u32_add_i32_clamp(@"%": Record(struct { i: I32, u: U32 })) error{OutOfMemory}!U32 {
+pub fn u32_add_i32_clamp(@"%": Record(struct { i: I32, u: U32 })) U32 {
     return std.math.lossyCast(u32, @as(i33, @"%".u) +| @as(i33, @"%".i));
 }
-pub fn u32_mul_clamp(@"%": Record(struct { a: U32, b: U32 })) error{OutOfMemory}!U32 {
+pub fn u32_mul_clamp(@"%": Record(struct { a: U32, b: U32 })) U32 {
     return @"%".a *| @"%".b;
 }
-pub fn u32_pow_clamp(@"%": Record(struct { base: U32, exponent: P32 })) error{OutOfMemory}!U32 {
+pub fn u32_pow_clamp(@"%": Record(struct { base: U32, exponent: P32 })) U32 {
     return std.math.powi(u32, @"%".base, @"%".exponent.positive) catch std.math.maxInt(u32);
 }
-pub fn u32_to_p32(@"%n": U32) error{OutOfMemory}!Opt(P32) {
+pub fn u32_to_p32(@"%n": U32) Opt(P32) {
     return if (P32.fromU32(@"%n")) |@"%p32"| .{ .yes = @"%p32" } else .{ .no = {} };
 }
-pub fn u32_order(@"%": Record(struct { left: U32, right: U32 })) error{OutOfMemory}!Order {
+pub fn u32_order(@"%": Record(struct { left: U32, right: U32 })) Order {
     return mathOrderToOrder(std.math.order(@"%".left, @"%".right));
 }
 
-pub fn i32_rid(_: I32) error{OutOfMemory}!void {}
-pub fn i32_dup(@"%n": I32) error{OutOfMemory}!Record(struct { a: I32, b: I32 }) {
+pub fn i32_rid(_: I32) void {}
+pub fn i32_dup(@"%n": I32) Record(struct { a: I32, b: I32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
-pub fn i32_to_u32(@"%i": I32) error{OutOfMemory}!Opt(U32) {
+pub fn i32_to_u32(@"%i": I32) Opt(U32) {
     return if (std.math.cast(U32, @"%i")) |@"%u"| .{ .yes = @"%u" } else .{ .no = {} };
 }
-pub fn i32_round_to_nearest_f32_else_even(@"%n": I32) error{OutOfMemory}!F32 {
+pub fn i32_round_to_nearest_f32_else_even(@"%n": I32) F32 {
     // - custom backend: explicit round ties to even
     //   https://codeberg.org/ziglang/zig/src/branch/master/lib/compiler_rt/float_from_int.zig#L508-L509
     // - in llvm, this compiles to sitofp which uses the default rounding mode
@@ -1040,39 +1040,39 @@ pub fn i32_round_to_nearest_f32_else_even(@"%n": I32) error{OutOfMemory}!F32 {
     //   IEEE specifies round ties to even (see §4.3.3, §7.4 in IEEE 754-2008)
     return @floatFromInt(@"%n");
 }
-pub fn i32_add_clamp(@"%": Record(struct { a: I32, b: I32 })) error{OutOfMemory}!I32 {
+pub fn i32_add_clamp(@"%": Record(struct { a: I32, b: I32 })) I32 {
     return @"%".a +| @"%".b;
 }
-pub fn i32_mul_clamp(@"%": Record(struct { a: I32, b: I32 })) error{OutOfMemory}!I32 {
+pub fn i32_mul_clamp(@"%": Record(struct { a: I32, b: I32 })) I32 {
     return @"%".a *| @"%".b;
 }
-pub fn i32_pow_clamp(@"%": Record(struct { base: I32, exponent: P32 })) error{OutOfMemory}!I32 {
+pub fn i32_pow_clamp(@"%": Record(struct { base: I32, exponent: P32 })) I32 {
     return std.math.powi(i32, @"%".base, std.math.lossyCast(i32, @"%".exponent.positive)) catch std.math.maxInt(i32);
 }
-pub fn i32_negate_clamp(@"%n": I32) error{OutOfMemory}!I32 {
+pub fn i32_negate_clamp(@"%n": I32) I32 {
     return 0 -| @"%n";
 }
-pub fn i32_abs_to_u32(@"%n": I32) error{OutOfMemory}!U32 {
+pub fn i32_abs_to_u32(@"%n": I32) U32 {
     return @abs(@"%n");
 }
-pub fn i32_order(@"%": Record(struct { left: I32, right: I32 })) error{OutOfMemory}!Order {
+pub fn i32_order(@"%": Record(struct { left: I32, right: I32 })) Order {
     return mathOrderToOrder(std.math.order(@"%".left, @"%".right));
 }
 
-pub fn f32_rid(_: F32) error{OutOfMemory}!void {}
-pub fn f32_dup(@"%n": F32) error{OutOfMemory}!Record(struct { a: F32, b: F32 }) {
+pub fn f32_rid(_: F32) void {}
+pub fn f32_dup(@"%n": F32) Record(struct { a: F32, b: F32 }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
-pub fn f32_pi(_: void) error{OutOfMemory}!F32 {
+pub fn f32_pi(_: void) F32 {
     return std.math.pi;
 }
-pub fn f32_negate(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_negate(@"%n": F32) F32 {
     return -@"%n";
 }
-pub fn f32_abs(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_abs(@"%n": F32) F32 {
     return @abs(@"%n");
 }
-pub fn f32_ln(@"%n": F32) error{OutOfMemory}!Opt(F32) {
+pub fn f32_ln(@"%n": F32) Opt(F32) {
     if (@"%n" <= 0) {
         return .{ .no = {} };
     } else {
@@ -1080,37 +1080,37 @@ pub fn f32_ln(@"%n": F32) error{OutOfMemory}!Opt(F32) {
         return if (std.math.isFinite(@"%ln_result")) .{ .yes = @"%ln_result" } else .{ .no = {} };
     }
 }
-pub fn f32_exp(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_exp(@"%n": F32) F32 {
     return @min(@exp(@"%n"), std.math.floatMax(f32));
 }
-pub fn f32_sin(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_sin(@"%n": F32) F32 {
     return @sin(@"%n");
 }
-pub fn f32_cos(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_cos(@"%n": F32) F32 {
     return @cos(@"%n");
 }
-pub fn f32_tan(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_tan(@"%n": F32) F32 {
     return @tan(@"%n");
 }
-pub fn f32_atan(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_atan(@"%n": F32) F32 {
     return std.math.atan(@"%n");
 }
-pub fn f32_round_up(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_round_up(@"%n": F32) F32 {
     return @ceil(@"%n");
 }
-pub fn f32_round_down(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_round_down(@"%n": F32) F32 {
     return @floor(@"%n");
 }
-pub fn f32_round_toward_0(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_round_toward_0(@"%n": F32) F32 {
     return @trunc(@"%n");
 }
-pub fn f32_round_away_from_0(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_round_away_from_0(@"%n": F32) F32 {
     return @ceil(@abs(@"%n")) * std.math.sign(@"%n");
 }
-pub fn f32_round_nearest_else_away_from_0(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_round_nearest_else_away_from_0(@"%n": F32) F32 {
     return @round(@"%n");
 }
-pub fn f32_round_nearest_else_even(@"%n": F32) error{OutOfMemory}!F32 {
+pub fn f32_round_nearest_else_even(@"%n": F32) F32 {
     // your move zig. Please add an intrinsic
     const @"%mod" = std.math.modf(@"%n");
     return if (@"%mod".fpart == 0.0) @"%n" else if (@abs(@"%mod".fpart) == 0.5)
@@ -1129,76 +1129,76 @@ pub fn f32_round_nearest_else_even(@"%n": F32) error{OutOfMemory}!F32 {
     else
         @round(@"%n");
 }
-pub fn f32_round_up_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
-    return std.math.lossyCast(i32, try f32_round_up(@"%n"));
+pub fn f32_round_up_to_i32_clamp(@"%n": F32) I32 {
+    return std.math.lossyCast(i32, f32_round_up(@"%n"));
 }
-pub fn f32_round_down_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
-    return std.math.lossyCast(i32, try f32_round_down(@"%n"));
+pub fn f32_round_down_to_i32_clamp(@"%n": F32) I32 {
+    return std.math.lossyCast(i32, f32_round_down(@"%n"));
 }
-pub fn f32_round_toward_0_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
-    return std.math.lossyCast(i32, try f32_round_toward_0(@"%n"));
+pub fn f32_round_toward_0_to_i32_clamp(@"%n": F32) I32 {
+    return std.math.lossyCast(i32, f32_round_toward_0(@"%n"));
 }
-pub fn f32_round_away_from_0_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
-    return std.math.lossyCast(i32, try f32_round_away_from_0(@"%n"));
+pub fn f32_round_away_from_0_to_i32_clamp(@"%n": F32) I32 {
+    return std.math.lossyCast(i32, f32_round_away_from_0(@"%n"));
 }
-pub fn f32_round_nearest_else_away_from_0_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
-    return std.math.lossyCast(i32, try f32_round_nearest_else_away_from_0(@"%n"));
+pub fn f32_round_nearest_else_away_from_0_to_i32_clamp(@"%n": F32) I32 {
+    return std.math.lossyCast(i32, f32_round_nearest_else_away_from_0(@"%n"));
 }
-pub fn f32_round_nearest_else_even_to_i32_clamp(@"%n": F32) error{OutOfMemory}!I32 {
-    return std.math.lossyCast(i32, try f32_round_nearest_else_even(@"%n"));
+pub fn f32_round_nearest_else_even_to_i32_clamp(@"%n": F32) I32 {
+    return std.math.lossyCast(i32, f32_round_nearest_else_even(@"%n"));
 }
-pub fn f32_add_clamp(@"%": Record(struct { a: F32, b: F32 })) error{OutOfMemory}!F32 {
+pub fn f32_add_clamp(@"%": Record(struct { a: F32, b: F32 })) F32 {
     const @"%sum" = @"%".a + @"%".b;
     return if (std.math.isNegativeInf(@"%sum")) std.math.floatMin(f32) else if (std.math.isPositiveInf(@"%sum")) std.math.floatMax(f32) else @"%sum";
 }
-pub fn f32_mul_clamp(@"%": Record(struct { a: F32, b: F32 })) error{OutOfMemory}!F32 {
+pub fn f32_mul_clamp(@"%": Record(struct { a: F32, b: F32 })) F32 {
     const @"%product" = @"%".a * @"%".b;
     return if (std.math.isNegativeInf(@"%product")) std.math.floatMin(f32) else if (std.math.isPositiveInf(@"%product")) std.math.floatMax(f32) else @"%product";
 }
-pub fn f32_div_clamp(@"%": Record(struct { n: F32, by: F32 })) error{OutOfMemory}!F32 {
+pub fn f32_div_clamp(@"%": Record(struct { n: F32, by: F32 })) F32 {
     return if (@"%".by == 0.0) 0.0 else {
         const @"%div_result" = @"%".n / @"%".by;
         return if (std.math.isNegativeInf(@"%div_result")) std.math.floatMin(f32) else if (std.math.isPositiveInf(@"%div_result")) std.math.floatMax(f32) else @"%div_result";
     };
 }
-pub fn f32_pow_i32(@"%": Record(struct { base: F32, exponent: I32 })) error{OutOfMemory}!Opt(F32) {
+pub fn f32_pow_i32(@"%": Record(struct { base: F32, exponent: I32 })) Opt(F32) {
     const @"%power" = std.math.pow(f32, @"%".base, @floatFromInt(@"%".exponent));
     return if (std.math.isFinite(@"%power")) .{ .yes = @"%power" } else .{ .no = {} };
 }
-pub fn f32_pow(@"%": Record(struct { base: F32, exponent: F32 })) error{OutOfMemory}!Opt(F32) {
+pub fn f32_pow(@"%": Record(struct { base: F32, exponent: F32 })) Opt(F32) {
     const @"%power" = std.math.pow(f32, @"%".base, @"%".exponent);
     return if (std.math.isFinite(@"%power")) .{ .yes = @"%power" } else .{ .no = {} };
 }
-pub fn f32_order(@"%": Record(struct { left: F32, right: F32 })) error{OutOfMemory}!Order {
+pub fn f32_order(@"%": Record(struct { left: F32, right: F32 })) Order {
     return mathOrderToOrder(std.math.order(@"%".left, @"%".right));
 }
 
-pub fn char_rid(_: Char) error{OutOfMemory}!void {}
-pub fn char_to_u32(@"%char": Char) error{OutOfMemory}!U32 {
+pub fn char_rid(_: Char) void {}
+pub fn char_to_u32(@"%char": Char) U32 {
     return @"%char";
 }
-pub fn char_dup(@"%n": Char) error{OutOfMemory}!Record(struct { a: Char, b: Char }) {
+pub fn char_dup(@"%n": Char) Record(struct { a: Char, b: Char }) {
     return .{ .a = @"%n", .b = @"%n" };
 }
 
-pub fn str_rid(_: Str) error{OutOfMemory}!void {}
-pub fn str_dup(@"%str": Str) error{OutOfMemory}!Record(struct { a: Str, b: Str }) {
+pub fn str_rid(_: Str) void {}
+pub fn str_dup(@"%str": Str) Record(struct { a: Str, b: Str }) {
     return .{ .a = @"%str", .b = @"%str" };
 }
-pub fn str_utf8_length(@"%str": Str) error{OutOfMemory}!P32 {
+pub fn str_utf8_length(@"%str": Str) P32 {
     return @"%str".utf8_byte_count_p32();
 }
-pub fn str_char_count(@"%str": Str) error{OutOfMemory}!P32 {
+pub fn str_char_count(@"%str": Str) P32 {
     return @"%str".codepoint_count_p32();
 }
-pub fn str_start(@"%str": Str) error{OutOfMemory}!Record(struct { after: Opt(Str), start: Char }) {
+pub fn str_start(@"%str": Str) Record(struct { after: Opt(Str), start: Char }) {
     const @"%split" = @"%str".splitStart();
     return .{
         .start = @"%split".start,
         .after = if (Str.fromUtf8View(@"%split".after)) |@"%after"| .{ .yes = @"%after" } else .{ .no = {} },
     };
 }
-pub fn str_end(@"%str": Str) error{OutOfMemory}!Record(struct { before: Opt(Str), end: Char }) {
+pub fn str_end(@"%str": Str) Record(struct { before: Opt(Str), end: Char }) {
     const @"%split" = @"%str".splitEnd();
     return .{
         .end = @"%split".end,
@@ -1206,12 +1206,12 @@ pub fn str_end(@"%str": Str) error{OutOfMemory}!Record(struct { before: Opt(Str)
     };
 }
 
-pub fn fn_rid(@"%In": type, @"%Out": type, _: Fn(@"%In", @"%Out")) error{OutOfMemory}!void {}
+pub fn fn_rid(@"%In": type, @"%Out": type, _: Fn(@"%In", @"%Out")) void {}
 pub fn fn_dup(
     @"%In": type,
     @"%Out": type,
     @"%function": Fn(@"%In", @"%Out"),
-) error{OutOfMemory}!Record(struct { a: Fn(@"%In", @"%Out"), b: Fn(@"%In", @"%Out") }) {
+) Record(struct { a: Fn(@"%In", @"%Out"), b: Fn(@"%In", @"%Out") }) {
     return .{ .a = @"%function", .b = @"%function" };
 }
 pub inline fn call(
@@ -1226,7 +1226,7 @@ pub inline fn call(
 pub fn choice_empty_to(
     @"%Result": type,
     @"%impossible": Choice,
-) error{OutOfMemory}!@"%Result" {
+) @"%Result" {
     return switch (@"%impossible") {};
 }
 
@@ -1234,7 +1234,7 @@ pub fn opt_yes(@"%Yes": type, @"%yes": @"%Yes") Opt(@"%Yes") {
     return .{ .present = @"%yes" };
 }
 
-pub fn origin_rid(@"%Origin": type, @"%Part": type, _: Origin(@"%Origin", @"%Part")) error{OutOfMemory}!void {}
+pub fn origin_rid(@"%Origin": type, @"%Part": type, _: Origin(@"%Origin", @"%Part")) void {}
 pub fn origin_add(
     @"%PartName": type,
     @"%PartOrigin": type,
@@ -1244,7 +1244,7 @@ pub fn origin_add(
         part: Origin(@"%PartOrigin", @"%PartName"),
         rest: Origin(@"%RestOrigin", @"%RestName"),
     }),
-) error{OutOfMemory}!Origin(
+) Origin(
     Record(struct { part: @"%PartOrigin", rest: @"%RestOrigin" }),
     Record(struct { part: @"%PartName", rest: @"%RestName" }),
 ) {
@@ -1258,7 +1258,7 @@ pub fn origin_part(
     @"%Part": type,
     @"%Rest": type,
     _: Origin(@"%Origin", Record(struct { part: @"%Part", rest: @"%Rest" })),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     part: Origin(@"%Origin", @"%Part"),
     rest: Origin(@"%Origin", @"%Rest"),
 }) {
@@ -1317,7 +1317,7 @@ pub fn origin_eraser_part(
     @"%Part": type,
     @"%Rest": type,
     _: Origin_eraser(@"%Origin", Record(struct { part: @"%Part", rest: @"%Rest" })),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     part: Origin_eraser(@"%Origin", @"%Part"),
     rest: Origin_eraser(@"%Origin", @"%Rest"),
 }) {
@@ -1328,7 +1328,7 @@ pub fn origin_uneraser_part(
     @"%Part": type,
     @"%Rest": type,
     _: Origin_uneraser(@"%Origin", Record(struct { part: @"%Part", rest: @"%Rest" })),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     part: Origin_uneraser(@"%Origin", @"%Part"),
     rest: Origin_uneraser(@"%Origin", @"%Rest"),
 }) {
@@ -1341,16 +1341,16 @@ pub fn origin_uneraser_part(
 pub fn slot_index(
     @"%Origin": type,
     @"%slot": Slot(@"%Origin"),
-) error{OutOfMemory}!Record(struct { index: U32, slot: Slot(@"%Origin") }) {
+) Record(struct { index: U32, slot: Slot(@"%Origin") }) {
     return .{ .slot = @"%slot", .index = @"%slot".index };
 }
-pub fn slot_to_span(@"%Origin": type, @"%slot": Slot(@"%Origin")) error{OutOfMemory}!Span(@"%Origin") {
+pub fn slot_to_span(@"%Origin": type, @"%slot": Slot(@"%Origin")) Span(@"%Origin") {
     return @"%slot".to_span();
 }
 pub fn slot_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     slot: Slot(Origin(@"%Origin", @"%Part")),
     eraser: Origin_eraser(@"%Origin", @"%Part"),
-})) error{OutOfMemory}!Record(struct {
+})) Record(struct {
     slot: Slot(Origin(Erased, @"%Part")),
     eraser: Origin_eraser(@"%Origin", @"%Part"),
 }) {
@@ -1362,7 +1362,7 @@ pub fn slot_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
 pub fn slot_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     slot: Slot(Origin(Erased, @"%Part")),
     uneraser: Origin_uneraser(@"%Origin", @"%Part"),
-})) error{OutOfMemory}!Record(struct {
+})) Record(struct {
     slot: Slot(Origin(@"%Origin", @"%Part")),
     uneraser: Origin_uneraser(@"%Origin", @"%Part"),
 }) {
@@ -1375,23 +1375,23 @@ pub fn slot_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct
 pub fn unset_slot_index(
     @"%Origin": type,
     @"%slot": Unset_slot(@"%Origin"),
-) error{OutOfMemory}!Record(struct { index: U32, slot: Unset_slot(@"%Origin") }) {
+) Record(struct { index: U32, slot: Unset_slot(@"%Origin") }) {
     return .{ .slot = @"%slot", .index = @"%slot".index };
 }
-pub fn unset_slot_to_span(@"%Origin": type, @"%slot": Unset_slot(@"%Origin")) error{OutOfMemory}!Span(@"%Origin") {
+pub fn unset_slot_to_span(@"%Origin": type, @"%slot": Unset_slot(@"%Origin")) Span(@"%Origin") {
     return @"%slot".to_span();
 }
 
 pub fn span_length(
     @"%Origin": type,
     @"%span": Span(@"%Origin"),
-) error{OutOfMemory}!Record(struct { length: P32, span: Span(@"%Origin") }) {
+) Record(struct { length: P32, span: Span(@"%Origin") }) {
     return .{ .span = @"%span", .length = @"%span".length };
 }
 pub fn opt_span_length(
     @"%Origin": type,
     @"%opt_span": Opt(Span(@"%Origin")),
-) error{OutOfMemory}!Record(struct { length: U32, span: Opt(Span(@"%Origin")) }) {
+) Record(struct { length: U32, span: Opt(Span(@"%Origin")) }) {
     return .{
         .span = @"%opt_span",
         .length = switch (@"%opt_span") {
@@ -1403,19 +1403,19 @@ pub fn opt_span_length(
 pub fn span_start(
     @"%Origin": type,
     @"%span": Span(@"%Origin"),
-) error{OutOfMemory}!Record(struct { after: Opt(Span(@"%Origin")), start: Slot(@"%Origin") }) {
+) Record(struct { after: Opt(Span(@"%Origin")), start: Slot(@"%Origin") }) {
     return record(@"%span".splitStart());
 }
 pub fn span_end(
     @"%Origin": type,
     @"%span": Span(@"%Origin"),
-) error{OutOfMemory}!Record(struct { before: Opt(Span(@"%Origin")), end: Slot(@"%Origin") }) {
+) Record(struct { before: Opt(Span(@"%Origin")), end: Slot(@"%Origin") }) {
     return record(@"%span".splitEnd());
 }
 pub fn span_start_of_length_positive(
     @"%Origin": type,
     @"%": Record(struct { length: P32, span: Span(@"%Origin") }),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     after: Opt(Span(@"%Origin")),
     start: Span(@"%Origin"),
 }) {
@@ -1424,7 +1424,7 @@ pub fn span_start_of_length_positive(
 pub fn span_end_of_length_positive(
     @"%Origin": type,
     @"%": Record(struct { length: P32, span: Span(@"%Origin") }),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     before: Opt(Span(@"%Origin")),
     end: Span(@"%Origin"),
 }) {
@@ -1462,7 +1462,7 @@ pub fn span_fold(
 pub fn span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     span: Span(Origin(@"%Origin", @"%Part")),
     eraser: Origin_eraser(@"%Origin", @"%Part"),
-})) error{OutOfMemory}!Record(struct {
+})) Record(struct {
     span: Span(Origin(Erased, @"%Part")),
     eraser: Origin_eraser(@"%Origin", @"%Part"),
 }) {
@@ -1474,7 +1474,7 @@ pub fn span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
 pub fn opt_span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     span: Opt(Span(Origin(@"%Origin", @"%Part"))),
     eraser: Origin_eraser(@"%Origin", @"%Part"),
-})) error{OutOfMemory}!Record(struct {
+})) Record(struct {
     span: Opt(Span(Origin(Erased, @"%Part"))),
     eraser: Origin_eraser(@"%Origin", @"%Part"),
 }) {
@@ -1492,7 +1492,7 @@ pub fn opt_span_origin_erase(@"%Origin": type, @"%Part": type, @"%": Record(stru
 pub fn span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     span: Span(Origin(Erased, @"%Part")),
     uneraser: Origin_uneraser(@"%Origin", @"%Part"),
-})) error{OutOfMemory}!Record(struct {
+})) Record(struct {
     span: Span(Origin(@"%Origin", @"%Part")),
     uneraser: Origin_uneraser(@"%Origin", @"%Part"),
 }) {
@@ -1504,7 +1504,7 @@ pub fn span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct
 pub fn opt_span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
     span: Opt(Span(Origin(Erased, @"%Part"))),
     uneraser: Origin_uneraser(@"%Origin", @"%Part"),
-})) error{OutOfMemory}!Record(struct {
+})) Record(struct {
     span: Opt(Span(Origin(@"%Origin", @"%Part"))),
     uneraser: Origin_uneraser(@"%Origin", @"%Part"),
 }) {
@@ -1520,17 +1520,17 @@ pub fn opt_span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(st
     };
 }
 
-pub fn unset_span_rid(@"%Origin": type, _: Unset_span(@"%Origin")) error{OutOfMemory}!void {}
+pub fn unset_span_rid(@"%Origin": type, _: Unset_span(@"%Origin")) void {}
 pub fn unset_span_length(
     @"%Origin": type,
     @"%span": Unset_span(@"%Origin"),
-) error{OutOfMemory}!Record(struct { length: P32, span: Unset_span(@"%Origin") }) {
+) Record(struct { length: P32, span: Unset_span(@"%Origin") }) {
     return .{ .span = @"%span", .length = @"%span".length };
 }
 pub fn opt_unset_span_length(
     @"%Origin": type,
     @"%opt_span": Opt(Unset_span(@"%Origin")),
-) error{OutOfMemory}!Record(struct { length: U32, span: Opt(Unset_span(@"%Origin")) }) {
+) Record(struct { length: U32, span: Opt(Unset_span(@"%Origin")) }) {
     return .{
         .span = @"%opt_span",
         .length = switch (@"%opt_span") {
@@ -1539,13 +1539,13 @@ pub fn opt_unset_span_length(
         },
     };
 }
-pub fn unset_span_start(@"%Origin": type, @"%span": Unset_span(@"%Origin")) error{OutOfMemory}!Record(struct {
+pub fn unset_span_start(@"%Origin": type, @"%span": Unset_span(@"%Origin")) Record(struct {
     after: Opt(Unset_span(@"%Origin")),
     start: Unset_slot(@"%Origin"),
 }) {
     return record(@"%span".splitStart());
 }
-pub fn unset_span_end(@"%Origin": type, @"%span": Unset_span(@"%Origin")) error{OutOfMemory}!Record(struct {
+pub fn unset_span_end(@"%Origin": type, @"%span": Unset_span(@"%Origin")) Record(struct {
     before: Opt(Unset_span(@"%Origin")),
     end: Unset_slot(@"%Origin"),
 }) {
@@ -1554,7 +1554,7 @@ pub fn unset_span_end(@"%Origin": type, @"%span": Unset_span(@"%Origin")) error{
 pub fn unset_span_start_of_length_positive(
     @"%Origin": type,
     @"%": Record(struct { length: P32, span: Unset_span(@"%Origin") }),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     after: Opt(Unset_span(@"%Origin")),
     start: Unset_span(@"%Origin"),
 }) {
@@ -1563,7 +1563,7 @@ pub fn unset_span_start_of_length_positive(
 pub fn unset_span_end_of_length_positive(
     @"%Origin": type,
     @"%": Record(struct { length: P32, span: Unset_span(@"%Origin") }),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     before: Opt(Unset_span(@"%Origin")),
     end: Unset_span(@"%Origin"),
 }) {
@@ -1603,14 +1603,14 @@ pub fn array_rid(
     @"%Element": type,
     @"%Record": type,
     _: Array(@"%Element", @"%Record"),
-) error{OutOfMemory}!void {}
+) void {}
 
 pub fn buf_empty(
     @"%Element": type,
     @"%Origin": type,
     @"%Part": type,
     _: Origin(@"%Origin", @"%Part"),
-) error{OutOfMemory}!Buf(Origin(@"%Origin", @"%Part"), @"%Element") {
+) Buf(Origin(@"%Origin", @"%Part"), @"%Element") {
     return .{
         .elements = std.ArrayList(@"%Element").empty,
         .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))).empty,
@@ -1621,7 +1621,7 @@ pub fn buf_reuse(
     @"%Origin": type,
     @"%Part": type,
     @"%": Record(struct { origin: Origin(@"%Origin", @"%Part"), slice: Unset_slice(@"%Element") }),
-) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
+) Buf(@"%Origin", @"%Element") {
     var elements = std.ArrayList(@"%Element").fromOwnedSlice(@"%".slice.undefined_items);
     elements.clearRetainingCapacity();
     return .{
@@ -1741,7 +1741,7 @@ pub fn buf_unset(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }),
-) error{OutOfMemory}!Record(struct {
+) Record(struct {
     buf: Buf(@"%Origin", @"%Element"),
     element: @"%Element",
     slot: Unset_slot(@"%Origin"),
@@ -1753,7 +1753,7 @@ pub fn buf_set(@"%Element": type, @"%Origin": type, @"%": Record(struct {
     buf: Buf(@"%Origin", @"%Element"),
     new: @"%Element",
     slot: Unset_slot(@"%Origin"),
-})) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }) {
+})) Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }) {
     const @"%slot" = @"%".buf.set(@"%".slot, @"%".new);
     return .{ .buf = @"%".buf, .slot = @"%slot" };
 }
@@ -2233,22 +2233,20 @@ pub fn buf_opt_unset_span_add_own_opt_span(
 pub fn buf_span_move_to_vacant(
     @"%Element": type,
     @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }) {
-    const @"%moved_span" = @"%".buf.spanMoveToVacant(@"%allocator", @"%".span);
+) Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }) {
+    const @"%moved_span" = @"%".buf.spanMoveToVacant(@"%".span);
     return .{ .buf = @"%".buf, .span = @"%moved_span" };
 }
 pub fn buf_opt_span_move_to_vacant(
     @"%Element": type,
     @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Span(@"%Origin")) }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Span(@"%Origin")) }) {
+) Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Span(@"%Origin")) }) {
     switch (@"%".span) {
         .no => return .{ .buf = @"%".buf, .span = .{ .no = {} } },
         .yes => |@"%span"| {
-            const @"%moved_span" = @"%".buf.spanMoveToVacant(@"%allocator", @"%span");
+            const @"%moved_span" = @"%".buf.spanMoveToVacant(@"%span");
             return .{ .buf = @"%".buf, .span = .{ .yes = @"%moved_span" } };
         },
     }
@@ -2280,7 +2278,7 @@ pub fn buf_span_reverse(
     @"%Element": type,
     @"%Origin": type,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }) {
+) Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Span(@"%Origin") }) {
     const @"%reversed_span" = @"%".buf.spanReverse(@"%".span);
     return .{ .buf = @"%".buf, .span = @"%reversed_span" };
 }
@@ -2288,7 +2286,7 @@ pub fn buf_opt_span_reverse(
     @"%Element": type,
     @"%Origin": type,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Span(@"%Origin")) }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Span(@"%Origin")) }) {
+) Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Span(@"%Origin")) }) {
     const @"%reversed_span" = @"%".buf.optSpanReverse(@"%".span);
     return .{ .buf = @"%".buf, .span = @"%reversed_span" };
 }
@@ -2298,7 +2296,7 @@ pub fn buf_slot_rid(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Unset_slot(@"%Origin") }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    @"%".buf.slotRid(@"%allocator", @"%".span);
+    try @"%".buf.slotRid(@"%allocator", @"%".span);
     return @"%".buf;
 }
 pub fn buf_span_rid(
@@ -2307,7 +2305,7 @@ pub fn buf_span_rid(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Unset_span(@"%Origin") }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    @"%".buf.spanRid(@"%allocator", @"%".span);
+    try @"%".buf.spanRid(@"%allocator", @"%".span);
     return @"%".buf;
 }
 pub fn buf_opt_span_rid(
@@ -2316,7 +2314,7 @@ pub fn buf_opt_span_rid(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Unset_span(@"%Origin")) }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    @"%".buf.optSpanRid(@"%allocator", @"%".span);
+    try @"%".buf.optSpanRid(@"%allocator", @"%".span);
     return @"%".buf;
 }
 pub fn buf_to_unset(
@@ -2324,15 +2322,15 @@ pub fn buf_to_unset(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%buf": Buf(@"%Origin", @"%Element"),
-) error{OutOfMemory}!Unset_slice(@"%Element") {
-    @"%buf".intoUnsetSlice(@"%allocator");
+) Unset_slice(@"%Element") {
+    return @"%buf".intoUnsetSlice(@"%allocator");
 }
 pub fn buf_rid(
     @"%Element": type,
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%buf": Buf(@"%Origin", @"%Element"),
-) error{OutOfMemory}!void {
+) void {
     @"%buf".rid(@"%allocator");
 }
 pub fn buf_origin_erase(
@@ -2343,7 +2341,7 @@ pub fn buf_origin_erase(
         buf: Buf(Origin(@"%Origin", @"%Part"), @"%Element"),
         eraser: Origin_eraser(@"%Origin", @"%Part"),
     }),
-) error{OutOfMemory}!Buf(Origin(Erased, @"%Part"), @"%Element") {
+) Buf(Origin(Erased, @"%Part"), @"%Element") {
     return .{
         .vacant = std.ArrayList(Unset_span(Origin(Erased, @"%Part"))){
             .capacity = @"%".buf.vacant.capacity,
@@ -2360,7 +2358,7 @@ pub fn buf_origin_unerase(
         buf: Buf(Origin(Erased, @"%Part"), @"%Element"),
         uneraser: Origin_uneraser(@"%Origin", @"%Part"),
     }),
-) error{OutOfMemory}!Buf(Origin(@"%Origin", @"%Part"), @"%Element") {
+) Buf(Origin(@"%Origin", @"%Part"), @"%Element") {
     return .{
         .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
             .capacity = @"%".buf.vacant.capacity,
@@ -2503,7 +2501,7 @@ pub fn unset_slice_allocate_length(
 pub fn unset_slice_length(
     @"%Element": type,
     @"%unset_slice": Unset_slice(@"%Element"),
-) error{OutOfMemory}!Record(struct { length: U32, span: Unset_slice(@"%Element") }) {
+) Record(struct { length: U32, span: Unset_slice(@"%Element") }) {
     return .{ .length = @"%unset_slice".length, .slice = @"%unset_slice" };
 }
 pub fn unset_slice_cast_or_rid_and_allocate(
@@ -2518,6 +2516,6 @@ pub fn unset_slice_rid(
     @"%Element": type,
     @"%allocator": std.mem.Allocator,
     @"%unset_slice": Unset_slice(@"%Element"),
-) error{OutOfMemory}!Unset_slice(@"%Element") {
+) Unset_slice(@"%Element") {
     return @"%unset_slice".rid(@"%allocator");
 }

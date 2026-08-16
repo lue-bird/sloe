@@ -2,43 +2,43 @@ const std = @import("std");
 const core = @import("core.zig");
 
 test "various trivial" {
-    try core.p32_rid(core.P32{ .positive = 11 });
-    try core.u32_rid(11);
-    try core.i32_rid(-11);
-    try core.f32_rid(-1.1);
-    try core.char_rid('?');
-    try core.str_rid(core.Str.fromComptime("moin"));
-    try core.fn_rid(i32, i32, struct {
+    core.p32_rid(core.P32{ .positive = 11 });
+    core.u32_rid(11);
+    core.i32_rid(-11);
+    core.f32_rid(-1.1);
+    core.char_rid('?');
+    core.str_rid(core.Str.fromComptime("moin"));
+    core.fn_rid(i32, i32, struct {
         pub fn f(_: std.mem.Allocator, n: core.I32) error{OutOfMemory}!core.I32 {
             return core.i32_negate_clamp(n);
         }
     }.f);
     {
         const example_origin: core.Origin(enum { example }, void) = .{};
-        try core.origin_rid(@TypeOf(example_origin).origin, void, example_origin);
+        core.origin_rid(@TypeOf(example_origin).origin, void, example_origin);
     }
     {
-        const duped = try core.p32_dup(core.P32{ .positive = 11 });
+        const duped = core.p32_dup(core.P32{ .positive = 11 });
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ core.P32{ .positive = 11 }, core.P32{ .positive = 11 } });
     }
     {
-        const duped = try core.u32_dup(11);
+        const duped = core.u32_dup(11);
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ 11, 11 });
     }
     {
-        const duped = try core.i32_dup(-11);
+        const duped = core.i32_dup(-11);
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ -11, -11 });
     }
     {
-        const duped = try core.f32_dup(-1.1);
+        const duped = core.f32_dup(-1.1);
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ -1.1, -1.1 });
     }
     {
-        const duped = try core.char_dup('?');
+        const duped = core.char_dup('?');
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ '?', '?' });
     }
     {
-        const duped = try core.str_dup(core.Str.fromComptime("moin"));
+        const duped = core.str_dup(core.Str.fromComptime("moin"));
         try std.testing.expectEqual(.{ duped.a.utf8.bytes, duped.b.utf8.bytes }, .{ "moin", "moin" });
     }
     {
@@ -47,10 +47,10 @@ test "various trivial" {
                 return core.i32_negate_clamp(n);
             }
         }.f;
-        const duped = try core.fn_dup(i32, i32, example_fn);
+        const duped = core.fn_dup(i32, i32, example_fn);
         try std.testing.expectEqual(.{ duped.a, duped.b }, .{ example_fn, example_fn });
     }
-    try std.testing.expectEqual(314.0, @trunc(try core.f32_pi({}) * 100));
+    try std.testing.expectEqual(314.0, @trunc(core.f32_pi({}) * 100));
     try std.testing.expectEqual(core.P32{ .positive = 20 }, core.p32_add_clamp(.{ .p = core.P32{ .positive = 11 }, .u = 9 }));
     try std.testing.expectEqual(20, core.u32_add_clamp(.{ .a = 11, .b = 9 }));
     try std.testing.expectEqual(2, core.u32_add_i32_clamp(.{ .u = 11, .i = -9 }));
@@ -69,136 +69,136 @@ test "various trivial" {
     try std.testing.expectEqual(core.P32{ .positive = std.math.maxInt(u32) }, core.u32_successor_clamp(std.math.maxInt(u32)));
 }
 test "i32_to_u32" {
-    try std.testing.expectEqual(core.Opt(core.U32){ .yes = 1 }, try core.i32_to_u32(1));
-    try std.testing.expectEqual(core.Opt(core.U32){ .no = {} }, try core.i32_to_u32(-1));
+    try std.testing.expectEqual(core.Opt(core.U32){ .yes = 1 }, core.i32_to_u32(1));
+    try std.testing.expectEqual(core.Opt(core.U32){ .no = {} }, core.i32_to_u32(-1));
 }
 test "trivial rounding" {
-    try std.testing.expectEqual(-1, try core.f32_round_up(-1.5));
-    try std.testing.expectEqual(-1, try core.f32_round_up_to_i32_clamp(-1.5));
-    try std.testing.expectEqual(-2, try core.f32_round_down(-1.5));
-    try std.testing.expectEqual(-2, try core.f32_round_down_to_i32_clamp(-1.5));
-    try std.testing.expectEqual(-1, try core.f32_round_toward_0(-1.5));
-    try std.testing.expectEqual(1, try core.f32_round_toward_0(1.5));
-    try std.testing.expectEqual(-1, try core.f32_round_toward_0_to_i32_clamp(-1.5));
-    try std.testing.expectEqual(1, try core.f32_round_toward_0_to_i32_clamp(1.5));
-    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_away_from_0(-1.5));
-    try std.testing.expectEqual(2, try core.f32_round_nearest_else_away_from_0(1.5));
-    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_away_from_0_to_i32_clamp(-1.5));
-    try std.testing.expectEqual(2, try core.f32_round_nearest_else_away_from_0_to_i32_clamp(1.5));
+    try std.testing.expectEqual(-1, core.f32_round_up(-1.5));
+    try std.testing.expectEqual(-1, core.f32_round_up_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-2, core.f32_round_down(-1.5));
+    try std.testing.expectEqual(-2, core.f32_round_down_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-1, core.f32_round_toward_0(-1.5));
+    try std.testing.expectEqual(1, core.f32_round_toward_0(1.5));
+    try std.testing.expectEqual(-1, core.f32_round_toward_0_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(1, core.f32_round_toward_0_to_i32_clamp(1.5));
+    try std.testing.expectEqual(-2, core.f32_round_nearest_else_away_from_0(-1.5));
+    try std.testing.expectEqual(2, core.f32_round_nearest_else_away_from_0(1.5));
+    try std.testing.expectEqual(-2, core.f32_round_nearest_else_away_from_0_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(2, core.f32_round_nearest_else_away_from_0_to_i32_clamp(1.5));
 }
 test "f32_round_away_from_0" {
-    try std.testing.expectEqual(-2, try core.f32_round_away_from_0(-1.6));
-    try std.testing.expectEqual(-2, try core.f32_round_away_from_0(-1.5));
-    try std.testing.expectEqual(-2, try core.f32_round_away_from_0(-1.4));
-    try std.testing.expectEqual(-1, try core.f32_round_away_from_0(-0.6));
-    try std.testing.expectEqual(-1, try core.f32_round_away_from_0(-0.5));
-    try std.testing.expectEqual(-1, try core.f32_round_away_from_0(-0.4));
-    try std.testing.expectEqual(0, try core.f32_round_away_from_0(0.0));
-    try std.testing.expectEqual(1, try core.f32_round_away_from_0(0.4));
-    try std.testing.expectEqual(1, try core.f32_round_away_from_0(0.5));
-    try std.testing.expectEqual(1, try core.f32_round_away_from_0(0.6));
-    try std.testing.expectEqual(2, try core.f32_round_away_from_0(1.4));
-    try std.testing.expectEqual(2, try core.f32_round_away_from_0(1.5));
-    try std.testing.expectEqual(2, try core.f32_round_away_from_0(1.6));
+    try std.testing.expectEqual(-2, core.f32_round_away_from_0(-1.6));
+    try std.testing.expectEqual(-2, core.f32_round_away_from_0(-1.5));
+    try std.testing.expectEqual(-2, core.f32_round_away_from_0(-1.4));
+    try std.testing.expectEqual(-1, core.f32_round_away_from_0(-0.6));
+    try std.testing.expectEqual(-1, core.f32_round_away_from_0(-0.5));
+    try std.testing.expectEqual(-1, core.f32_round_away_from_0(-0.4));
+    try std.testing.expectEqual(0, core.f32_round_away_from_0(0.0));
+    try std.testing.expectEqual(1, core.f32_round_away_from_0(0.4));
+    try std.testing.expectEqual(1, core.f32_round_away_from_0(0.5));
+    try std.testing.expectEqual(1, core.f32_round_away_from_0(0.6));
+    try std.testing.expectEqual(2, core.f32_round_away_from_0(1.4));
+    try std.testing.expectEqual(2, core.f32_round_away_from_0(1.5));
+    try std.testing.expectEqual(2, core.f32_round_away_from_0(1.6));
 }
 test "f32_round_away_from_0_to_i32_clamp_to_i32_clamp" {
-    try std.testing.expectEqual(-2, try core.f32_round_away_from_0_to_i32_clamp(-1.6));
-    try std.testing.expectEqual(-2, try core.f32_round_away_from_0_to_i32_clamp(-1.5));
-    try std.testing.expectEqual(-2, try core.f32_round_away_from_0_to_i32_clamp(-1.4));
-    try std.testing.expectEqual(-1, try core.f32_round_away_from_0_to_i32_clamp(-0.6));
-    try std.testing.expectEqual(-1, try core.f32_round_away_from_0_to_i32_clamp(-0.5));
-    try std.testing.expectEqual(-1, try core.f32_round_away_from_0_to_i32_clamp(-0.4));
-    try std.testing.expectEqual(0, try core.f32_round_away_from_0_to_i32_clamp(0.0));
-    try std.testing.expectEqual(1, try core.f32_round_away_from_0_to_i32_clamp(0.4));
-    try std.testing.expectEqual(1, try core.f32_round_away_from_0_to_i32_clamp(0.5));
-    try std.testing.expectEqual(1, try core.f32_round_away_from_0_to_i32_clamp(0.6));
-    try std.testing.expectEqual(2, try core.f32_round_away_from_0_to_i32_clamp(1.4));
-    try std.testing.expectEqual(2, try core.f32_round_away_from_0_to_i32_clamp(1.5));
-    try std.testing.expectEqual(2, try core.f32_round_away_from_0_to_i32_clamp(1.6));
+    try std.testing.expectEqual(-2, core.f32_round_away_from_0_to_i32_clamp(-1.6));
+    try std.testing.expectEqual(-2, core.f32_round_away_from_0_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-2, core.f32_round_away_from_0_to_i32_clamp(-1.4));
+    try std.testing.expectEqual(-1, core.f32_round_away_from_0_to_i32_clamp(-0.6));
+    try std.testing.expectEqual(-1, core.f32_round_away_from_0_to_i32_clamp(-0.5));
+    try std.testing.expectEqual(-1, core.f32_round_away_from_0_to_i32_clamp(-0.4));
+    try std.testing.expectEqual(0, core.f32_round_away_from_0_to_i32_clamp(0.0));
+    try std.testing.expectEqual(1, core.f32_round_away_from_0_to_i32_clamp(0.4));
+    try std.testing.expectEqual(1, core.f32_round_away_from_0_to_i32_clamp(0.5));
+    try std.testing.expectEqual(1, core.f32_round_away_from_0_to_i32_clamp(0.6));
+    try std.testing.expectEqual(2, core.f32_round_away_from_0_to_i32_clamp(1.4));
+    try std.testing.expectEqual(2, core.f32_round_away_from_0_to_i32_clamp(1.5));
+    try std.testing.expectEqual(2, core.f32_round_away_from_0_to_i32_clamp(1.6));
 }
 test "f32_round_nearest_else_even" {
-    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even(-1.6));
-    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even(-1.5));
-    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even(-1.4));
-    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even(-0.6));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(-0.5));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(-0.4));
-    try std.testing.expectEqual(0, try core.f32_round_away_from_0(0.0));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(0.4));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even(0.5));
-    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even(0.6));
-    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even(1.4));
-    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even(1.5));
-    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even(1.6));
+    try std.testing.expectEqual(-2, core.f32_round_nearest_else_even(-1.6));
+    try std.testing.expectEqual(-2, core.f32_round_nearest_else_even(-1.5));
+    try std.testing.expectEqual(-1, core.f32_round_nearest_else_even(-1.4));
+    try std.testing.expectEqual(-1, core.f32_round_nearest_else_even(-0.6));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even(-0.5));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even(-0.4));
+    try std.testing.expectEqual(0, core.f32_round_away_from_0(0.0));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even(0.4));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even(0.5));
+    try std.testing.expectEqual(1, core.f32_round_nearest_else_even(0.6));
+    try std.testing.expectEqual(1, core.f32_round_nearest_else_even(1.4));
+    try std.testing.expectEqual(2, core.f32_round_nearest_else_even(1.5));
+    try std.testing.expectEqual(2, core.f32_round_nearest_else_even(1.6));
 }
 test "f32_round_nearest_else_even_to_i32_clamp" {
-    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even_to_i32_clamp(-1.6));
-    try std.testing.expectEqual(-2, try core.f32_round_nearest_else_even_to_i32_clamp(-1.5));
-    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even_to_i32_clamp(-1.4));
-    try std.testing.expectEqual(-1, try core.f32_round_nearest_else_even_to_i32_clamp(-0.6));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(-0.5));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(-0.4));
-    try std.testing.expectEqual(0, try core.f32_round_away_from_0(0.0));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(0.4));
-    try std.testing.expectEqual(0, try core.f32_round_nearest_else_even_to_i32_clamp(0.5));
-    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even_to_i32_clamp(0.6));
-    try std.testing.expectEqual(1, try core.f32_round_nearest_else_even_to_i32_clamp(1.4));
-    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.5));
-    try std.testing.expectEqual(2, try core.f32_round_nearest_else_even_to_i32_clamp(1.6));
+    try std.testing.expectEqual(-2, core.f32_round_nearest_else_even_to_i32_clamp(-1.6));
+    try std.testing.expectEqual(-2, core.f32_round_nearest_else_even_to_i32_clamp(-1.5));
+    try std.testing.expectEqual(-1, core.f32_round_nearest_else_even_to_i32_clamp(-1.4));
+    try std.testing.expectEqual(-1, core.f32_round_nearest_else_even_to_i32_clamp(-0.6));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even_to_i32_clamp(-0.5));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even_to_i32_clamp(-0.4));
+    try std.testing.expectEqual(0, core.f32_round_away_from_0(0.0));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even_to_i32_clamp(0.4));
+    try std.testing.expectEqual(0, core.f32_round_nearest_else_even_to_i32_clamp(0.5));
+    try std.testing.expectEqual(1, core.f32_round_nearest_else_even_to_i32_clamp(0.6));
+    try std.testing.expectEqual(1, core.f32_round_nearest_else_even_to_i32_clamp(1.4));
+    try std.testing.expectEqual(2, core.f32_round_nearest_else_even_to_i32_clamp(1.5));
+    try std.testing.expectEqual(2, core.f32_round_nearest_else_even_to_i32_clamp(1.6));
 }
 test "order" {
-    try std.testing.expectEqual(core.Order{ .equal = {} }, try core.p32_order(.{ .left = core.P32.one, .right = core.P32.fromComptime(1) }));
-    try std.testing.expectEqual(core.Order{ .equal = {} }, try core.u32_order(.{ .left = 60, .right = 60 }));
-    try std.testing.expectEqual(core.Order{ .greater = {} }, try core.i32_order(.{ .left = 60, .right = -60 }));
-    try std.testing.expectEqual(core.Order{ .less = {} }, try core.f32_order(.{ .left = 40.2, .right = 60.1 }));
+    try std.testing.expectEqual(core.Order{ .equal = {} }, core.p32_order(.{ .left = core.P32.one, .right = core.P32.fromComptime(1) }));
+    try std.testing.expectEqual(core.Order{ .equal = {} }, core.u32_order(.{ .left = 60, .right = 60 }));
+    try std.testing.expectEqual(core.Order{ .greater = {} }, core.i32_order(.{ .left = 60, .right = -60 }));
+    try std.testing.expectEqual(core.Order{ .less = {} }, core.f32_order(.{ .left = 40.2, .right = 60.1 }));
 }
 test "char-to-u32" {
-    try std.testing.expectEqual(97, try core.char_to_u32('a'));
+    try std.testing.expectEqual(97, core.char_to_u32('a'));
 }
 test "str_start more after start" {
-    const split = try core.str_start(core.Str.fromComptime("abcde"));
+    const split = core.str_start(core.Str.fromComptime("abcde"));
     try std.testing.expectEqual('a', split.start);
     try std.testing.expectEqualStrings("bcde", split.after.yes.utf8.bytes);
 }
 test "str_start more after start (length 2 bytes)" {
-    const split = try core.str_start(core.Str.fromComptime("Ճbcde"));
+    const split = core.str_start(core.Str.fromComptime("Ճbcde"));
     try std.testing.expectEqual('Ճ', split.start);
     try std.testing.expectEqualStrings("bcde", split.after.yes.utf8.bytes);
 }
 test "str_start more after start (length 3 bytes)" {
-    const split = try core.str_start(core.Str.fromComptime("ໆbcde"));
+    const split = core.str_start(core.Str.fromComptime("ໆbcde"));
     try std.testing.expectEqual('ໆ', split.start);
     try std.testing.expectEqualStrings("bcde", split.after.yes.utf8.bytes);
 }
 test "str_start empty after start" {
-    const split = try core.str_start(core.Str.fromComptime("a"));
+    const split = core.str_start(core.Str.fromComptime("a"));
     try std.testing.expectEqual('a', split.start);
     try std.testing.expectEqual(core.Opt(core.Str){ .no = {} }, split.after);
 }
 test "str_end more before end" {
-    const split = try core.str_end(core.Str.fromComptime("abcde"));
+    const split = core.str_end(core.Str.fromComptime("abcde"));
     try std.testing.expectEqual('e', split.end);
     try std.testing.expectEqualStrings("abcd", split.before.yes.utf8.bytes);
 }
 test "str_end more before end (length 2 bytes)" {
-    const split = try core.str_end(core.Str.fromComptime("abcdՃ"));
+    const split = core.str_end(core.Str.fromComptime("abcdՃ"));
     try std.testing.expectEqual('Ճ', split.end);
     try std.testing.expectEqualStrings("abcd", split.before.yes.utf8.bytes);
 }
 test "str_end more before end (length 3 bytes)" {
-    const split = try core.str_end(core.Str.fromComptime("abcdໆ"));
+    const split = core.str_end(core.Str.fromComptime("abcdໆ"));
     try std.testing.expectEqual('ໆ', split.end);
     try std.testing.expectEqualStrings("abcd", split.before.yes.utf8.bytes);
 }
 test "str_end empty before end" {
-    const split = try core.str_end(core.Str.fromComptime("a"));
+    const split = core.str_end(core.Str.fromComptime("a"));
     try std.testing.expectEqual('a', split.end);
     try std.testing.expectEqual(core.Opt(core.Str){ .no = {} }, split.before);
 }
 test "choice_empty_to" {
     const choice_empty_rid: core.Fn(core.Choice, void) = struct {
         pub fn f(_: std.mem.Allocator, imp: core.Choice) error{OutOfMemory}!void {
-            try core.choice_empty_to(void, imp);
+            core.choice_empty_to(void, imp);
         }
     }.f;
     _ = choice_empty_rid;
@@ -207,21 +207,21 @@ test "simple slot and span queries" {
     const ExampleOrigin = enum { buf };
     const slot4 = core.Slot(ExampleOrigin){ .index = 4 };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
-    try std.testing.expectEqual(4, (try core.slot_index(ExampleOrigin, slot4)).index);
-    try std.testing.expectEqual(10, (try core.span_length(ExampleOrigin, span4_to_13)).length.positive);
-    try std.testing.expectEqual(10, (try core.opt_span_length(ExampleOrigin, .{ .yes = span4_to_13 })).length);
-    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, .{ .no = {} })).length);
+    try std.testing.expectEqual(4, (core.slot_index(ExampleOrigin, slot4)).index);
+    try std.testing.expectEqual(10, (core.span_length(ExampleOrigin, span4_to_13)).length.positive);
+    try std.testing.expectEqual(10, (core.opt_span_length(ExampleOrigin, .{ .yes = span4_to_13 })).length);
+    try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, .{ .no = {} })).length);
     const unset_slot4 = core.Unset_slot(ExampleOrigin){ .index = 4 };
     const unset_span4_to_13 = core.Unset_span(ExampleOrigin){ .start = unset_slot4, .length = core.P32.fromComptime(10) };
-    try std.testing.expectEqual(4, (try core.unset_slot_index(ExampleOrigin, unset_slot4)).index);
-    try std.testing.expectEqual(10, (try core.unset_span_length(ExampleOrigin, unset_span4_to_13)).length.positive);
-    try std.testing.expectEqual(10, (try core.opt_unset_span_length(ExampleOrigin, .{ .yes = unset_span4_to_13 })).length);
-    try std.testing.expectEqual(0, (try core.opt_unset_span_length(ExampleOrigin, .{ .no = {} })).length);
+    try std.testing.expectEqual(4, (core.unset_slot_index(ExampleOrigin, unset_slot4)).index);
+    try std.testing.expectEqual(10, (core.unset_span_length(ExampleOrigin, unset_span4_to_13)).length.positive);
+    try std.testing.expectEqual(10, (core.opt_unset_span_length(ExampleOrigin, .{ .yes = unset_span4_to_13 })).length);
+    try std.testing.expectEqual(0, (core.opt_unset_span_length(ExampleOrigin, .{ .no = {} })).length);
 }
 test "span_start" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot4_and_span5_to_13 = try core.span_start(ExampleOrigin, span4_to_13);
+    const slot4_and_span5_to_13 = core.span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
     try std.testing.expectEqual(5, slot4_and_span5_to_13.after.yes.start.index);
     try std.testing.expectEqual(9, slot4_and_span5_to_13.after.yes.length.positive);
@@ -230,7 +230,7 @@ test "span_start" {
 test "span_end" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot13_and_span4_to_12 = try core.span_end(ExampleOrigin, span4_to_13);
+    const slot13_and_span4_to_12 = core.span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
     try std.testing.expectEqual(4, slot13_and_span4_to_12.before.yes.start.index);
     try std.testing.expectEqual(9, slot13_and_span4_to_12.before.yes.length.positive);
@@ -239,7 +239,7 @@ test "span_end" {
 test "span_start_of_length_positive, normal inputs" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const span4_to_10_and_11_to_13 = try core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 7 } });
+    const span4_to_10_and_11_to_13 = core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 7 } });
     try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.yes.start.index);
     try std.testing.expectEqual(13, span4_to_10_and_11_to_13.after.yes.endIndex());
     try std.testing.expectEqual(4, span4_to_10_and_11_to_13.start.start.index);
@@ -248,15 +248,15 @@ test "span_start_of_length_positive, normal inputs" {
 test "span_start_of_length_positive, given length > given span length" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const span4_to_13_and_empty = try core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
-    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.after)).length);
+    const span4_to_13_and_empty = core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
+    try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.after)).length);
     try std.testing.expectEqual(4, span4_to_13_and_empty.start.start.index);
     try std.testing.expectEqual(13, span4_to_13_and_empty.start.endIndex());
 }
 test "span_end_of_length_positive, normal inputs" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const span4_to_10_and_11_to_13 = try core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 3 } });
+    const span4_to_10_and_11_to_13 = core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 3 } });
     try std.testing.expectEqual(11, span4_to_10_and_11_to_13.end.start.index);
     try std.testing.expectEqual(13, span4_to_10_and_11_to_13.end.endIndex());
     try std.testing.expectEqual(4, span4_to_10_and_11_to_13.before.yes.start.index);
@@ -265,8 +265,8 @@ test "span_end_of_length_positive, normal inputs" {
 test "span_end_of_length_positive, given length > given span length" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const span4_to_13_and_empty = try core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
-    try std.testing.expectEqual(0, (try core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.before)).length);
+    const span4_to_13_and_empty = core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
+    try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.before)).length);
     try std.testing.expectEqual(4, span4_to_13_and_empty.end.start.index);
     try std.testing.expectEqual(13, span4_to_13_and_empty.end.endIndex());
 }
@@ -318,7 +318,7 @@ test "span_fold down" {
 test "unset_span_start" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot4_and_span5_to_13 = try core.unset_span_start(ExampleOrigin, span4_to_13);
+    const slot4_and_span5_to_13 = core.unset_span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
     try std.testing.expectEqual(5, slot4_and_span5_to_13.after.yes.start.index);
     try std.testing.expectEqual(9, slot4_and_span5_to_13.after.yes.length.positive);
@@ -327,7 +327,7 @@ test "unset_span_start" {
 test "unset_span_end" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot13_and_span4_to_12 = try core.unset_span_end(ExampleOrigin, span4_to_13);
+    const slot13_and_span4_to_12 = core.unset_span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
     try std.testing.expectEqual(4, slot13_and_span4_to_12.before.yes.start.index);
     try std.testing.expectEqual(9, slot13_and_span4_to_12.before.yes.length.positive);
@@ -351,19 +351,19 @@ test "array create" {
 test "buf_add_array" {
     const ExampleOrigin = enum { origin };
     const example_origin: core.Origin(ExampleOrigin, void) = .{};
-    const example_buf = try core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
     const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
     const with_array = try core.buf_add_array(u32, @TypeOf(example_origin), ExampleArrayRecord, std.testing.allocator, .{
         .buf = example_buf,
         .new = example_array0,
     });
-    try core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, with_array.buf);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, with_array.buf);
 }
 test "buf_opt_span_add_array" {
     const ExampleOrigin = enum { origin };
     const example_origin: core.Origin(ExampleOrigin, void) = .{};
-    const example_buf = try core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
     const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
     const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), ExampleArrayRecord, std.testing.allocator, .{
@@ -371,7 +371,7 @@ test "buf_opt_span_add_array" {
         .span = .{ .no = {} },
         .new = example_array0,
     });
-    try core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, with_array.buf);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, with_array.buf);
 }
 test "unset_slice castOrRidAndAllocate working" {
     const allocator = std.testing.allocator;
@@ -390,7 +390,7 @@ test "buf insert, add, take, notVacantCount, rid" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};
-    var buf = try core.buf_empty(u32, BufOrigin, void, origin);
+    var buf = core.buf_empty(u32, BufOrigin, void, origin);
     try std.testing.expectEqual(0, buf.notVacantCount());
     const slot0 = try buf.add(allocator, 123);
     const slot1 = try buf.add(allocator, 456);
@@ -410,7 +410,7 @@ test "buf unset slot" {
     const BufOrigin = enum { buf };
     try std.testing.expect(core.Slot(BufOrigin) != core.Unset_slot(BufOrigin));
     const origin: core.Origin(BufOrigin, void) = .{};
-    var buf = try core.buf_empty(u32, BufOrigin, void, origin);
+    var buf = core.buf_empty(u32, BufOrigin, void, origin);
     try std.testing.expectEqual(0, buf.notVacantCount());
     const slot0 = try buf.add(allocator, 123);
     const slot1 = try buf.add(allocator, 456);
@@ -428,7 +428,7 @@ test "buf add to span" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};
-    var buf = try core.buf_empty(u32, BufOrigin, void, origin);
+    var buf = core.buf_empty(u32, BufOrigin, void, origin);
     const span0 = try buf.optSpanAdd(allocator, core.Opt(core.Span(@TypeOf(origin))){ .no = {} }, 123);
     const slot_causing_span_move_to_end = try buf.add(allocator, 4);
     const span1 = try buf.spanAdd(allocator, span0, 567);
@@ -444,7 +444,7 @@ test "buf add strs" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};
-    const buf = try core.buf_empty(core.Char, BufOrigin, void, origin);
+    const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
     const with_abcd = try core.buf_char_opt_span_add_str(
         @TypeOf(origin),
         allocator,
@@ -468,7 +468,7 @@ test "buf char add numbers" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};
-    const buf = try core.buf_empty(core.Char, BufOrigin, void, origin);
+    const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
     const with_u32 = try core.buf_char_opt_span_add_u32(
         @TypeOf(origin),
         allocator,
@@ -497,7 +497,7 @@ test "buf reverse" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};
-    var buf = try core.buf_empty(u32, BufOrigin, void, origin);
+    var buf = core.buf_empty(u32, BufOrigin, void, origin);
     const span = try buf.addSlice(allocator, &.{ 1, 2, 3, 4, 5, 6 });
     const span_reversed = buf.optSpanReverse(span);
     try std.testing.expectEqual(span, span_reversed);
@@ -508,7 +508,7 @@ test "buf add remove stress test" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};
-    var buf = try core.buf_empty(usize, BufOrigin, void, origin);
+    var buf = core.buf_empty(usize, BufOrigin, void, origin);
     var slots = std.ArrayList(core.Slot(@TypeOf(origin))).empty;
     for (0..100) |i| {
         try slots.append(allocator, try buf.add(allocator, i));
@@ -528,14 +528,14 @@ test "buf into unset slice then reuse" {
     const allocator = std.testing.allocator;
     const AOrigin = enum { origin };
     const a_origin: core.Origin(AOrigin, void) = .{};
-    var a_buf = try core.buf_empty(usize, AOrigin, void, a_origin);
+    var a_buf = core.buf_empty(usize, AOrigin, void, a_origin);
     try a_buf.preAllocateAtLeast(allocator, 20);
     const a_capacity = a_buf.elements.capacity;
     try std.testing.expect(a_capacity >= 20);
     const unset_slice = a_buf.intoUnsetSlice(allocator);
     const BOrigin = enum { origin };
     const b_origin: core.Origin(BOrigin, void) = .{};
-    var b_buf = try core.buf_reuse(
+    var b_buf = core.buf_reuse(
         usize,
         BOrigin,
         void,
@@ -558,7 +558,7 @@ test "unset_slice_cast_or_rid_and_allocate u64 to i63" {
     );
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
-    var buf = try core.buf_reuse(
+    var buf = core.buf_reuse(
         i63,
         Origin,
         void,
@@ -576,7 +576,7 @@ test "unset_slice_cast_or_rid_and_allocate u64 to struct{u32,u16}" {
     const unset_slice_tuple_u32_u16 = try core.unset_slice_cast_or_rid_and_allocate(u64, struct { u32, u16 }, allocator, unset_slice_u64);
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
-    var buf = try core.buf_reuse(
+    var buf = core.buf_reuse(
         struct { u32, u16 },
         Origin,
         void,
@@ -612,8 +612,8 @@ test "origin with enums containing the same member name" {
     const BOrigin = enum { origin };
     const b_origin: core.Origin(BOrigin, void) = .{};
     try std.testing.expect(@TypeOf(a_origin) != @TypeOf(b_origin));
-    try core.origin_rid(AOrigin, void, a_origin);
-    try core.origin_rid(BOrigin, void, b_origin);
+    core.origin_rid(AOrigin, void, a_origin);
+    core.origin_rid(BOrigin, void, b_origin);
 }
 test "origin can be @src()" {
     const AOrigin = SourceLocationUniqueEnum(@src());
@@ -621,8 +621,8 @@ test "origin can be @src()" {
     const BOrigin = SourceLocationUniqueEnum(@src());
     const b_origin: core.Origin(BOrigin, void) = .{};
     try std.testing.expect(@TypeOf(a_origin) != @TypeOf(b_origin));
-    try core.origin_rid(AOrigin, void, a_origin);
-    try core.origin_rid(BOrigin, void, b_origin);
+    core.origin_rid(AOrigin, void, a_origin);
+    core.origin_rid(BOrigin, void, b_origin);
 }
 /// No real benefit over using explicitly named `enum { ... }`s.
 /// This would be necessary if enum/struct/union(enum) were structural, not nominal.
@@ -641,7 +641,7 @@ test "multi-part origin" {
         part: core.Record(struct { a: void }),
         rest: core.Record(struct { b: void }),
     })), .{});
-    const origin_split = try core.origin_part(
+    const origin_split = core.origin_part(
         Origin,
         core.Record(struct { a: void }),
         core.Record(struct { b: void }),
@@ -656,7 +656,7 @@ test "multi-part Origin_eraser" {
         part: core.Record(struct { a: void }),
         rest: core.Record(struct { b: void }),
     })){};
-    const eraser_split = try core.origin_eraser_part(
+    const eraser_split = core.origin_eraser_part(
         Origin,
         core.Record(struct { a: void }),
         core.Record(struct { b: void }),
@@ -677,7 +677,7 @@ test "multi-part Origin_uneraser" {
         part: core.Record(struct { a: void }),
         rest: core.Record(struct { b: void }),
     })){};
-    const uneraser_split = try core.origin_uneraser_part(
+    const uneraser_split = core.origin_uneraser_part(
         Origin,
         core.Record(struct { a: void }),
         core.Record(struct { b: void }),
@@ -691,7 +691,7 @@ test "slot origin erase, then unerase" {
     const origin: core.Origin(Origin, core.Record(struct { origin: void })) = .{};
     const slot = core.Slot(@TypeOf(origin)){ .index = 69 };
     const eraser = core.Origin_eraser(Origin, core.Record(struct { origin: void })){};
-    const slot_erased = try core.slot_origin_erase(
+    const slot_erased = core.slot_origin_erase(
         Origin,
         core.Record(struct { origin: void }),
         .{ .slot = slot, .eraser = eraser },
@@ -699,7 +699,7 @@ test "slot origin erase, then unerase" {
     try std.testing.expectEqual(slot.index, slot_erased.slot.index);
     const NewOrigin = enum { origin };
     const uneraser = core.Origin_uneraser(NewOrigin, core.Record(struct { origin: void })){};
-    const slot_unerased = try core.slot_origin_unerase(
+    const slot_unerased = core.slot_origin_unerase(
         NewOrigin,
         core.Record(struct { origin: void }),
         .{ .slot = slot_erased.slot, .uneraser = uneraser },
@@ -714,7 +714,7 @@ test "span origin erase, then unerase" {
         .length = core.P32{ .positive = 3 },
     };
     const eraser = core.Origin_eraser(Origin, core.Record(struct { origin: void })){};
-    const span_erased = try core.span_origin_erase(
+    const span_erased = core.span_origin_erase(
         Origin,
         core.Record(struct { origin: void }),
         .{ .span = span, .eraser = eraser },
@@ -722,7 +722,7 @@ test "span origin erase, then unerase" {
     try std.testing.expectEqual(span.endIndex(), span_erased.span.endIndex());
     const NewOrigin = enum { origin };
     const uneraser = core.Origin_uneraser(NewOrigin, core.Record(struct { origin: void })){};
-    const span_unerased = try core.span_origin_unerase(
+    const span_unerased = core.span_origin_unerase(
         NewOrigin,
         core.Record(struct { origin: void }),
         .{ .span = span_erased.span, .uneraser = uneraser },
@@ -732,7 +732,7 @@ test "span origin erase, then unerase" {
 test "buf origin erase with elements, same size and alignment" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin, core.Record(struct { origin: void })) = .{};
-    var buf = try core.buf_empty(u32, Origin, core.Record(struct { origin: void }), origin);
+    var buf = core.buf_empty(u32, Origin, core.Record(struct { origin: void }), origin);
     _ = try buf.add(std.testing.allocator, 60);
     const eraser = core.Origin_eraser(Origin, core.Record(struct { origin: void })){};
     const buf_erased = try core.buf_origin_erase_with_elements(
@@ -788,7 +788,7 @@ test "buf origin erase with elements, same size and alignment" {
 test "buf origin erase with elements, different size and alignment" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin, core.Record(struct { origin: void })) = .{};
-    var buf = try core.buf_empty(u32, Origin, core.Record(struct { origin: void }), origin);
+    var buf = core.buf_empty(u32, Origin, core.Record(struct { origin: void }), origin);
     _ = try buf.add(std.testing.allocator, 60);
     const eraser = core.Origin_eraser(Origin, core.Record(struct { origin: void })){};
     const buf_erased = try core.buf_origin_erase_with_elements(
@@ -846,7 +846,7 @@ test "buf origin erase with elements, different size and alignment" {
 test "origin_erase span + buf, then origin_unerase" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
-    var buf = try core.buf_empty(u32, Origin, void, origin);
+    var buf = core.buf_empty(u32, Origin, void, origin);
     const span = (try buf.add(std.testing.allocator, 1)).to_span();
     const erased = try core.origin_erase(
         Origin,
@@ -867,11 +867,11 @@ test "origin_erase span + buf, then origin_unerase" {
                     core.Buf(core.Origin(core.Erased, void), u32),
                     core.Span(core.Origin(core.Erased, void)),
                 } {
-                    const span_erased = try core.span_origin_erase(Origin, void, .{
+                    const span_erased = core.span_origin_erase(Origin, void, .{
                         .span = erase.value.@"1",
                         .eraser = erase.eraser,
                     });
-                    const buf_erased = try core.buf_origin_erase(u32, Origin, void, .{
+                    const buf_erased = core.buf_origin_erase(u32, Origin, void, .{
                         .buf = erase.value.@"0",
                         .eraser = span_erased.eraser,
                     });
@@ -909,7 +909,7 @@ test "origin_erase span + buf, then origin_unerase" {
                     core.Buf(@TypeOf(new_origin), u32),
                     core.Span(@TypeOf(new_origin)),
                 } {
-                    const span_unerased = try core.span_origin_unerase(
+                    const span_unerased = core.span_origin_unerase(
                         NewOrigin,
                         void,
                         .{
@@ -917,7 +917,7 @@ test "origin_erase span + buf, then origin_unerase" {
                             .uneraser = unerase.uneraser,
                         },
                     );
-                    const buf_unerased = try core.buf_origin_unerase(
+                    const buf_unerased = core.buf_origin_unerase(
                         u32,
                         NewOrigin,
                         void,
@@ -984,7 +984,7 @@ test "anonymous struct fresh core.record works even through anonymous default st
 }
 test "anonymous struct fresh core.record from different origins" {
     const one = core.record(.{ .a = core.Str.fromComptime("a"), .b = core.Str.fromComptime("a") });
-    const two = try core.str_dup(core.Str.fromComptime("a"));
+    const two = core.str_dup(core.Str.fromComptime("a"));
     rid_both(core.Record(struct { a: core.Str, b: core.Str }), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
@@ -993,7 +993,7 @@ test "anonymous struct fresh core.record from different branches" {
         const one = if (logic) core.record(.{
             .a = core.Str.fromComptime("a"),
             .b = core.Str.fromComptime("a"),
-        }) else try core.str_dup(core.Str.fromComptime("a"));
+        }) else core.str_dup(core.Str.fromComptime("a"));
         rid_both(core.Str, one.a, one.b);
         try std.testing.expectEqualStrings(one.a.utf8.bytes, one.b.utf8.bytes);
     }

@@ -6251,7 +6251,11 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
                 zig_break_start(output, label);
             }
-            output.push_str("try ");
+            if is_core_fn_that_can_run_out_of_memory_in_zig(&name.value)
+                || !core_fns.contains_key(&name.value)
+            {
+                output.push_str("try ");
+            }
             output.push_str(&name_to_lowercase_zig(&name.value));
             output.push('(');
             for type_variable_argument in type_variable_arguments.into_values() {
@@ -14512,7 +14516,7 @@ Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same e
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A stack-allocated array of known, positive length.
+                    "An array of known, positive length, stack-allocated if the target language supports it.
 Arrays make adding multiple elements of the same type much less cumbersome,
 see `Buf-add-array`/`Buf-span-add-array`/`Buf-opt-span-add-array`.
 This is a very bare-bones feature because of sloe's simple type system.
@@ -14613,6 +14617,13 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
     });
 pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
     match fn_name {
+        "Unset-slice-rid" | "Buf-rid" | "Buf-to-unset" | "Buf-opt-span-rid" | "Buf-span-rid"
+        | "Buf-slot-rid" => true,
+        _ => is_core_fn_that_can_run_out_of_memory_in_zig(fn_name),
+    }
+}
+pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
+    match fn_name {
         "Call"
         | "Origin-erase"
         | "Origin-unerase"
@@ -14620,19 +14631,11 @@ pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
         | "Opt-span-fold"
         | "Unset-span-fold"
         | "Opt-unset-span-fold"
-        | "Unset-slice-rid"
         | "Unset-slice-cast-or-rid-and-allocate"
         | "Unset-slice-allocate-length"
         | "Buf-origin-unerase-with-elements"
-        | "Buf-rid"
-        | "Buf-to-unset"
-        | "Buf-opt-span-rid"
-        | "Buf-span-rid"
-        | "Buf-slot-rid"
         | "Buf-opt-span-move-to-end"
         | "Buf-span-move-to-end"
-        | "Buf-opt-span-move-to-vacant"
-        | "Buf-span-move-to-vacant"
         | "Buf-opt-unset-span-add-own-opt-span"
         | "Buf-unset-span-add-own-opt-span"
         | "Buf-opt-unset-span-add-own-span"
