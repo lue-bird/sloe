@@ -1,0 +1,222 @@
+{
+  "fileTypes": ["sloe"],
+  "name": "sloe",
+  "scopeName": "source.sloe",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#type-argument"
+    },
+    {
+      "include": "#string-quote"
+    },
+    {
+      "include": "#char"
+    },
+    {
+      "comment": "Floats are always decimal",
+      "match": "\\b([0-9]+\\.[0-9]+)\\b",
+      "name": "constant.numeric.float.sloe"
+    },
+    {
+      "match": "\\b([0-9]+)\\b",
+      "name": "constant.numeric.sloe"
+    },
+    {
+      "include": "#type"
+    },
+    {
+      "include": "#variable"
+    },
+    {
+      "include": "#variant-name"
+    },
+    {
+      "include": "#field-name"
+    },
+    {
+      "match": "(\\}|\\{)",
+      "name": "punctuation.bracket.sloe"
+    },
+    {
+      "include": "#comma"
+    },
+    {
+      "include": "#parens"
+    },
+    {
+      "include": "#record-empty"
+    },
+    {
+      "include": "#choice-empty"
+    },
+    {
+      "match": "(:)",
+      "name": "keyword.operator.colon.sloe"
+    },
+    {
+      "match": "(=)",
+      "name": "keyword.operator.equals.sloe"
+    },
+    {
+      "match": "(?)",
+      "name": "keyword.operator.query.sloe"
+    },
+    {
+      "match": "(..)",
+      "name": "keyword.operator.record-spread.sloe"
+    },
+    {
+      "match": "\\b(ty|fn)\\s+",
+      "name": "keyword.other.sloe"
+    }
+  ],
+  "repository": {
+    "comma": {
+      "match": "(,)",
+      "name": "punctuation.separator.comma.sloe"
+    },
+    "parens": {
+      "match": "(\\(|\\))",
+      "name": "punctuation.parens.sloe"
+    },
+    "comments": {
+      "patterns": [
+        {
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.comment.sloe"
+            }
+          },
+          "begin": "#",
+          "end": "$",
+          "name": "comment.line.sloe"
+        }
+      ]
+    },
+    "string-quote": {
+      "name": "string.quoted.double.sloe",
+      "begin": "\"",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.sloe"
+        }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.sloe"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\\\(NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL|[abfnrtv\\\\\\\"'\\&]|x[0-9a-fA-F]{1,5})",
+          "name": "constant.character.escape.sloe"
+        },
+        {
+          "match": "\\^[A-Z@\\[\\]\\\\\\^_]",
+          "name": "constant.character.escape.control.sloe"
+        }
+      ]
+    },
+    "char": {
+      "name": "string.quoted.single.sloe",
+      "begin": "'",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.char.begin.sloe"
+        }
+      },
+      "end": "'",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.char.end.sloe"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\\\(NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL|[abfnrtv\\\\\\\"'\\&]|x[0-9a-fA-F]{1,5})",
+          "name": "constant.character.escape.sloe"
+        },
+        {
+          "match": "\\^[A-Z@\\[\\]\\\\\\^_]",
+          "name": "constant.character.escape.control.sloe"
+        }
+      ]
+    },
+    "record-empty": {
+      "match": "[\\.]",
+      "name": "keyword.other.record-empty.sloe"
+    },
+    "choice-empty": {
+      "match": "[\\|]",
+      "name": "keyword.other.record-empty.sloe"
+    },
+    "square_brackets": {
+      "match": "[\\[\\]]",
+      "name": "punctuation.definition.list.sloe"
+    },
+    "variant-name": {
+      "match": "\\b\\|[a-z][a-zA-Z0-9-]*\\b",
+      "name": "constant.type-variant.sloe"
+    },
+    "variable": {
+      "match": "\\b[a-z][a-zA-Z0-9-]*\\b",
+      "name": "meta.variable.sloe"
+    },
+    "field-name": {
+      "match": "(\\.)([a-z][a-zA-Z0-9-]*)",
+      "name": "meta.record.accessor",
+      "captures": {
+        "1": {
+          "name": "keyword.other.period.sloe"
+        },
+        "2": {
+          "name": "entity.name.record.field.name.sloe"
+        }
+      }
+    },
+    "type-argument": {
+      "begin": "^(\\{)",
+      "end": "^(\\})",
+      "name": "meta.colon-type-colon.sloe",
+      "patterns": [
+        {
+          "match": "\\n\\s+",
+          "name": "punctuation.spaces.sloe"
+        },
+        {
+          "match": "\\b[a-z][a-zA-Z0-9-]*\\b",
+          "name": "storage.type.sloe"
+        }
+      ]
+    },
+    "type": {
+      "patterns": [
+        {
+          "match": "\\s+",
+          "name": "punctuation.spaces.sloe"
+        },
+        {
+          "match": "\\b_[a-z][a-zA-Z0-9-]*\\b",
+          "name": "variable.type.sloe"
+        },
+        {
+          "match": "\\b[a-zA-Z][a-zA-Z0-9-]*\\b",
+          "name": "storage.type.sloe"
+        },
+        {
+          "include": "#parens"
+        },
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#type-record"
+        }
+      ]
+    }
+  }
+}

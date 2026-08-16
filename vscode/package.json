@@ -1,0 +1,77 @@
+{
+  "name": "sloe",
+  "displayName": "sloe",
+  "description": "language server for sloe",
+  "author": "lue_bird",
+  "icon": "images/icon.png",
+  "license": "MIT",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://codeberg.org/lue-bird/sloe"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "sloe"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [],
+  "main": "./out/extension",
+  "contributes": {
+    "languages": [
+      {
+        "id": "sloe",
+        "extensions": [
+          ".sloe"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/file-icon-light.svg",
+          "dark": "./images/file-icon-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "scopeName": "markdown.sloe.codeblock",
+        "path": "./syntaxes/codeblock.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.sloe": "sloe"
+        }
+      },
+      {
+        "language": "sloe",
+        "scopeName": "source.sloe",
+        "path": "./syntaxes/sloe-syntax.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "sloe.commands.restart",
+        "title": "restart sloe",
+        "category": "sloe"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.0",
+    "typescript": "5.3.3"
+  },
+  "scripts": {
+    "compile": "tsc -p . --noEmit && esbuild --platform=node --bundle extension.js --external:vscode --minify --outfile=out/extension.js",
+    "package": "npm install && npm run compile && vsce package"
+  }
+}
