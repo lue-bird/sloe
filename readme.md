@@ -280,7 +280,45 @@ ty Pair _potential, _type-parameters
 |some-variant its value
 ```
 
-> As a user of sloe you can stop reading here. The rest is mostly for developers and those interested in language design
+## editor setups
+
+### zed/gram-like
+1. clone this repo
+2. open the editor command panel
+3. "zed: install dev extension" or "gram: install extension from folder" and select the cloned-path-sloe/zed directory
+
+Optionally for more precise syntax highlighting, add the setting `"semantic_tokens": "combined"` or `"languages": { "sloe": { "semantic_tokens": "full" } }`.
+
+Optionally for a file icon in the project panel, open the editor command panel, select `Icon theme selector: toggle` and choose "sloe icon dark"/"sloe icon light".
+
+### vscode-like
+#### pre-built
+1. download https://github.com/lue-bird/sloe/blob/main/vscode/sloe-0.1.0.vsix
+2. open the command bar at the top and select: `>Extensions: Install from VSIX`
+#### build from source
+1. clone this repo
+2. open `vscode/`
+3. run `npm run package` to create the `.vsix`
+4. open the command bar at the top and select: `>Extensions: Install from VSIX`
+
+### helix
+write to `~/.config/helix/languages.toml`:
+```toml
+[language-server.sloe]
+command = "sloe lsp"
+[[language]]
+name = "sloe"
+scope = "source.sloe"
+injection-regex = "sloe"
+file-types = ["sloe"]
+indent = { tab-width = 4, unit = "    " }
+language-servers = [ "sloe" ]
+auto-format = true
+```
+
+For other editors, there's usually a way to specify `sloe` as the language server and or point to the directory `tree-sitter/` in this repository. 
+
+> As a user of sloe you can stop reading here. The rest is for developers and those interested in language design
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
@@ -314,7 +352,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 
 # potential improvements in the future
 - add field and variant rename and references
-- add "add remaining query cases" code action
+- add code action for spreading a pattern variable
+- similarly, add "add remaining query cases" code action
 - add `Unset-untracked` API to make deconstructing Bufs less reliant on opitimizers figuring out that allocating and tracking vacant spans is useless when all those spans are deallocated anyway at the end.
   ```sloe
   ty Unset-untracked _origin
@@ -714,6 +753,8 @@ cargo install --offline --debug --path . sloe
 ```
 
 # TODO
+
+- in completion snippets, wrap the tab stops in parens
 
 - check Buf lengths after every append in rust the same way as done in zig but panic instead
 
