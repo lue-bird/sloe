@@ -715,8 +715,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- report in sloe when a string literal exceeds u32::max byte length
-
 - check Buf lengths after every append in rust the same way as done in zig but panic instead
 
 - rename `Buf-slot-rid` to `Buf-unset-slot-rid`, same for spans and opt spans

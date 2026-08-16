@@ -357,10 +357,10 @@ pub type Char = char;
 )]
 #[non_exhaustive]
 pub struct Str {
-    /// known to contain at least 1 char
+    /// known to contain at least 1 char and at most u32::MAX bytes
     // I already tried to split it into start:char, after:&str
     // but then it can't be passed to functions, Cow, etc. that expect a single consecutive &str
-    pub str: &'static str,
+    str: &'static str,
 }
 pub type Fn<In, Out> = fn(In) -> Out;
 pub type Order = Choice·Equal·Greater·Less<Record, Record, Record>;
@@ -613,8 +613,12 @@ impl<'a, Element> std::iter::DoubleEndedIterator for OwnedSliceIterator<'a, Elem
 }
 
 impl Str {
+    /// Using .unwrap() if given a non-empty string literal that is okay
     pub const fn from_str(static_str: &'static str) -> std::option::Option<Str> {
-        if static_str.is_empty() {
+        if static_str.is_empty()
+            || // <u32 as std::convert::TryFrom<usize>>::try_from(static_str.len()).is_err() isn't const, yet
+                static_str.len() > U32::MAX as usize
+        {
             std::option::Option::None
         } else {
             std::option::Option::Some(Str { str: static_str })

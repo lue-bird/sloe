@@ -10,7 +10,7 @@
  * Assumed to contain exactly one codepoint
  */
 /** @typedef {string} Str
- * Assumed to contain at least one codepoint
+ * Assumed to contain at least one codepoint and at most U32$MAX bytes
  */
 /** @template $In, $Out @typedef {(_: $In) => $Out} Fn */
 /** @template $Yes @typedef {{ yes: $Yes } | { no: void }} Opt */

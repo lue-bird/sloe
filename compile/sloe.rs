@@ -8483,6 +8483,19 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     message: Box::from("missing characters between the double quotes \"here\". A `str` always needs at least one char, otherwise switch to an `Opt str`"),
                 });
                 None
+            } else if let Err(_) = u32::try_from(content.len()) {
+                errors.push(ErrorNode {
+                    range: lsp_types::Range {
+                        start: *open_quote_start,
+                        end: if *closed_quote_exists {
+                            symbol_end(*content_end, "\"")
+                        } else {
+                            *content_end
+                        },
+                    },
+                    message: Box::from("too many characters between the double quotes \"here\". A `str` in sloe can only hold up to 2^32 bytes just like `Buf` for example. Sorry! Open an issue if this limitation is blocking you"),
+                });
+                None
             } else {
                 Some(type_str)
             }
