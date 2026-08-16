@@ -754,10 +754,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- in completion snippets, wrap the tab stops in parens
-
-- check Buf lengths after every append in rust the same way as done in zig but panic instead
-
 - rename `Buf-slot-rid` to `Buf-unset-slot-rid`, same for spans and opt spans
 
 - (not sure) add `Buf-span-rid` which asks for `.span Span _origin .element-rid Fn _element, .`. This functionality is already possible but unnecessarily inconvenient
@@ -767,6 +763,8 @@ cargo install --offline --debug --path . sloe
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
+
+- check Buf lengths after every append in rust the same way as done in zig but panic instead
 
 - try to find and fix bugs and resolve todo comments
 

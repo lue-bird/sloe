@@ -1503,18 +1503,18 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                     let mut snippet = String::new();
                                     snippet.push('(');
                                     snippet.push_str(type_alias_name);
-                                    snippet.push_str(" ${1:");
-                                    snippet.push('}');
+                                    snippet.push_str(" (${1:");
                                     snippet.push_str(parameter0);
+                                    snippet.push_str("})");
                                     use std::fmt::Write as _;
                                     for (parameter_position, parameter) in
                                         parameter1_up.iter().enumerate().map(|(i, e)| (i + 2, e))
                                     {
-                                        snippet.push_str(", ${");
+                                        snippet.push_str(", (${");
                                         let _ = write!(snippet, "{}", parameter_position);
                                         snippet.push(':');
                                         snippet.push_str(parameter);
-                                        snippet.push('}');
+                                        snippet.push_str("})");
                                     }
                                     snippet.push(')');
                                     Some(lsp_types::CompletionItem {
@@ -1725,9 +1725,9 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                             for (type_parameter_index, type_parameter) in
                                 fn_info.type_parameters.iter().enumerate()
                             {
-                                snippet.push_str("{_${");
+                                snippet.push_str("{${");
                                 let _ = write!(snippet, "{}", type_parameter_index);
-                                snippet.push(':');
+                                snippet.push_str(":_");
                                 snippet.push_str(type_parameter);
                                 snippet.push_str("}}");
                             }
@@ -1739,7 +1739,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         {
                                             snippet.push_str(" .");
                                             snippet.push_str(&field.name);
-                                            snippet.push_str(" ${");
+                                            snippet.push_str(" (${");
                                             let _ = write!(
                                                 snippet,
                                                 "{}",
@@ -1747,11 +1747,11 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                             );
                                             snippet.push(':');
                                             snippet.push_str(&field.name);
-                                            snippet.push('}');
+                                            snippet.push_str("})");
                                         }
                                     }
                                     sloe::Type::Variable(name) => {
-                                        snippet.push_str(" ${");
+                                        snippet.push_str(" (${");
                                         let _ = write!(
                                             snippet,
                                             "{}",
@@ -1759,10 +1759,10 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         );
                                         snippet.push(':');
                                         snippet.push_str(name);
-                                        snippet.push('}');
+                                        snippet.push_str("})");
                                     }
                                     sloe::Type::Origin(origin_name) => {
-                                        snippet.push_str(" ${");
+                                        snippet.push_str(" (${");
                                         let _ = write!(
                                             snippet,
                                             "{}",
@@ -1770,13 +1770,13 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         );
                                         snippet.push(':');
                                         snippet.push_str(origin_name);
-                                        snippet.push('}');
+                                        snippet.push_str("})");
                                     }
                                     sloe::Type::Choice(_) => {
-                                        snippet.push(' ');
+                                        snippet.push_str(" ($1)");
                                     }
                                     sloe::Type::CoreConstruct { .. } => {
-                                        snippet.push(' ');
+                                        snippet.push_str(" ($1)");
                                     }
                                 }
                             }
