@@ -1471,7 +1471,6 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                             type_alias_info,
                                         ),
                                     )),
-                                    insert_text: Some(type_alias_name.to_string()),
                                     ..lsp_types::CompletionItem::default()
                                 }),
                             }
@@ -1501,16 +1500,23 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                             match type_alias_info.parameters.as_slice() {
                                 [] => None,
                                 [parameter0, parameter1_up @ ..] => {
-                                    let mut inserted_text = String::new();
-                                    inserted_text.push('(');
-                                    inserted_text.push_str(type_alias_name);
-                                    inserted_text.push(' ');
-                                    inserted_text.push_str(parameter0);
-                                    for parameter in parameter1_up {
-                                        inserted_text.push_str(", ");
-                                        inserted_text.push_str(parameter);
+                                    let mut snippet = String::new();
+                                    snippet.push('(');
+                                    snippet.push_str(type_alias_name);
+                                    snippet.push_str(" ${1:");
+                                    snippet.push('}');
+                                    snippet.push_str(parameter0);
+                                    use std::fmt::Write as _;
+                                    for (parameter_position, parameter) in
+                                        parameter1_up.iter().enumerate().map(|(i, e)| (i + 2, e))
+                                    {
+                                        snippet.push_str(", ${");
+                                        let _ = write!(snippet, "{}", parameter_position);
+                                        snippet.push(':');
+                                        snippet.push_str(parameter);
+                                        snippet.push('}');
                                     }
-                                    inserted_text.push(')');
+                                    snippet.push(')');
                                     Some(lsp_types::CompletionItem {
                                         label: type_alias_name.to_string(),
                                         kind: Some(lsp_types::CompletionItemKind::Struct),
@@ -1520,7 +1526,10 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                                 type_alias_info,
                                             ),
                                         )),
-                                        insert_text: Some(inserted_text),
+                                        insert_text_format: Some(
+                                            lsp_types::InsertTextFormat::Snippet,
+                                        ),
+                                        insert_text: Some(snippet),
                                         ..lsp_types::CompletionItem::default()
                                     })
                                 }
@@ -1537,21 +1546,17 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .filter_map(|(type_alias_name, type_alias_info)| {
                             match type_alias_info.parameters.as_slice() {
                                 [] => None,
-                                [_, ..] => {
-                                    // improvement possibility: add commas
-                                    Some(lsp_types::CompletionItem {
-                                        label: format!("{}", type_alias_name),
-                                        kind: Some(lsp_types::CompletionItemKind::Struct),
-                                        documentation: Some(lsp_documentation_markdown(
-                                            present_type_alias_markdown(
-                                                type_alias_name,
-                                                type_alias_info,
-                                            ),
-                                        )),
-                                        insert_text: Some(format!("{}", type_alias_name)),
-                                        ..lsp_types::CompletionItem::default()
-                                    })
-                                }
+                                [_, ..] => Some(lsp_types::CompletionItem {
+                                    label: type_alias_name.to_string(),
+                                    kind: Some(lsp_types::CompletionItemKind::Struct),
+                                    documentation: Some(lsp_documentation_markdown(
+                                        present_type_alias_markdown(
+                                            type_alias_name,
+                                            type_alias_info,
+                                        ),
+                                    )),
+                                    ..lsp_types::CompletionItem::default()
+                                }),
                             }
                         })
                         .collect(),
@@ -1665,14 +1670,13 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .filter_map(|(fn_name, fn_info)| {
                             if fn_info.type_parameters.is_empty() {
                                 Some(lsp_types::CompletionItem {
-                                    label: format!("{}", fn_name),
+                                    label: fn_name.to_string(),
                                     kind: Some(lsp_types::CompletionItemKind::Function),
                                     documentation: Some(lsp_documentation_markdown(
                                         present_project_fn_with_complete_type_markdown(
                                             fn_name, fn_info,
                                         ),
                                     )),
-                                    insert_text: Some(format!("{}", fn_name)),
                                     ..lsp_types::CompletionItem::default()
                                 })
                             } else {
@@ -1714,50 +1718,69 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .fns
                         .iter()
                         .map(|(fn_name, fn_info)| {
-                            let mut inserted_text = String::new();
-                            inserted_text.push('(');
-                            inserted_text.push_str(fn_name);
-                            sloe::braced_type_parameters_format(
-                                &mut inserted_text,
-                                &fn_info.type_parameters,
-                            );
-                            match &fn_info.parameter_type {
-                                None => {}
-                                Some(parameter_type) => match parameter_type {
+                            let mut snippet = String::new();
+                            snippet.push('(');
+                            snippet.push_str(fn_name);
+                            use std::fmt::Write as _;
+                            for (type_parameter_index, type_parameter) in
+                                fn_info.type_parameters.iter().enumerate()
+                            {
+                                snippet.push_str("{_${");
+                                let _ = write!(snippet, "{}", type_parameter_index);
+                                snippet.push(':');
+                                snippet.push_str(type_parameter);
+                                snippet.push_str("}}");
+                            }
+                            if let Some(parameter_type) = &fn_info.parameter_type {
+                                match parameter_type {
                                     sloe::Type::Record(parameter_fields) => {
-                                        for field in parameter_fields {
-                                            inserted_text.push_str(" .");
-                                            inserted_text.push_str(&field.name);
-                                            inserted_text.push(' ');
-                                            inserted_text.push_str(&field.name);
+                                        for (field_index, field) in
+                                            parameter_fields.iter().enumerate()
+                                        {
+                                            snippet.push_str(" .");
+                                            snippet.push_str(&field.name);
+                                            snippet.push_str(" ${");
+                                            let _ = write!(
+                                                snippet,
+                                                "{}",
+                                                fn_info.type_parameters.len() + 1 + field_index
+                                            );
+                                            snippet.push(':');
+                                            snippet.push_str(&field.name);
+                                            snippet.push('}');
                                         }
                                     }
                                     sloe::Type::Variable(name) => {
-                                        inserted_text.push(' ');
-                                        let mut name_chars = name.chars();
-                                        if let Some(name_first_char) = name_chars.next() {
-                                            inserted_text.extend(name_first_char.to_uppercase());
-                                        }
-                                        inserted_text.extend(name_chars);
+                                        snippet.push_str(" ${");
+                                        let _ = write!(
+                                            snippet,
+                                            "{}",
+                                            fn_info.type_parameters.len() + 1
+                                        );
+                                        snippet.push(':');
+                                        snippet.push_str(name);
+                                        snippet.push('}');
                                     }
                                     sloe::Type::Origin(origin_name) => {
-                                        inserted_text.push(' ');
-                                        inserted_text.push_str(origin_name);
+                                        snippet.push_str(" ${");
+                                        let _ = write!(
+                                            snippet,
+                                            "{}",
+                                            fn_info.type_parameters.len() + 1
+                                        );
+                                        snippet.push(':');
+                                        snippet.push_str(origin_name);
+                                        snippet.push('}');
                                     }
-                                    sloe::Type::Choice(variants) => {
-                                        inserted_text.push(' ');
-                                        if let [variant] = variants.as_slice() {
-                                            inserted_text.push_str("(|{}");
-                                            inserted_text.push_str(&variant.name);
-                                            inserted_text.push_str(" )");
-                                        }
+                                    sloe::Type::Choice(_) => {
+                                        snippet.push(' ');
                                     }
                                     sloe::Type::CoreConstruct { .. } => {
-                                        inserted_text.push(' ');
+                                        snippet.push(' ');
                                     }
-                                },
+                                }
                             }
-                            inserted_text.push(')');
+                            snippet.push(')');
                             lsp_types::CompletionItem {
                                 label: fn_name.to_string(),
                                 kind: Some(lsp_types::CompletionItemKind::Function),
@@ -1766,7 +1789,8 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         fn_name, fn_info,
                                     ),
                                 )),
-                                insert_text: Some(inserted_text),
+                                insert_text_format: Some(lsp_types::InsertTextFormat::Snippet),
+                                insert_text: Some(snippet),
                                 ..lsp_types::CompletionItem::default()
                             }
                         })

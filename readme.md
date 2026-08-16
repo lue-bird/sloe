@@ -715,9 +715,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- detect missing variable name in typed pattern more rigerously
-
-- when providing type construct and function construct completions, set the cursor to the first argument
+- avoid generating error{OutOfMemory}! for many core calls and maybe sloe calls if possible. Verify that types coerce correctly
 
 - rename `Buf-slot-rid` to `Buf-unset-slot-rid`, same for spans and opt spans
 
@@ -725,11 +723,9 @@ cargo install --offline --debug --path . sloe
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
 
+- add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
+
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
-
-- (not fully sure) add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
-
-- avoid generating error{OutOfMemory}! for many core calls and maybe sloe calls if possible. Verify that types coerce correctly
 
 - try to find and fix bugs and resolve todo comments
 
