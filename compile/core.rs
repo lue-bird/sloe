@@ -13,6 +13,7 @@
     clippy::needless_update,
     clippy::must_use_candidate
 )]
+extern crate core;
 extern crate std;
 
 // Most module members are directly usable by sloe code to avoid name clashes with generated functions and types.
@@ -107,6 +108,11 @@ pub struct Record·erased·origin·unerase·value_rid<Erased, Origin, Unerase, V
     pub origin: Origin,
     pub unerase: Unerase,
     pub value_rid: Value_rid,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·erased·rid<Erased, Rid> {
+    pub erased: Erased,
+    pub rid: Rid,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·erased·uneraser<Erased, Uneraser> {
@@ -2698,6 +2704,14 @@ pub fn origin_erase<LocalOrigin, Parts, Value, ValueErased>(
             eraser: eraser,
         })
     })
+}
+pub fn origin_erased_rid<Parts, ValueErased>(
+    Record·erased·rid { erased, rid }: Record·erased·rid<
+        Origin_erased<Parts, ValueErased>,
+        Fn<ValueErased, Record>,
+    >,
+) -> Record {
+    rid(erased.value_erased)
 }
 fn origin_unerase<LocalOrigin, Parts, Value, ValueErased>(
     Record·erased·origin·unerase·value_rid {

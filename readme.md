@@ -1,3 +1,5 @@
+> Warning: Currently Origin-erase and Origin-add APIs are unsound. Fixes are known and will be implemented in the next few days
+
 Small, fast programming language where indexes are valid and values can't be shared.
 
 Goal: representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
@@ -753,6 +755,31 @@ cargo install --offline --debug --path . sloe
 ```
 
 # TODO
+
+- add
+  ```sloe
+  fn Origin-erased-rid
+      .erased Origin-erased _parts, _value-erased
+      .rid Fn _value-erased, .
+      : .
+  fn Origin-erased-map
+      .erased Origin-erased _parts, _value-erased
+      .change Fn _value-erased, _value-erased-new
+      :
+      Origin-erased _parts, _value-erased-new
+  ```
+
+- let `Origin-erase` return a new type `Unerase-origin _parts, _origin`, add `origin-unerase-rid` and change `Origin-unerase .origin` to take `.to (|origin Origin _parts, _origin |uneraser Origin-uneraser _parts, _origin)` instead.
+  This allows erased values to only encompass some slots and spans in the Buf,
+  while still being reconstructible to the same unique origin type
+
+- rename "erase" terminology to "isolate" (isolator) and "unerase" to "integrate" (?) (integrator) or something better
+
+- do not parse result type if : is missing in project fn
+
+- do not parse result if = is missing in project fn
+
+- when in pattern record, suggest field name in completion
 
 - add `Buf-span-rid` which asks for `.span Span _origin .element-rid Fn _element, .`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 

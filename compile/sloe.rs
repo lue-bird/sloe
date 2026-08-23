@@ -12688,6 +12688,22 @@ To convert an `Origin-erased` value into a normal value with an origin again, us
                 result_type: type_origin_erased(type_variable("parts"), type_variable("value-erased"))
             },
             CoreFnInfo {
+                name: "Origin-erased-rid",
+                documentation: r#"Mark an `Origin-erased` value as "won't be used anymore".
+The effect is the same as calling `Origin-unerase`, then scrapping the unerased value.
+It may also be more performant on some host languages (for example in js this function does nothing).
+
+Note that this convenient helper is quite simplistic.
+If you have a concrete use-case where you _must_ pass state in to the rid function,
+please open an issue."#,
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("erased", type_origin_erased(type_variable("parts"), type_variable("value-erased"))),
+                    ("rid", type_fn(type_variable("value-erased"), type_record_empty))
+                ]),
+                result_type: type_record_empty
+            },
+            CoreFnInfo {
                 name: "Origin-unerase",
                 documentation: "Take an `Origin-erased` created with `Origin-erase`
 and replace all `erased` origins with new given origin.
@@ -14643,6 +14659,7 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
     match fn_name {
         "Call"
         | "Origin-erase"
+        | "Origin-erased-rid"
         | "Origin-unerase"
         | "Span-fold"
         | "Opt-span-fold"

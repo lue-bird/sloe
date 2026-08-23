@@ -1287,6 +1287,17 @@ pub fn origin_erase(
 ) error{OutOfMemory}!Origin_erased(@"%Parts", @"%ValueErased") {
     return .{ .erased = try @"%".erase(@"%allocator", .{ .value = @"%".value, .eraser = .{} }) };
 }
+pub fn origin_erased_rid(
+    @"%Parts": type,
+    @"%ValueErased": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        erased: Origin_erased(@"%Parts", @"%ValueErased"),
+        rid: Fn(@"%ValueErased", void),
+    }),
+) error{OutOfMemory}!void {
+    return @"%".rid(@"%allocator", @"%".erased.erased);
+}
 pub fn origin_unerase(
     @"%Origin": type,
     @"%Parts": type,

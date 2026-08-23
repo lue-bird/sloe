@@ -941,6 +941,64 @@ test "origin_erase span + buf, then origin_unerase" {
     // scrap the original buf, showing that the allocation is the same as for unerased.buf
     buf.rid(std.testing.allocator);
 }
+test "origin_erase span + buf, then origin_erased_rid" {
+    const Origin = enum { origin };
+    const origin: core.Origin(Origin, void) = .{};
+    var buf = core.buf_empty(u32, Origin, void, origin);
+    const span = (try buf.add(std.testing.allocator, 1)).to_span();
+    const erased = try core.origin_erase(
+        Origin,
+        void,
+        struct { @TypeOf(buf), @TypeOf(span) },
+        struct {
+            core.Buf(core.Origin(core.Erased, void), u32),
+            core.Span(core.Origin(core.Erased, void)),
+        },
+        std.testing.allocator,
+        .{
+            .value = .{ buf, span },
+            .erase = struct {
+                pub fn f(_: std.mem.Allocator, erase: core.Record(struct {
+                    value: struct { @TypeOf(buf), @TypeOf(span) },
+                    eraser: core.Origin_eraser(Origin, void),
+                })) error{OutOfMemory}!struct {
+                    core.Buf(core.Origin(core.Erased, void), u32),
+                    core.Span(core.Origin(core.Erased, void)),
+                } {
+                    const span_erased = core.span_origin_erase(Origin, void, .{
+                        .span = erase.value.@"1",
+                        .eraser = erase.eraser,
+                    });
+                    const buf_erased = core.buf_origin_erase(u32, Origin, void, .{
+                        .buf = erase.value.@"0",
+                        .eraser = span_erased.eraser,
+                    });
+                    return .{ buf_erased, span_erased.span };
+                }
+            }.f,
+        },
+    );
+    try core.origin_erased_rid(
+        void,
+        struct {
+            core.Buf(core.Origin(core.Erased, void), u32),
+            core.Span(core.Origin(core.Erased, void)),
+        },
+        std.testing.allocator,
+        .{
+            .erased = erased,
+            .rid = struct {
+                pub fn f(allocator: std.mem.Allocator, value_erased: struct {
+                    core.Buf(core.Origin(core.Erased, void), u32),
+                    core.Span(core.Origin(core.Erased, void)),
+                }) error{OutOfMemory}!void {
+                    // inn real code we would remove span
+                    value_erased.@"0".rid(allocator);
+                }
+            }.f,
+        },
+    );
+}
 test "anonymous struct default does not work" {
     // This is very annoying: Zig just recently used to have real anonymous structs
     // which were removed from the language because their implementation was buggy.
