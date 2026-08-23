@@ -3039,9 +3039,10 @@ pub fn buf_char_span_add_u32<Origin>(
         Span<Origin>,
     >,
 ) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
-    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
-    let new_as_string = std::format!("{}", new);
-    let combined_span = buf.span_add_iterator(span, new_as_string.chars());
+    let combined_span = buf.span_add_iterator(
+        span,
+        new.format_into(&mut core::fmt::NumBuffer::new()).chars(),
+    );
     Record·buf·span {
         buf: buf,
         span: combined_span,
@@ -3054,13 +3055,14 @@ pub fn buf_char_opt_span_add_u32<Origin>(
         Opt<Span<Origin>>,
     >,
 ) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
-    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
-    let new_as_string = std::format!("{}", new);
-    let combined_span = buf.opt_span_add_iterator(span, new_as_string.chars());
+    let combined_span = buf.opt_span_add_iterator(
+        span,
+        new.format_into(&mut core::fmt::NumBuffer::new()).chars(),
+    );
     Record·buf·span {
         buf: buf,
         span: {
-            // new_as_string has .len() >= 1 because a formatted number is never ""
+            // .chars() has .len() >= 1 because a formatted number is never ""
             unsafe { combined_span.into_option().unwrap_unchecked() }
         },
     }
@@ -3072,9 +3074,10 @@ pub fn buf_char_span_add_i32<Origin>(
         Span<Origin>,
     >,
 ) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
-    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
-    let new_as_string = std::format!("{}", new);
-    let combined_span = buf.span_add_iterator(span, new_as_string.chars());
+    let combined_span = buf.span_add_iterator(
+        span,
+        new.format_into(&mut core::fmt::NumBuffer::new()).chars(),
+    );
     Record·buf·span {
         buf: buf,
         span: combined_span,
@@ -3087,13 +3090,14 @@ pub fn buf_char_opt_span_add_i32<Origin>(
         Opt<Span<Origin>>,
     >,
 ) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
-    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
-    let new_as_string = std::format!("{}", new);
-    let combined_span = buf.opt_span_add_iterator(span, new_as_string.chars());
+    let combined_span = buf.opt_span_add_iterator(
+        span,
+        new.format_into(&mut core::fmt::NumBuffer::new()).chars(),
+    );
     Record·buf·span {
         buf: buf,
         span: {
-            // new_as_string has .len() >= 1 because a formatted number is never ""
+            // .chars() has .len() >= 1 because a formatted number is never ""
             unsafe { combined_span.into_option().unwrap_unchecked() }
         },
     }
@@ -3101,11 +3105,11 @@ pub fn buf_char_opt_span_add_i32<Origin>(
 pub fn buf_char_span_add_f32<Origin>(
     Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
         Buf<Origin, Char>,
-        I32,
+        F32,
         Span<Origin>,
     >,
 ) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
-    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    // can be optimized if NumBuffer gets expanded to cover f32
     let new_as_string = std::format!("{:.}", new);
     let combined_span = buf.span_add_iterator(span, new_as_string.chars());
     Record·buf·span {
@@ -3120,7 +3124,7 @@ pub fn buf_char_opt_span_add_f32<Origin>(
         Opt<Span<Origin>>,
     >,
 ) -> Record·buf·span<Buf<Origin, Char>, Span<Origin>> {
-    // can be optimized once https://github.com/rust-lang/rust/issues/138215 lands
+    // can be optimized if NumBuffer gets expanded to cover f32
     let new_as_string = std::format!("{:.}", new);
     let combined_span = buf.opt_span_add_iterator(span, new_as_string.chars());
     Record·buf·span {
