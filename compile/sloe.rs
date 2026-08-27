@@ -11550,10 +11550,10 @@ fn type_to_diff_without_conflict(type_: &Type) -> TypeDiff {
 
 fn type_diff_error_message(type_diff: &TypeDiff) -> String {
     let mut builder: String = String::from("type mismatch:\n");
-    type_diff_into(&mut builder, 0, type_diff);
+    type_diff_format(&mut builder, 0, type_diff);
     builder
 }
-fn type_diff_into(formatted: &mut String, indent: usize, type_diff: &TypeDiff) {
+fn type_diff_format(formatted: &mut String, indent: usize, type_diff: &TypeDiff) {
     match type_diff {
         TypeDiff::Conflict { expected, actual } => {
             formatted.push_str("expected:");
@@ -11581,21 +11581,30 @@ fn type_diff_into(formatted: &mut String, indent: usize, type_diff: &TypeDiff) {
         }
         TypeDiff::CoreConstruct { name, arguments } => {
             formatted.push_str(name);
-            let line_span: LineSpan = type_diff_line_span(type_diff);
-            for argument in arguments {
+            if let Some((argument0, argument1_up)) = arguments.split_first() {
+                let line_span: LineSpan = type_diff_line_span(type_diff);
                 space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
                 type_diff_parenthesized_if_open_ended_into(
                     formatted,
                     next_indent(indent),
-                    argument,
+                    argument0,
                 );
+                for argument in argument1_up {
+                    formatted.push(',');
+                    space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
+                    type_diff_parenthesized_if_open_ended_into(
+                        formatted,
+                        next_indent(indent),
+                        argument,
+                    );
+                }
             }
         }
-        TypeDiff::Record(fields) => match fields.as_slice() {
-            [] => {
+        TypeDiff::Record(fields) => match fields.split_first() {
+            None => {
                 formatted.push('.');
             }
-            [field0, field1_up @ ..] => {
+            Some((field0, field1_up)) => {
                 type_diff_field_format(formatted, indent, field0);
                 let line_span: LineSpan = type_diff_line_span(type_diff);
                 for field in field1_up {
@@ -11604,11 +11613,11 @@ fn type_diff_into(formatted: &mut String, indent: usize, type_diff: &TypeDiff) {
                 }
             }
         },
-        TypeDiff::Choice(variants) => match variants.as_slice() {
-            [] => {
+        TypeDiff::Choice(variants) => match variants.split_first() {
+            None => {
                 formatted.push('|');
             }
-            [variant0, variant1_up @ ..] => {
+            Some((variant0, variant1_up)) => {
                 type_diff_variant_format(formatted, indent, variant0);
                 let line_span: LineSpan = type_diff_line_span(type_diff);
                 for variant in variant1_up {
@@ -11637,13 +11646,13 @@ fn type_diff_parenthesized_if_open_ended_into(
     };
     if should_parenthesize_argument {
         formatted.push('(');
-        type_diff_into(formatted, indent, type_diff);
+        type_diff_format(formatted, indent, type_diff);
         if type_diff_line_span(type_diff) == LineSpan::Multiple {
             linebreak_indented_into(formatted, indent);
         }
         formatted.push(')');
     } else {
-        type_diff_into(formatted, indent, type_diff);
+        type_diff_format(formatted, indent, type_diff);
     }
 }
 fn type_diff_field_format(formatted: &mut String, indent: usize, type_diff_field: &TypeDiffField) {
@@ -15722,11 +15731,11 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     );
                 }
             }
-            match cases.as_slice() {
-                [] => {
+            match cases.split_first() {
+                None => {
                     formatted.push_str(" [] ");
                 }
-                [case0, case1_up @ ..] => {
+                Some((case0, case1_up)) => {
                     let line_span_before_last_case_pattern = range_line_span(lsp_types::Range {
                         start: *question_mark_start,
                         end: {
@@ -19619,12 +19628,9 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
         Type::Origin(name) => {
             formatted.push_str(name);
         }
-        Type::CoreConstruct { name, arguments } => match arguments.as_slice() {
-            [] => {
-                formatted.push_str(name);
-            }
-            [argument0, argument1_up @ ..] => {
-                formatted.push_str(name);
+        Type::CoreConstruct { name, arguments } => {
+            formatted.push_str(name);
+            if let Some((argument0, argument1_up)) = arguments.split_first() {
                 let line_span: LineSpan = type_line_span(type_);
                 space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
                 type_parenthesized_if_open_ended_format(formatted, next_indent(indent), argument0);
@@ -19638,13 +19644,13 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
                     );
                 }
             }
-        },
+        }
         Type::Record(fields) => type_record_format(formatted, indent, fields),
-        Type::Choice(variants) => match variants.as_slice() {
-            [] => {
+        Type::Choice(variants) => match variants.split_first() {
+            None => {
                 formatted.push('|');
             }
-            [variant0, variant1_up @ ..] => {
+            Some((variant0, variant1_up)) => {
                 type_variant_format(formatted, indent, variant0);
                 let line_span: LineSpan = type_line_span(type_);
                 for variant in variant1_up {
@@ -19656,11 +19662,11 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
     }
 }
 fn type_record_format(formatted: &mut String, indent: usize, fields: &[TypeField]) {
-    match fields {
-        [] => {
+    match fields.split_first() {
+        None => {
             formatted.push('.');
         }
-        [field0, field1_up @ ..] => {
+        Some((field0, field1_up)) => {
             type_field_format(formatted, indent, field0);
             let line_span: LineSpan = type_record_line_span(fields);
             for field in field1_up {

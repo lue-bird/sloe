@@ -1531,9 +1531,10 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .type_aliases
                         .iter()
                         .filter_map(|(type_alias_name, type_alias_info)| {
-                            match type_alias_info.parameters.as_slice() {
-                                [_, ..] => None,
-                                [] => Some(lsp_types::CompletionItem {
+                            if !type_alias_info.parameters.is_empty() {
+                                None
+                            } else {
+                                Some(lsp_types::CompletionItem {
                                     label: type_alias_name.to_string(),
                                     kind: Some(lsp_types::CompletionItemKind::Struct),
                                     documentation: Some(lsp_documentation_markdown(
@@ -1543,7 +1544,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         ),
                                     )),
                                     ..lsp_types::CompletionItem::default()
-                                }),
+                                })
                             }
                         })
                         .chain(
@@ -1568,9 +1569,9 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .type_aliases
                         .iter()
                         .filter_map(|(type_alias_name, type_alias_info)| {
-                            match type_alias_info.parameters.as_slice() {
-                                [] => None,
-                                [parameter0, parameter1_up @ ..] => {
+                            match type_alias_info.parameters.split_first() {
+                                None => None,
+                                Some((parameter0, parameter1_up)) => {
                                     let mut snippet = String::new();
                                     snippet.push('(');
                                     snippet.push_str(type_alias_name);
@@ -1615,9 +1616,10 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         .type_aliases
                         .iter()
                         .filter_map(|(type_alias_name, type_alias_info)| {
-                            match type_alias_info.parameters.as_slice() {
-                                [] => None,
-                                [_, ..] => Some(lsp_types::CompletionItem {
+                            if type_alias_info.parameters.is_empty() {
+                                None
+                            } else {
+                                Some(lsp_types::CompletionItem {
                                     label: type_alias_name.to_string(),
                                     kind: Some(lsp_types::CompletionItemKind::Struct),
                                     documentation: Some(lsp_documentation_markdown(
@@ -1627,7 +1629,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                         ),
                                     )),
                                     ..lsp_types::CompletionItem::default()
-                                }),
+                                })
                             }
                         })
                         .collect(),

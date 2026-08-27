@@ -362,6 +362,9 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
 
 # potential improvements in the future
+- inline Origin paramters (origin, part) into Slot, Span, Buf, Unset-slot Unset-span.
+  This is less confusing IMO but clutters types a little in core signatures
+- when in query case pattern record, suggest field name in completion
 - add field and variant rename and references
 - add code action for spreading a pattern variable
 - similarly, add "add remaining query cases" code action
@@ -779,16 +782,9 @@ cargo install --offline --debug --path . sloe
 
 - make origin-erased-rid actually useful or remove it
 
-- inline Origin paramters (origin, part) into Slot, Span, Buf, Unset-slot Unset-span.
-  This is less confusing IMO but clutters types a little in core signatures
-
 - generate array record types as .element .rest linked list to avoid needing to generate records on the fly
 
-- when in pattern record, suggest field name in completion
-
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
-
-- in type diff formatting, add missing commas between construct arguments
 
 - consider not reporting an error if a pattern variable uses an already used origin variable name. Even if not, improve the error no not include "already"
 
