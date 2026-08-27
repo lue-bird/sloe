@@ -213,6 +213,7 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
     },
     Origin {
         caret_key_symbol_start: lsp_types::Position,
+        parts: Vec<WithStartPosition<Option<Name>>>,
         name: Option<WithStartPosition<Name>>,
         result: Option<core::Slot<Expressions>>,
     },
@@ -638,6 +639,7 @@ pub fn expression_start<Expressions, Patterns, Types>(
         } => comments.line0.start,
         SyntaxExpression::Origin {
             caret_key_symbol_start,
+            parts: _,
             name: _,
             result: _,
         } => *caret_key_symbol_start,
@@ -800,6 +802,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .unwrap_or_else(|| comments_end(comments)),
         SyntaxExpression::Origin {
             caret_key_symbol_start,
+            parts,
             name,
             result,
         } => result
@@ -808,6 +811,11 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .or_else(|| {
                 name.as_ref()
                     .map(|name| name_end(with_start_position_as_ref(name)))
+            })
+            .or_else(|| {
+                parts
+                    .last()
+                    .map(|last_part| optional_field_name_end(last_part))
             })
             .unwrap_or_else(|| symbol_end(*caret_key_symbol_start, "^")),
         SyntaxExpression::Query {
@@ -2151,11 +2159,17 @@ fn parse_expression_origin<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
+    let mut parts = Vec::new();
+    while let Some(part) = parse_field_name(state) {
+        parts.push(part);
+        parse_sloe_whitespace(state);
+    }
     let name = parse_sloe_lowercase_name_with_start(state);
     parse_sloe_whitespace(state);
     let result = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Origin {
         caret_key_symbol_start: caret_key_symbol_start,
+        parts: parts,
         name: name,
         result: result.map(|result| expressions.insert(result)),
     })
@@ -2930,6 +2944,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
+            parts: _,
             name: _,
             result,
         } => {
@@ -6830,6 +6845,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start,
+            parts,
             name,
             result,
         } => {
@@ -6846,13 +6862,24 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             };
             output.push_str("const ");
             origin_name_to_uppercase_local_zig(output, &name.value);
-            output.push_str(" = enum {};\nconst ");
-            name_to_lowercase_local_zig(output, &name.value);
-            output.push_str(" : Origin(");
-            origin_name_to_uppercase_local_zig(output, &name.value);
-            output.push_str(", Record(struct { ");
-            output.push_str(&name_to_lowercase_zig(&name.value));
-            output.push_str(" : void })) = .{};\n");
+            output.push_str(" = enum {};\n");
+            if parts.is_empty() {
+                output.push_str("const ");
+                name_to_lowercase_local_zig(output, &name.value);
+                output.push_str(" : Origin(");
+                origin_name_to_uppercase_local_zig(output, &name.value);
+                output.push_str(", void) = .{};\n");
+            } else {
+                for part in parts.iter().filter_map(|part| part.value.as_ref()) {
+                    output.push_str("const ");
+                    name_to_lowercase_local_zig(output, part);
+                    output.push_str(" : Origin(");
+                    origin_name_to_uppercase_local_zig(output, &name.value);
+                    output.push_str(", Record(struct { ");
+                    output.push_str(&name_to_lowercase_zig(part));
+                    output.push_str(" : void })) = .{};\n");
+                }
+            }
             match result {
                 None => {
                     zig_incomplete_expression(output);
@@ -6862,6 +6889,15 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         &name.value,
                         CheckedOrigin {
                             origin_start: *caret_key_symbol_start,
+                            parts: parts
+                                .iter()
+                                .filter_map(|part| {
+                                    part.value.clone().map(|name| WithStartPosition {
+                                        start: position_add_characters(part.start, 1),
+                                        value: name,
+                                    })
+                                })
+                                .collect(),
                         },
                     );
                     syntax_expression_to_zig(
@@ -6881,9 +6917,12 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         function_scope_start,
                         ZigReturnContext::StatementsFollowedByBreak(label),
                     );
+                    origins.remove(&name.value);
                 }
             }
-            zig_block_end(output);
+            if let ZigReturnContext::Expression = return_context {
+                zig_block_end(output);
+            }
         }
     }
 }
@@ -8106,12 +8145,21 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
             name,
+            parts,
             result,
         } => {
             if let Some(name) = name {
-                output.push_str("const ");
-                name_to_lowercase_local_js(output, &name.value);
-                output.push_str(" = {};\n");
+                if parts.is_empty() {
+                    output.push_str("const ");
+                    name_to_lowercase_local_js(output, &name.value);
+                    output.push_str(" = {};\n");
+                } else {
+                    for part in parts.iter().filter_map(|part| part.value.as_ref()) {
+                        output.push_str("const ");
+                        name_to_lowercase_local_js(output, part);
+                        output.push_str(" = {};\n");
+                    }
+                }
             }
             match result {
                 None => {
@@ -8291,6 +8339,7 @@ struct CheckedPatternVariable {
 #[derive(Clone, Debug)]
 pub struct CheckedOrigin {
     origin_start: lsp_types::Position,
+    parts: Vec<WithStartPosition<Name>>,
 }
 fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
@@ -8501,7 +8550,13 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variable(name) => {
-            if let Some(_origin_info) = origins.get(&name.value) {
+            if origins
+                .get(&name.value)
+                .is_some_and(|origin| origin.parts.is_empty())
+                || origins
+                    .values()
+                    .any(|origin| origin.parts.iter().any(|part| &part.value == &name.value))
+            {
                 let maybe_existing_origin_variable_use_start =
                     used_origin_variables.insert(&name.value, name.start);
                 if let Some(existing_origin_variable_use_start) =
@@ -8515,10 +8570,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 }
                 Some(type_origin(
                     Type::Origin(name.value.clone()),
-                    Type::Record(vec![TypeField {
-                        name: name.value.clone(),
-                        value: type_record_empty,
-                    }]),
+                    type_record_empty,
                 ))
             } else if let Some(variable_info) = pattern_variables.get(&name.value) {
                 let maybe_existing_pattern_variable_use_start =
@@ -9568,20 +9620,29 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start,
+            parts,
             name,
             result,
         } => {
             let Some(origin_name) = name else {
-                errors.push(ErrorNode {
-                    range: lsp_types::Range {
-                        start: *caret_key_symbol_start,
-                        end: symbol_end(*caret_key_symbol_start, "^"),
+                errors.push(match parts.last() {
+                    None => ErrorNode {
+                        range: lsp_types::Range {
+                            start: *caret_key_symbol_start,
+                            end: symbol_end(*caret_key_symbol_start, "^"),
+                        },
+                        message: Box::from("missing origin name after ^..here.."),
                     },
-                    message: Box::from("missing origin name after ^..here.."),
+                    Some(last_part) => ErrorNode {
+                        range: lsp_types::Range {
+                            start: *caret_key_symbol_start,
+                            end: optional_field_name_end(last_part),
+                        },
+                        message: Box::from("missing origin name after ^ .parts ..here.."),
+                    },
                 });
                 return None;
             };
-            records_used.insert(vec![origin_name.value.clone()]);
             if let Some(existing_origin_with_same_name) = origins.remove(&origin_name.value) {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(origin_name)),
@@ -9616,10 +9677,33 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
+            let part_names = parts
+                .iter()
+                .filter_map(|part| match &part.value {
+                    None => {
+                        errors.push(ErrorNode {
+                            range: lsp_types::Range {
+                                start: *caret_key_symbol_start,
+                                end: symbol_end(*caret_key_symbol_start, "^"),
+                            },
+                            message: Box::from("missing origin name after ^..here.."),
+                        });
+                        None
+                    }
+                    Some(part_name) => {
+                        records_used.insert(vec![part_name.clone()]);
+                        Some(WithStartPosition {
+                            start: position_add_characters(part.start, 1),
+                            value: part_name.clone(),
+                        })
+                    }
+                })
+                .collect::<Vec<_>>();
             origins.insert(
                 &origin_name.value,
                 CheckedOrigin {
                     origin_start: origin_name.start,
+                    parts: part_names,
                 },
             );
             let checked_result_type = syntax_expression_check(
@@ -9655,14 +9739,31 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             }
-            if used_origin_variables.remove(&origin_name.value).is_none() {
-                errors.push(ErrorNode {
-                    range: name_range(with_start_position_as_ref(origin_name)),
-                    message: Box::from(
-                        "this origin is never used as a variable. Use it or remove it",
-                    ),
-                });
-                return checked_result_type;
+            if parts.is_empty() {
+                if used_origin_variables.remove(&origin_name.value).is_none() {
+                    errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(origin_name)),
+                        message: Box::from(
+                            "this origin is never used as a variable. Use it or remove it",
+                        ),
+                    });
+                }
+            } else {
+                for part in parts {
+                    if let Some(part_name) = &part.value
+                        && used_origin_variables.remove(part_name).is_none()
+                    {
+                        errors.push(ErrorNode {
+                            range: name_range(WithStartPosition {
+                                start: position_add_characters(part.start, 1),
+                                value: part_name,
+                            }),
+                            message: Box::from(
+                                "this origin variable is neer used. Use it or remove it",
+                            ),
+                        });
+                    }
+                }
             }
             origins.remove(&origin_name.value);
             checked_result_type
@@ -10786,6 +10887,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
+            parts,
             name,
             result,
         } => {
@@ -10795,10 +10897,20 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(result) = result else {
                 return syn_expr_todo();
             };
+            let part_names = parts
+                .iter()
+                .filter_map(|part| {
+                    part.value.clone().map(|name| WithStartPosition {
+                        start: position_add_characters(part.start, 1),
+                        value: name,
+                    })
+                })
+                .collect::<Vec<_>>();
             origins.insert(
                 &origin_name.value,
                 CheckedOrigin {
                     origin_start: origin_name.start,
+                    parts: part_names,
                 },
             );
             let result_compiled = syntax_expression_to_rust(
@@ -10825,78 +10937,150 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 fields: syn::Fields::Unit,
                 semi_token: Some(syn::token::Semi(syn_span())),
             })));
-            rust_statements.push(syn::Stmt::Local(syn::Local {
-                attrs: vec![],
-                let_token: syn::token::Let(syn_span()),
-                modifiers: syn::LocalModifiers::default(),
-                pat: syn::Pat::Ident(syn::PatIdent {
+            if parts.is_empty() {
+                rust_statements.push(syn::Stmt::Local(syn::Local {
                     attrs: vec![],
-                    by_ref: None,
-                    mutability: None,
-                    ident: syn_ident(&name_to_lowercase_rust(origin_name.value.as_str())),
-                    subpat: None,
-                }),
-                init: Some(syn::LocalInit {
-                    eq_token: syn::token::Eq(syn_span()),
-                    expr: Box::new(syn::Expr::Call(syn::ExprCall {
+                    let_token: syn::token::Let(syn_span()),
+                    modifiers: syn::LocalModifiers::default(),
+                    pat: syn::Pat::Ident(syn::PatIdent {
                         attrs: vec![],
-                        func: Box::new(syn::Expr::Path(syn::ExprPath {
+                        by_ref: None,
+                        mutability: None,
+                        ident: syn_ident(&name_to_lowercase_rust(origin_name.value.as_str())),
+                        subpat: None,
+                    }),
+                    init: Some(syn::LocalInit {
+                        eq_token: syn::token::Eq(syn_span()),
+                        expr: Box::new(syn::Expr::Call(syn::ExprCall {
                             attrs: vec![],
-                            qself: None,
-                            path: syn_path_reference(["Origin"]),
+                            func: Box::new(syn::Expr::Path(syn::ExprPath {
+                                attrs: vec![],
+                                qself: None,
+                                path: syn_path_reference(["Origin"]),
+                            })),
+                            paren_token: syn::token::Paren(syn_span()),
+                            args: std::iter::once(syn::Expr::Path(syn::ExprPath {
+                                attrs: vec![],
+                                qself: None,
+                                path: syn::Path {
+                                    leading_colon: None,
+                                    segments: [
+                                        syn_path_segment_ident("std"),
+                                        syn_path_segment_ident("marker"),
+                                        syn::PathSegment {
+                                            ident: syn_ident("PhantomData"),
+                                            arguments: syn::PathArguments::AngleBracketed(
+                                                syn::AngleBracketedGenericArguments {
+                                                    colon2_token: Some(syn::token::PathSep(syn_span())),
+                                                    lt_token: syn::token::Lt(syn_span()),
+                                                    args: std::iter::once(syn::GenericArgument::Type(
+                                                        syn::Type::Tuple(syn::TypeTuple {
+                                                            attrs: vec!(),
+                                                            paren_token: syn::token::Paren(syn_span()),
+                                                            elems: [
+                                                                syn::Type::Path(syn::TypePath {
+                                                                    attrs: vec![],
+                                                                    qself: None,
+                                                                    path: syn_path_reference([
+                                                                        &local_origin_rust_name,
+                                                                    ]),
+                                                                }),
+                                                                syn::Type::Tuple(syn::TypeTuple { attrs: vec!(), paren_token: syn::token::Paren(syn_span()), elems: syn::punctuated::Punctuated::new() }),
+                                                            ].into_iter().collect(),
+                                                        }),
+                                                    ))
+                                                    .collect(),
+                                                    gt_token: syn::token::Gt(syn_span()),
+                                                },
+                                            ),
+                                        },
+                                    ]
+                                    .into_iter()
+                                    .collect(),
+                                },
+                            }))
+                            .collect(),
                         })),
-                        paren_token: syn::token::Paren(syn_span()),
-                        args: std::iter::once(syn::Expr::Path(syn::ExprPath {
+                        diverge: None,
+                    }),
+                    semi_token: syn::token::Semi(syn_span()),
+                }));
+            } else {
+                for part_name in parts.iter().filter_map(|part| part.value.as_ref()) {
+                    rust_statements.push(syn::Stmt::Local(syn::Local {
+                        attrs: vec![],
+                        let_token: syn::token::Let(syn_span()),
+                        modifiers: syn::LocalModifiers::default(),
+                        pat: syn::Pat::Ident(syn::PatIdent {
                             attrs: vec![],
-                            qself: None,
-                            path: syn::Path {
-                                leading_colon: None,
-                                segments: [
-                                    syn_path_segment_ident("std"),
-                                    syn_path_segment_ident("marker"),
-                                    syn::PathSegment {
-                                        ident: syn_ident("PhantomData"),
-                                        arguments: syn::PathArguments::AngleBracketed(
-                                            syn::AngleBracketedGenericArguments {
-                                                colon2_token: Some(syn::token::PathSep(syn_span())),
-                                                lt_token: syn::token::Lt(syn_span()),
-                                                args: std::iter::once(syn::GenericArgument::Type(
-                                                    syn_type_construct(
-                                                        [],
-                                                        "Origin_part",
-                                                        [
-                                                            syn::Type::Path(syn::TypePath {
-                                                                attrs: vec![],
-                                                                qself: None,
-                                                                path: syn_path_reference([
-                                                                    &local_origin_rust_name,
-                                                                ]),
+                            by_ref: None,
+                            mutability: None,
+                            ident: syn_ident(&name_to_lowercase_rust(part_name.as_str())),
+                            subpat: None,
+                        }),
+                        init: Some(syn::LocalInit {
+                            eq_token: syn::token::Eq(syn_span()),
+                            expr: Box::new(syn::Expr::Call(syn::ExprCall {
+                                attrs: vec![],
+                                func: Box::new(syn::Expr::Path(syn::ExprPath {
+                                    attrs: vec![],
+                                    qself: None,
+                                    path: syn_path_reference(["Origin"]),
+                                })),
+                                paren_token: syn::token::Paren(syn_span()),
+                                args: std::iter::once(syn::Expr::Path(syn::ExprPath {
+                                    attrs: vec![],
+                                    qself: None,
+                                    path: syn::Path {
+                                        leading_colon: None,
+                                        segments: [
+                                            syn_path_segment_ident("std"),
+                                            syn_path_segment_ident("marker"),
+                                            syn::PathSegment {
+                                                ident: syn_ident("PhantomData"),
+                                                arguments: syn::PathArguments::AngleBracketed(
+                                                    syn::AngleBracketedGenericArguments {
+                                                        colon2_token: Some(syn::token::PathSep(syn_span())),
+                                                        lt_token: syn::token::Lt(syn_span()),
+                                                        args: std::iter::once(syn::GenericArgument::Type(
+                                                            syn::Type::Tuple(syn::TypeTuple {
+                                                                attrs: vec!(),
+                                                                paren_token: syn::token::Paren(syn_span()),
+                                                                elems: [
+                                                                    syn::Type::Path(syn::TypePath {
+                                                                        attrs: vec![],
+                                                                        qself: None,
+                                                                        path: syn_path_reference([
+                                                                            &local_origin_rust_name,
+                                                                        ]),
+                                                                    }),
+                                                                    type_to_rust(&Type::Record(vec![
+                                                                        TypeField {
+                                                                            name: part_name.clone(),
+                                                                            value: type_record_empty,
+                                                                        },
+                                                                    ])),
+                                                                ].into_iter().collect(),
                                                             }),
-                                                            type_to_rust(&Type::Record(vec![
-                                                                TypeField {
-                                                                    name: origin_name.value.clone(),
-                                                                    value: type_record_empty,
-                                                                },
-                                                            ])),
-                                                        ],
-                                                    ),
-                                                ))
-                                                .collect(),
-                                                gt_token: syn::token::Gt(syn_span()),
+                                                        ))
+                                                        .collect(),
+                                                        gt_token: syn::token::Gt(syn_span()),
+                                                    },
+                                                ),
                                             },
-                                        ),
+                                        ]
+                                        .into_iter()
+                                        .collect(),
                                     },
-                                ]
-                                .into_iter()
+                                }))
                                 .collect(),
-                            },
-                        }))
-                        .collect(),
-                    })),
-                    diverge: None,
-                }),
-                semi_token: syn::token::Semi(syn_span()),
-            }));
+                            })),
+                            diverge: None,
+                        }),
+                        semi_token: syn::token::Semi(syn_span()),
+                    }));
+                }
+            }
             rust_statements.extend(syn_spread_expr_block_into_stmts(result_compiled));
             let rust = syn::Expr::Block(syn::ExprBlock {
                 attrs: vec![],
@@ -11889,31 +12073,34 @@ fn type_origin(origin: Type, part: Type) -> Type {
         arguments: vec![origin, part],
     }
 }
-fn type_part_rest(part: Type, rest: Type) -> Type {
-    type_record([("part", part), ("rest", rest)])
-}
-fn type_origin_erased(parts: Type, value_erased: Type) -> Type {
+fn type_origin_erased(value_erased: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Origin-erased"),
-        arguments: vec![parts, value_erased],
+        arguments: vec![value_erased],
     }
 }
-fn type_origin_eraser(origin: Type, part: Type) -> Type {
+fn type_origin_isolated(origin: Type, value_erased: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("Origin-eraser"),
-        arguments: vec![origin, part],
+        name: Name::from_static("Origin-isolated"),
+        arguments: vec![origin, value_erased],
     }
 }
-fn type_origin_uneraser(origin: Type, part: Type) -> Type {
+fn type_origin_uneraser(origin: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Origin-uneraser"),
-        arguments: vec![origin, part],
+        arguments: vec![origin],
     }
 }
 fn type_buf(origin: Type, element: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Buf"),
         arguments: vec![origin, element],
+    }
+}
+fn type_buf_origin_erased(part: Type, element: Type) -> Type {
+    Type::CoreConstruct {
+        name: Name::from_static("Buf-origin-erased"),
+        arguments: vec![part, element],
     }
 }
 fn type_slot(origin: Type) -> Type {
@@ -12007,6 +12194,13 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 result_type: type_order(),
             },
             CoreFnInfo {
+                name: "P32-origin-isolate",
+                documentation: "Allow this value to be included in an `Origin-isolated`",
+                type_parameters: vec![Name::from_static("origin")],
+                parameter_type:  type_p32,
+                result_type: type_origin_isolated(type_variable("origin"), type_p32),
+            },
+            CoreFnInfo {
                 name: "U32-dup",
                 documentation: "Split the u32 in two values with the same content",
                 type_parameters: vec![],
@@ -12085,6 +12279,13 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
                 result_type: type_order(),
             },
             CoreFnInfo {
+                name: "U32-origin-isolate",
+                documentation: "Allow this value to be included in an `Origin-isolated`",
+                type_parameters: vec![Name::from_static("origin")],
+                parameter_type:  type_u32,
+                result_type: type_origin_isolated(type_variable("origin"), type_u32),
+            },
+            CoreFnInfo {
                 name: "I32-dup",
                 documentation: "Split the i32 in two values with the same content",
                 type_parameters: vec![],
@@ -12154,6 +12355,13 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
                 type_parameters: vec![],
                 parameter_type: type_record([("left", type_i32), ("right", type_i32)]),
                 result_type: type_order(),
+            },
+            CoreFnInfo {
+                name: "I32-origin-isolate",
+                documentation: "Allow this value to be included in an `Origin-isolated`",
+                type_parameters: vec![Name::from_static("origin")],
+                parameter_type:  type_i32,
+                result_type: type_origin_isolated(type_variable("origin"), type_i32),
             },
             CoreFnInfo {
                 name: "F32-dup",
@@ -12388,6 +12596,13 @@ fn Age . : f32 =
                 result_type: type_order(),
             },
             CoreFnInfo {
+                name: "F32-origin-isolate",
+                documentation: "Allow this value to be included in an `Origin-isolated`",
+                type_parameters: vec![Name::from_static("origin")],
+                parameter_type:  type_f32,
+                result_type: type_origin_isolated(type_variable("origin"), type_f32),
+            },
+            CoreFnInfo {
                 name: "Char-dup",
                 documentation: "Split the char in two values with the same content",
                 type_parameters: vec![],
@@ -12407,6 +12622,13 @@ fn Age . : f32 =
                 type_parameters: vec![],
                 parameter_type: type_char,
                 result_type: type_record_empty,
+            },
+            CoreFnInfo {
+                name: "Char-origin-isolate",
+                documentation: "Allow this value to be included in an `Origin-isolated`",
+                type_parameters: vec![Name::from_static("origin")],
+                parameter_type:  type_char,
+                result_type: type_origin_isolated(type_variable("origin"), type_char),
             },
             CoreFnInfo {
                 name: "Str-dup",
@@ -12453,6 +12675,13 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 result_type: type_record_empty,
             },
             CoreFnInfo {
+                name: "Str-origin-isolate",
+                documentation: "Allow this value to be included in an `Origin-isolated`",
+                type_parameters: vec![Name::from_static("origin")],
+                parameter_type:  type_str,
+                result_type: type_origin_isolated(type_variable("origin"), type_str),
+            },
+            CoreFnInfo {
                 name: "Opt-yes",
                 documentation: "Shorthand for |{Opt ..value type..}yes value which kind of specifies the value type twice",
                 type_parameters: vec![],
@@ -12492,6 +12721,13 @@ fn Three . : . =
                     ("in", type_variable("in")),
                 ]),
                 result_type: type_variable("out"),
+            },
+            CoreFnInfo {
+                name: "Fn-origin-isolate",
+                documentation: "Allow this function to be included in an `Origin-isolated`",
+                type_parameters: vec![Name::from_static("origin")],
+                parameter_type:  type_fn(type_variable("in"), type_variable("out")),
+                result_type: type_origin_isolated(type_variable("origin"), type_fn(type_variable("in"), type_variable("out"))),
             },
             CoreFnInfo {
                 name: "Choice-empty-to",
@@ -12559,70 +12795,6 @@ please limit your creativity for the rest of us mortals."#,
                 result_type: type_variable("result")
             },
             CoreFnInfo {
-                name: "Origin-add",
-                documentation: "Combine two `Origin`s, including the part names.
-Combining origins, then taking the combined Origin apart again
-gives an interesting property: All resulting Origins Have the same first argument
-and a distinct name as the second argument.
-This means you only have to pass one origin type to
-type aliases instead of one parameter per origin:
-```sloe
-# introduce origins
-^htmls
-^modifiers
-^chars
-# combine them all up
-? Origin-add .part htmls .rest Origin-add .part modifiers .rest chars [view-origin]
-# Now view-origin is of type
-# Origin
-#   (Part-rest htmls, Part-rest modifiers, chars)
-#   , (Part-rest .htmls ., Part-rest .modifiers ., .chars .)
-
-# deconstruct them in order
-? Origin-part view-origin [.rest view-origin .part htmls]
-? Origin-part view-origin [.rest chars .part modifiers]
-```
-used like this
-```sloe
-ty Html _view
-    |element
-        .tag str
-        .modifiers (Opt Span Origin _view, .modifiers .)
-        .subs (Opt Span Origi _view, .html .)
-    |text-dynamic Opt Span Origin _view, .chars .
-    |text-static str
-```
-See for example `.modifiers (Opt Span Origin _view, .modifiers .)`
-which you otherwise would have represented as `.modifiers (Opt Span _modifiers)`.
-`Origin` refers to the `modifier` origin that was combined into an Origin with `_view`.
-
-A more advanced use-case is `Origin-erased` which only allows one set of part names
-per erased value.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("part", type_origin(type_variable("part-origin"), type_variable("part-name"))),
-                    ("rest", type_origin(type_variable("rest-origin"), type_variable("rest-name")))
-                ]),
-                result_type: type_origin(
-                    type_part_rest(type_variable("part-origin"), type_variable("rest-origin")),
-                    type_part_rest(type_variable("part-name"), type_variable("rest-name"))
-                ),
-            },
-            CoreFnInfo {
-                name: "Origin-part",
-                documentation: "Create a new derived `Origin` and remove that part from the original `Origin`",
-                type_parameters: vec![],
-                parameter_type:
-                    type_origin(
-                        type_variable("origin"),
-                        type_part_rest(type_variable("part"), type_variable("rest"))
-                    ),
-                result_type: type_record([
-                    ("part", type_origin(type_variable("origin"), type_variable("part"))),
-                    ("rest", type_origin(type_variable("origin"), type_variable("rest")))
-                ]),
-            },
-            CoreFnInfo {
                 name: "Origin-rid",
                 documentation: "Mark the given origin value as \"won't be used anymore\". This is usually done to ignore it only in some case",
                 type_parameters: vec![],
@@ -12630,109 +12802,134 @@ per erased value.",
                 result_type: type_record_empty,
             },
             CoreFnInfo {
-                name: "Origin-eraser-part",
-                documentation: "Create a new derived `Origin-eraser` and remove that part from the original `Origin-eraser`",
-                type_parameters: vec![],
-                parameter_type:
-                    type_origin_eraser(
-                        type_variable("origin"),
-                        type_part_rest(type_variable("part"), type_variable("rest"))
-                    ),
-                result_type: type_record([
-                    ("part", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                    ("rest", type_origin_eraser(type_variable("origin"), type_variable("rest")))
-                ]),
-            },
-            CoreFnInfo {
-                name: "Origin-uneraser-part",
-                documentation: "Create a new derived `Origin-uneraser` and remove that part from the original `Origin-uneraser`",
-                type_parameters: vec![],
-                parameter_type:
-                    type_origin_uneraser(
-                        type_variable("origin"),
-                        type_part_rest(type_variable("part"), type_variable("rest"))
-                    ),
-                result_type: type_record([
-                    ("part", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
-                    ("rest", type_origin_uneraser(type_variable("origin"), type_variable("rest")))
-                ]),
-            },
-            CoreFnInfo {
                 name: "Origin-erase",
-                documentation: "Group all values mentioning a specific origin into one value,
-then erase the specific origin from the type.
+                documentation: "After grouping values with a specific origin into one value,
+we can erase the specific origin from the type.
 The resulting `Origin-erased` can then be stored in a `Buf`
 or otherwise passed as if it didn't have an origin to begin with.
 See `Origin-erased` for an example.
 To convert an `Origin-erased` value into a normal value with an origin again, use `Origin-unerase`",
                 type_parameters: vec![],
+                parameter_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_variable("value-erased")
+                ),
+                result_type: type_origin_erased(type_variable("value-erased"))
+            },
+            CoreFnInfo {
+                name: "Origin-isolate-constant",
+                documentation: "Isolate a value that can be created from nothing.
+```sloe
+ty direction
+    |down . |up .
+
+? color
+[|up .] Origin-isolate-constant [.] |up{direction} .
+[|down .] Origin-isolate-constant [.] |down{direction} .
+```
+
+See also `Origin-isolated-map` on how to convert actual variant values",
+                type_parameters: vec![],
+                parameter_type: type_fn(type_record_empty, type_variable("constant")),
+                result_type: type_origin_isolated(type_variable("origin"), type_variable("constant")),
+            },
+            CoreFnInfo {
+                name: "Origin-isolated-merge",
+                documentation: "Pair up two `Origin-isolated` values and combine them into one.
+The isolated value will have `.a` and `.b` field names
+so it's recommended to `Origin-isolated-map` to give them more descriptive names.
+```sloe
+Origin-isolated-map
+.isolated (
+    Origin-isolated-merge
+    .a Slot-origin-isolate red-slot
+    .b
+    Origin-isolated-merge
+    .a Slot-origin-isolate blue-slot
+    .b Slot-origin-isolate green-slot
+    )
+.change
+[
+    .a red Slot Origin erased, .
+    .b
+    .a blue Slot Origin erased, .
+    .b green Slot Origin erased, .
+]
+.red red .green green .blue blue
+```
+Quite wordy, I'm sorry :/ (If you have another API idea, open an issue)
+
+Check out `Origin-isolated-map` and `Origin-isolate-constant` for how to convert variants",
+                type_parameters: vec![],
                 parameter_type: type_record([
-                    ("value", type_variable("value")),
-                    (
-                        "erase",
-                        type_fn(
-                            type_record([
-                                ("value", type_variable("value")),
-                                (
-                                    "eraser",
-                                    type_origin_eraser(
-                                        type_variable("origin"),
-                                        type_variable("parts")
-                                    ),
-                                )
-                            ]),
-                            type_variable("value-erased")
-                        )
-                    )
+                    ("a", type_origin_isolated(type_variable("origin"), type_variable("a-erased"))),
+                    ("b", type_origin_isolated(type_variable("origin"), type_variable("b-erased"))),
                 ]),
-                result_type: type_origin_erased(type_variable("parts"), type_variable("value-erased"))
+                result_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_record([
+                        ("a", type_variable("a-erased")),
+                        ("b", type_variable("b-erased")),
+                    ])
+                ),
+            },
+            CoreFnInfo {
+                name: "Origin-isolated-map",
+                documentation: "Do something inside the `Origin-isolated` value.
+
+`Origin-isolated-map` is often used to give more descriptive names to values created with `Origin-isolated-merge`.
+It's also necessary to convert a choice (for example `|parsed u32 |error str`) to an `Origin-isolated` value.
+```sloe
+ty Color _origin
+    |red Slot _origin |green Slot _origin |blue _origin
+
+? color
+[|red red]
+    Origin-isolated-map
+    .isolated Slot-origin-isolate red
+    .change [red Slot Origin erased, .] |red{Color Origin erased, .} red
+[|green green]
+    Origin-isolated-map
+    .isolated Slot-origin-isolate green
+    .change [green Slot Origin erased, .] |green{Color Origin erased, .} green
+[|blue blue]
+    Origin-isolated-map
+    .isolated Slot-origin-isolate blue
+    .change [blue Slot Origin erased, .] |blue{Color Origin erased, .} blue
+```
+Isn't that nice.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("change", type_fn(type_variable("erased"), type_variable("new-erased"))),
+                    ("isolated", type_origin_isolated(type_variable("origin"), type_variable("erased"))),
+                ]),
+                result_type: type_origin_isolated(type_variable("origin"), type_variable("new-erased")),
             },
             CoreFnInfo {
                 name: "Origin-erased-rid",
                 documentation: r#"Mark an `Origin-erased` value as "won't be used anymore".
 The effect is the same as calling `Origin-unerase`, then scrapping the unerased value.
-It may also be more performant on some host languages (for example in js this function does nothing).
+It may also be more performant on some host languages.
 
-Note that this convenient helper is quite simplistic.
+Note that this convenient helper is quite simplistic (and incomplete).
 If you have a concrete use-case where you _must_ pass state in to the rid function,
 please open an issue."#,
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("erased", type_origin_erased(type_variable("parts"), type_variable("value-erased"))),
+                    ("erased", type_origin_erased(type_variable("value-erased"))),
                     ("rid", type_fn(type_variable("value-erased"), type_record_empty))
                 ]),
                 result_type: type_record_empty
             },
             CoreFnInfo {
                 name: "Origin-unerase",
-                documentation: "Take an `Origin-erased` created with `Origin-erase`
-and replace all `erased` origins with new given origin.
-See `Origin-erased` for an example.
-
-You might be curious what the point of requiring `.value-rid` is,
-considering that it won't ever even be called.
-
-The first reason is that it would be catastrophic if say a `Slot erased` could be smuggled
-out of an `Origin-unerase` call because it could be further smuggled into
-a new `Origin-erased` where it could be used to access out of bounds values of an origin-erased `Buf` for example.
-Being able to show that you can get rid of every part in the erased value proves that such a
-`Slot erased` couldn't possibly have been part of the unerased value
-(you can't get rid of those slots and spans because all contained Bufs in the unerased value
-are known to be unerased, enforced by the Origin-uneraser needing to be consumed by a
-Buf-origin-unerase call).
-
-The second reason is that `Buf-origin-erase-with-elements` and `Buf-origin-unerase-with-elements`
-convert all non-vacant elements.
-This would be very unsafe if a `Unset-slot` or span still existed, because
-the referenced memory may be undefined (which means you could easily, say, index out of bounds).
-To prevent this, no origin-erase operations exist for unset slots and spans
-and additionally, `.value-rid` proves that no unset span or slot was part of the origin erased value.
-It is not possible to get rid of unset slots and spans until after the `Buf-origin-erase`(-with-elements)
-because the Buf's origin will have changed",
+                documentation: "Take an `Origin-erased` value created with `Origin-erase`
+and manually replace erased origins in that value with new given origin.
+See `Origin-erased` for an example.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("erased", type_origin_erased(type_variable("parts"), type_variable("value-erased"))),
-                    ("origin", type_origin(type_variable("origin"), type_variable("parts"))),
+                    ("erased", type_origin_erased(type_variable("value-erased"))),
+                    ("origin", type_origin(type_variable("origin"), type_record_empty)),
                     (
                         "unerase",
                         type_fn(
@@ -12740,16 +12937,18 @@ because the Buf's origin will have changed",
                                 ("erased", type_variable("value-erased")),
                                 (
                                     "uneraser",
-                                    type_origin_uneraser(
-                                        type_variable("origin"),
-                                        type_variable("parts")
-                                    ),
+                                    type_origin_uneraser(type_variable("origin")),
                                 )
                             ]),
-                            type_variable("value")
+                            type_record([
+                                ("unerased", type_variable("value")),
+                                (
+                                    "uneraser",
+                                    type_origin_uneraser(type_variable("origin")),
+                                )
+                            ]),
                         )
-                    ),
-                    ("value-rid", type_fn(type_variable("value"), type_record_empty))
+                    )
                 ]),
                 result_type: type_variable("value")
             },
@@ -12761,17 +12960,14 @@ because the Buf's origin will have changed",
                 result_type: type_span(type_variable("origin")),
             },
             CoreFnInfo {
-                name: "Slot-origin-erase",
+                name: "Slot-origin-isolate",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
-                parameter_type: type_record([
-                    ("slot", type_slot(type_origin(type_variable("origin"), type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                ]),
-                result_type: type_record([
-                    ("slot", type_slot(type_origin(type_erased, type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                ]),
+                parameter_type: type_slot(type_origin(type_variable("origin"), type_variable("part"))),
+                result_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_slot(type_origin(type_erased, type_variable("part"))),
+                ),
             },
             CoreFnInfo {
                 name: "Slot-origin-unerase",
@@ -12779,11 +12975,11 @@ because the Buf's origin will have changed",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("slot", type_slot(type_origin(type_erased, type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     ("slot", type_slot(type_origin(type_variable("origin"), type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -12943,30 +13139,24 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 result_type: type_variable("state"),
             },
             CoreFnInfo {
-                name: "Span-origin-erase",
+                name: "Span-origin-isolate",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
-                parameter_type: type_record([
-                    ("span", type_span(type_origin(type_variable("origin"), type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                ]),
-                result_type: type_record([
-                    ("span", type_span(type_origin(type_erased, type_variable("part")))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                ]),
+                parameter_type: type_span(type_origin(type_variable("origin"), type_variable("part"))),
+                result_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_span(type_origin(type_erased, type_variable("part"))),
+                ),
             },
             CoreFnInfo {
-                name: "Opt-span-origin-erase",
+                name: "Opt-span-origin-isolate",
                 documentation: "Replace its origin type by `erased`",
                 type_parameters: vec![],
-                parameter_type: type_record([
-                    ("span", type_opt(type_span(type_origin(type_variable("origin"), type_variable("part"))))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                ]),
-                result_type: type_record([
-                    ("span", type_opt(type_span(type_origin(type_erased, type_variable("part"))))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                ]),
+                parameter_type: type_opt(type_span(type_origin(type_variable("origin"), type_variable("part")))),
+                result_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_opt(type_span(type_origin(type_erased, type_variable("part")))),
+                ),
             },
             CoreFnInfo {
                 name: "Span-origin-unerase",
@@ -12974,11 +13164,11 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("span", type_span(type_origin(type_erased, type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     ("span", type_span(type_origin(type_variable("origin"), type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -12987,11 +13177,11 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("span", type_opt(type_span(type_origin(type_erased, type_variable("part"))))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     ("span", type_opt(type_span(type_origin(type_variable("origin"), type_variable("part"))))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
@@ -13153,7 +13343,10 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
 Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-array`, `Buf-add-unset` etc.",
                 type_parameters: vec![Name::from_static("element")],
                 parameter_type: type_origin(type_variable("origin"), type_variable("part")),
-                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
+                result_type: type_buf(
+                    type_origin(type_variable("origin"), type_variable("part")),
+                    type_variable("element")
+                ),
             },
             CoreFnInfo {
                 name: "Buf-reuse",
@@ -13161,9 +13354,9 @@ Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-array`, `Buf-add-un
 This can be used to recycle `Buf` memory from one `Buf` with one origin into another `Buf` with a different origin.
 ```sloe
 fn Buf-recycle-empty
-    .new-origin new-origin Origin _new-origin
+    .new-origin new-origin Origin _new-origin, _new-part
     .old old Buf _old-origin, _element
-    : Buf _new-origin _element =
+    : Buf (Origin _new-origin, _new-part), _element =
     ? Buf-to-unset old [unset-slice]
     Buf-reuse .origin new-origin .slice unset-slice
 ```",
@@ -13172,7 +13365,10 @@ fn Buf-recycle-empty
                     ("origin", type_origin(type_variable("origin"), type_variable("part"))),
                     ("slice", type_unset_slice(type_variable("element"))),
                 ]),
-                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
+                result_type: type_buf(
+                    type_origin(type_variable("origin"), type_variable("part")),
+                    type_variable("element")
+                ),
             },
             CoreFnInfo {
                 name: "Buf-pre-allocate-at-least",
@@ -13378,7 +13574,6 @@ To remove the element entirely, use `Buf-take`",
                         "buf",
                         type_buf(type_variable("origin"), type_variable("element")),
                     ),
-                    ("element",type_variable("element") ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
@@ -13911,33 +14106,14 @@ If start and end spans are not already connected, both are appended at the end a
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-origin-erase",
-                documentation: "Replace its origin type by `erased`.
-To also erase origins of the elements themselves, use `Buf-origin-erase-with-elements`",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("buf", type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element"))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                ]),
-                result_type: type_buf(type_origin(type_erased, type_variable("part")), type_variable("element")),
-            },
-            CoreFnInfo {
-                name: "Buf-origin-erase-with-elements",
+                name: "Buf-origin-isolate",
                 documentation: "Replace its origin type by `erased`,
 along with erasing the origin in its elements if necessary.
 An example of a `Buf inner, Opt Span inner`:
 ```sloe
-Buf-origin-erase
+Buf-origin-isolate
 .buf buf-inner
-.eraser eraser
-.element-erase
-[
-.element element Opt Span inner
-.eraser eraser Origin-eraser inner
-]
-? Opt-span-origin-erase .span element .eraser eraser
-[.span element-erased .eraser eraser]
-.element element-erased .eraser eraser
+.element-isolate [element Opt Span inner] Opt-span-origin-isolate element
 ```
 Small warning: while the function type allows completely changing the contents of each element,
 I strongly recommend against it.
@@ -13947,52 +14123,49 @@ For two, this may be seen as spooky action at a distance (albeit not that great 
 Changing an element that is referenced by an outside slot/span etc. may be unexpected.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element"))),
-                    ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
                     (
-                        "element-erase",
+                        "buf",
+                        type_buf(
+                            type_origin(type_variable("origin"), type_variable("part")),
+                            type_variable("element")
+                        ),
+                    ),
+                    (
+                        "element-isolate",
                         type_fn(
-                            type_record([
-                                ("element", type_variable("element")),
-                                ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                            ]),
-                            type_record([
-                                ("element", type_variable("element-erased")),
-                                ("eraser", type_origin_eraser(type_variable("origin"), type_variable("part"))),
-                            ]),
+                            type_variable("element"),
+                            type_origin_isolated(
+                                type_variable("origin"),
+                                type_variable("element-erased")
+                            ),
                         )
                     )
                 ]),
-                result_type: type_buf(type_origin(type_erased, type_variable("part")), type_variable("element-erased")),
+                result_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_buf_origin_erased(type_variable("part"), type_variable("element-erased"))
+                ),
             },
             CoreFnInfo {
                 name: "Buf-origin-unerase",
-                documentation: "Replace its origin type from `erased`.
-To also unerase origins of the elements themselves, use `Buf-origin-unerase-with-elements`",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("buf", type_buf(type_origin(type_erased, type_variable("part")), type_variable("element"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
-                ]),
-                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
-            },
-            CoreFnInfo {
-                name: "Buf-origin-unerase-with-elements",
                 documentation: "Replace its origin type from `erased`,
 along with un-erasing the origin in its elements if necessary.
 An example:
 ```sloe
 fn Example-unerase
-    .buf buf-inner Buf (Origin erased, .inner .), Opt Span Origin erased, (.inner .)
-    .uneraser uneraser Origin-uneraser Origin _inner, .inner .
-    : Buf (Origin _inner, .inner .), Opt Span Origin _inner, (.inner .) =
-    Buf-origin-unerase-with-elements
+    .buf buf-inner Buf (Origin erased, .), Opt Span Origin erased, .
+    .uneraser uneraser Origin-uneraser Origin _inner, .
+    :
+    .buf Buf (Origin _inner, .), Opt Span Origin _inner, .
+    .uneraser Origin-uneraser Origin _inner, .
+    =
+    Buf-origin-unerase
     .buf buf-inner
     .uneraser uneraser
     .element-unerase
     [
-    .element element Opt Span Origin erased, (.inner .)
-    .uneraser uneraser Origin-uneraser Origin _inner, (.inner .)
+    .element element Opt Span Origin erased, .
+    .uneraser uneraser Origin-uneraser Origin _inner, .
     ]
     ? Opt-span-origin-unerase .span element .uneraser uneraser
     [.span element-unerased .uneraser uneraser]
@@ -14006,23 +14179,32 @@ For two, this may be seen as spooky action at a distance (albeit not that great 
 Changing an element that is referenced by an outside slot/span etc. may be unexpected.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_erased, type_variable("element-erased"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("element-erased"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                     (
                         "element-unerase",
                         type_fn(
                             type_record([
                                 ("element", type_variable("element-erased")),
-                                ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                                ("uneraser", type_origin_uneraser(type_variable("origin"))),
                             ]),
                             type_record([
                                 ("element", type_variable("element")),
-                                ("uneraser", type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                                ("uneraser", type_origin_uneraser(type_variable("origin"))),
                             ]),
                         )
                     )
                 ]),
-                result_type: type_buf(type_origin(type_variable("origin"), type_variable("part")), type_variable("element")),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(
+                            type_origin(type_variable("origin"), type_variable("part")),
+                            type_variable("element")
+                        )
+                    ),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                ]),
             },
             CoreFnInfo {
                 name: "Buf-to-unset",
@@ -14268,43 +14450,34 @@ fn U32-max .a a u32 .b b u32 : u32 =
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Each variable created with `^some-origin expression` is of this type.
+                    "Each variable created with `^` is of this type.
 Origins can not be arbitrary values because values like `u32` could be duplicated leading to different collections with the same origin type.
 This is not possible for values of type `Origin`.
 
 When you create an `Origin` with `^some-origin expression`,
-`some-origin` will be of type `Origin some-origin, .some-origin .`.
-The second type specifies that the `Origin` value cannot be subdivided.
+`some-origin` will be of type `Origin some-origin, .`.
 The first type uniquely identifies the `Origin` with type `some-origin`.
+The second type here specifies that there are no `Origin` values with the same unique origin type.
 
 An `Origin` type will also be present in `Slot`, `Span`, `Buf`, `Unset-slot`, `Unset-span` as the first type argument.
-For example `Slot Origin some-origin, .some-origin .`
-could refer to an index in a `Buf (Origin some-origin, .some-origin .), char`.
+For example `Slot Origin some-origin, .`
+refers to an index in a `Buf (Origin some-origin, .), char`.
 
-Origins combined with `Origin-add` additionally have the ability
-to make indivual origins look like derived origins using `Origin-part` (similar: `Origin-eraser-part` or `Origin-uneraser-part`).
-For example `Slot Origin _combined-origin, .chars .`
-could refer to an index in a `Buf (Origin _combined-origin, .chars .), char`
-which was derived from a combined `Origin (Part-rest chars, positions), Part-rest .chars ., .positions .`.
+There is a second way to create origins by listing parts
+which all have the same unique origin type.
+For example `Slot Origin combined-origin, .chars .`
+could refer to an index in a `Buf (Origin combined-origin, .chars .), char`
+where the origin was created with `^ .chars .some .other .origins combined-origin`.
+The types are as follows:
 ```sloe
-^a
-^b
-^c
-? Origin-add .part a .rest Part-add .part b .rest c [origin-origin]
-# origin-origin is of type
-# Origin origin-origin, Part-rest .a ., Part-rest .b ., .c .
+^ .a .b .c combined-origin
+# a is of type Origin combined-origin, .a .
+# b is of type Origin combined-origin, .b .
+# c is of type Origin combined-origin, .c .
 ```
-Then you can use `Origin-part` to pop origin parts from the origin one by one:
-```sloe
-? Origin-part origin-origin [.part a .rest origin-origin]
-? Origin-part origin-origin [.part b .rest c]
-# a is of type Origin origin-origin, .a .
-# b is of type Origin origin-origin, .b .
-# c is of type Origin origin-origin, .c .
-```
-giving you a way to for example just pass one origin to a type alias and
+This gives you a way to for example just pass one origin to a type alias and
 inside of the type alias use the .a ., .b . or .c . to choose the part you want.
-It's also extremely important for `Origin-erased`"
+It's also extremely important for `Origin-isolated`"
                 )),
                 parameters: vec![Name::from_static("origin"), Name::from_static("part")],
                 type_: Some(type_origin(type_variable("origin"), type_variable("part"))),
@@ -14322,64 +14495,34 @@ It's also extremely important for `Origin-erased`"
             },
         ),
         (
-            Name::from_static("Part-rest"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "Piece of the description of the parts of an origin
-that was created with `Origin-add`.
-See `Origin`, `Origin-add` and `Origin-part` for further explanations.
-
-`Part-rest` specifically is basically a stack of types that can be popped from the front:
-```sloe
-Origin some-origin, Part-rest .a ., Part-rest .b ., .c .
--> Origin some-origin, Part-rest .a ., .b .
--> Origin some-origin, .b .
-```
-In the end, you will have created three origins of types
-```sloe
-Origin some-origin, .a .
-Origin some-origin, .b .
-Origin some-origin, .c .
-```
-This exact operation is used in `Origin-part`, `Origin-eraser-part`, `Origin-uneraser-part`."
-                )),
-                parameters: vec![Name::from_static("part"), Name::from_static("rest")],
-                type_: Some(type_part_rest(type_variable("part"), type_variable("rest"))),
-            },
-        ),
-        (
             Name::from_static("Origin-erased"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Self-contained value that contains all uses of a certain origin.
+                    "Self-contained value where each part had the same unique origin.
 Can be used to for example create Bufs containing Bufs without having inner incompatible origin types between elements.
-An `Origin-erased` value can be turned back into a proper value with a new specific origin on demand.
+An `Origin-erased` value can be turned back into a proper value with a new specific origin on demand with `Origin-unerase`.
 If none of this sounded useful to you, you don't need this (yet).
 ```sloe
 ^outer
-? Buf-empty{Origin-erased ., .buf Buf (Origin erased, .inner .), u32 .slot Slot erased} outer [buf-outer]
+? Buf-empty{Origin-erased .buf Buf-origin-erased ., u32 .slot Slot erased} outer
+[buf-outer]
 
 ? (
     ^inner
     ? Buf-empty{u32} inner [buf-inner]
     ? Buf-add .buf buf-inner .new 0 u32 [.buf buf-inner .slot slot-inner]
-    Origin-erase
-    .value (.buf buf-inner .slot slot-inner)
-    .erase
+    ? Slot-origin-isolate slot-inner [slot-isolated]
+    ? Buf-origin-isolate buf-inner [buf-isolated]
+    Origin-erase-map
+    .isolated Origin-isolated-merge .a buf-isolated .b slot-isolated
+    .change
+    # mapping them to descriptive names is optional but nicer
     [
-    .value (
-        value
-        .buf Buf (Origin inner, .inner .), u32
-        .slot Slot (Origin inner, .inner .)
-        )
-    .eraser eraser Origin-eraser inner, inner .
+    .a buf Buf-origin-isolated ., u32
+    .b slot Slot Origin erased, .
     ]
-    ? Slot-origin-erase .slot slot-inner .eraser eraser
-    [.slot slot-erased .eraser eraser]
-    ? Buf-origin-erase .buf buf-inner .eraser eraser [buf-erased]
-    .buf buf-erased .slot slot-erased
+    .buf buf .slot slot
     )
 [erased-inner0]
 
@@ -14397,41 +14540,53 @@ Buf-add-array .buf buf-outer .new ; erased-inner0 ; erased-inner1
 # example of how to recover an erased value
 ^inner
 Origin-unerase
-    .erased erased-inner
-    .origin inner
-    .unerase
-    [
-    .value (value .buf Buf (Origin erased, .inner .), u32 .slot Slot (Origin erased, .inner .))
-    .uneraser uneraser Origin-uneraser inner, (.inner .)
-    ]
-    ? Slot-origin-erase .slot slot-erased .uneraser uneraser
-    [.slot slot-inner0 .uneraser uneraser]
-    ? Buf-origin-unerase .buf buf-erased .uneraser uneraser [buf-inner0]
-    .buf buf-inner0 .slot slot-inner0
+.erased erased-inner
+.origin inner
+.unerase
+[
+.erased (.buf buf-erased Buf-origin-erased ., u32 .slot slot-erased Slot (Origin erased, .))
+.uneraser uneraser Origin-uneraser inner
+]
+? Slot-origin-unerase .slot slot-erased .uneraser uneraser
+[.slot slot-inner0 .uneraser uneraser]
+? Buf-origin-unerase-keep-elements .buf buf-erased .uneraser uneraser
+[.buf buf-inner0 .uneraser uneraser]
+.unerased (.buf buf-inner0 .slot slot-inner0)
+.uneraser uneraser
 ```
 As juicy as this may look, avoid this if you can.
 Nesting always means more segmented memory. We don't want that.
 Valid use cases are
-- inner Bufs are scrapped/updated in bulk
+- inner Bufs are scrapped in bulk
 - any one of the inner Bufs could change size at any moment
 - (less important) the inner Bufs are always read and modified together by themselves"
                 )),
-                parameters: vec![Name::from_static("parts"), Name::from_static("value-erased")],
-                type_: Some(type_origin_erased(type_variable("parts"), type_variable("value-erased"))),
+                parameters: vec![Name::from_static("value-erased")],
+                type_: Some(type_origin_erased(type_variable("value-erased"))),
             },
         ),
         (
-            Name::from_static("Origin-eraser"),
+            Name::from_static("Origin-isolated"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Able to change the origin of collections, slots and spans to `erased`,
-provided the `_origin` in `Origin-eraser _origin, _part` matches the origin to erase.
-See `Origin-erased`, `Slot-origin-erase`, `Span-origin-erase`, `Opt-span-origin-erase`,
-`Buf-origin-erase`, `Buf-origin-erase-with-elements`, `Origin-eraser-part`"
+                    "Collections, slots and spans that are guaranteed to have the same unique origin.
+For example
+- `Buf (Origin o, .a .), u32`
+- `Buf (Origin o, .b .), f32`
+- `Span Origin o, .a .`
+- `Slot Origin o, .b .`
+
+could all be contained in a single `Origin-isolated`.
+Since we know the origin is the same across all parts,
+we can safely erase the unique origin type entirely with `Origin-erase`.
+
+See `Origin-erased`, `Slot-origin-isolate`, `Span-origin-isolate`, `Opt-span-origin-isolate`,
+`Buf-origin-isolate`, `Char-origin-isolate` (same for all other primitives),
+`Origin-erase-merge`, `Origin-erase-constant`, `Origin-erase-map`"
                 )),
-                parameters: vec![Name::from_static("origin"), Name::from_static("part")],
-                type_: Some(type_origin_eraser(type_variable("origin"), type_variable("part"))),
+                parameters: vec![Name::from_static("origin"), Name::from_static("value-erased")],
+                type_: Some(type_origin_isolated(type_variable("origin"), type_variable("value-erased"))),
             },
         ),
         (
@@ -14440,12 +14595,12 @@ See `Origin-erased`, `Slot-origin-erase`, `Span-origin-erase`, `Opt-span-origin-
                 name_range: None,
                 documentation: Some(Box::from(
                     "Able to change the origin of collections, slots and spans from `erased`
-to the `_origin` in `Origin-eraser _origin, _part`.
+to the `_origin` in `Origin-eraser _origin`.
 See `Origin-erased`, `Slot-origin-unerase`, `Span-origin-unerase`, `Opt-span-origin-unerase`,
-`Buf-origin-unerase`, `Buf-origin-unerase-with-elements`, `Origin-uneraser-part`"
+`Buf-origin-unerase`"
                 )),
-                parameters: vec![Name::from_static("origin"), Name::from_static("part")],
-                type_: Some(type_origin_uneraser(type_variable("origin"), type_variable("part"))),
+                parameters: vec![Name::from_static("origin")],
+                type_: Some(type_origin_uneraser(type_variable("origin"))),
             },
         ),
         (
@@ -14469,6 +14624,22 @@ fn Use-a-buf . : u32 =
                 )),
                 parameters: vec![Name::from_static("origin"), Name::from_static("element")],
                 type_: Some(type_buf(type_variable("origin"), type_variable("element"))),
+            },
+        ),
+        (
+            Name::from_static("Buf-origin-erased"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "`Buf` with its origin type erased
+(the first parameter is the part name of the original origin).
+As such, it cannot be interacted with at all, except for unerasing it in `Origin-unerase`.
+
+This restriction is necessary because unerase can leave bufs with unerased origins erased.
+One could for example access an origin erased Buf with an origin erased slot pointing into a different buf."
+                )),
+                parameters: vec![Name::from_static("part"), Name::from_static("element")],
+                type_: Some(type_buf_origin_erased(type_variable("part"), type_variable("element"))),
             },
         ),
         (
@@ -14658,7 +14829,8 @@ pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
 pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
     match fn_name {
         "Call"
-        | "Origin-erase"
+        | "Origin-isolated-map"
+        | "Origin-isolate-constant"
         | "Origin-erased-rid"
         | "Origin-unerase"
         | "Span-fold"
@@ -14667,7 +14839,8 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Opt-unset-span-fold"
         | "Unset-slice-cast-or-rid-and-allocate"
         | "Unset-slice-allocate-length"
-        | "Buf-origin-unerase-with-elements"
+        | "Buf-origin-isolate"
+        | "Buf-origin-unerase"
         | "Buf-opt-span-move-to-end"
         | "Buf-span-move-to-end"
         | "Buf-opt-unset-span-add-own-opt-span"
@@ -14925,8 +15098,8 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                     linebreak_indented_into(&mut formatted, next_indent(0));
                     syntax_comments_format(&mut formatted, next_indent(0), documentation);
                 }
+                linebreak_indented_into(&mut formatted, next_indent(0));
                 if let Some(result) = result {
-                    linebreak_indented_into(&mut formatted, next_indent(0));
                     syntax_expression_unparenthesized_format(
                         &mut formatted,
                         next_indent(0),
@@ -15163,6 +15336,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
+            parts: _,
             name: _,
             result,
         } => match result {
@@ -15577,10 +15751,26 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
+            parts,
             name,
             result,
         } => {
             formatted.push_str("^");
+            if let Some((part0, part1_up)) = parts.split_first() {
+                formatted.push(' ');
+                formatted.push('.');
+                if let Some(part_name0) = &part0.value {
+                    formatted.push_str(part_name0);
+                }
+                formatted.push(' ');
+                for part in part1_up {
+                    formatted.push('.');
+                    if let Some(part_name) = &part.value {
+                        formatted.push_str(part_name);
+                    }
+                    formatted.push(' ');
+                }
+            }
             if let Some(name) = name {
                 formatted.push_str(&name.value);
             }
@@ -16333,14 +16523,15 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
         construct_info: ConstructInfo,
         origins: std::collections::HashMap<
             &'a Name,
-            OriginStartAndScope<'a, Expressions, Patterns, Types>,
+            OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
         >,
     },
     // applies to both type and variable name
     Origin {
         name: &'a Name,
         use_start: lsp_types::Position,
-        origin: OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        origin_unique_name: &'a Name,
+        origin: OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
     },
     TypeVariable {
         name: &'a Name,
@@ -16357,7 +16548,7 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
         >,
         origins: std::collections::HashMap<
             &'a Name,
-            OriginStartAndScope<'a, Expressions, Patterns, Types>,
+            OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
         >,
     },
     PatternVariable {
@@ -16377,16 +16568,17 @@ pub struct PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types> {
     pub scope: Option<&'a SyntaxExpression<Expressions, Patterns, Types>>,
     pub type_: Option<Type>,
 }
-pub struct OriginStartAndScope<'a, Expressions, Patterns, Types> {
+pub struct OriginDeclarationInfo<'a, Expressions, Patterns, Types> {
     pub start: lsp_types::Position,
     pub scope: Option<&'a SyntaxExpression<Expressions, Patterns, Types>>,
+    pub parts: &'a [WithStartPosition<Option<Name>>],
 }
 impl<'a, Expressions, Patterns, Types> Copy
-    for OriginStartAndScope<'a, Expressions, Patterns, Types>
+    for OriginDeclarationInfo<'a, Expressions, Patterns, Types>
 {
 }
 impl<'a, Expressions, Patterns, Types> Clone
-    for OriginStartAndScope<'a, Expressions, Patterns, Types>
+    for OriginDeclarationInfo<'a, Expressions, Patterns, Types>
 {
     fn clone(&self) -> Self {
         *self
@@ -16601,7 +16793,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
     >,
     origins: &mut std::collections::HashMap<
         &'a Name,
-        OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
     >,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     if !range_includes_position(
@@ -16622,11 +16814,33 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 use_start: name.start,
                 origin: pattern_variable,
             },
-            None => SyntaxSymbol::ProjectFnOrUnknown {
-                name: with_start_position_as_ref(name),
-                construct_info: ConstructInfo::NotExpectingArgument,
-                pattern_variables: std::mem::take(pattern_variables),
-                origins: std::mem::take(origins),
+            None => match origins
+                .get(&name.value)
+                .map(|origin_info| (&name.value, origin_info))
+                .or_else(|| {
+                    origins
+                        .iter()
+                        .find(|(_, origin)| {
+                            origin.parts.iter().any(|part| {
+                                part.value
+                                    .as_ref()
+                                    .is_some_and(|part_name| part_name == &name.value)
+                            })
+                        })
+                        .map(|(&name, origin)| (name, origin))
+                }) {
+                Some((origin_unique_name, &origin_info)) => SyntaxSymbol::Origin {
+                    name: &name.value,
+                    use_start: name.start,
+                    origin_unique_name: origin_unique_name,
+                    origin: origin_info,
+                },
+                None => SyntaxSymbol::ProjectFnOrUnknown {
+                    name: with_start_position_as_ref(name),
+                    construct_info: ConstructInfo::NotExpectingArgument,
+                    pattern_variables: std::mem::take(pattern_variables),
+                    origins: std::mem::take(origins),
+                },
             },
         }),
         SyntaxExpression::Call {
@@ -16923,25 +17137,46 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             }),
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
+            parts,
             name,
             result,
         } => {
             let result = result.as_ref().map(|result| expressions.element(result));
             if let Some(name) = name {
-                let origin_info = OriginStartAndScope {
+                let origin_declaration_info = OriginDeclarationInfo {
                     start: name.start,
+                    parts: parts,
                     scope: result,
                 };
+                for part in parts {
+                    if let Some(part_name) = &part.value
+                        && range_includes_position(
+                            name_range(WithStartPosition {
+                                start: position_add_characters(part.start, 1),
+                                value: part_name,
+                            }),
+                            position,
+                        )
+                    {
+                        return Some(SyntaxSymbol::Origin {
+                            name: part_name,
+                            use_start: position_add_characters(part.start, 1),
+                            origin_unique_name: &name.value,
+                            origin: origin_declaration_info,
+                        });
+                    }
+                }
                 if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
                     return Some(SyntaxSymbol::Origin {
                         name: &name.value,
                         use_start: name.start,
-                        origin: origin_info,
+                        origin_unique_name: &name.value,
+                        origin: origin_declaration_info,
                     });
                 }
-                origins.insert(&name.value, origin_info);
+                origins.insert(&name.value, origin_declaration_info);
             }
-            result.as_ref().and_then(|result| {
+            let result_symbol = result.and_then(|result| {
                 expression_symbol_at_position(
                     result,
                     position,
@@ -16955,7 +17190,11 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     pattern_variables,
                     origins,
                 )
-            })
+            });
+            if let Some(name) = name {
+                origins.remove(&name.value);
+            }
+            result_symbol
         }
     }
 }
@@ -16976,7 +17215,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
     >,
     origins: &mut std::collections::HashMap<
         &'a Name,
-        OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
     >,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     case.pattern
@@ -17228,7 +17467,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
     expression_scope: Option<&'a SyntaxExpression<Expressions, Patterns, Types>>,
     origins: &mut std::collections::HashMap<
         &'a Name,
-        OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
     >,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     if !range_includes_position(pattern_range(pattern, patterns, types), position) {
@@ -17382,7 +17621,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
     scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
     origins: &mut std::collections::HashMap<
         &'a Name,
-        OriginStartAndScope<'a, Expressions, Patterns, Types>,
+        OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
     >,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     if !range_includes_position(type_range(type_, types), position) {
@@ -17413,6 +17652,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             Some(&origin_info) => SyntaxSymbol::Origin {
                 name: &name.value,
                 use_start: name.start,
+                origin_unique_name: &name.value,
                 origin: origin_info,
             },
             None => SyntaxSymbol::ProjectTypeOrUnknown {
@@ -17538,11 +17778,31 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
         SyntaxSymbol::Origin {
             name,
             use_start: _,
+            origin_unique_name: _,
             origin,
-        } => Some(name_range(WithStartPosition {
-            value: name,
-            start: origin.start,
-        })),
+        } => {
+            if origin.parts.is_empty() {
+                Some(name_range(WithStartPosition {
+                    value: name,
+                    start: origin.start,
+                }))
+            } else {
+                origin
+                    .parts
+                    .iter()
+                    .find(|part| {
+                        part.value
+                            .as_ref()
+                            .is_some_and(|part_name| part_name == *name)
+                    })
+                    .map(|part| {
+                        name_range(WithStartPosition {
+                            value: name,
+                            start: position_add_characters(part.start, 1),
+                        })
+                    })
+            }
+        }
         &SyntaxSymbol::TypeVariable {
             name: symbol_name,
             use_start: _,
@@ -17650,6 +17910,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
         SyntaxSymbol::Origin {
             name: _,
             use_start: _,
+            origin_unique_name: _,
             origin,
         } => {
             if let Some(origin_scope) = origin.scope {
@@ -18098,6 +18359,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             SyntaxSymbol::Origin {
                 name: symbol_name,
                 use_start: _,
+                origin_unique_name: _,
                 origin: _,
             }
             | SyntaxSymbol::PatternVariable {
@@ -18362,15 +18624,17 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
+            parts,
             name: introduced_origin_name,
             result,
         } => {
             if let Some(result) = result {
-                let mut origins = std::borrow::Cow::Borrowed(origins);
+                let mut origins = origins.clone();
                 if let Some(introduced_origin_name) = introduced_origin_name {
                     if let SyntaxSymbol::Origin {
                         name: symbol_name,
                         use_start: _,
+                        origin_unique_name: _,
                         origin: _,
                     }
                     | SyntaxSymbol::PatternVariable {
@@ -18382,7 +18646,11 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     {
                         return;
                     }
-                    origins.to_mut().insert(&introduced_origin_name.value);
+                    if parts.is_empty() {
+                        origins.insert(&introduced_origin_name.value);
+                    } else {
+                        origins.extend(parts.iter().filter_map(|part| part.value.as_ref()));
+                    }
                 }
                 syntax_expression_symbol_uses_into(
                     uses,
@@ -19181,10 +19449,14 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start,
+            parts,
             name,
             result,
         } => {
             keyword_highlight(state, "^", *caret_key_symbol_start);
+            for part in parts {
+                syntax_optional_field_name_highlight(state, part);
+            }
             if let Some(name) = name {
                 syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
             }
@@ -19772,6 +20044,7 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Origin {
             caret_key_symbol_start: _,
+            parts: _,
             name: _,
             result,
         } => {

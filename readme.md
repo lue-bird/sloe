@@ -1,5 +1,3 @@
-> Warning: Currently Origin-erase and Origin-add APIs are unsound. Fixes are known and will be implemented in the next few days
-
 Small, fast programming language where indexes are valid and values can't be shared.
 
 Goal: representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
@@ -136,7 +134,8 @@ fn Use-opt opt Opt u32 : ... =
     [buf]
     ...
 
-# tree structure. every slot and span exclusively belongs to that expression
+# tree structure. every slot and span exclusively belongs to that expression.
+# If passing so many origins seems annoying to you, check the documentation of Origin
 ty Expression _expressions-origin, _patterns-origin, _chars-origin
     |int i32
     |string Opt Span _chars-origin
@@ -241,8 +240,18 @@ some-variable some-type
 ? value [first-case-pattern] first-result [second-case-pattern] second-result
 
 # introduce a new origin (describes which collection slots and spans point into).
-# The given name can be used as a variable and type
+# The given name can be used as a variable and its unique local type.
+# Below will create a variable `new-origin-name` of type `Origin new-origin-name, .`
 ^new-origin-name  expression-that uses new-origin-name
+
+# introduce multiple new origins with the same unique local type but different part names.
+# Below will create
+#   - json of type Origin view-origin, .json .
+#   - html of type Origin view-origin, .html .
+#   - char of type Origin view-origin, .char .
+# Not only can this reduce the amount of type variables floating about,
+# it's also important for wrapping values into an `Origin-erased`
+^ .json .html .char view-origin
 
 # project function declaration.
 # For type variables in the result that aren't used in the input,
@@ -270,11 +279,11 @@ ty Pair _potential, _type-parameters
 
 # a "choice type" that can come in different shapes ("variants")
 # which each have a unique name and one associated value.
-    |first-option .
-    |second-option Buf _potential, u32
-    |third-option Type-name-alias _potential, _type-parameters
+|first-option .
+|second-option Buf _potential, u32
+|third-option Type-name-alias _potential, _type-parameters
 
-# creating a variant. Note that the type could refer to a type alias
+# creating a variant value. Note that the type could refer to a type alias
 # or a choice type directly <|... ...>
 |{a-choice-type}some-variant its value
 
@@ -382,7 +391,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       #     .state (.buf buf .untracked untracked .sum sum)
       #     .step
       #     [
-      #     .state (.buf Buf _origin, u32 .untracked Unset-untracked origin .sum sum u32)
+      #     .state (.buf Buf (Origin _origin, .), u32 .untracked Unset-untracked origin .sum sum u32)
       #     .slot Slot origin
       #     ]
       #     ? Buf-untrack .buf buf .slot slot [.element element]
@@ -542,7 +551,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   _different bufs have the same origin_ but their slots can't intermix.
   ```sloe
   fn Recurse
-      .consume-origin consume-origin _consume-origin
+      .consume-origin consume-origin Origin _consume-origin, .
       .result-origin result-origin _result-origin
       : Buf _result-origin, u32 =
       ^local-origin
@@ -560,7 +569,18 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
     - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
     - most bytes are 3/4th 0s because ascii is so common. wasted space is bad for the cache and memory usage
   If these somehow turn out to be nonconcerns (e.g. through array-of-union(enum) optimizations) that would be cool as well since `Buf _, char` is a much nicer API to work with
-- zig-only: store an allocator within an origin (but! what about unset_slice? That one should probably store an allocator, too, and re-allocate if the buf origin allocator reference differs. I think this can be slightly unintuitive for sloe users but should in practice be okay). This achieves that origins created from within sloe code are arena-allocated and origins from user code are (usually) not, choosing e.g. MemoryPool.Aligned (does that actually work even?)
+- (not possible with origin-erased probably) zig-only: store an allocator within an origin (but! what about unset_slice? That one should probably store an allocator, too, and re-allocate if the buf origin allocator reference differs. I think this can be slightly unintuitive for sloe users but should in practice be okay). This achieves that origins created from within sloe code are arena-allocated and origins from user code are (usually) not, choosing e.g. MemoryPool.Aligned (does that actually work even?)
+- switch to a symmetric unerase API which enforces that all values inside are unerased. This would allow `Buf-origin-erased` to be removed in favor of `Buf (Origin erased, _part)` and `Origin-erased-rid`/`Origin-erased-map` to just work.
+  To that end, introduce
+  ```sloe
+  fn Origin-unerase
+      .erased Origin-erased .origin Origin _o
+      : Origin-isolated _o
+  fn Origin-isolated-split
+      Origin-isolated _o, .a _a .b _b
+      : .a Origin-isolated _o, _a .b origin-isolated _o, _b
+  ```
+  but I couldn't find something reasonable for choice types
 - (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
 - (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
@@ -639,6 +659,7 @@ While seemingly convenient and magnitudes better than regular mutable pointers,
 - returning `.` (like returning `Unit` in gleam) feels super awkward to my brain. Most often, languages then automatically return void/... in the absence of a return and introduce all kinds of constructs like re-assignable variables, additional constructs for looping and branching that all can only return void/... . To my brain, this just confuses matters; it loves simple to follow flow of state!
 - &mut usually comes with the need to check for non-overlapping references to the same parts of data. This isn't possible with owned data passing in the first place
 - &mut usually necessitates the need for offering the same APIs in two shapes, e.g. `make_uppercase(&mut self)` vs `to_uppercase(self)->Self` on rust's char/str types, `take()`/`take_mut()`, `std::mem::swap` etc. This to me just feels wrong
+- [it's hard to be precise in what parts of a type are captured exclusively, shared or unused](https://smallcultfollowing.com/babysteps/blog/2018/11/01/after-nll-interprocedural-conflicts/)
 
 rusts immutable references `&` have some similar trade-offs but seem kind of unavoidable at least for languages like rust.
 
@@ -756,30 +777,31 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add
-  ```sloe
-  fn Origin-erased-rid
-      .erased Origin-erased _parts, _value-erased
-      .rid Fn _value-erased, .
-      : .
-  fn Origin-erased-map
-      .erased Origin-erased _parts, _value-erased
-      .change Fn _value-erased, _value-erased-new
-      :
-      Origin-erased _parts, _value-erased-new
-  ```
+- add `Buf-origin-unerase-keep-elements`
 
-- let `Origin-erase` return a new type `Unerase-origin _parts, _origin`, add `origin-unerase-rid` and change `Origin-unerase .origin` to take `.to (|origin Origin _parts, _origin |uneraser Origin-uneraser _parts, _origin)` instead.
-  This allows erased values to only encompass some slots and spans in the Buf,
-  while still being reconstructible to the same unique origin type
+- when hovering or completing origins, show the full info and correct shown type
 
-- rename "erase" terminology to "isolate" (isolator) and "unerase" to "integrate" (?) (integrator) or something better
+- add warning before all errors if there are errors:
+  "Since there are errors, running the output code may leak memory, crash or even read uninitialized memory. Do not use it in production."
+
+- make origin-erased-rid actually useful or remove it
+
+- inline Origin paramters (origin, part) into Slot, Span, Buf, Unset-slot Unset-span.
+  This is less confusing IMO but clutters types a little in core signatures
 
 - do not parse result type if : is missing in project fn
 
 - do not parse result if = is missing in project fn
 
+- generate array record types as .element .rest linked list to avoid needing to generate records on the fly
+
 - when in pattern record, suggest field name in completion
+
+- track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
+
+- in type diff formatting, add missing commas between construct arguments
+
+- consider not reporting an error if a pattern variable uses an already used origin variable name. Even if not, improve the error no not include "already"
 
 - add `Buf-span-rid` which asks for `.span Span _origin .element-rid Fn _element, .`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
@@ -789,7 +811,36 @@ cargo install --offline --debug --path . sloe
 
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
 
+- if lowercase ty name is followed by type parameter, report better error "must be uppercase"
+
+- if lowercase fn name is written, report better error "must be uppercase"
+
+- be more liberal with parenthesizing query cases. Maybe just do it when the case result is not on the same line
+
+- investigate variable being used in both queried expression and query cases not being reported
+
+- give nicer error when only a field is missing or too much
+
 - check Buf lengths after every append in rust the same way as done in zig but panic instead
+
+- do not generate fn for zig types without parameters. use const
+
+- find some way to generate nicer IDE type displays. Maybe tabs work?
+
+- (will probably reject) consider switching from error{OutOfMemory}! to anyerror! for ease of use with external functions
+
+- try to make accidentally used _ in identifiers more gentle
+
+- consider adding
+  ```sloe
+  fn Origin-erased-map
+      .erased Origin-erased _value-erased
+      .change Fn _value-erased, _value-erased-new
+      :
+      Origin-erased _value-erased-new
+  ```
+
+- consider renaming Opt-yes to Yes
 
 - try to find and fix bugs and resolve todo comments
 

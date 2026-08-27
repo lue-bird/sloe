@@ -300,6 +300,45 @@ fn present_pattern_variable_markdown(type_: Option<&sloe::Type>) -> String {
         }
     }
 }
+fn present_full_origin_markdown(origin_variable_name: &sloe::Name) -> String {
+    format!(
+        "An origin. It's associated variable is of type
+```sloe
+Origin {origin_variable_name}, .
+```
+The first argument is a unique, local type with the same name as the variable.
+The second argument is an empty record here which signifies that there are no other origin variables with the same unique local type.
+This is is necessary for the `Origin-erased` API.
+See `Origin` for examples of when the second argument is not ."
+      )
+}
+fn present_full_origin_variable_markdown(origin_variable_name: &sloe::Name) -> String {
+    format!(
+        "origin variable of type
+```sloe
+Origin {origin_variable_name}, .
+```
+The first argument is a unique, local type with the same name as the variable.
+The second argument is an empty record here which signifies that there are no other origin variables with the same unique local type.
+This is is necessary for the `Origin-erased` API.
+See `Origin` for examples of when the second argument is not ."
+      )
+}
+fn present_part_origin_variable_markdown(
+    origin_variable_name: &sloe::Name,
+    origin_unique_name: &sloe::Name,
+) -> String {
+    format!(
+        "origin variable of type
+```sloe
+Origin {origin_unique_name}, .{origin_variable_name} .
+```
+The first argument is a unique, local type.
+The second argument is record with a single field which
+allows this variable to have the same unique local type as other origin variables.
+This is useful for reducing the amount of type variables and is necessary for the `Origin-erased` API"
+      )
+}
 fn default_output_file_path_for_sloe_input_file_path(
     input_file_path: &std::path::Path,
     language: CompileOutputLanguage,
@@ -524,13 +563,13 @@ fn lsp_main_or_error() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn initial_state<Expressions, Patterns, Types>(
-    expressions: sloe::core::Origin<Expressions, Expressions>,
-    patterns: sloe::core::Origin<Patterns, Patterns>,
-    types: sloe::core::Origin<Types, Types>,
+    expressions: sloe::core::Origin<Expressions, sloe::core::Record>,
+    patterns: sloe::core::Origin<Patterns, sloe::core::Record>,
+    types: sloe::core::Origin<Types, sloe::core::Record>,
 ) -> State<
-    sloe::core::Origin<Expressions, Expressions>,
-    sloe::core::Origin<Patterns, Patterns>,
-    sloe::core::Origin<Types, Types>,
+    sloe::core::Origin<Expressions, sloe::core::Record>,
+    sloe::core::Origin<Patterns, sloe::core::Record>,
+    sloe::core::Origin<Types, sloe::core::Record>,
 > {
     State {
         projects: std::collections::HashMap::with_capacity(1),
@@ -1040,19 +1079,16 @@ fn respond_to_hover<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::Origin {
             name,
             use_start,
-            origin: _,
+            origin_unique_name,
+            origin,
         } => Some(lsp_types::Hover {
             contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
-                value: format!(
-                    "Origin `^{name}` whose variable is of type
-```sloe
-Origin {name}, .{name} .
-```
-The first argument is a unique, local type with the same name as the variable.
-The second argument is an empty record with a field of the same name.
-It's used for APIs like `Origin-add`/`Origin-part` and `Origin-erase`"
-                ),
+                value: if origin.parts.is_empty() {
+                    present_full_origin_markdown(name)
+                } else {
+                    present_part_origin_variable_markdown(name, origin_unique_name)
+                },
             }),
             range: Some(sloe::name_range(sloe::WithStartPosition {
                 start: use_start,
@@ -1136,6 +1172,7 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
+    // TODO use sloe::syntax_project_symbol_origin_range instead
     let origin_name_range = match symbol {
         sloe::SyntaxSymbol::VariantOrUnknown(_) => None,
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
@@ -1176,11 +1213,31 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::Origin {
             name,
             use_start: _,
+            origin_unique_name: _,
             origin,
-        } => Some(sloe::name_range(sloe::WithStartPosition {
-            value: name,
-            start: origin.start,
-        })),
+        } => {
+            if origin.parts.is_empty() {
+                Some(sloe::name_range(sloe::WithStartPosition {
+                    value: name,
+                    start: origin.start,
+                }))
+            } else {
+                origin
+                    .parts
+                    .iter()
+                    .find(|part| {
+                        part.value
+                            .as_ref()
+                            .is_some_and(|part_name| part_name == name)
+                    })
+                    .map(|part| {
+                        sloe::name_range(sloe::WithStartPosition {
+                            value: name,
+                            start: lsp_position_add_characters(part.start, 1),
+                        })
+                    })
+            }
+        }
         sloe::SyntaxSymbol::TypeVariable { .. } => None,
         sloe::SyntaxSymbol::PatternVariable {
             name,
@@ -1239,6 +1296,7 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::Origin {
             name,
             use_start,
+            origin_unique_name: _,
             origin: _,
         } => sloe::name_range(sloe::WithStartPosition {
             value: name,
@@ -1652,7 +1710,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         }
         sloe::SyntaxSymbol::VariantOrUnknown(_) => {
             // improvement possibility: if type is known (aka query pattern), suggest all names from the choice,
-            // otherwise suggest all known names and add <> after it on completion
+            // otherwise suggest all known names and add {} before it on completion
             None
         }
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
@@ -1699,15 +1757,40 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         ))
                         .chain(
                             origins
-                                .into_keys()
-                                .map(|origin_name| lsp_types::CompletionItem {
+                                .iter()
+                                .filter(|(_, info)| info.parts.is_empty())
+                                .map(|(origin_name, _)| lsp_types::CompletionItem {
                                     label: origin_name.to_string(),
                                     kind: Some(lsp_types::CompletionItemKind::Variable),
                                     documentation: Some(lsp_documentation_markdown(
-                                        "^origin variable".to_string(),
+                                        present_full_origin_variable_markdown(origin_name),
                                     )),
                                     ..lsp_types::CompletionItem::default()
                                 }),
+                        )
+                        .chain(
+                            origins
+                                .iter()
+                                .flat_map(|(&origin_unique_name, info)| {
+                                    info.parts.iter().filter_map(move |part| {
+                                        part.value
+                                            .as_ref()
+                                            .map(|part_name| (origin_unique_name, part_name))
+                                    })
+                                })
+                                .map(
+                                    |(origin_unique_name, part_name)| lsp_types::CompletionItem {
+                                        label: origin_unique_name.to_string(),
+                                        kind: Some(lsp_types::CompletionItemKind::Variable),
+                                        documentation: Some(lsp_documentation_markdown(
+                                            present_part_origin_variable_markdown(
+                                                origin_unique_name,
+                                                part_name,
+                                            ),
+                                        )),
+                                        ..lsp_types::CompletionItem::default()
+                                    },
+                                ),
                         )
                         .collect(),
                 ))

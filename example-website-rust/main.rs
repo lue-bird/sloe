@@ -23,13 +23,15 @@ impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
         sauron::Cmd::none()
     }
     fn view(&self) -> sauron::prelude::Node<Self::MSG> {
-        sloe::origin_new!(html, Html, Record·html);
-        sloe::origin_new!(modifier, Modifier, Record·modifier);
-        sloe::origin_new!(char, Char, Record·char);
-        let view_origin = char.add(modifier).add(html);
-        type View = sloe::Part_rest<Html, sloe::Part_rest<Modifier, Char>>;
-        let (htmls_origin, view_origin) = view_origin.split_part();
-        let (modifiers_origin, chars_origin) = view_origin.split_part();
+        sloe::origin_new!(
+            View,
+            htmls_origin,
+            Record·html,
+            modifiers_origin,
+            Record·modifier,
+            chars_origin,
+            Record·char
+        );
         let htmls = sloe::Buf::new(htmls_origin);
         let modifiers: sloe::Buf<
             sloe::Origin<View, sloe::Record·modifier<()>>,
