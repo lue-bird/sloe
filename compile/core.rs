@@ -1637,6 +1637,26 @@ impl<Element, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Element> {
     }
 }
 impl<Element, Part> Buf<Origin<Erased, Part>, Element> {
+    pub fn origin_unerase_keep_elements<LocalOrigin>(
+        self,
+        _: &Origin_uneraser<LocalOrigin>,
+    ) -> Buf<Origin<LocalOrigin, Part>, Element> {
+        Buf {
+            elements: self.elements,
+            // the optimizer should be able to figure out that the atual memory does not change here
+            // If it can't, assert the same size and alignment
+            // and transmute
+            vacant: std::iter::Iterator::collect(std::iter::Iterator::map(
+                std::iter::IntoIterator::into_iter(self.vacant),
+                |vacant_span| Unset_span {
+                    start: Unset_slot::<Origin<LocalOrigin, Part>>::from_index(
+                        vacant_span.start.index,
+                    ),
+                    length: vacant_span.length,
+                },
+            )),
+        }
+    }
     pub fn origin_unerase<LocalOrigin, ElementUnerased>(
         self,
         uneraser: &Origin_uneraser<LocalOrigin>,
@@ -1670,16 +1690,9 @@ impl<Element, Part> Buf<Origin<Erased, Part>, Element> {
                     }
                 },
             )),
-            vacant: std::iter::Iterator::collect(std::iter::Iterator::map(
-                std::iter::IntoIterator::into_iter(self.vacant),
-                |vacant_span| Unset_span {
-                    start: Unset_slot::<Origin<LocalOrigin, Part>>::from_index(
-                        vacant_span.start.index,
-                    ),
-                    length: vacant_span.length,
-                },
-            )),
+            vacant: self.vacant,
         }
+        .origin_unerase_keep_elements(uneraser)
     }
 }
 
@@ -3363,6 +3376,18 @@ fn buf_origin_isolate<Element, ElementErased, LocalOrigin, Part>(
     // and called only from sloe which follows stricter rules (linear types)
     // which prevent unset slots and spans to be scrapped (they cannot be origin-isolated)
     unsafe { buf.origin_isolate_assume_no_unset(element_isolate) }
+}
+pub fn buf_origin_unerase_keep_elements<Element, LocalOrigin, Part>(
+    Record·buf·uneraser { buf, uneraser }: Record·buf·uneraser<
+        Buf_origin_erased<Part, Element>,
+        Origin_uneraser<LocalOrigin>,
+    >,
+) -> Record·buf·uneraser<Buf<Origin<LocalOrigin, Part>, Element>, Origin_uneraser<LocalOrigin>> {
+    let buf_unerased = buf.erased.origin_unerase_keep_elements(&uneraser);
+    Record·buf·uneraser {
+        buf: buf_unerased,
+        uneraser: uneraser,
+    }
 }
 pub fn buf_origin_unerase<Element, ElementErased, LocalOrigin, Part>(
     Record·buf·element_unerase·uneraser {

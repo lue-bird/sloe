@@ -670,6 +670,39 @@ test "span origin erase, then unerase" {
     );
     try std.testing.expectEqual(span_erased.erased.endIndex(), span_unerased.span.endIndex());
 }
+test "buf origin erase with elements, keeping elements" {
+    const Origin = enum { origin };
+    const origin: core.Origin(Origin, void) = .{};
+    var buf = core.buf_empty(u32, Origin, void, origin);
+    _ = try buf.add(std.testing.allocator, 60);
+    const buf_isolated = try core.buf_origin_isolate(
+        u32,
+        u32,
+        Origin,
+        void,
+        std.testing.allocator,
+        .{
+            .buf = buf,
+            .element_isolate = struct {
+                pub fn f(_: std.mem.Allocator, element: u32) error{OutOfMemory}!core.Origin_isolated(Origin, u32) {
+                    return core.u32_origin_isolate(Origin, element);
+                }
+            }.f,
+        },
+    );
+    const buf_erased = core.origin_erase(Origin, core.Buf_origin_erased(void, u32), buf_isolated);
+    try std.testing.expectEqual(1, buf_erased.erased.erased.elements.items.len);
+    const uneraser = core.Origin_uneraser(Origin){};
+    const buf_unerased = core.buf_origin_unerase_keep_elements(
+        u32,
+        Origin,
+        void,
+        .{ .buf = buf_erased.erased, .uneraser = uneraser },
+    );
+    try std.testing.expectEqual(1, buf_unerased.buf.elements.items.len);
+    // scrap the original buf, showing that the allocation is the same as for buf_unerased
+    buf.rid(std.testing.allocator);
+}
 test "buf origin erase with elements, same size and alignment" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
@@ -792,9 +825,9 @@ test "origin_erase span + buf, then origin_unerase" {
         },
     );
     const isolated = core.origin_isolated_merge(
-        Origin,
         core.Buf_origin_erased(void, u32),
         core.Span(core.Origin(core.Erased, void)),
+        Origin,
         .{ .a = buf_isolated, .b = span_isolated },
     );
     const erased = core.origin_erase(Origin, core.Record(struct {
@@ -893,9 +926,9 @@ test "origin_erase span + buf, then origin_erased_rid" {
         },
     );
     const isolated = core.origin_isolated_merge(
-        Origin,
         core.Buf_origin_erased(void, u32),
         core.Span(core.Origin(core.Erased, void)),
+        Origin,
         .{ .a = buf_isolated, .b = span_isolated },
     );
     const erased = core.origin_erase(Origin, core.Record(struct {

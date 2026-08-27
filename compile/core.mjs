@@ -650,6 +650,13 @@ export function buf_origin_isolate(erase) {
     element === null ? null : erase.element_isolate(element),
   );
 }
+/** @template $Element, $Origin, $Part @param {{ buf: Buf_origin_erased<$Part, $Element>, uneraser: Origin_uneraser<$Origin>, }} unerase @returns {{ buf: Buf<Origin<$Origin, $Part>, $Element>, uneraser: Origin_uneraser<$Origin>, }} */
+export function buf_origin_unerase_keep_elements(unerase) {
+  return {
+    buf: /** @type Buf<Origin<$Origin, $Part>, $Element> */ (unerase.buf),
+    uneraser: unerase.uneraser,
+  };
+}
 /** @template $Element, $Element_erased, $Origin, $Part @param {{ buf: Buf_origin_erased<$Part, $Element_erased>, uneraser: Origin_uneraser<$Origin>, element_unerase: Fn<{ element: $Element_erased, uneraser: Origin_uneraser<$Origin>, }, { element: $Element, uneraser: Origin_uneraser<$Origin>, }>, }} unerase @returns {{ buf: Buf<Origin<$Origin, $Part>, $Element>, uneraser: Origin_uneraser<$Origin>, }} */
 export function buf_origin_unerase(unerase) {
   return {

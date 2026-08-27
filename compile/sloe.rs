@@ -14147,10 +14147,30 @@ Changing an element that is referenced by an outside slot/span etc. may be unexp
                 ),
             },
             CoreFnInfo {
+                name: "Buf-origin-unerase-keep-elements",
+                documentation: "Replace its origin type from `erased`.
+Use instead of `Buf-origin-unerase` when the elements don't reference an origin.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("element"))),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(
+                            type_origin(type_variable("origin"), type_variable("part")),
+                            type_variable("element")
+                        )
+                    ),
+                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
+                ]),
+            },
+            CoreFnInfo {
                 name: "Buf-origin-unerase",
                 documentation: "Replace its origin type from `erased`,
-along with un-erasing the origin in its elements if necessary.
-An example:
+along with un-erasing the origin in its elements.
+Use `Buf-origin-unerase` instead when the elements don't reference an origin.
 ```sloe
 fn Example-unerase
     .buf buf-inner Buf (Origin erased, .), Opt Span Origin erased, .

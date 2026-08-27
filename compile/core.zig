@@ -2387,6 +2387,29 @@ pub fn buf_origin_isolate(
         .elements = elements_erased,
     } } };
 }
+pub fn buf_origin_unerase_keep_elements(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%Part": type,
+    @"%": Record(struct {
+        buf: Buf_origin_erased(@"%Part", @"%Element"),
+        uneraser: Origin_uneraser(@"%Origin"),
+    }),
+) Record(struct {
+    buf: Buf(Origin(@"%Origin", @"%Part"), @"%Element"),
+    uneraser: Origin_uneraser(@"%Origin"),
+}) {
+    return .{
+        .buf = .{
+            .elements = @"%".buf.erased.elements,
+            .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
+                .capacity = @"%".buf.erased.vacant.capacity,
+                .items = @ptrCast(@"%".buf.erased.vacant.items),
+            },
+        },
+        .uneraser = @"%".uneraser,
+    };
+}
 pub fn buf_origin_unerase(
     @"%Element": type,
     @"%ElementErased": type,

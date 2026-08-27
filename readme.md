@@ -777,8 +777,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `Buf-origin-unerase-keep-elements`
-
 - when hovering or completing origins, show the full info and correct shown type
 
 - add warning before all errors if there are errors:
