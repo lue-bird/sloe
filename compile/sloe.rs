@@ -4920,10 +4920,21 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         ),
                     });
                     return None;
-                } else if origins.contains_key(&name.value) {
+                } else if origins
+                    .get(&name.value)
+                    .is_some_and(|origin_info| origin_info.parts.is_empty())
+                    || origins.values().any(|origin_info| {
+                        origin_info
+                            .parts
+                            .iter()
+                            .any(|part_name| name.value == part_name.value)
+                    })
+                {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: Box::from("an origin with this name already exists. Rename it"),
+                        message: Box::from(
+                            "an origin variable with this name already exists. Rename it",
+                        ),
                     });
                     return None;
                 }
@@ -9653,12 +9664,31 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            if let Some(existing_origin_with_same_name) = origins.remove(&origin_name.value) {
+            if let Some(existing_origin_with_same_name) = origins.get(&origin_name.value) {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(origin_name)),
                     message: format!(
-                        "an origin with this name already exists at {}",
+                        "an origin type with this name already exists at {}",
                         position_to_string(existing_origin_with_same_name.origin_start)
+                    )
+                    .into_boxed_str(),
+                });
+            } else if let Some(existing_origin_with_same_name) =
+                origins.values().find_map(|origin_info| {
+                    origin_info
+                        .parts
+                        .iter()
+                        .find(|part_name| origin_name.value == part_name.value)
+                })
+            {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(origin_name)),
+                    message: format!(
+                        "an origin part variable with this name already exists at {}",
+                        position_to_string(position_add_characters(
+                            existing_origin_with_same_name.start,
+                            1
+                        ))
                     )
                     .into_boxed_str(),
                 });
@@ -9676,6 +9706,46 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         "a type alias with this name already exists. Rename this origin",
                     ),
                 });
+            }
+            // quadratic but should be fine since nested multi-part origins are uncommon
+            for part in parts {
+                if let Some(part_name) = &part.value
+                    && let Some(existing_origin_with_same_name_start) = origins
+                        .get(part_name)
+                        .and_then(|existing_origin_with_same_name| {
+                            if existing_origin_with_same_name.parts.is_empty() {
+                                Some(existing_origin_with_same_name.origin_start)
+                            } else {
+                                None
+                            }
+                        })
+                        .or_else(|| {
+                            origins.values().find_map(|origin_info| {
+                                origin_info
+                                    .parts
+                                    .iter()
+                                    .find(|existing_part_name| {
+                                        part_name == &existing_part_name.value
+                                    })
+                                    .map(|existing_part_name| existing_part_name.start)
+                            })
+                        })
+                {
+                    errors.push(ErrorNode {
+                        range: name_range(WithStartPosition {
+                            start: position_add_characters(part.start, 1),
+                            value: part_name,
+                        }),
+                        message: format!(
+                            "an origin variable with this name already exists at {}",
+                            position_to_string(position_add_characters(
+                                existing_origin_with_same_name_start,
+                                1
+                            ))
+                        )
+                        .into_boxed_str(),
+                    });
+                }
             }
             let Some(result) = result else {
                 errors.push(ErrorNode {
