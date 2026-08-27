@@ -1283,15 +1283,25 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     }
     let parameter = parse_pattern_typed(state, patterns, types);
     parse_sloe_whitespace(state);
-    let colon_start = parse_symbol_as_start(state, ":");
-    parse_sloe_whitespace(state);
-    let result_type = parse_type(state, types);
-    parse_sloe_whitespace(state);
+    let (colon_start, result_type) = match parse_symbol_as_start(state, ":") {
+        None => (None, None),
+        Some(colon_start) => {
+            parse_sloe_whitespace(state);
+            let result_type = parse_type(state, types);
+            parse_sloe_whitespace(state);
+            (Some(colon_start), result_type)
+        }
+    };
     let documentation = parse_sloe_comments(state);
     parse_sloe_whitespace(state);
-    let equals_start = parse_symbol_as_start(state, "=");
-    parse_sloe_whitespace(state);
-    let result = parse_expression(state, expressions, patterns, types);
+    let (equals_start, result) = match parse_symbol_as_start(state, "=") {
+        None => (None, None),
+        Some(equals_start) => {
+            parse_sloe_whitespace(state);
+            let result = parse_expression(state, expressions, patterns, types);
+            (Some(equals_start), result)
+        }
+    };
     Some(SyntaxProjectElement::Fn {
         fn_keyword_start: fn_keyword_start,
         name: name,

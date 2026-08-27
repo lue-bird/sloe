@@ -782,10 +782,6 @@ cargo install --offline --debug --path . sloe
 - inline Origin paramters (origin, part) into Slot, Span, Buf, Unset-slot Unset-span.
   This is less confusing IMO but clutters types a little in core signatures
 
-- do not parse result type if : is missing in project fn
-
-- do not parse result if = is missing in project fn
-
 - generate array record types as .element .rest linked list to avoid needing to generate records on the fly
 
 - when in pattern record, suggest field name in completion
