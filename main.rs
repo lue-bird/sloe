@@ -472,13 +472,26 @@ fn build_main(
         &syntax_patterns,
         &syntax_types,
     );
-    for output_error in output_errors.iter().rev() {
+    if !output_errors.is_empty() {
+        for output_error in output_errors.iter().rev() {
+            eprintln!(
+                "- {input_file_path}:{span_start_line}:{span_start_column} {message}",
+                input_file_path = input_file_path.to_string_lossy(),
+                span_start_line = output_error.range.start.line + 1,
+                span_start_column = output_error.range.start.character + 1,
+                message = output_error.message
+            );
+        }
         eprintln!(
-            "{input_file_path}:{span_start_line}:{span_start_column} {message}",
-            input_file_path = input_file_path.to_string_lossy(),
-            span_start_line = output_error.range.start.line + 1,
-            span_start_column = output_error.range.start.character + 1,
-            message = output_error.message
+            "\nSince there are errors, running the output code may {}. Do not use it in production.",
+            match output_language {
+                CompileOutputLanguage::Js => {
+                    "crash in strange ways"
+                }
+                CompileOutputLanguage::Rust | CompileOutputLanguage::Zig => {
+                    "leak memory, crash or even read and write uninitialized memory"
+                }
+            }
         );
     }
     if let Some(output_file_directory_path) = output_file_path.parent()

@@ -777,11 +777,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- when hovering or completing origins, show the full info and correct shown type
-
-- add warning before all errors if there are errors:
-  "Since there are errors, running the output code may leak memory, crash or even read uninitialized memory. Do not use it in production."
-
 - make origin-erased-rid actually useful or remove it
 
 - inline Origin paramters (origin, part) into Slot, Span, Buf, Unset-slot Unset-span.
