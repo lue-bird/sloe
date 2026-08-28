@@ -14833,7 +14833,7 @@ This is a very bare-bones feature because of sloe's simple type system.
 How does Array work then? The second record argument is set to an equivalent record
 that the runtime knows how to interpret as an actual array.
 ```sloe
-fn Example-array . : Array u32, .e0 u32 .e1 u32 =
+fn Example-array . : Array u32, .el0 u32 .el1 u32 =
     ; 6 u32 ; 9 u32
 ```
 This is quite cursed!
