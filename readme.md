@@ -778,13 +778,13 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- make origin-erased-rid actually useful or remove it
-
-- generate array record types as .a .b linked list to avoid needing to generate records on the fly
+- if comments are first in a file, do not put a linebreak before it when formatting
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
-- add `Buf-span-rid` which asks for `.span Span _origin .element-rid Fn _element, .`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
+- add `fn Buf-update` as a more convenient `Buf-unset` followed by `Buf-set`. Especially useful for duplicating an element out
+
+- add `Buf-span-update` which asks for `.span Span _origin .element-update Fn _element, _element`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
 
@@ -808,6 +808,8 @@ cargo install --offline --debug --path . sloe
 
 - find some way to generate nicer IDE type displays. Maybe tabs work?
 
+- remove Origin-erased-rid. It can't really be made useful
+
 - (will probably reject) consider switching from error{OutOfMemory}! to anyerror! for ease of use with external functions
 
 - try to make accidentally used _ in identifiers more gentle
@@ -825,7 +827,11 @@ cargo install --offline --debug --path . sloe
 
 - try to find and fix bugs and resolve todo comments
 
+- consider renaming "element" to "item" for brevity and to make it the same length as slot, span
+
 # not coherently formulated thoughts
+
+## on collections not owning elements
 In rust, collections tend to own their element data, so safely keeping references reaching inside is tough.
 Alternatively, we could reach for `Range<usize>` and `usize` but we've lost ties to the origin structure and rust does not (yet?) have a mechanism for temporarily assuming actual ownership over some part of a parent structure.
 This relationship is flipped on it's head in sloe: All elements of collections are divided into slots and spans which are owned by the code that parked values there in the first place.
@@ -833,7 +839,7 @@ This relationship is flipped on it's head in sloe: All elements of collections a
 Honestly this idea seems "obviously" useful and it's surprising I can't find other languages that lean into it (there is rust which at least enables it in userland).
 I assume one reason is that linear types are required in some part to avoid leaks all over the place.
 
-One way this helps is that nested collections aren't segmented: what is usually `Buf<Box<str>>` aka n separate memory pieces can be e.g. `Buf ... Span str-origin` + `_str str-origin`
+One way this helps is that nested collections aren't segmented: what is usually `Buf<Box<str>>` aka n separate memory pieces can be e.g. `Buf ... Span str-origin` + `Str str-origin`
 (in rust there are I think crates like oroborus for this)
 
 ## on shadowing
@@ -841,6 +847,7 @@ since each variable can be used at most once, most introduced names that would t
 
 ## on defer
 I love how linear types somewhat mirror the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!
+This also simplified code generation
 
 ## sorting?
 `sorted-span` etc. could be nice (only in userland most likely!)

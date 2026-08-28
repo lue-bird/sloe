@@ -13695,6 +13695,64 @@ To remove the element entirely, use `Buf-take`",
                 ]),
             },
             CoreFnInfo {
+                name: "Buf-span-unset",
+                documentation: "Mark each element in a given `Span` as \"won't be used anymore\"
+and return the now `Unset-span`.
+You can use `Buf-unset-span-rid` to scrap it or switch to `Buf-span-rid` entirely.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("span", type_span(type_variable("origin"))),
+                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                ]),
+                result_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("span", type_unset_span(type_variable("origin")))
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-opt-span-unset",
+                documentation: "Mark each element in a given `Opt Span` as \"won't be used anymore\"
+and return the now unset `Opt Unset-span`.
+You can use `Buf-opt-unset-span-rid` to scrap it or switch to `Buf-opt-span-rid` entirely.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                ]),
+                result_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("span", type_opt(type_unset_span(type_variable("origin"))))
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-span-rid",
+                documentation: "Mark elements as \"won't be used anymore\"
+and return their `Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.
+Equivalent to `Buf-span-unset` followed by `Buf-unset-span-rid`.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("span", type_span(type_variable("origin"))),
+                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                ]),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
+            },
+            CoreFnInfo {
+                name: "Buf-opt-span-rid",
+                documentation: "Mark elements as \"won't be used anymore\"
+and return their `Opt Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.
+Equivalent to `Buf-opt-span-unset` followed by `Buf-opt-unset-span-rid`.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                ]),
+                result_type: type_buf(type_variable("origin"), type_variable("element")),
+            },
+            CoreFnInfo {
                 name: "Buf-unset-slot-rid",
                 documentation: "Return an `Unset-slot` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
                 type_parameters: vec![],
@@ -14929,9 +14987,9 @@ pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
         "Unset-slice-rid"
         | "Buf-rid"
         | "Buf-to-unset"
-        | "Buf-opt-unset-span-rid"
+        | "Buf-unset-slot-rid"
         | "Buf-unset-span-rid"
-        | "Buf-unset-slot-rid" => true,
+        | "Buf-opt-unset-span-rid" => true,
         _ => is_core_fn_that_can_run_out_of_memory_in_zig(fn_name),
     }
 }
@@ -14952,6 +15010,10 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Buf-origin-unerase"
         | "Buf-opt-span-move-to-end"
         | "Buf-span-move-to-end"
+        | "Buf-span-unset"
+        | "Buf-opt-span-unset"
+        | "Buf-span-rid"
+        | "Buf-opt-span-rid"
         | "Buf-opt-unset-span-add-own-opt-span"
         | "Buf-unset-span-add-own-opt-span"
         | "Buf-opt-unset-span-add-own-span"

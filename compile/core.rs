@@ -198,6 +198,18 @@ pub struct Record·buf·slot<Buf, Slot> {
     pub slot: Slot,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·buf·element_rid·slot<Buf, Element_rid, Slot> {
+    pub buf: Buf,
+    pub element_rid: Element_rid,
+    pub slot: Slot,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·buf·element_rid·span<Buf, Element_rid, Span> {
+    pub buf: Buf,
+    pub element_rid: Element_rid,
+    pub span: Span,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·new<Buf, New> {
     pub buf: Buf,
     pub new: New,
@@ -917,6 +929,48 @@ impl<Element, LocalOrigin> Buf<LocalOrigin, Element> {
         Record·element·slot {
             element: element,
             slot: Unset_slot::<LocalOrigin>::from_index(slot.index),
+        }
+    }
+    pub fn span_unset(
+        &mut self,
+        span: Span<LocalOrigin>,
+        element_rid: impl std::ops::Fn(Element),
+    ) -> Unset_span<LocalOrigin> {
+        let unset_span = Unset_span::<LocalOrigin> {
+            start: Unset_slot::<LocalOrigin>::from_index(span.start.index),
+            length: span.length,
+        };
+        for element in self.span_into_iterator(span) {
+            element_rid(element)
+        }
+        unset_span
+    }
+    pub fn opt_span_unset(
+        &mut self,
+        span: Opt<Span<LocalOrigin>>,
+        element_rid: impl std::ops::Fn(Element),
+    ) -> Opt<Unset_span<LocalOrigin>> {
+        match span {
+            Opt::No(()) => Opt::No(()),
+            Opt::Yes(span) => Opt::Yes(self.span_unset(span, element_rid)),
+        }
+    }
+    pub fn slot_rid(&mut self, slot: Slot<LocalOrigin>, element_rid: impl std::ops::Fn(Element)) {
+        let unset = self.unset(slot);
+        element_rid(unset.element);
+        self.unset_slot_rid(unset.slot);
+    }
+    pub fn span_rid(&mut self, span: Span<LocalOrigin>, element_rid: impl std::ops::Fn(Element)) {
+        let unset = self.span_unset(span, element_rid);
+        self.unset_span_rid(unset);
+    }
+    pub fn opt_span_rid(
+        &mut self,
+        span: Opt<Span<LocalOrigin>>,
+        element_rid: impl std::ops::Fn(Element),
+    ) {
+        if let Opt::Yes(span) = span {
+            self.span_rid(span, element_rid);
         }
     }
     pub fn set(&mut self, slot: Unset_slot<LocalOrigin>, element: Element) -> Slot<LocalOrigin> {
@@ -2743,6 +2797,36 @@ pub fn buf_unset<Element, Origin>(
         slot: element.slot,
     }
 }
+pub fn buf_span_unset<Element, Origin>(
+    Record·buf·element_rid·span {
+        mut buf,
+        element_rid,
+        span,
+    }: Record·buf·element_rid·span<Buf<Origin, Element>, Fn<Element, Record>, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Element>, Unset_span<Origin>> {
+    let unset = buf.span_unset(span, element_rid);
+    Record·buf·span {
+        buf: buf,
+        span: unset,
+    }
+}
+pub fn buf_opt_span_unset<Element, Origin>(
+    Record·buf·element_rid·span {
+        mut buf,
+        element_rid,
+        span,
+    }: Record·buf·element_rid·span<
+        Buf<Origin, Element>,
+        Fn<Element, Record>,
+        Opt<Span<Origin>>,
+    >,
+) -> Record·buf·span<Buf<Origin, Element>, Opt<Unset_span<Origin>>> {
+    let unset = buf.opt_span_unset(span, element_rid);
+    Record·buf·span {
+        buf: buf,
+        span: unset,
+    }
+}
 pub fn buf_set<Element, Origin>(
     Record·buf·new·slot {
         mut buf,
@@ -2755,6 +2839,30 @@ pub fn buf_set<Element, Origin>(
         buf: buf,
         slot: set_slot,
     }
+}
+pub fn buf_span_rid<Element, Origin>(
+    Record·buf·element_rid·span {
+        mut buf,
+        element_rid,
+        span,
+    }: Record·buf·element_rid·span<Buf<Origin, Element>, Fn<Element, Record>, Span<Origin>>,
+) -> Buf<Origin, Element> {
+    buf.span_rid(span, element_rid);
+    buf
+}
+pub fn buf_opt_span_rid<Element, Origin>(
+    Record·buf·element_rid·span {
+        mut buf,
+        element_rid,
+        span,
+    }: Record·buf·element_rid·span<
+        Buf<Origin, Element>,
+        Fn<Element, Record>,
+        Opt<Span<Origin>>,
+    >,
+) -> Buf<Origin, Element> {
+    buf.opt_span_rid(span, element_rid);
+    buf
 }
 pub fn buf_unset_slot_rid<Element, Origin>(
     Record·buf·slot {

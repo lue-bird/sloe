@@ -553,6 +553,55 @@ pub fn Buf(@"%Origin": type, @"%Element": type) type {
             @"%buf".elements.items[@"%slot".index] = @"%new";
             return .{ .index = @"%slot".index };
         }
+        pub fn spanUnset(
+            @"%buf": @This(),
+            @"%allocator": std.mem.Allocator,
+            @"%span": Span(@"%Origin"),
+            @"%element_rid": Fn(@"%Element", void),
+        ) error{OutOfMemory}!Unset_span(@"%Origin") {
+            for (@"%buf".spanSlice(@"%span")) |@"%element"| {
+                try @"%element_rid"(@"%allocator", @"%element");
+            }
+            return .{
+                .start = .{ .index = @"%span".start.index },
+                .length = @"%span".length,
+            };
+        }
+        pub fn optSpanUnset(
+            @"%buf": @This(),
+            @"%allocator": std.mem.Allocator,
+            @"%opt_span": Opt(Span(@"%Origin")),
+            @"%element_rid": Fn(@"%Element", void),
+        ) error{OutOfMemory}!Opt(Unset_span(@"%Origin")) {
+            switch (@"%opt_span") {
+                .no => return .{ .no = {} },
+                .yes => |@"%span"| {
+                    return .{ .yes = try @"%buf".spanUnset(@"%allocator", @"%span", @"%element_rid") };
+                },
+            }
+        }
+        pub fn spanRid(
+            @"%buf": *@This(),
+            @"%allocator": std.mem.Allocator,
+            @"%span": Span(@"%Origin"),
+            @"%element_rid": Fn(@"%Element", void),
+        ) error{OutOfMemory}!void {
+            const @"%unset" = try @"%buf".spanUnset(@"%allocator", @"%span", @"%element_rid");
+            return @"%buf".unsetSpanRid(@"%allocator", @"%unset");
+        }
+        pub fn optSpanRid(
+            @"%buf": *@This(),
+            @"%allocator": std.mem.Allocator,
+            @"%opt_span": Opt(Span(@"%Origin")),
+            @"%element_rid": Fn(@"%Element", void),
+        ) error{OutOfMemory}!void {
+            switch (@"%opt_span") {
+                .no => {},
+                .yes => |@"%span"| {
+                    return @"%buf".spanRid(@"%allocator", @"%span", @"%element_rid");
+                },
+            }
+        }
         // The given span is invalid while the returned slice is live.
         pub fn spanSlice(@"%buf": @This(), @"%span": Span(@"%Origin")) []@"%Element" {
             return @"%buf".elements.items[@"%span".start.index..][0..@"%span".length.positive];
@@ -1747,14 +1796,13 @@ pub fn buf_remove(
 pub fn buf_unset(
     @"%Element": type,
     @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }),
 ) Record(struct {
     buf: Buf(@"%Origin", @"%Element"),
     element: @"%Element",
     slot: Unset_slot(@"%Origin"),
 }) {
-    const @"%element" = @"%".buf.unset(@"%allocator", @"%".slot);
+    const @"%element" = @"%".buf.unset(@"%".slot);
     return .{ .buf = @"%".buf, .element = @"%element".element, .slot = @"%element".slot };
 }
 pub fn buf_set(@"%Element": type, @"%Origin": type, @"%": Record(struct {
@@ -1764,6 +1812,66 @@ pub fn buf_set(@"%Element": type, @"%Origin": type, @"%": Record(struct {
 })) Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Slot(@"%Origin") }) {
     const @"%slot" = @"%".buf.set(@"%".slot, @"%".new);
     return .{ .buf = @"%".buf, .slot = @"%slot" };
+}
+pub fn buf_span_unset(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Element"),
+        element_rid: Fn(@"%Element", void),
+        span: Span(@"%Origin"),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Element"),
+    span: Unset_span(@"%Origin"),
+}) {
+    const @"%unset" = try @"%".buf.spanUnset(@"%allocator", @"%".span, @"%".element_rid);
+    return .{ .buf = @"%".buf, .span = @"%unset" };
+}
+pub fn buf_opt_span_unset(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Element"),
+        element_rid: Fn(@"%Element", void),
+        span: Opt(Span(@"%Origin")),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Element"),
+    span: Opt(Unset_span(@"%Origin")),
+}) {
+    const @"%unset" = try @"%".buf.optSpanUnset(@"%allocator", @"%".span, @"%".element_rid);
+    return .{ .buf = @"%".buf, .span = @"%unset" };
+}
+pub fn buf_span_rid(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Element"),
+        element_rid: Fn(@"%Element", void),
+        span: Span(@"%Origin"),
+    }),
+) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
+    var @"%buf" = @"%".buf;
+    try @"%buf".spanRid(@"%allocator", @"%".span, @"%".element_rid);
+    return @"%buf";
+}
+pub fn buf_opt_span_rid(
+    @"%Element": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Element"),
+        element_rid: Fn(@"%Element", void),
+        span: Opt(Span(@"%Origin")),
+    }),
+) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
+    var @"%buf" = @"%".buf;
+    try @"%buf".optSpanRid(@"%allocator", @"%".span, @"%".element_rid);
+    return @"%buf";
 }
 pub fn buf_opt_span_add(
     @"%Element": type,
@@ -2162,7 +2270,10 @@ pub fn buf_unset_span_add_own_span(
         end: Unset_span(@"%Origin"),
         start: Unset_span(@"%Origin"),
     }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Unset_span(@"%Origin") }) {
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Element"),
+    span: Unset_span(@"%Origin"),
+}) {
     var @"%buf" = @"%".buf;
     const @"%combined_span" = try @"%buf".unsetSpanAddOwnSpan(@"%allocator", @"%".start, @"%".end);
     return .{
@@ -2179,7 +2290,10 @@ pub fn buf_opt_unset_span_add_own_span(
         end: Opt(Unset_span(@"%Origin")),
         start: Unset_span(@"%Origin"),
     }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Unset_span(@"%Origin") }) {
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Element"),
+    span: Unset_span(@"%Origin"),
+}) {
     switch (@"%".start) {
         .no => return .{ .buf = @"%".buf, .span = @"%".end },
         .yes => |@"%start"| {
@@ -2304,8 +2418,9 @@ pub fn buf_unset_slot_rid(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), slot: Unset_slot(@"%Origin") }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    try @"%".buf.unsetSlotRid(@"%allocator", @"%".span);
-    return @"%".buf;
+    var @"%buf" = @"%".buf;
+    try @"%buf".unsetSlotRid(@"%allocator", @"%".span);
+    return @"%buf";
 }
 pub fn buf_unset_span_rid(
     @"%Element": type,
@@ -2313,8 +2428,9 @@ pub fn buf_unset_span_rid(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Unset_span(@"%Origin") }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    try @"%".buf.unsetSpanRid(@"%allocator", @"%".span);
-    return @"%".buf;
+    var @"%buf" = @"%".buf;
+    try @"%buf".unsetSpanRid(@"%allocator", @"%".span);
+    return @"%buf";
 }
 pub fn buf_opt_unset_span_rid(
     @"%Element": type,
@@ -2322,8 +2438,9 @@ pub fn buf_opt_unset_span_rid(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Element"), span: Opt(Unset_span(@"%Origin")) }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Element") {
-    try @"%".buf.optUnsetSpanRid(@"%allocator", @"%".span);
-    return @"%".buf;
+    var @"%buf" = @"%".buf;
+    try @"%buf".optUnsetSpanRid(@"%allocator", @"%".span);
+    return @"%buf";
 }
 pub fn buf_to_unset(
     @"%Element": type,

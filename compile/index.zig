@@ -373,6 +373,84 @@ test "buf_opt_span_add_array" {
     });
     core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, with_array.buf);
 }
+test "buf_span_unset" {
+    const ExampleOrigin = enum {};
+    const example_origin: core.Origin(ExampleOrigin, void) = .{};
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
+        .buf = example_buf,
+        .span = .{ .no = {} },
+        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
+    });
+    const unset = try core.buf_span_unset(u32, @TypeOf(example_origin), std.testing.allocator, .{
+        .buf = with_array.buf,
+        .span = with_array.span,
+        .element_rid = struct {
+            pub fn f(_: std.mem.Allocator, _: u32) error{OutOfMemory}!void {}
+        }.f,
+    });
+    const cleared = try core.buf_unset_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, unset);
+    try std.testing.expectEqual(0, cleared.elements.items.len);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, cleared);
+}
+test "buf_opt_span_unset" {
+    const ExampleOrigin = enum {};
+    const example_origin: core.Origin(ExampleOrigin, void) = .{};
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
+        .buf = example_buf,
+        .span = .{ .no = {} },
+        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
+    });
+    const unset = try core.buf_opt_span_unset(u32, @TypeOf(example_origin), std.testing.allocator, .{
+        .buf = with_array.buf,
+        .span = .{ .yes = with_array.span },
+        .element_rid = struct {
+            pub fn f(_: std.mem.Allocator, _: u32) error{OutOfMemory}!void {}
+        }.f,
+    });
+    const cleared = try core.buf_opt_unset_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, unset);
+    try std.testing.expectEqual(0, cleared.elements.items.len);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, cleared);
+}
+test "buf_span_rid" {
+    const ExampleOrigin = enum {};
+    const example_origin: core.Origin(ExampleOrigin, void) = .{};
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
+        .buf = example_buf,
+        .span = .{ .no = {} },
+        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
+    });
+    const cleared = try core.buf_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, .{
+        .buf = with_array.buf,
+        .span = with_array.span,
+        .element_rid = struct {
+            pub fn f(_: std.mem.Allocator, _: u32) error{OutOfMemory}!void {}
+        }.f,
+    });
+    try std.testing.expectEqual(0, cleared.elements.items.len);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, cleared);
+}
+test "buf_opt_span_rid" {
+    const ExampleOrigin = enum {};
+    const example_origin: core.Origin(ExampleOrigin, void) = .{};
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
+        .buf = example_buf,
+        .span = .{ .no = {} },
+        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
+    });
+    const cleared = try core.buf_opt_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, .{
+        .buf = with_array.buf,
+        .span = .{ .yes = with_array.span },
+        .element_rid = struct {
+            pub fn f(_: std.mem.Allocator, _: u32) error{OutOfMemory}!void {}
+        }.f,
+    });
+    try std.testing.expectEqual(0, cleared.elements.items.len);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, cleared);
+}
 test "unset_slice castOrRidAndAllocate working" {
     const allocator = std.testing.allocator;
     const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
@@ -493,7 +571,7 @@ test "buf char add numbers" {
     );
     with_f32.buf.rid(allocator);
 }
-test "buf reverse" {
+test "buf span reverse" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};

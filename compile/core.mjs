@@ -684,6 +684,40 @@ export function buf_set(set) {
   set.buf[set.slot] = set.newø;
   return { buf: set.buf, slot: set.slot };
 }
+/** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, element_rid: Fn<$Element, void>, span: Span<$Origin>, }} unset @returns {{ buf: Buf<$Origin, $Element>, span: Unset_span<$Origin>, }} */
+export function buf_span_unset(unset) {
+  for (let i = unset.span.start; i < unset.span.start + unset.span.length; i++) {
+    unset.element_rid(/** @type $Element */ (unset.buf[i]));
+  }
+  return {
+    buf: unset.buf,
+    span: unset.span,
+  };
+}
+/** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, element_rid: Fn<$Element, void>, span: Opt<Span<$Origin>>, }} unset @returns {{ buf: Buf<$Origin, $Element>, span: Opt<Unset_span<$Origin>>, }} */
+export function buf_opt_span_unset(unset) {
+  if ("yes" in unset.span) {
+    for (
+      let i = unset.span.yes.start;
+      i < unset.span.yes.start + unset.span.yes.length;
+      i++
+    ) {
+      unset.element_rid(/** @type $Element */ (unset.buf[i]));
+    }
+  }
+  return {
+    buf: unset.buf,
+    span: unset.span,
+  };
+}
+/** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, element_rid: Fn<$Element, void>, span: Span<$Origin>, }} unset @returns {Buf<$Origin, $Element>} */
+export function buf_span_rid(unset) {
+  return buf_unset_span_rid(buf_span_unset(unset));
+}
+/** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, element_rid: Fn<$Element, void>, span: Opt<Span<$Origin>>, }} unset @returns {Buf<$Origin, $Element>} */
+export function buf_opt_span_rid(unset) {
+  return buf_opt_unset_span_rid(buf_opt_span_unset(unset));
+}
 /** @template $Element, $Origin @param {{ buf: Buf<$Origin, $Element>, length: U32, }} pre_allocate @returns {Buf<$Origin, $Element>} */
 export function buf_pre_allocate_at_least(pre_allocate) {
   // There seems to be no way which does not also influence the length.
