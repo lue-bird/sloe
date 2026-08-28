@@ -782,8 +782,6 @@ cargo install --offline --debug --path . sloe
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
-- add `fn Buf-update` as a more convenient `Buf-unset` followed by `Buf-set`. Especially useful for duplicating an element out
-
 - add `Buf-span-update` which asks for `.span Span _origin .element-update Fn _element, _element`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
@@ -791,6 +789,8 @@ cargo install --offline --debug --path . sloe
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
+
+- try to recover typed pattern without a variable more nicely by when all other cases fail trying to parse a type and representing it as a variable without a variable
 
 - if lowercase ty name is followed by type parameter, report better error "must be uppercase"
 

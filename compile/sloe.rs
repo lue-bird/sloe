@@ -13656,7 +13656,24 @@ fn Buf-copy-u32-at
     .buf buf .slot slot .element element-copied
 ```
 A little roundabout but it works.
-To remove the element entirely, use `Buf-take`",
+You'll most likely want to create a generic helper for this yourself
+```sloe
+fn Buf-element-dup
+    .buf buf Buf _origin, _element
+    .slot slot Slot _origin
+    .dup (dup Fn _element, .a _element .b _element)
+    :
+    .buf Buf _origin, _element
+    .slot Slot _origin
+    .element _element
+    =
+    ? Buf-unset .buf buf .slot slot [.buf buf .slot slot .element element]
+    ? Call .fn dup .in element [.a element .b element-duped]
+    ? Buf-set .buf buf .slot slot .new element [.buf buf .slot slot]
+    .buf buf .slot slot .element element-duped
+```
+You can give back an `Unset-slot` for future reuse by functions like `Buf-insert`
+using `Buf-unset-slot-rid`, or instead directly remove the element entirely with `Buf-remove`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13691,7 +13708,7 @@ To remove the element entirely, use `Buf-take`",
                         "buf",
                         type_buf(type_variable("origin"), type_variable("element")),
                     ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
+                    ("slot", type_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
