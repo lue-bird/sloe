@@ -782,6 +782,8 @@ cargo install --offline --debug --path . sloe
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
+- check that untyped pattern variables do not overlap with existing variable names
+
 - add `Buf-span-update` which asks for `.span Span _origin .element-update Fn _element, _element`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is

@@ -3544,7 +3544,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
         expressions,
         patterns,
         types,
-        &mut parameter_introduced_variables,
+        &parameter_introduced_variables,
         &mut result_used_pattern_variables,
         &mut std::collections::HashMap::new(),
         &mut std::collections::HashMap::new(),
@@ -8369,7 +8369,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
-    pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
+    // can maybe be optimized by using Cow<>/Rc<>
+    pattern_variables: &std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     used_pattern_variables: &mut std::collections::HashMap<
         &'a Name,
         /* start */ lsp_types::Position,
@@ -8963,7 +8964,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
-                &mut parameter_introduced_variables,
+                &parameter_introduced_variables,
                 &mut result_used_pattern_variables,
                 origins,
                 &mut result_used_origin_variables,
@@ -9399,11 +9400,16 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             ) else {
                 return None;
             };
-            pattern_variables.extend(
-                case0_pattern_introduced_variables
-                    .iter()
-                    .map(|(binding, info)| (*binding, info.clone())),
-            );
+            let mut case0_result_pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
+            if !case0_pattern_introduced_variables.is_empty() {
+                // can be optimized by not cloning if only 1 case exists and no other branches
+                // share this value
+                case0_result_pattern_variables.to_mut().extend(
+                    case0_pattern_introduced_variables
+                        .iter()
+                        .map(|(binding, info)| (*binding, info.clone())),
+                );
+            }
             let mut case0_result_used_pattern_variables = std::collections::HashMap::new();
             let mut case0_result_used_origin_variables = std::collections::HashMap::new();
             let Some(checked_query_result_type) = syntax_expression_check(
@@ -9413,7 +9419,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                &case0_result_pattern_variables,
                 &mut case0_result_used_pattern_variables,
                 origins,
                 &mut case0_result_used_origin_variables,
@@ -9425,9 +9431,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 records_used,
                 choices_used,
             ) else {
-                pattern_variables.retain(|variable, _| {
-                    !case0_pattern_introduced_variables.contains_key(variable)
-                });
                 return None;
             };
             for (case0_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
@@ -9439,7 +9442,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     case0_pattern_introduced_variable,
                     case0_result_used_pattern_variables.remove(case0_pattern_introduced_variable),
                 );
-                pattern_variables.remove(case0_pattern_introduced_variable);
             }
             let mut catch = pattern_catch_to_case_patterns_catch(checked_case0_pattern.catch);
             let mut invalid_case_indexes = Vec::new();
@@ -9500,11 +9502,14 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     });
                     continue 'checking_case1_up;
                 };
-                pattern_variables.extend(
-                    case_pattern_introduced_variables
-                        .iter()
-                        .map(|(binding, info)| (*binding, info.clone())),
-                );
+                let mut case_pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
+                if !case_pattern_introduced_variables.is_empty() {
+                    case_pattern_variables.to_mut().extend(
+                        case_pattern_introduced_variables
+                            .iter()
+                            .map(|(binding, info)| (*binding, info.clone())),
+                    );
+                }
                 let mut case_result_used_pattern_variables = std::collections::HashMap::new();
                 let mut case_result_used_origin_variables = std::collections::HashMap::new();
                 let Some(checked_case_result_type) = syntax_expression_check(
@@ -9514,7 +9519,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    &case_pattern_variables,
                     &mut case_result_used_pattern_variables,
                     origins,
                     &mut case_result_used_origin_variables,
@@ -9526,9 +9531,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     records_used,
                     choices_used,
                 ) else {
-                    pattern_variables.retain(|variable, _| {
-                        !case_pattern_introduced_variables.contains_key(variable)
-                    });
                     invalid_case_indexes.push(case_index);
                     continue 'checking_case1_up;
                 };
@@ -9541,7 +9543,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         case_pattern_introduced_variable,
                         case_result_used_pattern_variables.remove(case_pattern_introduced_variable),
                     );
-                    pattern_variables.remove(case_pattern_introduced_variable);
                 }
                 for (case_result_used_pattern_variable, &case_result_used_pattern_variable_start) in
                     &case_result_used_pattern_variables
@@ -9549,9 +9550,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     if !case0_result_used_pattern_variables
                         .contains_key(case_result_used_pattern_variable)
                     {
+                        // possible improvement: mention origin range pattern variable
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case_result_used_pattern_variable, start: case_result_used_pattern_variable_start }),
-                            message: Box::from("this query case pattern variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
+                            message: Box::from("this query case pattern variable is not used in the result of the first case.
+This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
+If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
                         });
                     }
                 }
@@ -9563,10 +9567,13 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     if !case_result_used_pattern_variables
                         .contains_key(case0_result_used_pattern_variable)
                     {
+                        // possible improvement: mention origin range pattern variable
                         errors.push(ErrorNode {
                             range: name_range(WithStartPosition { value: case0_result_used_pattern_variable, start: case0_result_used_pattern_variable_start }),
                             message: format!(
-                                "this query case pattern variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
+                                "this query case pattern variable is not used in the result of the {} case.
+This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
+If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
                                 index_to_th(case_index)
                             ).into_boxed_str()
                         });
