@@ -1,7 +1,8 @@
 Small, fast programming language where indexes are valid and values can't be shared.
 
-Goal: representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
-Sloe offers an infallible, safe way to refer to elements and slices stored in consecutive memory.
+It has an infallible, safe way to refer to elements and slices stored in consecutive memory which for example enables representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
+
+Hello, world!
 ```sloe
 fn Greet
     .name name str .buf buf Buf _origin, char
@@ -19,45 +20,44 @@ cargo install --git https://github.com/lue-bird/sloe sloe
 ```
 
 ## concept: each value must be used used exctly once
-Matching a value? Consumes it. Passing a value as an argument? Consumes it.
-Even variables holding plain numbers for example have to be explicitly duplicated to use them in multiple places.
+Passing a value as an argument? Consumes it.
+Matching a value? Consumes it.
+Even variables holding plain numbers for example have to be explicitly duplicated when you need to use them in multiple places.
 
-This allows
+With this:
 - values know when they aren't used anymore at compile time. Their memory is always explicitly reclaimed. No need for garbage collection or similar
 - values can be mutated internally without mutation being detectable
 - representing things that should only be consumed once, like thread join handles
 - representing things that should be cleaned up in a specific way, like memory that should be freed from a specific origin
-- guaranteeing non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compiles to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515))
+- guaranteeing properties like non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compiles to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515))
 
 This can feel annoying and clunky. Think e.g. `Span-length` which takes a span and gives back its size and the given span.
 Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Span in rust) because `Span-length` could behind your back return a changed `Span` (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
-Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
-Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
+> Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
+> Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
-## concept: consecutive memory collection `Buf`
+## concept: consecutive memory, stable index collection `Buf`
 A collection which can mark some ranges within itself as vacant without moving existing elements around (thus invalidating their indexes).
-This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-slot-rid` and `Buf-span-rid`.
+This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-unset-slot-rid` and `Buf-unset-span-rid`.
 Note that this functionality is entirely optional and you can just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
-Further reading if interested: This concept is often called slot map, reusing memory.
-In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest).
-[Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
-There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
+> Further reading if interested: This concept is often called slot map, reusing memory.
+> In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest). [Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
+> There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
 
 ## concept: collections do not handle their elements
-Similar to allocators, you cannot access, alter or iterate their contained values.
+Similar to allocators, you cannot access, alter or iterate their contained values directly.
 Collections are seen as storage into which you can add elements, build slices etc.
 Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your permission to access and alter the referenced elements as well as your responsibility to announce their release at some point.
 
-The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types.
-This is not uncommon in languages like rust.
-However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead, store a big array buffer of each kind and point into it.
+> The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types. This is not uncommon in languages like rust.
+However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead, we store a big array buffer of each kind and point into it.
 
-# concept: distinct origin of a collection in your code
-Every created collection has a correlated origin.
+# concept: prevent mix-up between collections with an origin type parameter
+Every created collection has a unique origin.
 A value whose type contains an origin can't escape the scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```sloe
@@ -75,18 +75,16 @@ fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
     buf
 ```
 
-Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been described similarly in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04).
-With the small difference that in sloe's case the unique origin types
-only exist at compile-time and can thus mark spans, slots, unset spans, unset slots, bufs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
+> Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been described similarly in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04).
+> With the small difference that in sloe's case the unique origin types only exist at compile-time and can thus mark spans, slots, unset spans, unset slots, bufs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
 
-The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
-The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
-(apart from security this is hardly ever worth it for regular users, considering it is also slower).
+> The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
+> The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
+> (apart from security this is hardly ever worth it for regular users, considering it is also slower).
 
-I find it interesting that "storage" and "ownership over said storage" are decoupled.
-I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
-I really like this idea but understand that it cannot be implemented in e.g. rust which needs to store its allocator in it's value body to guarantee its content isn't splattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
-In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
+> I find it interesting that "storage" and "ownership over said storage" are decoupled. I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
+> I really like this idea but understand that it cannot be implemented in e.g. rust which needs to store its allocator in it's value body to guarantee its content isn't splattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
+> In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
 
 # examples
 ## creating new origins, slots and spans
@@ -782,7 +780,7 @@ cargo install --offline --debug --path . sloe
 
 - make origin-erased-rid actually useful or remove it
 
-- generate array record types as .element .rest linked list to avoid needing to generate records on the fly
+- generate array record types as .a .b linked list to avoid needing to generate records on the fly
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
