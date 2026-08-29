@@ -15493,8 +15493,12 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
     match expression {
         SyntaxExpression::Number { value, type_ } => {
             if value.value.starts_with("0") {
-                formatted.push('0');
-                formatted.push_str(value.value.trim_start_matches("0"));
+                let after_0s = value.value[1..].trim_start_matches("0");
+                if after_0s.is_empty() {
+                    formatted.push('0');
+                } else {
+                    formatted.push_str(after_0s);
+                }
             } else if value.value.starts_with('.') {
                 formatted.push('0');
                 formatted.push_str(&value.value);
@@ -16054,6 +16058,11 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
             formatted.push(' ');
         }
         Some(result) => {
+            let case_pattern_start = match &case.pattern {
+                None => case.open_bracket_start,
+                Some(case_pattern) => pattern_start(case_pattern),
+            };
+            let result_range = expression_range(result, expressions, patterns, types);
             maybe_open_end_whitespace_then_element_format(
                 formatted,
                 indent,
@@ -16068,14 +16077,19 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
                     );
                 },
                 || syntax_expression_open_end(result, expressions, types),
-                |open_end| open_end.expression_query,
+                |open_end| {
+                    open_end.expression_query
+                        || (
+                            // because it common to use a query inside a query case once it
+                            // grows longer than what fits on the same line
+                            // and nested query errors can be confusing
+                            case_pattern_start.line != result_range.end.line
+                        )
+                },
                 case_count,
                 case_index,
-                match &case.pattern {
-                    None => case.open_bracket_start,
-                    Some(case_pattern) => pattern_start(case_pattern),
-                },
-                expression_range(result, expressions, patterns, types),
+                case_pattern_start,
+                result_range,
             );
         }
     }
@@ -16085,7 +16099,7 @@ fn maybe_open_end_whitespace_then_element_format(
     indent: usize,
     element_unparenthesized_format: impl FnOnce(&mut String, usize),
     element_open_end: impl FnOnce() -> OpenEndKinds,
-    open_end_kind_to_parenthesize_before_last_element: fn(OpenEndKinds) -> bool,
+    open_end_kind_to_parenthesize_before_last_element: impl Fn(OpenEndKinds) -> bool,
     element_count: usize,
     element_index: usize,
     syntax_before_element_start: lsp_types::Position,
@@ -16142,7 +16156,7 @@ fn parenthesize_if_open_ended_whitespace_then_element_format(
     formatted: &mut String,
     indent: usize,
     element_unparenthesized_format: impl FnOnce(&mut String, usize),
-    open_end_kind_to_parenthesize_before_last_element: fn(OpenEndKinds) -> bool,
+    open_end_kind_to_parenthesize_before_last_element: impl Fn(OpenEndKinds) -> bool,
     element_open_end: OpenEndKinds,
     line_span: LineSpan,
 ) {

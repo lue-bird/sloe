@@ -794,8 +794,6 @@ cargo install --offline --debug --path . sloe
 
 - try to recover typed pattern without a variable more nicely by when all other cases fail trying to parse a type and representing it as a variable without a variable
 
-- be more liberal with parenthesizing query cases. → do it when the case result is not on the same line
-
 - give nicer error when only a field is missing or too much
 
 - do not generate fn for zig types without parameters. use const
@@ -806,7 +804,7 @@ cargo install --offline --debug --path . sloe
 
 - try to make accidentally used _ in identifiers more gentle
 
-- try to find and fix bugs and resolve todo comments
+- fix unused variables being reported from zig
 
 - rename "element" to "item" for brevity and to make it the same length as slot, span.
   Terminology is also more consistent with zig (rust and js use both interchangeably)
@@ -822,7 +820,7 @@ cargo install --offline --debug --path . sloe
 
 - check Buf lengths after every append in rust the same way as done in zig but panic instead
 
-- fix inline TODOs
+- fix comment TODOs
 
 # not coherently formulated thoughts
 

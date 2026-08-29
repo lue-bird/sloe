@@ -30,7 +30,7 @@ fn Stack-pop
         )
     =
     ? stack
-    [|empty .]
+    [|empty .] (
         .nodes nodes
         .element
             |{
@@ -40,6 +40,7 @@ fn Stack-pop
             }
             no
             .
+        )
     [|stacked .head head .tail tail-slot] (
         ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .element tail]
         .nodes nodes
