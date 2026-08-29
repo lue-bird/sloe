@@ -2479,6 +2479,7 @@ pub fn buf_origin_isolate(
                 element.* = @bitCast((try @"%".element_isolate(@"%allocator", element.*)).erased);
             }
             break :elements_erased .{
+                .pointer_stability = @"%".buf.elements.pointer_stability,
                 .capacity = @"%".buf.elements.capacity,
                 .items = @ptrCast(@"%".buf.elements.items),
             };
@@ -2498,6 +2499,7 @@ pub fn buf_origin_isolate(
     };
     return .{ .erased = .{ .erased = .{
         .vacant = std.ArrayList(Unset_span(Origin(Erased, @"%Part"))){
+            .pointer_stability = @"%".buf.vacant.pointer_stability,
             .capacity = @"%".buf.vacant.capacity,
             .items = @ptrCast(@"%".buf.vacant.items),
         },
@@ -2520,6 +2522,7 @@ pub fn buf_origin_unerase_keep_elements(
         .buf = .{
             .elements = @"%".buf.erased.elements,
             .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
+                .pointer_stability = @"%".buf.erased.vacant.pointer_stability,
                 .capacity = @"%".buf.erased.vacant.capacity,
                 .items = @ptrCast(@"%".buf.erased.vacant.items),
             },
@@ -2563,6 +2566,7 @@ pub fn buf_origin_unerase(
                 })).element);
             }
             break :elements_erased .{
+                .pointer_stability = @"%".buf.erased.elements.pointer_stability,
                 .capacity = @"%".buf.erased.elements.capacity,
                 .items = @ptrCast(@"%".buf.erased.elements.items),
             };
@@ -2586,6 +2590,7 @@ pub fn buf_origin_unerase(
     return .{
         .buf = .{
             .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
+                .pointer_stability = @"%".buf.erased.vacant.pointer_stability,
                 .capacity = @"%".buf.erased.vacant.capacity,
                 .items = @ptrCast(@"%".buf.erased.vacant.items),
             },
