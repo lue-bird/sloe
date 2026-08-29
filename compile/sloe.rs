@@ -2348,7 +2348,10 @@ If you wanted to start a project declaration, try one of:
                 type_,
             } => match maybe_name {
                 None => {
-                    errors.push(ErrorNode { range: symbol_range(*ty_keyword_start, "ty"), message: Box::from("missing name. Type names start with a lowercase (when having no parameters) or uppercase (when having parameters) letter and only use ascii letters, digits and -") });
+                    errors.push(ErrorNode {
+                        range: symbol_range(*ty_keyword_start, "ty"),
+                        message: Box::from("missing name after ty. Type names start with a lowercase (when having no parameters) or uppercase (when having parameters) letter and only use ascii letters, digits and -")
+                    });
                 }
                 Some(name_node) => {
                     let type_alias_declaration_graph_node: strongly_connected_components::Node =
@@ -2369,7 +2372,7 @@ If you wanted to start a project declaration, try one of:
                         errors.push(ErrorNode {
                             range: name_range(with_start_position_as_ref(name_node)),
                             message: Box::from(
-                                "a type with this name is already declared. Rename one of them",
+                                "a type with this name is already declared. Choose a different ty name",
                             ),
                         });
                     }
@@ -2430,13 +2433,13 @@ If you wanted to start a project declaration, try one of:
                         errors.push(ErrorNode {
                             range: name_range(with_start_position_as_ref(name)),
                             message: Box::from(
-                                "a variable with this name is already declared. Rename one of them",
+                                "a project function with this name is already declared. Rename one of them",
                             ),
                         });
                     } else if core_fns.contains_key(name.value.as_str()) {
                         errors.push(ErrorNode {
                             range: name_range(with_start_position_as_ref(name)),
-                            message: Box::from("a variable with this name is already part of core (core variables are for example int-to-str or dec-add). Rename this variable")
+                            message: Box::from("a function with this name is already part of core (which for example includes U32-add-clamp, Buf-empty etc.). Choose a different fn name")
                         });
                     }
                 }
@@ -3217,7 +3220,9 @@ fn project_type_alias_check<Types>(
         None => {
             errors.push(ErrorNode {
                 range: name_range(with_start_position_as_ref(project_type.name)),
-                message: Box::from("missing type after the project ty name ty ..type-name.. here"),
+                message: Box::from(
+                    "missing type after ty ..type-name.. ..potential parameters.. here",
+                ),
             });
             CheckedTypeAlias {
                 name_range: Some(name_range(with_start_position_as_ref(project_type.name))),
@@ -3268,24 +3273,53 @@ fn project_type_alias_check<Types>(
                     let mut actually_used_type_variables: std::collections::BTreeSet<&Name> =
                         std::collections::BTreeSet::new();
                     type_variables_into(&mut actually_used_type_variables, &aliased_type);
-                    let parameters = parameters_check_if_different_to_actual_type_parameters(
-                        errors,
-                        name_range(with_start_position_as_ref(project_type.name)),
-                        project_type.parameters.iter().flat_map(|parameters| {
-                            std::iter::once((
-                                parameters.parameter0_underscore_start,
-                                &parameters.parameter0,
-                            ))
-                            .chain(
-                                parameters.parameter1_up.iter().filter_map(|parameter| {
-                                    parameter
-                                        .underscore_start
-                                        .map(|underscore_start| (underscore_start, &parameter.name))
-                                }),
-                            )
-                        }),
-                        actually_used_type_variables,
-                    );
+                    let parameters = if !actually_used_type_variables.is_empty()
+                        && project_type
+                            .name
+                            .value
+                            .starts_with(|start: char| start.is_ascii_lowercase())
+                    {
+                        errors.push(ErrorNode {
+                            range: name_range(with_start_position_as_ref(project_type.name)),
+                            message: Box::from(
+                                "When declaring a type with parameters, its name needs to start with an uppercase letter. Only concrete types (e.g. u32) have a lowercase name",
+                            ),
+                        });
+                        vec![]
+                    } else if actually_used_type_variables.is_empty()
+                        && project_type
+                            .name
+                            .value
+                            .starts_with(|start: char| start.is_ascii_uppercase())
+                    {
+                        errors.push(ErrorNode {
+                            range: name_range(with_start_position_as_ref(project_type.name)),
+                            message: Box::from(
+                                "When declaring a type without parameters, its name needs to start with a lowercase letter. Only generic types (e.g. Buf _origin, _element) have an uppercase name",
+                            ),
+                        });
+                        vec![]
+                    } else {
+                        parameters_check_if_different_to_actual_type_parameters(
+                            errors,
+                            name_range(with_start_position_as_ref(project_type.name)),
+                            project_type.parameters.iter().flat_map(|parameters| {
+                                std::iter::once((
+                                    parameters.parameter0_underscore_start,
+                                    &parameters.parameter0,
+                                ))
+                                .chain(
+                                    parameters.parameter1_up.iter().filter_map(|parameter| {
+                                        parameter.underscore_start.map(|underscore_start| {
+                                            (underscore_start, &parameter.name)
+                                        })
+                                    }),
+                                )
+                            }),
+                            actually_used_type_variables,
+                            "Type parameter variables follow after the name and are separated by commas, so for example ty Buf _origin, _element",
+                        )
+                    };
                     CheckedTypeAlias {
                         name_range: Some(name_range(with_start_position_as_ref(project_type.name))),
                         documentation: documentation,
@@ -3357,6 +3391,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 &std::collections::HashMap::new(),
+                &std::collections::HashMap::new(),
                 checked_spread_records,
                 records_used,
                 choices_used,
@@ -3416,6 +3451,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
                         .map(|underscore_start| (underscore_start, &parameter.name))
                 }),
                 type_variables_exclusively_used_in_result,
+                "Type parameter variables follow after the name and are each enclosed in curly braces, so for example fn No-twice{_a}{_b}",
             );
             CheckedProjectFn {
                 documentation: None,
@@ -3536,7 +3572,6 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
             patterns,
         );
     }
-    let mut result_used_pattern_variables = std::collections::HashMap::new();
     let Some(checked_result_expression_type) = syntax_expression_check(
         errors,
         type_aliases,
@@ -3544,8 +3579,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
         expressions,
         patterns,
         types,
-        &parameter_introduced_variables,
-        &mut result_used_pattern_variables,
+        &mut parameter_introduced_variables,
         &mut std::collections::HashMap::new(),
         &mut std::collections::HashMap::new(),
         syntax_result,
@@ -3567,14 +3601,10 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
     for (parameter_introduced_variable_name, parameter_introduced_variable_origin) in
         parameter_introduced_variables
     {
-        push_error_if_introduced_pattern_variable_is_unused(
-            errors,
+        errors.push(error_introduced_pattern_variable_is_unused(
             parameter_introduced_variable_origin.origin_start,
             parameter_introduced_variable_name,
-            result_used_pattern_variables
-                .get(parameter_introduced_variable_name)
-                .copied(),
-        );
+        ));
     }
     if let Some(result_type_diff) = type_diff(&header_result_type, &checked_result_expression_type)
     {
@@ -4340,6 +4370,7 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
     origin_name_range: lsp_types::Range,
     parameters: impl Iterator<Item = (/* underscore_start */ lsp_types::Position, &'a Name)>,
     mut actually_used_type_variables: std::collections::BTreeSet<&Name>,
+    syntax_help: &'static str,
 ) -> Vec<Name> {
     let mut actually_used_parameters = Vec::<Name>::with_capacity(parameters.size_hint().0);
     for parameter in parameters {
@@ -4362,7 +4393,8 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
         errors.push(ErrorNode {
             range: origin_name_range,
             message: format!(
-                "some type parameters are used but not declared, namely {}. Add {}",
+                "some type parameters are used but not declared, namely {}. Add {}.
+{}",
                 actually_used_type_variables
                     .iter()
                     .copied()
@@ -4373,7 +4405,8 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
                     "them"
                 } else {
                     "it"
-                }
+                },
+                syntax_help
             )
             .into_boxed_str(),
         });
@@ -4865,6 +4898,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
+    existing_pattern_variables: &std::collections::HashMap<&Name, CheckedPatternVariable>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
@@ -4912,11 +4946,13 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         type_: Some(checked_variable.type_.clone()),
                     },
                 );
-                if maybe_existing_variable_with_the_same_name.is_some() {
+                if let Some(_existing_variable_with_the_same_name) =
+                    maybe_existing_variable_with_the_same_name
+                {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
                         message: Box::from(
-                            "a pattern variable with this name already exists. Rename it",
+                            "a pattern variable with this name already exists in the surrounding pattern. Rename it",
                         ),
                     });
                     return None;
@@ -4967,6 +5003,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
+                        existing_pattern_variables,
                         checked_spread_records,
                         records_used,
                         choices_used,
@@ -5034,6 +5071,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
+                        existing_pattern_variables,
                         checked_spread_records,
                         records_used,
                         choices_used,
@@ -5169,6 +5207,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                             patterns,
                             types,
                             origins,
+                            existing_pattern_variables,
                             checked_spread_records,
                             records_used,
                             choices_used,
@@ -5208,6 +5247,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                             patterns,
                             types,
                             origins,
+                            existing_pattern_variables,
                             checked_spread_records,
                             records_used,
                             choices_used,
@@ -5301,6 +5341,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                 patterns,
                 types,
                 origins,
+                existing_pattern_variables,
                 checked_spread_records,
                 records_used,
                 choices_used,
@@ -8369,12 +8410,9 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
+    // whenever a pattern variable has been used it will be removed here
     // can maybe be optimized by using Cow<>/Rc<>
-    pattern_variables: &std::collections::HashMap<&'a Name, CheckedPatternVariable>,
-    used_pattern_variables: &mut std::collections::HashMap<
-        &'a Name,
-        /* start */ lsp_types::Position,
-    >,
+    pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     used_origin_variables: &mut std::collections::HashMap<
         &'a Name,
@@ -8594,18 +8632,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     Type::Origin(name.value.clone()),
                     type_record_empty,
                 ))
-            } else if let Some(variable_info) = pattern_variables.get(&name.value) {
-                let maybe_existing_pattern_variable_use_start =
-                    used_pattern_variables.insert(&name.value, name.start);
-                if let Some(existing_pattern_variable_use_start) =
-                    maybe_existing_pattern_variable_use_start
-                {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!("this variable is already used earlier starting at {}. Each value can only be used once, even simple numbers etc. To duplicate the value, use the helpers like u32-dup, char-dup or create your own dup helpers", position_to_string(existing_pattern_variable_use_start)).into_boxed_str(),
-                    });
-                    return None;
-                }
+            } else if let Some(variable_info) = pattern_variables.remove(&name.value) {
                 let Some(variable_type) = variable_info.type_.clone() else {
                     return None;
                 };
@@ -8614,7 +8641,10 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
                     message: Box::from(
-                        "unknown variable name. No local variable has this name. Note that a local fn result can not refer to any variable from the outside. Otherwise check for typos."
+                        "No local variable in scope has this name. Hints:
+- each variable can only be used once, even simple numbers etc. To duplicate the value, use the helpers like U32-dup, Char-dup or create your own dup helpers
+- a function name always starts uppercase
+- a local function result can not refer to any variable from the outside. Otherwise check for typos."
                     )
                 });
                 None
@@ -8641,7 +8671,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
                 used_origin_variables,
                 syntax_argument,
@@ -8654,157 +8683,93 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             ) else {
                 return None;
             };
-            if let Some(variable_info) = pattern_variables.get(&name.value) {
-                let maybe_existing_pattern_variable_use_start =
-                    used_pattern_variables.insert(&name.value, name.start);
-                if let Some(existing_pattern_variable_use_start) =
-                    maybe_existing_pattern_variable_use_start
-                {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!("this variable is already used earlier starting at {}. Each value can only be used once, even simple numbers etc. To duplicate the value, use the helpers like u32-dup, char-dup or create your own dup helpers", position_to_string(existing_pattern_variable_use_start)).into_boxed_str(),
-                    });
-                    return None;
-                }
-                if let Some(first_type_argument) = syntax_type_arguments.first() {
-                    errors.push(ErrorNode {
-                        range: lsp_types::Range {
-                            start: first_type_argument.open_brace_start,
-                            end: braced_type_argument_end(
-                                syntax_type_arguments.last().unwrap_or(first_type_argument),
-                                types,
-                            ),
+            let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: Box::from("unknown function name. No fn in core or in this project has this name. Note that a local fn expression can not refer to any variable from the outside. Otherwise check for typos.")
+                });
+                return None;
+            };
+            let Some((project_fn_parameter_type, project_fn_result_type)) = project_fn_info
+                .parameter_type
+                .as_ref()
+                .zip(project_fn_info.result_type.as_ref())
+            else {
+                return None;
+            };
+            if syntax_type_arguments.len() != project_fn_info.type_parameters.len() {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Buf-empty{{u32}} origin, each type parenthesized if necessary.",
+                        parameter_count = project_fn_info.type_parameters.len(),
+                        parameter_pluralized = if project_fn_info.type_parameters.len() == 1 {
+                            "parameter"
+                        } else {
+                            "parameters"
                         },
-                        message: Box::from(
-                            "type arguments on a local variable make no sense. Remove them",
-                        ),
-                    });
-                }
-                let Some(variable_type) = variable_info.type_.clone() else {
-                    return None;
-                };
-                let variable_type_arguments = match variable_type {
-                    Type::CoreConstruct {
-                        name: variable_type_name,
-                        arguments: variable_type_arguments,
-                    } if variable_type_name == "Fn" => variable_type_arguments,
-                    variable_type => {
-                        let mut error_message = String::from(
-                            "calling a variable whose type is not a function. Maybe you forgot some parens or similar? Its full type is\n",
-                        );
-                        type_format(&mut error_message, 4, &variable_type);
-                        errors.push(ErrorNode {
-                            range: name_range(with_start_position_as_ref(name)),
-                            message: error_message.into_boxed_str(),
-                        });
-                        return None;
-                    }
-                };
-                let [variable_type_input, variable_type_output] =
-                    variable_type_arguments.as_slice()
-                else {
-                    return None;
-                };
-                if let Some(argument_variable_input_type_diff) =
-                    type_diff(variable_type_input, &checked_argument_type)
-                {
-                    errors.push(ErrorNode {
-                        range: expression_range(syntax_argument, expressions, patterns, types),
-                        message: type_diff_error_message(&argument_variable_input_type_diff)
-                            .into_boxed_str(),
-                    });
-                    return None;
-                }
-                Some(variable_type_output.clone())
-            } else {
-                let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: Box::from("unknown function name. No fn in core or in this project has this name. Note that a local fn expression can not refer to any variable from the outside. Otherwise check for typos.")
-                    });
-                    return None;
-                };
-                let Some((project_fn_parameter_type, project_fn_result_type)) = project_fn_info
-                    .parameter_type
-                    .as_ref()
-                    .zip(project_fn_info.result_type.as_ref())
-                else {
-                    return None;
-                };
-                if syntax_type_arguments.len() != project_fn_info.type_parameters.len() {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Buf-empty{{u32}} origin, each type parenthesized if necessary.",
-                            parameter_count = project_fn_info.type_parameters.len(),
-                            parameter_pluralized = if project_fn_info.type_parameters.len() == 1 {
-                                "parameter"
-                            } else {
-                                "parameters"
-                            },
-                            argument_count = syntax_type_arguments.len()
-                        ).into_boxed_str()
-                    });
-                    return None;
-                }
-                let mut type_arguments = Vec::new();
-                for syntax_type_argument in syntax_type_arguments
-                    .iter()
-                    .filter_map(|argument| argument.type_.as_ref())
-                {
-                    let Some(type_argument) = syntax_type_check(
-                        syntax_type_argument,
-                        errors,
-                        type_aliases,
-                        types,
-                        origins,
-                        records_used,
-                        choices_used,
-                    ) else {
-                        return None;
-                    };
-                    type_arguments.push(type_argument);
-                }
-                let type_parameter_replacements = project_fn_info
-                    .type_parameters
-                    .iter()
-                    .zip(type_arguments)
-                    .map(|(type_parameter, type_argument)| (type_parameter.clone(), type_argument))
-                    .collect();
-                let mut fn_parameter_type = project_fn_parameter_type.clone();
-                let mut fn_result_type = project_fn_result_type.clone();
-                type_replace_variables(&type_parameter_replacements, &mut fn_parameter_type);
-                type_replace_variables(&type_parameter_replacements, &mut fn_result_type);
-                let mut argument_type_variable_replacements = std::collections::BTreeMap::new();
-                type_collect_variables_that_are_concrete_into(
-                    &mut argument_type_variable_replacements,
-                    &fn_parameter_type,
-                    &checked_argument_type,
-                );
-                let mut expected_argument_type = fn_parameter_type.clone();
-                type_replace_variables(
-                    &argument_type_variable_replacements,
-                    &mut expected_argument_type,
-                );
-                let mut result_type = fn_result_type.clone();
-                type_replace_variables(&argument_type_variable_replacements, &mut result_type);
-                if let Some(argument_variable_input_type_diff) =
-                    type_diff(&expected_argument_type, &checked_argument_type)
-                {
-                    errors.push(ErrorNode {
-                        range: expression_range(syntax_argument, expressions, patterns, types),
-                        message: type_diff_error_message(&argument_variable_input_type_diff)
-                            .into_boxed_str(),
-                    });
-                    return None;
-                }
-                checked_calls.insert(
-                    name.start,
-                    CheckedCall {
-                        argument_type_variable_replacements: argument_type_variable_replacements,
-                    },
-                );
-                Some(result_type)
+                        argument_count = syntax_type_arguments.len()
+                    ).into_boxed_str()
+                });
+                return None;
             }
+            let mut type_arguments = Vec::new();
+            for syntax_type_argument in syntax_type_arguments
+                .iter()
+                .filter_map(|argument| argument.type_.as_ref())
+            {
+                let Some(type_argument) = syntax_type_check(
+                    syntax_type_argument,
+                    errors,
+                    type_aliases,
+                    types,
+                    origins,
+                    records_used,
+                    choices_used,
+                ) else {
+                    return None;
+                };
+                type_arguments.push(type_argument);
+            }
+            let type_parameter_replacements = project_fn_info
+                .type_parameters
+                .iter()
+                .zip(type_arguments)
+                .map(|(type_parameter, type_argument)| (type_parameter.clone(), type_argument))
+                .collect();
+            let mut fn_parameter_type = project_fn_parameter_type.clone();
+            let mut fn_result_type = project_fn_result_type.clone();
+            type_replace_variables(&type_parameter_replacements, &mut fn_parameter_type);
+            type_replace_variables(&type_parameter_replacements, &mut fn_result_type);
+            let mut argument_type_variable_replacements = std::collections::BTreeMap::new();
+            type_collect_variables_that_are_concrete_into(
+                &mut argument_type_variable_replacements,
+                &fn_parameter_type,
+                &checked_argument_type,
+            );
+            let mut expected_argument_type = fn_parameter_type.clone();
+            type_replace_variables(
+                &argument_type_variable_replacements,
+                &mut expected_argument_type,
+            );
+            let mut result_type = fn_result_type.clone();
+            type_replace_variables(&argument_type_variable_replacements, &mut result_type);
+            if let Some(argument_variable_input_type_diff) =
+                type_diff(&expected_argument_type, &checked_argument_type)
+            {
+                errors.push(ErrorNode {
+                    range: expression_range(syntax_argument, expressions, patterns, types),
+                    message: type_diff_error_message(&argument_variable_input_type_diff)
+                        .into_boxed_str(),
+                });
+                return None;
+            }
+            checked_calls.insert(
+                name.start,
+                CheckedCall {
+                    argument_type_variable_replacements: argument_type_variable_replacements,
+                },
+            );
+            Some(result_type)
         }
         SyntaxExpression::Variant {
             bar_start,
@@ -8892,7 +8857,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
                 used_origin_variables,
                 value,
@@ -8942,13 +8906,13 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                &std::collections::HashMap::new(),
                 checked_spread_records,
                 records_used,
                 choices_used,
             ) else {
                 return None;
             };
-            let mut result_used_pattern_variables = std::collections::HashMap::new();
             let mut result_used_origin_variables = std::collections::HashMap::new();
             let Some(result) = result else {
                 errors.push(ErrorNode {
@@ -8964,8 +8928,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
-                &parameter_introduced_variables,
-                &mut result_used_pattern_variables,
+                &mut parameter_introduced_variables,
                 origins,
                 &mut result_used_origin_variables,
                 expressions.element(result),
@@ -8997,14 +8960,10 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             for (parameter_introduced_variable_name, parameter_introduced_variable_origin) in
                 parameter_introduced_variables
             {
-                push_error_if_introduced_pattern_variable_is_unused(
-                    errors,
+                errors.push(error_introduced_pattern_variable_is_unused(
                     parameter_introduced_variable_origin.origin_start,
                     parameter_introduced_variable_name,
-                    result_used_pattern_variables
-                        .get(parameter_introduced_variable_name)
-                        .copied(),
-                );
+                ));
             }
             checked_local_fns.insert(
                 *open_bracket_start,
@@ -9048,7 +9007,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                                 patterns,
                                 types,
                                 pattern_variables,
-                                used_pattern_variables,
                                 origins,
                                 used_origin_variables,
                                 expressions.element(field_value),
@@ -9095,7 +9053,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             pattern_variables,
-                            used_pattern_variables,
                             origins,
                             used_origin_variables,
                             expressions.element(record),
@@ -9186,7 +9143,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
                 used_origin_variables,
                 expressions.element(element0),
@@ -9220,7 +9176,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     pattern_variables,
-                    used_pattern_variables,
                     origins,
                     used_origin_variables,
                     element,
@@ -9278,7 +9233,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
                 used_origin_variables,
                 expressions.element(inner),
@@ -9314,7 +9268,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
                 used_origin_variables,
                 expressions.element(expression),
@@ -9354,7 +9307,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
                 used_origin_variables,
                 queried,
@@ -9394,23 +9346,20 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 origins,
+                pattern_variables,
                 checked_spread_records,
                 records_used,
                 choices_used,
             ) else {
                 return None;
             };
-            let mut case0_result_pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
-            if !case0_pattern_introduced_variables.is_empty() {
-                // can be optimized by not cloning if only 1 case exists and no other branches
-                // share this value
-                case0_result_pattern_variables.to_mut().extend(
-                    case0_pattern_introduced_variables
-                        .iter()
-                        .map(|(binding, info)| (*binding, info.clone())),
-                );
-            }
-            let mut case0_result_used_pattern_variables = std::collections::HashMap::new();
+            // can be optimized: when only 1 case exists (very common), don't clone
+            let mut case0_result_pattern_variables = pattern_variables.clone();
+            case0_result_pattern_variables.extend(
+                case0_pattern_introduced_variables
+                    .iter()
+                    .map(|(binding, info)| (*binding, info.clone())),
+            );
             let mut case0_result_used_origin_variables = std::collections::HashMap::new();
             let Some(checked_query_result_type) = syntax_expression_check(
                 errors,
@@ -9419,8 +9368,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
-                &case0_result_pattern_variables,
-                &mut case0_result_used_pattern_variables,
+                &mut case0_result_pattern_variables,
                 origins,
                 &mut case0_result_used_origin_variables,
                 case0_result,
@@ -9436,12 +9384,15 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             for (case0_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
                 case0_pattern_introduced_variables
             {
-                push_error_if_introduced_pattern_variable_is_unused(
-                    errors,
-                    case0_pattern_introduced_variable_origin.origin_start,
-                    case0_pattern_introduced_variable,
-                    case0_result_used_pattern_variables.remove(case0_pattern_introduced_variable),
-                );
+                if case0_result_pattern_variables
+                    .remove(case0_pattern_introduced_variable)
+                    .is_some()
+                {
+                    errors.push(error_introduced_pattern_variable_is_unused(
+                        case0_pattern_introduced_variable_origin.origin_start,
+                        case0_pattern_introduced_variable,
+                    ));
+                }
             }
             let mut catch = pattern_catch_to_case_patterns_catch(checked_case0_pattern.catch);
             let mut invalid_case_indexes = Vec::new();
@@ -9470,6 +9421,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     origins,
+                    pattern_variables,
                     checked_spread_records,
                     records_used,
                     choices_used,
@@ -9502,15 +9454,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     });
                     continue 'checking_case1_up;
                 };
-                let mut case_pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
-                if !case_pattern_introduced_variables.is_empty() {
-                    case_pattern_variables.to_mut().extend(
-                        case_pattern_introduced_variables
-                            .iter()
-                            .map(|(binding, info)| (*binding, info.clone())),
-                    );
-                }
-                let mut case_result_used_pattern_variables = std::collections::HashMap::new();
+                let mut case_pattern_variables = pattern_variables.clone();
+                case_pattern_variables.extend(
+                    case_pattern_introduced_variables
+                        .iter()
+                        .map(|(binding, info)| (*binding, info.clone())),
+                );
                 let mut case_result_used_origin_variables = std::collections::HashMap::new();
                 let Some(checked_case_result_type) = syntax_expression_check(
                     errors,
@@ -9519,8 +9468,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    &case_pattern_variables,
-                    &mut case_result_used_pattern_variables,
+                    &mut case_pattern_variables,
                     origins,
                     &mut case_result_used_origin_variables,
                     case_result,
@@ -9537,73 +9485,50 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 for (case_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
                     case_pattern_introduced_variables
                 {
-                    push_error_if_introduced_pattern_variable_is_unused(
-                        errors,
-                        case0_pattern_introduced_variable_origin.origin_start,
-                        case_pattern_introduced_variable,
-                        case_result_used_pattern_variables.remove(case_pattern_introduced_variable),
-                    );
-                }
-                for (case_result_used_pattern_variable, &case_result_used_pattern_variable_start) in
-                    &case_result_used_pattern_variables
-                {
-                    if !case0_result_used_pattern_variables
-                        .contains_key(case_result_used_pattern_variable)
+                    if case_pattern_variables
+                        .remove(case_pattern_introduced_variable)
+                        .is_some()
                     {
-                        // possible improvement: mention origin range pattern variable
-                        errors.push(ErrorNode {
-                            range: name_range(WithStartPosition { value: case_result_used_pattern_variable, start: case_result_used_pattern_variable_start }),
-                            message: Box::from("this query case pattern variable is not used in the result of the first case.
+                        errors.push(error_introduced_pattern_variable_is_unused(
+                            case0_pattern_introduced_variable_origin.origin_start,
+                            case_pattern_introduced_variable,
+                        ));
+                    }
+                }
+                for (pattern_variable, pattern_variable_origin) in pattern_variables.iter() {
+                    match (
+                        case0_result_pattern_variables.contains_key(pattern_variable),
+                        case_pattern_variables.contains_key(pattern_variable),
+                    ) {
+                        (false, false) => {
+                            // both cases use this pattern variable
+                        }
+                        (true, true) => {
+                            // neither case uses this pattern variable
+                        }
+                        (true, false) => {
+                            // only this case uses this pattern variable, not the first case
+                            // possible improvement: mention origin range pattern variable
+                            errors.push(ErrorNode {
+                                range: name_range(WithStartPosition { value: pattern_variable, start: pattern_variable_origin.origin_start }),
+                                message: Box::from("this query case pattern variable is not used in the result of the first case.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
 If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
-                        });
-                    }
-                }
-                for (
-                    case0_result_used_pattern_variable,
-                    &case0_result_used_pattern_variable_start,
-                ) in &case0_result_used_pattern_variables
-                {
-                    if !case_result_used_pattern_variables
-                        .contains_key(case0_result_used_pattern_variable)
-                    {
-                        // possible improvement: mention origin range pattern variable
-                        errors.push(ErrorNode {
-                            range: name_range(WithStartPosition { value: case0_result_used_pattern_variable, start: case0_result_used_pattern_variable_start }),
-                            message: format!(
-                                "this query case pattern variable is not used in the result of the {} case.
+                            });
+                        }
+                        (false, true) => {
+                            // only the first case uses this pattern variable, not this case
+                            // possible improvement: mention origin range pattern variable
+                            errors.push(ErrorNode {
+                                range: name_range(WithStartPosition { value: pattern_variable, start: pattern_variable_origin.origin_start }),
+                                message: format!(
+                                    "this query case pattern variable is not used in the result of the {} case.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
 If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
-                                index_to_th(case_index)
-                            ).into_boxed_str()
-                        });
-                    }
-                }
-                for (case_result_used_origin_variable, &case_result_used_origin_variable_start) in
-                    &case_result_used_origin_variables
-                {
-                    if !case0_result_used_origin_variables
-                        .contains_key(case_result_used_origin_variable)
-                    {
-                        errors.push(ErrorNode {
-                            range: name_range(WithStartPosition { value: case_result_used_origin_variable, start: case_result_used_origin_variable_start }),
-                            message: Box::from("this query case origin variable is not used in the result of the first case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
-                        });
-                    }
-                }
-                for (case0_result_used_origin_variable, &case0_result_used_origin_variable_start) in
-                    &case0_result_used_origin_variables
-                {
-                    if !case_result_used_origin_variables
-                        .contains_key(case0_result_used_origin_variable)
-                    {
-                        errors.push(ErrorNode {
-                            range: name_range(WithStartPosition { value: case0_result_used_origin_variable, start: case0_result_used_origin_variable_start }),
-                            message: format!(
-                                "this query case origin variable is not used in the result of the {} case. This is problematic because accidentally not handling a value in one branch could lead to leaked memory. If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
-                                index_to_th(case_index)
-                            ).into_boxed_str()
-                        });
+                                    index_to_th(case_index)
+                                ).into_boxed_str()
+                            });
+                        }
                     }
                 }
                 if let Some(match_result_case_result_type_diff) =
@@ -9631,7 +9556,7 @@ If you do not need to use this variable in that case, just use any of the -rid f
                     }
                 }
             }
-            used_pattern_variables.extend(case0_result_used_pattern_variables);
+            *pattern_variables = case0_result_pattern_variables;
             used_origin_variables.extend(case0_result_used_origin_variables);
             checked_queries.insert(
                 *question_mark_start,
@@ -9801,7 +9726,6 @@ If you do not need to use this variable in that case, just use any of the -rid f
                 patterns,
                 types,
                 pattern_variables,
-                used_pattern_variables,
                 origins,
                 used_origin_variables,
                 expressions.element(result),
@@ -9857,22 +9781,18 @@ If you do not need to use this variable in that case, just use any of the -rid f
         }
     }
 }
-fn push_error_if_introduced_pattern_variable_is_unused(
-    errors: &mut Vec<ErrorNode>,
+fn error_introduced_pattern_variable_is_unused(
     origin_start: lsp_types::Position,
     binding_name: &Name,
-    binding_use: Option<lsp_types::Position>,
-) {
-    if binding_use.is_none() {
-        errors.push(ErrorNode {
-            range: name_range(WithStartPosition {
-                value: binding_name,
-                start: origin_start,
-            }),
-            message: Box::from(
-                "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result.."
-            )
-        });
+) -> ErrorNode {
+    ErrorNode {
+        range: name_range(WithStartPosition {
+            value: binding_name,
+            start: origin_start,
+        }),
+        message: Box::from(
+            "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
+        ),
     }
 }
 pub struct CheckedCall {

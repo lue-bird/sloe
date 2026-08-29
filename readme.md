@@ -596,11 +596,11 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 # rejected ideas
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas
 
-- allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, variant<> and project-fn<>). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for patterns (deliberately so) but has a much higher convenience gain there
+- allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, |{}variant and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there
 - add special syntax `fn-once` that automatically assembles the environment from the used local variables.
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
   More info in "not coherently formulated thoughts"
-- add tuples: (* a * b * c). I dislike them conceptually but operations like `U32-add` or `U32-dup` are nicer with them. The field names `.a .b ` are just noise. Adding tuples might make for a nicer user interface when calling from rust
+- add tuples: (* a * b * c). I dislike them conceptually but operations like `U32-add` or `U32-dup` are nicer with them. The field names `.a .b ` are just noise. These can also be used for the `Array` type paramerer. Adding tuples might make for a nicer user interface when calling from rust
 - consider allowing `origin name` at the project scope. This allows reducing the number of type parameters flying around in things like `Expression _expressions, _patterns, _types, _source, _cases, ...` if desired.
 It also makes initial_state much easier to call from the rust side (though we need to be careful how...).
   Rejected because this makes it more or less impossible to run multiple sloe instances from a single rust program
@@ -647,6 +647,8 @@ It also makes initial_state much easier to call from the rust side (though we ne
   This is also a little bit confusing but you don't have to use it.
   Use cases are e.g. `ty bit |0 . |1 .`, `type board-pin |0 . |1 . |3 . |10 .` and nicer array records.
   Not included currently for consistency and simplicity.
+- switch from error{OutOfMemory}! to anyerror! for ease of use with external functions.
+  Rejected because zig errors should be explicitly handled by sloe
 
 ## why no `&mut`/`inout`
 While seemingly convenient and magnitudes better than regular mutable pointers,
@@ -782,8 +784,6 @@ cargo install --offline --debug --path . sloe
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
-- check that untyped pattern variables do not overlap with existing variable names
-
 - add `Buf-span-update` which asks for `.span Span _origin .element-update Fn _element, _element`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
@@ -794,17 +794,9 @@ cargo install --offline --debug --path . sloe
 
 - try to recover typed pattern without a variable more nicely by when all other cases fail trying to parse a type and representing it as a variable without a variable
 
-- if lowercase ty name is followed by type parameter, report better error "must be uppercase"
-
-- if lowercase fn name is written, report better error "must be uppercase"
-
-- be more liberal with parenthesizing query cases. Maybe just do it when the case result is not on the same line
-
-- investigate variable being used in both queried expression and query cases not being reported
+- be more liberal with parenthesizing query cases. → do it when the case result is not on the same line
 
 - give nicer error when only a field is missing or too much
-
-- check Buf lengths after every append in rust the same way as done in zig but panic instead
 
 - do not generate fn for zig types without parameters. use const
 
@@ -812,9 +804,12 @@ cargo install --offline --debug --path . sloe
 
 - remove Origin-erased-rid. It can't really be made useful
 
-- (will probably reject) consider switching from error{OutOfMemory}! to anyerror! for ease of use with external functions
-
 - try to make accidentally used _ in identifiers more gentle
+
+- try to find and fix bugs and resolve todo comments
+
+- rename "element" to "item" for brevity and to make it the same length as slot, span.
+  Terminology is also more consistent with zig (rust and js use both interchangeably)
 
 - consider adding
   ```sloe
@@ -825,11 +820,9 @@ cargo install --offline --debug --path . sloe
       Origin-erased _value-erased-new
   ```
 
-- consider renaming Opt-yes to Yes
+- check Buf lengths after every append in rust the same way as done in zig but panic instead
 
-- try to find and fix bugs and resolve todo comments
-
-- consider renaming "element" to "item" for brevity and to make it the same length as slot, span
+- fix inline TODOs
 
 # not coherently formulated thoughts
 
@@ -854,5 +847,15 @@ This also simplified code generation
 ## sorting?
 `sorted-span` etc. could be nice (only in userland most likely!)
 That in combination with binary/interpolation search could be a nice alternative to set and map collections.
-Imagine `Buf-span-sorted-insert`... mhh... tasty (issue: implement via binary search? interpolation search?)
-and `Buf-span-sort` (issue: how to implement in rust).
+Needs `Buf-span-sort` (issue: how to implement in rust and js?).
+Not really possible with that approach: `Buf-span-sorted-insert`. It takes O(n) time.
+
+Also take another look at index maps.
+It's probably a good idea anyway to add hashing helpers to sloe.
+Would be nice if index maps could in some way make use of Bufs,
+for example if it's like
+```sloe
+ty Map _slots, _in-hash-order, _element
+    .slots Buf _slots, Slot _in-hash-order
+    .elements Buf _in-hash-order, _element
+```
