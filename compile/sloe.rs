@@ -5822,16 +5822,25 @@ fn project_type_alias_to_zig(
             output.push('\n');
         }
     }
-    output.push_str("pub fn ");
-    output.push_str(&name_to_uppercase_zig(name));
-    output.push('(');
-    for parameter in parameters {
-        name_to_uppercase_local_zig(output, parameter);
-        output.push_str(": type, ");
+    if parameters.is_empty() {
+        output.push_str("pub const ");
+        output.push_str(&name_to_uppercase_zig(name));
+        output.push_str(": type = ");
+        type_to_zig(output, aliased_type);
+        output.push(';');
+    } else {
+        output.push_str("pub fn ");
+        output.push_str(&name_to_uppercase_zig(name));
+        output.push('(');
+        for parameter in parameters {
+            name_to_uppercase_local_zig(output, parameter);
+            output.push_str(": type, ");
+        }
+        output.push_str(") type { return ");
+        type_to_zig(output, aliased_type);
+        output.push_str("; }");
     }
-    output.push_str(") type { return ");
-    type_to_zig(output, aliased_type);
-    output.push_str("; }\n\n");
+    output.push_str("\n\n");
 }
 fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
     output: &mut String,

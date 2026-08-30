@@ -796,8 +796,6 @@ cargo install --offline --debug --path . sloe
 
 - give nicer error when only a field is missing or too much
 
-- do not generate fn for zig types without parameters. use const
-
 - find some way to generate nicer IDE type displays. Maybe tabs work?
 
 - remove Origin-erased-rid. It can't really be made useful
