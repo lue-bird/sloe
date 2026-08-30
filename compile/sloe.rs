@@ -5922,7 +5922,7 @@ fn zig_allocator_variable(output: &mut String, scope_start: lsp_types::Position)
     output.push_str("\"");
 }
 fn zig_incomplete_expression(output: &mut String) {
-    output.push_str("unreachable"); // or std.process.abort()
+    output.push_str("std.process.abort()")
 }
 fn syntax_pattern_to_zig_matches_condition<'a, Patterns, Types>(
     output: &mut String,
@@ -6020,7 +6020,9 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
             name_to_lowercase_local_zig_introduced_at(output, &name.value, name.start);
             output.push_str(" = ");
             output.push_str(to_destructure);
-            output.push_str(";\n");
+            output.push_str(";\n_ = @TypeOf(");
+            name_to_lowercase_local_zig_introduced_at(output, &name.value, name.start);
+            output.push_str(");\n");
             introduced_variables.insert(&name.value, name.start);
         }
         SyntaxPattern::Variant { name, value } => {
@@ -6287,11 +6289,11 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
                 zig_break_start(output, label);
             }
-            if let Some(pattern_variable_introduced_start) = pattern_variables.get(&name.value) {
+            if let Some(pattern_variable_introduced_start) = pattern_variables.remove(&name.value) {
                 name_to_lowercase_local_zig_introduced_at(
                     output,
                     &name.value,
-                    *pattern_variable_introduced_start,
+                    pattern_variable_introduced_start,
                 );
             } else {
                 name_to_lowercase_local_zig(output, &name.value);
@@ -6848,12 +6850,13 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         );
                         output.push_str(") {\n");
                     }
-                    let mut case_introduced_variables = std::collections::HashMap::new();
+                    // can be optimized by not cloning if there is only one case
+                    let mut case_pattern_variables = pattern_variables.clone();
                     syntax_pattern_to_zig_destructuring(
                         output,
                         case_pattern,
                         &queried_variable_name,
-                        &mut case_introduced_variables,
+                        &mut case_pattern_variables,
                         type_aliases,
                         checked_spread_records,
                         patterns,
@@ -6864,11 +6867,6 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                             zig_incomplete_expression(output);
                         }
                         Some(case_result) => {
-                            pattern_variables.extend(
-                                case_introduced_variables
-                                    .iter()
-                                    .map(|(name, start)| (*name, *start)),
-                            );
                             syntax_expression_to_zig(
                                 output,
                                 type_aliases,
@@ -6880,14 +6878,12 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                pattern_variables,
+                                &mut case_pattern_variables,
                                 origins,
                                 case_result,
                                 function_scope_start,
                                 ZigReturnContext::StatementsFollowedByBreak(label),
                             );
-                            pattern_variables
-                                .retain(|v, _| !case_introduced_variables.contains_key(v));
                         }
                     }
                     if cases.len() >= 2 {
@@ -6895,11 +6891,11 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     }
                 }
             }
-            if cases.len() >= 2 {
-                // in case none of the above patterns have matched, crash
-                output.push_str("\n");
+            if cases.is_empty() {
                 zig_incomplete_expression(output);
-                output.push(';');
+            } else if cases.len() >= 2 {
+                // in case none of the above patterns have matched, crash
+                output.push_str("\nunreachable;");
             }
             if let ZigReturnContext::Expression = return_context {
                 zig_block_end(output);

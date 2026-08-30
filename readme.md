@@ -804,8 +804,6 @@ cargo install --offline --debug --path . sloe
 
 - try to make accidentally used _ in identifiers more gentle
 
-- fix unused variables being reported from zig when fn result has an error
-
 - "No local variable in scope has this name." should list available variable names
 
 - rename "element" to "item" for brevity and to make it the same length as slot, span.
