@@ -7741,11 +7741,11 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Variable(name) => {
             js_scope_result_variable(output, scope_start);
             output.push_str(" = ");
-            if let Some(pattern_variable_introduced_start) = pattern_variables.get(&name.value) {
+            if let Some(pattern_variable_introduced_start) = pattern_variables.remove(&name.value) {
                 name_to_lowercase_local_js_introduced_at(
                     output,
                     &name.value,
-                    *pattern_variable_introduced_start,
+                    pattern_variable_introduced_start,
                 );
             } else {
                 name_to_lowercase_local_js(output, &name.value);
@@ -8147,12 +8147,13 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         );
                         output.push_str(") {\n");
                     }
-                    let mut case_introduced_variables = std::collections::HashMap::new();
+                    // can be optimized by not cloning if only one case exists
+                    let mut case_pattern_variables = pattern_variables.clone();
                     syntax_pattern_to_js_destructuring(
                         output,
                         case_pattern,
                         &queried_variable_name,
-                        &mut case_introduced_variables,
+                        &mut case_pattern_variables,
                         type_aliases,
                         checked_spread_records,
                         patterns,
@@ -8163,11 +8164,6 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                             js_incomplete_statement();
                         }
                         Some(case_result) => {
-                            pattern_variables.extend(
-                                case_introduced_variables
-                                    .iter()
-                                    .map(|(name, start)| (*name, *start)),
-                            );
                             syntax_expression_to_js(
                                 output,
                                 type_aliases,
@@ -8179,13 +8175,11 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                pattern_variables,
+                                &mut case_pattern_variables,
                                 origins,
                                 case_result,
                                 scope_start,
                             );
-                            pattern_variables
-                                .retain(|v, _| !case_introduced_variables.contains_key(v));
                         }
                     }
                     if cases.len() >= 2 {
@@ -9942,7 +9936,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Variable(name) => {
             if let Some(_origin_info) = origins.get(&name.value) {
                 syn_expr_reference([&name_to_lowercase_rust(&name.value)])
-            } else if let Some(variable_info) = pattern_variables.get(&name.value) {
+            } else if let Some(variable_info) = pattern_variables.remove(&name.value) {
                 let Some(_) = variable_info.type_ else {
                     return syn_expr_todo();
                 };
@@ -10687,7 +10681,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 return syn_expr_todo();
             };
             let queried = expressions.element(queried);
-            let Some((case0, case1_up)) = cases.split_first() else {
+            if cases.is_empty() {
                 return syn_expr_todo();
             };
             let compiled_queried_rust = syntax_expression_to_rust(
@@ -10703,52 +10697,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 origins,
                 queried,
             );
-            let Some(case0_pattern) = &case0.pattern else {
-                return syn_expr_todo();
-            };
-            let Some(case0_result) = &case0.result else {
-                return syn_expr_todo();
-            };
-            let mut case0_pattern_introduced_variables: std::collections::HashMap<
-                &Name,
-                CheckedPatternVariable,
-            > = std::collections::HashMap::new();
-            let mut case0_statements: Vec<syn::Stmt> = Vec::new();
-            let Some(case0_pattern_compiled) = syntax_pattern_to_rust(
-                case0_pattern,
-                Some(&checked_query.queried_type),
-                &mut case0_pattern_introduced_variables,
-                type_aliases,
-                checked_spread_records,
-                patterns,
-                types,
-                origins,
-                &mut case0_statements,
-            ) else {
-                return syn_expr_todo();
-            };
-            pattern_variables.extend(
-                case0_pattern_introduced_variables
-                    .iter()
-                    .map(|(binding, info)| (*binding, info.clone())),
-            );
-            let case0_compiled_result = syntax_expression_to_rust(
-                type_aliases,
-                project_fns,
-                expressions,
-                patterns,
-                types,
-                checked_local_fns,
-                checked_queries,
-                checked_spread_records,
-                pattern_variables,
-                origins,
-                case0_result,
-            );
-            for (case0_pattern_introduced_variable, _) in case0_pattern_introduced_variables {
-                pattern_variables.remove(case0_pattern_introduced_variable);
-            }
-            case0_statements.extend(syn_spread_expr_block_into_stmts(case0_compiled_result));
             fn syn_arm(pattern: syn::Pat, statements: Vec<syn::Stmt>) -> syn::Arm {
                 syn::Arm {
                     attrs: vec![],
@@ -10765,28 +10713,24 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     comma: None,
                 }
             }
-            let mut rust_arms: Vec<syn::Arm> =
-                vec![syn_arm(case0_pattern_compiled, case0_statements)];
-            'compiling_case1_up: for (case_index, case) in case1_up
-                .iter()
-                .enumerate()
-                .map(|(i_in_1up, case)| (i_in_1up + 1, case))
-            {
+            let mut rust_arms: Vec<syn::Arm> = Vec::new();
+            'compiling_case1_up: for (case_index, case) in cases.iter().enumerate() {
                 if checked_query.invalid_case_indexes.contains(&case_index) {
                     continue 'compiling_case1_up;
                 }
                 let Some(case_pattern) = &case.pattern else {
                     continue 'compiling_case1_up;
                 };
-                let mut case_pattern_introduced_variables: std::collections::HashMap<
+                // can be optimized by not cloning if only one case exists
+                let mut case_pattern_variables: std::collections::HashMap<
                     &Name,
                     CheckedPatternVariable,
-                > = std::collections::HashMap::new();
+                > = pattern_variables.clone();
                 let mut case_statements: Vec<syn::Stmt> = Vec::new();
                 let Some(case_pattern_compiled) = syntax_pattern_to_rust(
                     case_pattern,
                     Some(&checked_query.queried_type),
-                    &mut case_pattern_introduced_variables,
+                    &mut case_pattern_variables,
                     type_aliases,
                     checked_spread_records,
                     patterns,
@@ -10796,11 +10740,6 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 ) else {
                     continue 'compiling_case1_up;
                 };
-                pattern_variables.extend(
-                    case_pattern_introduced_variables
-                        .iter()
-                        .map(|(binding, info)| (*binding, info.clone())),
-                );
                 let Some(case_result) = &case.result else {
                     rust_arms.push(syn_arm(
                         case_pattern_compiled,
@@ -10817,13 +10756,10 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
-                    pattern_variables,
+                    &mut case_pattern_variables,
                     origins,
                     case_result,
                 );
-                for (case_pattern_introduced_variable, _) in case_pattern_introduced_variables {
-                    pattern_variables.remove(case_pattern_introduced_variable);
-                }
                 case_statements.extend(syn_spread_expr_block_into_stmts(case_compiled_result_rust));
                 rust_arms.push(syn_arm(case_pattern_compiled, case_statements));
             }
