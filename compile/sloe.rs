@@ -1775,7 +1775,6 @@ pub fn parse_expression<Expressions, Patterns, Types>(
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    // fn and origin must be checked before variable or call
     parse_expression_number(state, types)
         .or_else(|| parse_expression_char(state))
         .or_else(|| parse_expression_str(state))
@@ -2201,7 +2200,6 @@ fn parse_expression_query<Expressions, Patterns, Types>(
         cases.push(case);
         parse_sloe_whitespace(state);
     }
-    parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Query {
         question_mark_start: question_mark_start,
         queried: queried.map(|queried| expressions.insert(queried)),
@@ -15003,13 +15001,12 @@ fn syntax_comments_format(formatted: &mut String, indent: usize, comments: &Synt
 }
 pub fn syntax_project_format<Expressions, Patterns, Types>(
     project: &SyntaxProject<Expressions, Patterns, Types>,
-    _source: &str,
+    source: &str,
     expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> String {
-    let mut formatted = String::with_capacity(project.elements.len() * 128);
-    formatted.push('\n');
+    let mut formatted = String::with_capacity(source.len() + 8);
     for element in &project.elements {
         // consider not formatting an element that is followed by Unrecognized
         match element {
@@ -15020,7 +15017,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 documentation,
                 type_,
             } => {
-                formatted.push_str("ty ");
+                formatted.push_str("\nty ");
                 match parameters {
                     Some(parameters) => {
                         if let Some(name) = name {
@@ -15073,6 +15070,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                         type_,
                     );
                 }
+                formatted.push('\n');
             }
             SyntaxProjectElement::Fn {
                 fn_keyword_start,
@@ -15085,7 +15083,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 documentation,
                 result,
             } => {
-                formatted.push_str("fn ");
+                formatted.push_str("\nfn ");
                 if let Some(name) = name {
                     formatted.push_str(&name.value);
                 }
@@ -15165,15 +15163,18 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                         result,
                     );
                 }
+                formatted.push('\n');
             }
             SyntaxProjectElement::Comments(comments) => {
+                if comments.line0.start.line >= 1 {
+                    formatted.push('\n');
+                }
                 syntax_comments_format(&mut formatted, 0, comments);
             }
             SyntaxProjectElement::Unrecognized { range: _, source } => {
                 formatted.push_str(source);
             }
         }
-        formatted.push_str("\n\n");
     }
     formatted
 }

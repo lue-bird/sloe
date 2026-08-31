@@ -119,4 +119,3 @@ ty Modifier-property-value _chars
     |false .
     |int i32
     |string Opt Span _chars
-

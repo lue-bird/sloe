@@ -780,7 +780,15 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- if comments are first in a file, do not put a linebreak before it when formatting
+- do introduce query pattern record spread syntax after all.
+  It enables the "use the defaults except" pattern which would be inpossible annoying otherwise:
+  ```sloe
+  Some-fn
+  ? Some-fn-defaults [.. all .except except]
+  ? Except-rid except [.]
+  .. all .except new-value
+  ```
+  I've changed my mind on this being okay because you need to handle all fields anyway
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
@@ -816,7 +824,7 @@ cargo install --offline --debug --path . sloe
       Origin-erased _value-erased-new
   ```
 
-- check Buf lengths after every append in rust the same way as done in zig but panic instead
+- check Buf lengths after every append in rust the same way as done in zig and js but panic instead
 
 - fix comment TODOs
 

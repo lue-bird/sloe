@@ -90,4 +90,3 @@ fn Example . : u32 =
     [.nodes example-stack-nodes .state result]
     ? Buf-rid example-stack-nodes [.]
     result
-

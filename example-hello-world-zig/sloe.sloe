@@ -6,4 +6,3 @@ fn Greet
     ? Buf-char-opt-span-add-str .. string .new "Hello, " [string]
     ? Buf-char-span-add-str .. string .new name [string]
     Buf-char-span-add-str .. string .new "!\n"
-
