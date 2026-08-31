@@ -1,59 +1,59 @@
 
-ty Stack _origin, _element
+ty Stack _origin, _item
     # a singly-linked list. Since it is backed by a buf,
     # adjacent nodes are likely close together in memory. Who doesn't love that.
     # (note that it's still noticeably worse than a simple buf most of the time)
     |empty .
-    |stacked .head _element .tail Slot _origin
+    |stacked .head _item .tail Slot _origin
 
 fn Stack-cons
-    .nodes nodes Buf _origin, Stack _origin, _element
-    .stack tail Stack _origin, _element
-    .new new-head _element
+    .nodes nodes Buf _origin, Stack _origin, _item
+    .stack tail Stack _origin, _item
+    .new new-head _item
     :
-    .nodes Buf _origin, Stack _origin, _element
-    .stack Stack _origin, _element
+    .nodes Buf _origin, Stack _origin, _item
+    .stack Stack _origin, _item
     =
     ? Buf-insert .buf nodes .new tail [.buf nodes .slot tail-slot]
     .nodes nodes
-    .stack (|{Stack _origin, _element}stacked .head new-head .tail tail-slot)
+    .stack (|{Stack _origin, _item}stacked .head new-head .tail tail-slot)
 
 fn Stack-pop
-    .nodes nodes Buf _origin, Stack _origin, _element
-    .stack stack Stack _origin, _element
+    .nodes nodes Buf _origin, Stack _origin, _item
+    .stack stack Stack _origin, _item
     :
-    .nodes Buf _origin, Stack _origin, _element
-    .element (
+    .nodes Buf _origin, Stack _origin, _item
+    .item (
         Opt
-        .head _element
-        .tail Stack _origin, _element
+        .head _item
+        .tail Stack _origin, _item
         )
     =
     ? stack
     [|empty .] (
         .nodes nodes
-        .element
+        .item
             |{
             Opt
-            .head _element
-            .tail Stack _origin, _element
+            .head _item
+            .tail Stack _origin, _item
             }
             no
             .
         )
     [|stacked .head head .tail tail-slot] (
-        ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .element tail]
+        ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .item tail]
         .nodes nodes
-        .element (Opt-yes .head head .tail tail)
+        .item (Opt-yes .head head .tail tail)
         )
 
 fn Stack-fold
-    .nodes nodes Buf _origin, Stack _origin, _element
-    .stack stack Stack _origin, _element
+    .nodes nodes Buf _origin, Stack _origin, _item
+    .stack stack Stack _origin, _item
     .state state _state
-    .reduce reduce Fn .state _state .element _element, _state
+    .reduce reduce Fn .state _state .item _item, _state
     :
-    .nodes Buf _origin, Stack _origin, _element
+    .nodes Buf _origin, Stack _origin, _item
     .state _state
     =
     ? stack
@@ -62,14 +62,14 @@ fn Stack-fold
         .nodes nodes .state state
         )
     [|stacked .head head .tail tail-slot]
-    ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .element tail]
+    ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .item tail]
     ? Fn-dup reduce [.a reduce-a .b reduce-b]
-    ? Call .fn reduce-a .in (.state state .element head) [elements-nodes]
+    ? Call .fn reduce-a .in (.state state .item head) [items-nodes]
     Stack-fold
     .nodes nodes
     .stack tail
     .reduce reduce-b
-    .state elements-nodes
+    .state items-nodes
 
 fn Example . : u32 =
     ^example-origin
@@ -84,8 +84,8 @@ fn Example . : u32 =
         .. example-stack
         .state 0 u32
         .reduce (
-            [.state state u32 .element element u32]
-            U32-add-clamp .a state .b element
+            [.state state u32 .item item u32]
+            U32-add-clamp .a state .b item
             )
     [.nodes example-stack-nodes .state result]
     ? Buf-rid example-stack-nodes [.]

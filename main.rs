@@ -934,22 +934,22 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
                 }
             }
         }
-        for syntax_project_element in project_state.syntax.elements.drain(..) {
-            sloe::syntax_project_element_rid(
-                syntax_project_element,
+        for syntax_project_item in project_state.syntax.items.drain(..) {
+            sloe::syntax_project_item_rid(
+                syntax_project_item,
                 &mut state.syntax_expressions,
                 &mut state.syntax_patterns,
                 &mut state.syntax_types,
             );
         }
         if project_count == 1 {
-            fn vec_should_be_empty<Origin, Element>(vec: &sloe::core::Buf<Origin, Element>) {
-                if !vec.maybe_uninit_elements().is_empty() || !vec.vacant_spans().is_empty() {
+            fn vec_should_be_empty<Origin, Item>(vec: &sloe::core::Buf<Origin, Item>) {
+                if !vec.maybe_uninit_items().is_empty() || !vec.vacant_spans().is_empty() {
                     eprintln!(
-                        "vec not empty after rid step. remaining vacant spans: {:?}, remaining elements ({} including vacant) maybe uninit: {:?}",
+                        "vec not empty after rid step. remaining vacant spans: {:?}, remaining items ({} including vacant) maybe uninit: {:?}",
                         vec.vacant_spans(),
-                        vec.maybe_uninit_elements().len(),
-                        vec.maybe_uninit_elements()
+                        vec.maybe_uninit_items().len(),
+                        vec.maybe_uninit_items()
                             .iter()
                             .enumerate()
                             .filter(|(i, _)| {
@@ -1195,10 +1195,10 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
             origins: _,
         } => project_state
             .syntax
-            .elements
+            .items
             .iter()
-            .find_map(|element| match element {
-                sloe::SyntaxProjectElement::Fn {
+            .find_map(|item| match item {
+                sloe::SyntaxProjectItem::Fn {
                     name: Some(fn_name),
                     ..
                 } if &fn_name.value == symbol_name.value => {
@@ -1212,10 +1212,10 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
             origins: _,
         } => project_state
             .syntax
-            .elements
+            .items
             .iter()
-            .find_map(|element| match element {
-                sloe::SyntaxProjectElement::TypeAlias {
+            .find_map(|item| match item {
+                sloe::SyntaxProjectItem::TypeAlias {
                     name: Some(type_alias_name),
                     ..
                 } if &type_alias_name.value == symbol_name.value => Some(sloe::name_range(
@@ -1644,7 +1644,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         } => {
             let mut available_existing_variables = std::collections::HashSet::new();
             match scope {
-                sloe::SyntaxProjectElement::TypeAlias {
+                sloe::SyntaxProjectItem::TypeAlias {
                     ty_keyword_start: _,
                     name: _,
                     parameters,
@@ -1670,7 +1670,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         }
                     }
                 }
-                sloe::SyntaxProjectElement::Fn {
+                sloe::SyntaxProjectItem::Fn {
                     fn_keyword_start: _,
                     name: _,
                     type_parameters,
@@ -1705,8 +1705,8 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                         );
                     }
                 }
-                sloe::SyntaxProjectElement::Comments(_) => {}
-                sloe::SyntaxProjectElement::Unrecognized { .. } => {}
+                sloe::SyntaxProjectItem::Comments(_) => {}
+                sloe::SyntaxProjectItem::Unrecognized { .. } => {}
             }
             Some(lsp_types::CompletionResponse::CompletionItemList(
                 available_existing_variables
@@ -1975,12 +1975,12 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
     Some(lsp_types::DocumentSymbolResponse::DocumentSymbolList(
         project
             .syntax
-            .elements
+            .items
             .iter()
-            .filter_map(|project_element| match project_element {
-                sloe::SyntaxProjectElement::Comments { .. } => None,
-                sloe::SyntaxProjectElement::Unrecognized { .. } => None,
-                sloe::SyntaxProjectElement::TypeAlias {
+            .filter_map(|project_item| match project_item {
+                sloe::SyntaxProjectItem::Comments { .. } => None,
+                sloe::SyntaxProjectItem::Unrecognized { .. } => None,
+                sloe::SyntaxProjectItem::TypeAlias {
                     ty_keyword_start: _,
                     name,
                     parameters: _,
@@ -2010,7 +2010,7 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
                         children: None,
                     })
                 }
-                sloe::SyntaxProjectElement::Fn {
+                sloe::SyntaxProjectItem::Fn {
                     fn_keyword_start,
                     name,
                     type_parameters: _,

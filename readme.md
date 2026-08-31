@@ -1,6 +1,6 @@
 Small, fast programming language where indexes are valid and values can't be shared.
 
-It has an infallible, safe way to refer to elements and slices stored in consecutive memory which for example enables representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
+It has an infallible, safe way to refer to items and slices stored in consecutive memory which for example enables representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
 
 Hello, world!
 ```sloe
@@ -40,7 +40,7 @@ The big advantage of this rule is how easy it is to understand and how much simp
 > Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
 ## concept: consecutive memory, stable index collection `Buf`
-A collection which can mark some ranges within itself as vacant without moving existing elements around (thus invalidating their indexes).
+A collection which can mark some ranges within itself as vacant without moving existing items around (thus invalidating their indexes).
 This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-unset-slot-rid` and `Buf-unset-span-rid`.
 Note that this functionality is entirely optional and you can just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
@@ -48,13 +48,13 @@ Note that this functionality is entirely optional and you can just use it for te
 > In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest). [Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
 > There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
 
-## concept: collections do not handle their elements
+## concept: collections do not handle their items
 Similar to allocators, you cannot access, alter or iterate their contained values directly.
-Collections are seen as storage into which you can add elements, build slices etc.
-Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your permission to access and alter the referenced elements as well as your responsibility to announce their release at some point.
+Collections are seen as storage into which you can add items, build slices etc.
+Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your permission to access and alter the referenced items as well as your responsibility to announce their release at some point.
 
 > The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types. This is not uncommon in languages like rust.
-However, sloe's goal is to do better here and to not bind storage to ownership over its elements. Instead, we store a big array buffer of each kind and point into it.
+However, sloe's goal is to do better here and to not bind storage to ownership over its items. Instead, we store a big array buffer of each kind and point into it.
 
 # concept: prevent mix-up between collections with an origin type parameter
 Every created collection has a unique origin.
@@ -96,7 +96,7 @@ fn Use-buf . : u32 =
     ^buf-origin
   	? Buf-empty{u32} buf-origin [buf]
   	? Buf-add .buf buf .new 123 u32 [.buf buf .slot first-slot]
-  	? Buf-remove .buf buf .slot first-slot [.buf buf .element first]
+  	? Buf-remove .buf buf .slot first-slot [.buf buf .item first]
   	? Buf-add-array .buf buf .new ; 456 u32 ; 789 u32 [.buf buf .span after-first]
     ...
   	first # = 123 u32
@@ -111,7 +111,7 @@ fn Use-opt opt Opt u32 : ... =
             Buf-empty{u32} buf-origin
         [|yes number] (
             ^buf-origin
-            ? Buf-one .origin buf-origin .element number [.buf buf .slot slot]
+            ? Buf-one .origin buf-origin .item number [.buf buf .slot slot]
             ...
             buf
             )
@@ -124,7 +124,7 @@ fn Use-opt opt Opt u32 : ... =
         [|no .]
             Buf-empty{u32} buf-origin
         [|yes number] (
-            ? Buf-one .origin buf-origin .element number [.buf buf .slot slot]
+            ? Buf-one .origin buf-origin .item number [.buf buf .slot slot]
             ...
             buf
             )
@@ -163,7 +163,7 @@ fn State-to-interfaces-into
     ? (
         Buf-one
         .origin interfaces-origin
-        .element |{Interface State _expressions-origin}console-log "hello"
+        .item |{Interface State _expressions-origin}console-log "hello"
         )
     [.slot slot .buf interfaces]
     ...
@@ -173,7 +173,7 @@ fn State-to-interfaces-into
 ## pass in origins or collections from the outside
 
 ```sloe
-fn Buf-empty{_element} Origin _origin, _part : Buf (Origin _origin, _part), _element
+fn Buf-empty{_item} Origin _origin, _part : Buf (Origin _origin, _part), _item
 ```
 Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
 For most other functions, it's more common to pass in an existing collection that you want to edit.
@@ -222,7 +222,7 @@ Some-function{type}{arguments} Inner-call-as-the-argument inner-call-argument
 .field-1st value-1st .. one-existing-record .. another .field-2nd value-2nd
 
 # temporary array
-; first-element ; second-element ; third-element
+; first-item ; second-item ; third-item
 
 # local function of type fn.
 # the pattern must add a type to all variables
@@ -347,7 +347,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   I think something like introducing `Span2 FirstOrigin, SecondOrigin` for 2 up to maybe 5 makes sense. You'd be able to fold, access etc. them together and even split those up into separate spans whenever desired (but not join them back!).
   The sad thing is that this is positional and individual span slots then do not have an associated name.
   Also, how would this work with existing buf APIs? Something like `Buf2-opt-span-add`
-- minor: sometimes, you really own all the elements of a buf in one place (especially when the buf elements can be trivially copied).
+- minor: sometimes, you really own all the items of a buf in one place (especially when the buf items can be trivially copied).
   Splitting it into `opt span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0)
 - by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
@@ -385,7 +385,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       # ? Buf-empty{u32} origin [buf]
       # ? Buf-add .buf buf .new 20 u32 [.buf buf .slot slot0]
       # ? Buf-add-array .buf buf .new ; 1 u32 ; 2 u32 [.buf buf .span span12]
-      # ? Buf-untrack .buf buf .slot slot0 [.buf buf .untracked untracked .element sum]
+      # ? Buf-untrack .buf buf .slot slot0 [.buf buf .untracked untracked .item sum]
       # ? (
       #     Span-fold
       #     .span span12
@@ -395,10 +395,10 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       #     .state (.buf Buf (Origin _origin, .), u32 .untracked Unset-untracked origin .sum sum u32)
       #     .slot Slot origin
       #     ]
-      #     ? Buf-untrack .buf buf .slot slot [.element element]
+      #     ? Buf-untrack .buf buf .slot slot [.item item]
       #     .buf buf
       #     .untracked untracked
-      #     .sum U32-add-clamp .a sum .b element
+      #     .sum U32-add-clamp .a sum .b item
       #     )
       # [.buf buf .untracked untracked .sum sum]
       # Buf-with-unset-untracked-rid .buf buf .untracked untracked
@@ -414,35 +414,35 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       : Unset-untracked _origin
   fn Buf-untrack
       :
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .untracked Unset-untracked _origin
-      .element _element
+      .item _item
       # short for Buf-unset followed by Buf-unset-slot-untrack
   fn Buf-unset-slot-untrack
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .span Unset-slot _origin
       :
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .untracked Unset-untracked _origin
   fn Buf-unset-span-untrack
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .span Unset-span _origin
       :
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .untracked Unset-untracked _origin
   fn Buf-opt-unset-span-untrack
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .span Opt Unset-span _origin
       :
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .untracked Unset-untracked _origin
   fn Buf-vacant-untrack
-      Buf _origin, _element
+      Buf _origin, _item
       :
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .untracked Unset-untracked _origin
   fn Buf-with-unset-untracked-rid
-      .buf Buf _origin, _element
+      .buf Buf _origin, _item
       .untracked Unset-untracked _origin
       : .
   ```
@@ -450,15 +450,15 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Open question: there could be an API to recover untracked unset spaces.
   Is there a use-case? I believe not because otherwise you could have just used
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions Buf _expressions, Expression _expressions _patterns _types` doesn't exactly roll easily over one's keyboard
-- add `Set _origin, _element` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _element` where key is derived from element) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
+- add `Set _origin, _item` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _item` where key is derived from item) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
   Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `Buf` is fast enough
 - consider adding `Buf-counting` and `slot` which can reference a slot that is already in use:
   ```Sloe
   fn Buf-counting-slot-dup
-      .buf Buf-counting _origin, _element
+      .buf Buf-counting _origin, _item
       .slot Slot _origin
       :
-      .buf Buf-counting _origin, _element
+      .buf Buf-counting _origin, _item
       .a Slot _origin
       .b Slot _origin
       =
@@ -467,24 +467,24 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `Set-counting`) etc.
   Things I dislike with this design:
     - access via `Buf-counting-unset` which does not guarantee seems maybe too difficult (first un-occupy all known slots and even then there is no guarantee). `Buf-counting-update` should work nicely, especially for copiable types at the cost of: cannot access the buf at the same time and spooky action at a distance
-    - _every_ element is reference-counted. A slot to a known single-reference element cannot be represented. This is not a biggie because I don't know if there is a use for this
+    - _every_ item is reference-counted. A slot to a known single-reference item cannot be represented. This is not a biggie because I don't know if there is a use for this
     - maybe also -counting versions of map/set etc.
   
   The alternative is of course to do `Slot-weak` and generational indexes. However, this is un-usable for e.g. inlined string storage and also comes with overhead and even less guarantees.
   
   Open question of representation:
-    - `Buf<{ count: u32/16, element: Element }>`:
+    - `Buf<{ count: u32/16, item: Item }>`:
       Finding vacant slots takes linear time. Generally fast.
       Takes the least space on the stack
-    - `{ elements: Buf<Element>, counts: Buf<u32/16> }`:
+    - `{ items: Buf<Item>, counts: Buf<u32/16> }`:
       Finding vacant slots takes linear time. Generally fastest.
       A bit more error-prone than single buf
-    - `{ elements: Buf<Element>, vacant: Buf<u32>, occoupied_counts: Buf<NonZeroU32/16> }`:
+    - `{ items: Buf<Item>, vacant: Buf<u32>, occoupied_counts: Buf<NonZeroU32/16> }`:
       Finding vacant slots takes constant time but doesn't feel deterministic.
       Generally fastest but vacating is more expensive.
       More error-prone than single or double-buf.
       Takes most space on the stack
-    - `{ elements: Buf<Element>, counts: Buf<{ range: Range, count: u32/16 }>`:
+    - `{ items: Buf<Item>, counts: Buf<{ range: Range, count: u32/16 }>`:
       Tough to handle and error-prone.
       Inefficient for cases where slots are handled one by one (no spans exist).
       Efficient for things like inline storage where spans are clearly defined.
@@ -546,7 +546,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   explicit, I feel users deserve some sugar for their effort.
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
-- when checking, avoid shortcutting early when possible, still traversing sub-elements even when a clear error has been found
+- when checking, avoid shortcutting early when possible, still traversing sub-items even when a clear error has been found
 - add c# compilation as well if there is demand
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different bufs have the same origin_ but their slots can't intermix.
@@ -728,14 +728,14 @@ If you're looking to learn from sloe, maybe do not learn from these:
 
 - stack-allocated array syntax. It provides an alternative syntax sugar for something that could already be expressed as repeated queried function calls.
   I'm convinced that a feature like this would be very asked for if it didn't exist.
-  Adding a bulk of elements to a buf seems very useful on first sight because
-    - all kinds of examples and tests start with manually adding elements. Doing this one by one seems like cringe busywork.
+  Adding a bulk of items to a buf seems very useful on first sight because
+    - all kinds of examples and tests start with manually adding items. Doing this one by one seems like cringe busywork.
     - building uis or any kind of trees programmatically,
       you more than often end up needing to specify sub-nodes of a parent.
       Adding this bulk of nodes as an array is only natural and avoids so much noise.
   
   Well, what are the alternatives, then?
-    - simply provide `Buf-opt-span-add2/3/4/5/6/7/8` etc. While it really doesn't feel good, it's not very far from solutions of production languages, see e.g. java's `list.of2/3/4/...`. (Though adding or removing elements means adjusting the number which is annoying, especially for the argument field names)
+    - simply provide `Buf-opt-span-add2/3/4/5/6/7/8` etc. While it really doesn't feel good, it's not very far from solutions of production languages, see e.g. java's `list.of2/3/4/...`. (Though adding or removing items means adjusting the number which is annoying, especially for the argument field names)
     - provide and suggest better primitives and helpers. For example, instead of providing a list of modifiers, it may just make sense to e.g. provide a record of options or use builder-style helpers for the individual properties
     - introduce syntactical diabetis or macro-esque bullshit for repeated function calls
       ```sloe
@@ -792,7 +792,7 @@ cargo install --offline --debug --path . sloe
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
-- add `Buf-span-update` which asks for `.span Span _origin .element-update Fn _element, _element`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
+- add `Buf-(opt-)span-update` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
 
@@ -812,9 +812,6 @@ cargo install --offline --debug --path . sloe
 
 - "No local variable in scope has this name." should list available variable names
 
-- rename "element" to "item" for brevity and to make it the same length as slot, span.
-  Terminology is also more consistent with zig (rust and js use both interchangeably)
-
 - consider adding
   ```sloe
   fn Origin-erased-map
@@ -830,10 +827,10 @@ cargo install --offline --debug --path . sloe
 
 # not coherently formulated thoughts
 
-## on collections not owning elements
-In rust, collections tend to own their element data, so safely keeping references reaching inside is tough.
+## on collections not owning items
+In rust, collections tend to own their item data, so safely keeping references reaching inside is tough.
 Alternatively, we could reach for `Range<usize>` and `usize` but we've lost ties to the origin structure and rust does not (yet?) have a mechanism for temporarily assuming actual ownership over some part of a parent structure.
-This relationship is flipped on it's head in sloe: All elements of collections are divided into slots and spans which are owned by the code that parked values there in the first place.
+This relationship is flipped on it's head in sloe: All items of collections are divided into slots and spans which are owned by the code that parked values there in the first place.
 
 Honestly this idea seems "obviously" useful and it's surprising I can't find other languages that lean into it (there is rust which at least enables it in userland).
 I assume one reason is that linear types are required in some part to avoid leaks all over the place.
@@ -859,7 +856,7 @@ It's probably a good idea anyway to add hashing helpers to sloe.
 Would be nice if index maps could in some way make use of Bufs,
 for example if it's like
 ```sloe
-ty Map _slots, _in-hash-order, _element
+ty Map _slots, _in-hash-order, _item
     .slots Buf _slots, Slot _in-hash-order
-    .elements Buf _in-hash-order, _element
+    .items Buf _in-hash-order, _item
 ```

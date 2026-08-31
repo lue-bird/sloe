@@ -12,7 +12,7 @@ pub struct WithStartPosition<Value> {
 
 #[derive(Debug)]
 pub struct SyntaxProject<Expressions, Patterns, Types> {
-    pub elements: Vec<SyntaxProjectElement<Expressions, Patterns, Types>>,
+    pub items: Vec<SyntaxProjectItem<Expressions, Patterns, Types>>,
 }
 
 #[derive(Debug)]
@@ -20,7 +20,7 @@ pub struct SyntaxProject<Expressions, Patterns, Types> {
     clippy::large_enum_variant,
     reason = "::Fn is the largest but almost all variants in practice are ::Fn anyway"
 )]
-pub enum SyntaxProjectElement<Expressions, Patterns, Types> {
+pub enum SyntaxProjectItem<Expressions, Patterns, Types> {
     TypeAlias {
         ty_keyword_start: lsp_types::Position,
         name: Option<WithStartPosition<Name>>,
@@ -194,8 +194,8 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
     },
     Array {
         semicolon_start: lsp_types::Position,
-        element0: Option<core::Slot<Expressions>>,
-        element1_up: Vec<SyntaxExpressionArrayElement<Expressions, Patterns, Types>>,
+        item0: Option<core::Slot<Expressions>>,
+        item1_up: Vec<SyntaxExpressionArrayItem<Expressions, Patterns, Types>>,
     },
     Parenthesized {
         open_paren_start: lsp_types::Position,
@@ -226,9 +226,9 @@ pub struct SyntaxExpressionQueryCase<Expressions, Patterns, Types> {
     pub result: Option<SyntaxExpression<Expressions, Patterns, Types>>,
 }
 #[derive(Debug)]
-pub struct SyntaxExpressionArrayElement<Expressions, Patterns, Types> {
+pub struct SyntaxExpressionArrayItem<Expressions, Patterns, Types> {
     pub semicolon_start: lsp_types::Position,
-    pub element: Option<SyntaxExpression<Expressions, Patterns, Types>>,
+    pub item: Option<SyntaxExpression<Expressions, Patterns, Types>>,
 }
 #[derive(Debug)]
 pub enum SyntaxRecordPart<Sub> {
@@ -398,7 +398,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 argument0
                     .as_ref()
-                    .map(|argument0| type_end(types.element(argument0), types))
+                    .map(|argument0| type_end(types.item(argument0), types))
             })
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxType::Parenthesized {
@@ -410,7 +410,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 inner
                     .as_ref()
-                    .map(|inner| type_end(types.element(inner), types))
+                    .map(|inner| type_end(types.item(inner), types))
             })
             .unwrap_or_else(|| symbol_end(*open_paren_start, "(")),
         SyntaxType::RecordEmpty { dot_start } => symbol_end(*dot_start, "."),
@@ -424,7 +424,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 field0_value
                     .as_ref()
-                    .map(|field0_value| type_end(types.element(field0_value), types))
+                    .map(|field0_value| type_end(types.item(field0_value), types))
             })
             .unwrap_or_else(|| field_name_end(with_start_position_as_ref(field0_name))),
         SyntaxType::ChoiceEmpty { bar_start } => symbol_end(*bar_start, "|"),
@@ -438,7 +438,7 @@ pub fn type_end<Types>(
             .or_else(|| {
                 variant0_value
                     .as_ref()
-                    .map(|variant0_value| type_end(types.element(variant0_value), types))
+                    .map(|variant0_value| type_end(types.item(variant0_value), types))
             })
             .unwrap_or_else(|| field_name_end(with_start_position_as_ref(variant0_name))),
     }
@@ -498,20 +498,20 @@ pub fn pattern_end<Patterns, Types>(
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxPattern::Variant { name, value } => value
             .as_ref()
-            .map(|value| pattern_end(patterns.element(value), patterns, types))
+            .map(|value| pattern_end(patterns.item(value), patterns, types))
             .unwrap_or_else(|| optional_variant_name_end(name)),
         SyntaxPattern::RecordEmpty { dot_start } => symbol_end(*dot_start, "."),
         SyntaxPattern::Record { part0, part1_up } => match part1_up.last().unwrap_or(part0) {
             SyntaxRecordPart::Field { name, value } => value
                 .as_ref()
-                .map(|value| pattern_end(patterns.element(value), patterns, types))
+                .map(|value| pattern_end(patterns.item(value), patterns, types))
                 .unwrap_or_else(|| optional_field_name_end(name)),
             SyntaxRecordPart::Spread {
                 dot_dot_start,
                 record,
             } => record
                 .as_ref()
-                .map(|record| pattern_end(patterns.element(record), patterns, types))
+                .map(|record| pattern_end(patterns.item(record), patterns, types))
                 .unwrap_or_else(|| symbol_end(*dot_dot_start, "..")),
         },
         SyntaxPattern::Parenthesized {
@@ -523,7 +523,7 @@ pub fn pattern_end<Patterns, Types>(
             .or_else(|| {
                 inner
                     .as_ref()
-                    .map(|inner| pattern_end(patterns.element(inner), patterns, types))
+                    .map(|inner| pattern_end(patterns.item(inner), patterns, types))
             })
             .unwrap_or_else(|| symbol_end(*open_paren_start, "(")),
     }
@@ -625,8 +625,8 @@ pub fn expression_start<Expressions, Patterns, Types>(
         SyntaxExpression::Record { part0, part1_up: _ } => expression_record_part_start(part0),
         SyntaxExpression::Array {
             semicolon_start,
-            element0: _,
-            element1_up: _,
+            item0: _,
+            item1_up: _,
         } => *semicolon_start,
         SyntaxExpression::Parenthesized {
             open_paren_start,
@@ -704,7 +704,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
         } => argument
             .as_ref()
             .map(|argument| {
-                expression_end(expressions.element(argument), expressions, patterns, types)
+                expression_end(expressions.item(argument), expressions, patterns, types)
             })
             .or_else(|| {
                 type_arguments
@@ -719,7 +719,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             value,
         } => value
             .as_ref()
-            .map(|value| expression_end(expressions.element(value), expressions, patterns, types))
+            .map(|value| expression_end(expressions.item(value), expressions, patterns, types))
             .or_else(|| {
                 name.as_ref()
                     .map(|name| name_end(with_start_position_as_ref(name)))
@@ -738,12 +738,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
         } => result
             .as_ref()
             .map(|result_slot| {
-                expression_end(
-                    expressions.element(result_slot),
-                    expressions,
-                    patterns,
-                    types,
-                )
+                expression_end(expressions.item(result_slot), expressions, patterns, types)
             })
             .or_else(|| {
                 closed_bracket_start
@@ -764,20 +759,20 @@ pub fn expression_end<Expressions, Patterns, Types>(
         ),
         SyntaxExpression::Array {
             semicolon_start,
-            element0,
-            element1_up,
-        } => element1_up
+            item0,
+            item1_up,
+        } => item1_up
             .last()
-            .map(|last_element| {
-                last_element
-                    .element
+            .map(|last_item| {
+                last_item
+                    .item
                     .as_ref()
-                    .map(|element| expression_end(element, expressions, patterns, types))
+                    .map(|item| expression_end(item, expressions, patterns, types))
                     .unwrap_or_else(|| symbol_end(*semicolon_start, ";"))
             })
             .or_else(|| {
-                element0.as_ref().map(|element0| {
-                    expression_end(expressions.element(element0), expressions, patterns, types)
+                item0.as_ref().map(|item0| {
+                    expression_end(expressions.item(item0), expressions, patterns, types)
                 })
             })
             .unwrap_or_else(|| symbol_end(*semicolon_start, ";")),
@@ -789,7 +784,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .map(|closed_paren_start| symbol_end(closed_paren_start, ")"))
             .or_else(|| {
                 inner.as_ref().map(|inner| {
-                    expression_end(expressions.element(inner), expressions, patterns, types)
+                    expression_end(expressions.item(inner), expressions, patterns, types)
                 })
             })
             .unwrap_or_else(|| symbol_end(*open_paren_start, "(")),
@@ -798,7 +793,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             expression,
         } => expression
             .as_ref()
-            .map(|inner| expression_end(expressions.element(inner), expressions, patterns, types))
+            .map(|inner| expression_end(expressions.item(inner), expressions, patterns, types))
             .unwrap_or_else(|| comments_end(comments)),
         SyntaxExpression::Origin {
             caret_key_symbol_start,
@@ -807,7 +802,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             result,
         } => result
             .as_ref()
-            .map(|result| expression_end(expressions.element(result), expressions, patterns, types))
+            .map(|result| expression_end(expressions.item(result), expressions, patterns, types))
             .or_else(|| {
                 name.as_ref()
                     .map(|name| name_end(with_start_position_as_ref(name)))
@@ -827,7 +822,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .map(|last_case| expression_query_case_end(last_case, expressions, patterns, types))
             .or_else(|| {
                 queried.as_ref().map(|queried| {
-                    expression_end(expressions.element(queried), expressions, patterns, types)
+                    expression_end(expressions.item(queried), expressions, patterns, types)
                 })
             })
             .unwrap_or_else(|| symbol_end(*question_mark_start, "?")),
@@ -849,14 +844,14 @@ pub fn expression_record_part_end<Expressions, Patterns, Types>(
     match part {
         SyntaxRecordPart::Field { name, value } => value
             .as_ref()
-            .map(|value| expression_end(expressions.element(value), expressions, patterns, types))
+            .map(|value| expression_end(expressions.item(value), expressions, patterns, types))
             .unwrap_or_else(|| optional_field_name_end(name)),
         SyntaxRecordPart::Spread {
             dot_dot_start,
             record,
         } => record
             .as_ref()
-            .map(|value| expression_end(expressions.element(value), expressions, patterns, types))
+            .map(|value| expression_end(expressions.item(value), expressions, patterns, types))
             .unwrap_or_else(|| symbol_end(*dot_dot_start, "..")),
     }
 }
@@ -1131,7 +1126,7 @@ pub fn parse_project<Expressions, Patterns, Types>(
     project_source: &str,
 ) -> SyntaxProject<Expressions, Patterns, Types> {
     // entirely unscientific lower estimates c:
-    let mut elements = Vec::with_capacity(project_source.len() / 24);
+    let mut items = Vec::with_capacity(project_source.len() / 24);
     expressions.pre_allocate_at_least_usize(project_source.len() / 4);
     patterns.pre_allocate_at_least_usize(project_source.len() / 6);
     types.pre_allocate_at_least_usize(project_source.len() / 5);
@@ -1148,12 +1143,12 @@ pub fn parse_project<Expressions, Patterns, Types>(
     let mut last_parsed_valid_end_offset_utf8 = state.offset_utf8;
     let mut last_parsed_valid_end_position = state.position;
     parse_sloe_whitespace(&mut state);
-    'parsing_elements: loop {
-        match parse_project_element(&mut state, expressions, patterns, types) {
+    'parsing_items: loop {
+        match parse_project_item(&mut state, expressions, patterns, types) {
             None => {
                 if !parse_any_char(&mut state) {
                     if !last_parsed_was_valid {
-                        elements.push(SyntaxProjectElement::Unrecognized {
+                        items.push(SyntaxProjectItem::Unrecognized {
                             range: lsp_types::Range {
                                 start: last_parsed_valid_end_position,
                                 end: state.position,
@@ -1161,13 +1156,13 @@ pub fn parse_project<Expressions, Patterns, Types>(
                             source: Box::from(&project_source[last_parsed_valid_end_offset_utf8..]),
                         });
                     }
-                    break 'parsing_elements;
+                    break 'parsing_items;
                 }
                 last_parsed_was_valid = false;
             }
-            Some(element) => {
+            Some(item) => {
                 if !last_parsed_was_valid {
-                    elements.push(SyntaxProjectElement::Unrecognized {
+                    items.push(SyntaxProjectItem::Unrecognized {
                         range: lsp_types::Range {
                             start: last_parsed_valid_end_position,
                             end: state.position,
@@ -1175,7 +1170,7 @@ pub fn parse_project<Expressions, Patterns, Types>(
                         source: Box::from(&project_source[last_parsed_valid_end_offset_utf8..]),
                     });
                 }
-                elements.push(element);
+                items.push(item);
                 last_parsed_was_valid = true;
                 parse_sloe_whitespace(&mut state);
                 last_parsed_valid_end_offset_utf8 = state.offset_utf8;
@@ -1183,23 +1178,23 @@ pub fn parse_project<Expressions, Patterns, Types>(
             }
         }
     }
-    SyntaxProject { elements: elements }
+    SyntaxProject { items }
 }
 
-fn parse_project_element<Expressions, Patterns, Types>(
+fn parse_project_item<Expressions, Patterns, Types>(
     state: &mut ParseState,
     expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
-) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
+) -> Option<SyntaxProjectItem<Expressions, Patterns, Types>> {
     parse_project_fn(state, expressions, patterns, types)
         .or_else(|| parse_project_ty(state, types))
-        .or_else(|| parse_sloe_comments(state).map(SyntaxProjectElement::Comments))
+        .or_else(|| parse_sloe_comments(state).map(SyntaxProjectItem::Comments))
 }
 fn parse_project_ty<Expressions, Patterns, Types>(
     state: &mut ParseState,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
-) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
+) -> Option<SyntaxProjectItem<Expressions, Patterns, Types>> {
     let Some(ty_keyword_start) = parse_symbol_as_start(state, "ty") else {
         return None;
     };
@@ -1217,7 +1212,7 @@ fn parse_project_ty<Expressions, Patterns, Types>(
     let documentation = parse_sloe_comments(state);
     parse_sloe_whitespace(state);
     let type_ = parse_type(state, types);
-    Some(SyntaxProjectElement::TypeAlias {
+    Some(SyntaxProjectItem::TypeAlias {
         ty_keyword_start,
         name: name,
         parameters: parameters,
@@ -1269,7 +1264,7 @@ fn parse_project_fn<Expressions, Patterns, Types>(
     expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
-) -> Option<SyntaxProjectElement<Expressions, Patterns, Types>> {
+) -> Option<SyntaxProjectItem<Expressions, Patterns, Types>> {
     let Some(fn_keyword_start) = parse_symbol_as_start(state, "fn") else {
         return None;
     };
@@ -1302,7 +1297,7 @@ fn parse_project_fn<Expressions, Patterns, Types>(
             (Some(equals_start), result)
         }
     };
-    Some(SyntaxProjectElement::Fn {
+    Some(SyntaxProjectItem::Fn {
         fn_keyword_start: fn_keyword_start,
         name: name,
         type_parameters: type_parameters,
@@ -1868,22 +1863,22 @@ fn parse_expression_array<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let element0 = parse_expression(state, expressions, patterns, types);
+    let item0 = parse_expression(state, expressions, patterns, types);
     parse_sloe_whitespace(state);
-    let mut element1_up = Vec::new();
+    let mut item1_up = Vec::new();
     while let Some(semicolon_start) = parse_symbol_as_start(state, ";") {
         parse_sloe_whitespace(state);
-        let element = parse_expression(state, expressions, patterns, types);
-        element1_up.push(SyntaxExpressionArrayElement {
+        let item = parse_expression(state, expressions, patterns, types);
+        item1_up.push(SyntaxExpressionArrayItem {
             semicolon_start: semicolon_start,
-            element: element,
+            item: item,
         });
         parse_sloe_whitespace(state);
     }
     Some(SyntaxExpression::Array {
         semicolon_start: semicolon_start,
-        element0: element0.map(|element0| expressions.add(element0)),
-        element1_up: element1_up,
+        item0: item0.map(|item0| expressions.add(item0)),
+        item1_up,
     })
 }
 fn parse_expression_number<Expressions, Patterns, Types>(
@@ -2285,21 +2280,21 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
     let mut project_fn_graph_node_by_name: std::collections::HashMap<
         &Name,
         strongly_connected_components::Node,
-    > = std::collections::HashMap::with_capacity(syntax_project.elements.len());
+    > = std::collections::HashMap::with_capacity(syntax_project.items.len());
     let mut project_fn_by_graph_node: std::collections::HashMap<
         strongly_connected_components::Node,
         SyntaxProjectFnInfo<Expressions, Patterns, Types>,
-    > = std::collections::HashMap::with_capacity(syntax_project.elements.len());
+    > = std::collections::HashMap::with_capacity(syntax_project.items.len());
 
     let mut records_used: std::collections::HashSet<Vec<Name>> =
         std::collections::HashSet::with_capacity(16);
     let mut choices_used: std::collections::HashSet<Vec<Name>> =
         std::collections::HashSet::with_capacity(4);
 
-    for project_element in &syntax_project.elements {
-        match project_element {
-            SyntaxProjectElement::Comments(_) => {}
-            SyntaxProjectElement::Unrecognized {
+    for project_item in &syntax_project.items {
+        match project_item {
+            SyntaxProjectItem::Comments(_) => {}
+            SyntaxProjectItem::Unrecognized {
                 range: unknown_range,
                 source: unknown_source,
             } => {
@@ -2320,7 +2315,7 @@ If you wanted to start a project declaration, try one of:
                     } else if unknown_source
                         .starts_with('#')
                     {
-                        "Comments can only be put in front of expressions, after the header of a project fn or ty or between these project elements. Is it indented correctly?"
+                        "Comments can only be put in front of expressions, after the header of a project fn or ty or between these project items. Is it indented correctly?"
                     } else if unknown_source.starts_with("//")
                         || unknown_source.starts_with("--")
                     {
@@ -2338,7 +2333,7 @@ If you wanted to start a project declaration, try one of:
                     }).into_boxed_str(),
                 });
             }
-            SyntaxProjectElement::TypeAlias {
+            SyntaxProjectItem::TypeAlias {
                 ty_keyword_start,
                 name: maybe_name,
                 parameters,
@@ -2376,7 +2371,7 @@ If you wanted to start a project declaration, try one of:
                     }
                 }
             },
-            SyntaxProjectElement::Fn {
+            SyntaxProjectItem::Fn {
                 fn_keyword_start,
                 name: maybe_name,
                 type_parameters,
@@ -2665,7 +2660,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             }
             for argument in argument0
                 .iter()
-                .map(|argument0| types.element(argument0))
+                .map(|argument0| types.item(argument0))
                 .chain(
                     argument1_up
                         .iter()
@@ -2691,7 +2686,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
-                    types.element(inner),
+                    types.item(inner),
                     type_graph,
                 );
             }
@@ -2707,7 +2702,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
-                    types.element(field0_value),
+                    types.item(field0_value),
                     type_graph,
                 );
             }
@@ -2734,7 +2729,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                     origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
-                    types.element(variant0_value),
+                    types.item(variant0_value),
                     type_graph,
                 );
             }
@@ -2788,7 +2783,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(argument),
+                    expressions.item(argument),
                     project_fn_graph,
                 );
             }
@@ -2806,7 +2801,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(value),
+                    expressions.item(value),
                     project_fn_graph,
                 );
             }
@@ -2824,7 +2819,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.item(result),
                     project_fn_graph,
                 );
             }
@@ -2841,7 +2836,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                                 expressions,
                                 patterns,
                                 types,
-                                expressions.element(value),
+                                expressions.item(value),
                                 project_fn_graph,
                             );
                         }
@@ -2857,7 +2852,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                                 expressions,
                                 patterns,
                                 types,
-                                expressions.element(record),
+                                expressions.item(record),
                                 project_fn_graph,
                             );
                         }
@@ -2867,17 +2862,13 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            for element in element0
+            for item in item0
                 .iter()
-                .map(|element0| expressions.element(element0))
-                .chain(
-                    element1_up
-                        .iter()
-                        .filter_map(|element| element.element.as_ref()),
-                )
+                .map(|item0| expressions.item(item0))
+                .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
             {
                 syntax_expression_connect_variables_in_graph_from(
                     origin_project_fn_graph_node,
@@ -2885,7 +2876,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    element,
+                    item,
                     project_fn_graph,
                 );
             }
@@ -2902,7 +2893,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(inner),
+                    expressions.item(inner),
                     project_fn_graph,
                 );
             }
@@ -2918,7 +2909,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(expression),
+                    expressions.item(expression),
                     project_fn_graph,
                 );
             }
@@ -2935,7 +2926,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(queried),
+                    expressions.item(queried),
                     project_fn_graph,
                 );
             }
@@ -2966,7 +2957,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.item(result),
                     project_fn_graph,
                 );
             }
@@ -3293,7 +3284,7 @@ fn project_type_alias_check<Types>(
                         errors.push(ErrorNode {
                             range: name_range(with_start_position_as_ref(project_type.name)),
                             message: Box::from(
-                                "When declaring a type without parameters, its name needs to start with a lowercase letter. Only generic types (e.g. Buf _origin, _element) have an uppercase name",
+                                "When declaring a type without parameters, its name needs to start with a lowercase letter. Only generic types (e.g. Buf _origin, _item) have an uppercase name",
                             ),
                         });
                         vec![]
@@ -3315,7 +3306,7 @@ fn project_type_alias_check<Types>(
                                 )
                             }),
                             actually_used_type_variables,
-                            "Type parameter variables follow after the name and are separated by commas, so for example ty Buf _origin, _element",
+                            "Type parameter variables follow after the name and are separated by commas, so for example ty Buf _origin, _item",
                         )
                     };
                     CheckedTypeAlias {
@@ -3755,7 +3746,7 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
             closed_paren_start: _,
         } => match inner {
             None => None,
-            Some(inner) => syntax_type_to_type(types.element(inner), type_aliases, types, origins),
+            Some(inner) => syntax_type_to_type(types.item(inner), type_aliases, types, origins),
         },
         SyntaxType::ConstructWithoutArguments(name) => {
             if origins.contains_key(&name.value) {
@@ -3776,7 +3767,7 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
             } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
                 let argument_types = argument0
                     .iter()
-                    .map(|argument0| types.element(argument0))
+                    .map(|argument0| types.item(argument0))
                     .chain(
                         argument1_up
                             .iter()
@@ -3801,7 +3792,7 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
                 return None;
             };
             let mut field_types: Vec<TypeField> = Vec::with_capacity(1 + field1_up.len());
-            match syntax_type_to_type(types.element(field0_value), type_aliases, types, origins) {
+            match syntax_type_to_type(types.item(field0_value), type_aliases, types, origins) {
                 None => {}
                 Some(field0_value_type) => {
                     field_types.push(TypeField {
@@ -3839,7 +3830,7 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
                 return None;
             };
             let mut variant_types: Vec<TypeVariant> = Vec::with_capacity(1 + variant1_up.len());
-            match syntax_type_to_type(types.element(variant0_value), type_aliases, types, origins) {
+            match syntax_type_to_type(types.item(variant0_value), type_aliases, types, origins) {
                 None => {}
                 Some(variant_value_type) => {
                     variant_types.push(TypeVariant {
@@ -3901,7 +3892,7 @@ pub fn syntax_type_check<Types>(
                 None
             }
             Some(inner) => syntax_type_check(
-                types.element(inner),
+                types.item(inner),
                 errors,
                 type_aliases,
                 types,
@@ -3948,7 +3939,7 @@ pub fn syntax_type_check<Types>(
             } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
                 let argument_types = argument0
                     .iter()
-                    .map(|argument0| types.element(argument0))
+                    .map(|argument0| types.item(argument0))
                     .chain(
                         argument1_up
                             .iter()
@@ -4023,7 +4014,7 @@ pub fn syntax_type_check<Types>(
             let mut field_types: Vec<TypeField> = Vec::with_capacity(1 + field1_up.len());
             let mut any_field_value_has_error: bool = false;
             match syntax_type_check(
-                types.element(field0_value),
+                types.item(field0_value),
                 errors,
                 type_aliases,
                 types,
@@ -4116,7 +4107,7 @@ pub fn syntax_type_check<Types>(
             let mut variant_types: Vec<TypeVariant> = Vec::with_capacity(1 + variant1_up.len());
             let mut any_variant_value_has_error: bool = false;
             match syntax_type_check(
-                types.element(variant0_value),
+                types.item(variant0_value),
                 errors,
                 type_aliases,
                 types,
@@ -4993,7 +4984,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         return None;
                     };
                     let Some(checked_value) = syntax_pattern_check(
-                        patterns.element(value),
+                        patterns.item(value),
                         None,
                         errors,
                         introduced_variables,
@@ -5059,7 +5050,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         });
                         return None;
                     };
-                    let value = patterns.element(value);
+                    let value = patterns.item(value);
                     let Some(checked_value) = syntax_pattern_check(
                         value,
                         Some(expected_value_type),
@@ -5197,7 +5188,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                             }
                         };
                         let Some(checked_field_value) = syntax_pattern_check(
-                            patterns.element(value),
+                            patterns.item(value),
                             maybe_expected_type_field_value,
                             errors,
                             introduced_variables,
@@ -5237,7 +5228,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                             return None;
                         };
                         let Some(checked_record) = syntax_pattern_check(
-                            patterns.element(record),
+                            patterns.item(record),
                             None,
                             errors,
                             introduced_variables,
@@ -5331,7 +5322,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                 None
             }
             Some(inner) => syntax_pattern_check(
-                patterns.element(inner),
+                patterns.item(inner),
                 expected_type,
                 errors,
                 introduced_variables,
@@ -5433,7 +5424,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         return None;
                     };
                     let Some(compiled_value) = syntax_pattern_to_rust(
-                        patterns.element(value),
+                        patterns.item(value),
                         None,
                         introduced_variables,
                         type_aliases,
@@ -5476,7 +5467,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                     let Some(value) = value else {
                         return None;
                     };
-                    let value = patterns.element(value);
+                    let value = patterns.item(value);
                     let Some(compiled_value) = syntax_pattern_to_rust(
                         value,
                         Some(expected_value_type),
@@ -5534,7 +5525,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                                 Type::Record(type_fields) => Some(type_fields),
                             });
                         let compiled_field_value = syntax_pattern_to_rust(
-                            patterns.element(value),
+                            patterns.item(value),
                             maybe_expected_type_record.and_then(|expected_record_type| {
                                 expected_record_type
                                     .iter()
@@ -5575,7 +5566,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                             return None;
                         };
                         let Some(compiled_record) = syntax_pattern_to_rust(
-                            patterns.element(record),
+                            patterns.item(record),
                             None,
                             introduced_variables,
                             type_aliases,
@@ -5678,7 +5669,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
         } => match inner {
             None => None,
             Some(inner) => syntax_pattern_to_rust(
-                patterns.element(inner),
+                patterns.item(inner),
                 expected_type,
                 introduced_variables,
                 type_aliases,
@@ -5952,7 +5943,7 @@ fn syntax_pattern_to_zig_matches_condition<'a, Patterns, Types>(
                 output.push_str(" => true, else => false } and ");
                 syntax_pattern_to_zig_matches_condition(
                     output,
-                    patterns.element(value),
+                    patterns.item(value),
                     &format!("{to_match}.{}", name_to_lowercase_zig(name)),
                     patterns,
                 );
@@ -5970,7 +5961,7 @@ fn syntax_pattern_to_zig_matches_condition<'a, Patterns, Types>(
                         {
                             syntax_pattern_to_zig_matches_condition(
                                 output,
-                                patterns.element(value),
+                                patterns.item(value),
                                 &format!("{to_match}.{}", name_to_lowercase_zig(name)),
                                 patterns,
                             );
@@ -5984,7 +5975,7 @@ fn syntax_pattern_to_zig_matches_condition<'a, Patterns, Types>(
                         if let Some(record) = record {
                             syntax_pattern_to_zig_matches_condition(
                                 output,
-                                patterns.element(record),
+                                patterns.item(record),
                                 to_match,
                                 patterns,
                             );
@@ -6003,7 +5994,7 @@ fn syntax_pattern_to_zig_matches_condition<'a, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_to_zig_matches_condition(
                     output,
-                    patterns.element(inner),
+                    patterns.item(inner),
                     to_match,
                     patterns,
                 );
@@ -6038,7 +6029,7 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
             {
                 syntax_pattern_to_zig_destructuring(
                     output,
-                    patterns.element(value),
+                    patterns.item(value),
                     &format!("{to_destructure}.{}", name_to_lowercase_zig(name)),
                     introduced_variables,
                     type_aliases,
@@ -6062,7 +6053,7 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
                         {
                             syntax_pattern_to_zig_destructuring(
                                 output,
-                                patterns.element(value),
+                                patterns.item(value),
                                 &format!("{to_destructure}.{}", name_to_lowercase_zig(name)),
                                 introduced_variables,
                                 type_aliases,
@@ -6079,7 +6070,7 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
                         let Some(record) = record else {
                             return;
                         };
-                        let record = patterns.element(record);
+                        let record = patterns.item(record);
                         let Some(record_spread_field_names) =
                             checked_spread_records.get(dot_dot_start)
                         else {
@@ -6134,7 +6125,7 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_to_zig_destructuring(
                     output,
-                    patterns.element(inner),
+                    patterns.item(inner),
                     to_destructure,
                     introduced_variables,
                     type_aliases,
@@ -6372,7 +6363,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         pattern_variables,
                         origins,
-                        expressions.element(argument),
+                        expressions.item(argument),
                         function_scope_start,
                         ZigReturnContext::Expression,
                     );
@@ -6431,7 +6422,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         pattern_variables,
                         origins,
-                        expressions.element(value),
+                        expressions.item(value),
                         function_scope_start,
                         ZigReturnContext::Expression,
                     );
@@ -6509,7 +6500,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         &mut parameter_introduced_variables,
                         origins,
-                        expressions.element(result),
+                        expressions.item(result),
                         function_scope_start,
                         ZigReturnContext::Expression,
                     );
@@ -6580,7 +6571,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                     checked_spread_records,
                                     pattern_variables,
                                     origins,
-                                    expressions.element(record),
+                                    expressions.item(record),
                                     function_scope_start,
                                     ZigReturnContext::Expression,
                                 );
@@ -6651,7 +6642,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                     checked_spread_records,
                                     pattern_variables,
                                     origins,
-                                    expressions.element(value),
+                                    expressions.item(value),
                                     function_scope_start,
                                     ZigReturnContext::Expression,
                                 );
@@ -6686,10 +6677,10 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            let Some(element0) = element0 else {
+            let Some(item0) = item0 else {
                 zig_incomplete_expression(output);
                 return;
             };
@@ -6698,11 +6689,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             }
             // does this tuple always coerce?
             output.push_str(".{");
-            for element in std::iter::once(expressions.element(element0)).chain(
-                element1_up
-                    .iter()
-                    .filter_map(|element| element.element.as_ref()),
-            ) {
+            for item in std::iter::once(expressions.item(item0))
+                .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
+            {
                 syntax_expression_to_zig(
                     output,
                     type_aliases,
@@ -6716,7 +6705,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     checked_spread_records,
                     pattern_variables,
                     origins,
-                    element,
+                    item,
                     function_scope_start,
                     ZigReturnContext::Expression,
                 );
@@ -6749,7 +6738,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     checked_spread_records,
                     pattern_variables,
                     origins,
-                    expressions.element(inner),
+                    expressions.item(inner),
                     function_scope_start,
                     return_context,
                 );
@@ -6782,7 +6771,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         pattern_variables,
                         origins,
-                        expressions.element(expression),
+                        expressions.item(expression),
                         function_scope_start,
                         return_context,
                     );
@@ -6836,7 +6825,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         pattern_variables,
                         origins,
-                        expressions.element(queried),
+                        expressions.item(queried),
                         function_scope_start,
                         ZigReturnContext::Expression,
                     );
@@ -6978,7 +6967,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         pattern_variables,
                         origins,
-                        expressions.element(result),
+                        expressions.item(result),
                         function_scope_start,
                         ZigReturnContext::StatementsFollowedByBreak(label),
                     );
@@ -7453,7 +7442,7 @@ fn syntax_pattern_to_js_matches_condition<'a, Patterns, Types>(
                 output.push_str(" && ");
                 syntax_pattern_to_js_matches_condition(
                     output,
-                    patterns.element(value),
+                    patterns.item(value),
                     &format!("{to_match}.{}", name_to_lowercase_js(name)),
                     patterns,
                 );
@@ -7471,7 +7460,7 @@ fn syntax_pattern_to_js_matches_condition<'a, Patterns, Types>(
                         {
                             syntax_pattern_to_js_matches_condition(
                                 output,
-                                patterns.element(value),
+                                patterns.item(value),
                                 &format!("{to_match}.{}", name_to_lowercase_js(name)),
                                 patterns,
                             );
@@ -7485,7 +7474,7 @@ fn syntax_pattern_to_js_matches_condition<'a, Patterns, Types>(
                         if let Some(record) = record {
                             syntax_pattern_to_js_matches_condition(
                                 output,
-                                patterns.element(record),
+                                patterns.item(record),
                                 to_match,
                                 patterns,
                             );
@@ -7504,7 +7493,7 @@ fn syntax_pattern_to_js_matches_condition<'a, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_to_js_matches_condition(
                     output,
-                    patterns.element(inner),
+                    patterns.item(inner),
                     to_match,
                     patterns,
                 );
@@ -7537,7 +7526,7 @@ fn syntax_pattern_to_js_destructuring<'a, Patterns, Types>(
             {
                 syntax_pattern_to_js_destructuring(
                     output,
-                    patterns.element(value),
+                    patterns.item(value),
                     &format!("{to_destructure}.{}", name_to_lowercase_js(name)),
                     introduced_variables,
                     type_aliases,
@@ -7560,7 +7549,7 @@ fn syntax_pattern_to_js_destructuring<'a, Patterns, Types>(
                         {
                             syntax_pattern_to_js_destructuring(
                                 output,
-                                patterns.element(value),
+                                patterns.item(value),
                                 &format!("{to_destructure}.{}", name_to_lowercase_js(name)),
                                 introduced_variables,
                                 type_aliases,
@@ -7577,7 +7566,7 @@ fn syntax_pattern_to_js_destructuring<'a, Patterns, Types>(
                         let Some(record) = record else {
                             return;
                         };
-                        let record = patterns.element(record);
+                        let record = patterns.item(record);
                         let Some(record_spread_field_names) =
                             checked_spread_records.get(dot_dot_start)
                         else {
@@ -7630,7 +7619,7 @@ fn syntax_pattern_to_js_destructuring<'a, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_to_js_destructuring(
                     output,
-                    patterns.element(inner),
+                    patterns.item(inner),
                     to_destructure,
                     introduced_variables,
                     type_aliases,
@@ -7768,7 +7757,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 js_incomplete_statement();
                 return;
             };
-            let argument = expressions.element(argument);
+            let argument = expressions.item(argument);
             let argument_scope_start = expression_start(argument);
             output.push_str("let ");
             js_scope_result_variable(output, argument_scope_start);
@@ -7810,7 +7799,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 js_incomplete_statement();
                 return;
             };
-            let value = expressions.element(value);
+            let value = expressions.item(value);
             let value_scope_start = expression_start(value);
             output.push_str("let ");
             js_scope_result_variable(output, value_scope_start);
@@ -7866,7 +7855,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                     js_incomplete_statement();
                     break 'in_function;
                 };
-                let result = expressions.element(result);
+                let result = expressions.item(result);
                 let result_scope_start = expression_start(result);
                 output.push_str("let ");
                 js_scope_result_variable(output, result_scope_start);
@@ -7903,7 +7892,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 match part {
                     SyntaxRecordPart::Field { name: _, value } => {
                         if let Some(value) = value {
-                            let value = expressions.element(value);
+                            let value = expressions.item(value);
                             output.push_str("let ");
                             js_scope_result_variable(output, expression_start(value));
                             output.push_str(";\n");
@@ -7930,7 +7919,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         record,
                     } => {
                         if let Some(record) = record {
-                            let record = expressions.element(record);
+                            let record = expressions.item(record);
                             output.push_str("let ");
                             js_scope_result_variable(output, expression_start(record));
                             output.push_str(";\n");
@@ -7966,7 +7955,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                             output.push_str(": ");
                             js_scope_result_variable(
                                 output,
-                                expression_start(expressions.element(value)),
+                                expression_start(expressions.item(value)),
                             );
                             output.push_str(", ");
                         }
@@ -7978,7 +7967,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         if let Some(spread_field_names) = checked_spread_records.get(dot_dot_start)
                             && let Some(record) = record
                         {
-                            let record_scope_start = expression_start(expressions.element(record));
+                            let record_scope_start = expression_start(expressions.item(record));
                             for spread_field_name in spread_field_names {
                                 let js_field_name = name_to_lowercase_js(spread_field_name);
                                 output.push_str(&js_field_name);
@@ -7996,20 +7985,18 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            let Some(element0) = element0 else {
+            let Some(item0) = item0 else {
                 js_incomplete_statement();
                 return;
             };
-            for element in std::iter::once(expressions.element(element0)).chain(
-                element1_up
-                    .iter()
-                    .filter_map(|element| element.element.as_ref()),
-            ) {
+            for item in std::iter::once(expressions.item(item0))
+                .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
+            {
                 output.push_str("let ");
-                js_scope_result_variable(output, expression_start(element));
+                js_scope_result_variable(output, expression_start(item));
                 output.push_str(";\n");
                 syntax_expression_to_js(
                     output,
@@ -8024,18 +8011,16 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                     checked_spread_records,
                     pattern_variables,
                     origins,
-                    element,
-                    expression_start(element),
+                    item,
+                    expression_start(item),
                 );
             }
             js_scope_result_variable(output, scope_start);
             output.push_str(" = [ ");
-            for element in std::iter::once(expressions.element(element0)).chain(
-                element1_up
-                    .iter()
-                    .filter_map(|element| element.element.as_ref()),
-            ) {
-                js_scope_result_variable(output, expression_start(element));
+            for item in std::iter::once(expressions.item(item0))
+                .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
+            {
+                js_scope_result_variable(output, expression_start(item));
                 output.push_str(", ");
             }
             output.push_str(" ];\n");
@@ -8062,7 +8047,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                     checked_spread_records,
                     pattern_variables,
                     origins,
-                    expressions.element(inner),
+                    expressions.item(inner),
                     scope_start,
                 );
             }
@@ -8094,7 +8079,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         pattern_variables,
                         origins,
-                        expressions.element(expression),
+                        expressions.item(expression),
                         scope_start,
                     );
                 }
@@ -8113,7 +8098,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 js_incomplete_statement();
                 return;
             };
-            let queried = expressions.element(queried);
+            let queried = expressions.item(queried);
             let queried_scope_start = expression_start(queried);
             let queried_variable_name = {
                 let mut queried_variable_name = String::new();
@@ -8238,7 +8223,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         pattern_variables,
                         origins,
-                        expressions.element(result),
+                        expressions.item(result),
                         scope_start,
                     );
                 }
@@ -8659,7 +8644,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     });
                 return None;
             };
-            let syntax_argument = expressions.element(syntax_argument);
+            let syntax_argument = expressions.item(syntax_argument);
             let Some(checked_argument_type) = syntax_expression_check(
                 errors,
                 type_aliases,
@@ -8845,7 +8830,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            let value = expressions.element(value);
+            let value = expressions.item(value);
             let Some(checked_value_type) = syntax_expression_check(
                 errors,
                 type_aliases,
@@ -8928,7 +8913,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 &mut parameter_introduced_variables,
                 origins,
                 &mut result_used_origin_variables,
-                expressions.element(result),
+                expressions.item(result),
                 checked_calls,
                 checked_local_fns,
                 checked_queries,
@@ -9006,7 +8991,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                                 pattern_variables,
                                 origins,
                                 used_origin_variables,
-                                expressions.element(field_value),
+                                expressions.item(field_value),
                                 checked_calls,
                                 checked_local_fns,
                                 checked_queries,
@@ -9052,7 +9037,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             pattern_variables,
                             origins,
                             used_origin_variables,
-                            expressions.element(record),
+                            expressions.item(record),
                             checked_calls,
                             checked_local_fns,
                             checked_queries,
@@ -9122,17 +9107,17 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            let Some(element0) = element0 else {
+            let Some(item0) = item0 else {
                 errors.push(ErrorNode {
                     range: symbol_range(*semicolon_start, ";"),
                     message: Box::from("missing expression after array start ;. An example of an array is ; first ; second ; third"),
                 });
                 return None;
             };
-            let Some(checked_element0) = syntax_expression_check(
+            let Some(checked_item0) = syntax_expression_check(
                 errors,
                 type_aliases,
                 project_fns,
@@ -9142,7 +9127,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 pattern_variables,
                 origins,
                 used_origin_variables,
-                expressions.element(element0),
+                expressions.item(item0),
                 checked_calls,
                 checked_local_fns,
                 checked_queries,
@@ -9154,18 +9139,17 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             };
             let mut type_fields = vec![TypeField {
                 name: array_record_field_name_for_index0,
-                value: checked_element0.clone(),
+                value: checked_item0.clone(),
             }];
-            for (element_index, element) in element1_up.iter().enumerate().map(|(i, e)| (i + 1, e))
-            {
-                let Some(element) = &element.element else {
+            for (item_index, item) in item1_up.iter().enumerate().map(|(i, it)| (i + 1, it)) {
+                let Some(item) = &item.item else {
                     errors.push(ErrorNode {
-                        range: symbol_range(element.semicolon_start, ";"),
+                        range: symbol_range(item.semicolon_start, ";"),
                         message: Box::from("missing expression after ; in array. An example of an array is ; first ; second ; third"),
                     });
                     return None;
                 };
-                let Some(checked_element) = syntax_expression_check(
+                let Some(checked_item) = syntax_expression_check(
                     errors,
                     type_aliases,
                     project_fns,
@@ -9175,7 +9159,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     pattern_variables,
                     origins,
                     used_origin_variables,
-                    element,
+                    item,
                     checked_calls,
                     checked_local_fns,
                     checked_queries,
@@ -9185,16 +9169,16 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 ) else {
                     return None;
                 };
-                if let Some(type_diff) = type_diff(&checked_element0, &checked_element) {
+                if let Some(type_diff) = type_diff(&checked_item0, &checked_item) {
                     errors.push(ErrorNode {
-                        range: expression_range(element, expressions, patterns, types),
+                        range: expression_range(item, expressions, patterns, types),
                         message: type_diff_error_message(&type_diff).into_boxed_str(),
                     });
                     return None;
                 }
                 type_fields.push(TypeField {
-                    name: array_record_field_name_for_index(element_index),
-                    value: checked_element,
+                    name: array_record_field_name_for_index(item_index),
+                    value: checked_item,
                 });
             }
             records_used.insert(
@@ -9203,7 +9187,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     .map(|type_field| type_field.name.clone())
                     .collect::<Vec<_>>(),
             );
-            Some(type_array(checked_element0, Type::Record(type_fields)))
+            Some(type_array(checked_item0, Type::Record(type_fields)))
         }
         SyntaxExpression::Parenthesized {
             open_paren_start,
@@ -9232,7 +9216,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 pattern_variables,
                 origins,
                 used_origin_variables,
-                expressions.element(inner),
+                expressions.item(inner),
                 checked_calls,
                 checked_local_fns,
                 checked_queries,
@@ -9267,7 +9251,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 pattern_variables,
                 origins,
                 used_origin_variables,
-                expressions.element(expression),
+                expressions.item(expression),
                 checked_calls,
                 checked_local_fns,
                 checked_queries,
@@ -9288,7 +9272,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 });
                 return None;
             };
-            let queried = expressions.element(queried);
+            let queried = expressions.item(queried);
             let Some((case0, case1_up)) = cases.split_first() else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
@@ -9725,7 +9709,7 @@ If you do not need to use this variable in that case, just use any of the -rid f
                 pattern_variables,
                 origins,
                 used_origin_variables,
-                expressions.element(result),
+                expressions.item(result),
                 checked_calls,
                 checked_local_fns,
                 checked_queries,
@@ -9966,7 +9950,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 match syntax_argument {
                     None => rust_reference,
                     Some(syntax_argument) => {
-                        let syntax_argument = expressions.element(syntax_argument);
+                        let syntax_argument = expressions.item(syntax_argument);
                         let compiled_argument: syn::Expr = syntax_expression_to_rust(
                             type_aliases,
                             project_fns,
@@ -10033,7 +10017,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 match syntax_argument {
                     None => rust_reference,
                     Some(syntax_argument) => {
-                        let syntax_argument = expressions.element(syntax_argument);
+                        let syntax_argument = expressions.item(syntax_argument);
                         let compiled_argument: syn::Expr = syntax_expression_to_rust(
                             type_aliases,
                             project_fns,
@@ -10085,7 +10069,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(value) = value else {
                 return syn_expr_todo();
             };
-            let value = expressions.element(value);
+            let value = expressions.item(value);
             let compiled_value_rust = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
@@ -10159,7 +10143,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_spread_records,
                 &mut parameter_introduced_variables,
                 origins,
-                expressions.element(result),
+                expressions.item(result),
             );
             let mut type_variables = std::collections::BTreeSet::new();
             type_variables_into(&mut type_variables, &checked_local_fn.parameter_type);
@@ -10286,7 +10270,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 checked_spread_records,
                                 pattern_variables,
                                 origins,
-                                expressions.element(field_value),
+                                expressions.item(field_value),
                             ),
                         };
                         rust_field_names.push(field_name);
@@ -10320,7 +10304,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             checked_spread_records,
                             pattern_variables,
                             origins,
-                            expressions.element(record),
+                            expressions.item(record),
                         );
                         // potential improvement for readability:
                         // if the record value itself is a variable
@@ -10393,53 +10377,49 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
             let array_record = syn::Expr::Struct(syn::ExprStruct {
                 attrs: vec![],
                 qself: None,
                 path: syn_path_reference([&field_name_cows_to_rust_record_struct_name(
-                    (0..(1 + element1_up.len()))
+                    (0..(1 + item1_up.len()))
                         .map(|i| std::borrow::Cow::Owned(array_record_field_name_for_index(i))),
                 )]),
                 brace_token: syn::token::Brace(syn_span()),
-                fields: std::iter::once(
-                    element0
-                        .as_ref()
-                        .map(|element0| expressions.element(element0)),
-                )
-                .chain(element1_up.iter().map(|element| element.element.as_ref()))
-                .enumerate()
-                .map(|(element_index, element)| syn::FieldValue {
-                    attrs: vec![],
-                    member: syn::Member::Named(syn_ident(&array_record_field_name_for_index(
-                        element_index,
-                    ))),
-                    colon_token: Some(syn::token::Colon(syn_span())),
-                    expr: match element {
-                        None => syn_expr_todo(),
-                        Some(element) => syntax_expression_to_rust(
-                            type_aliases,
-                            project_fns,
-                            expressions,
-                            patterns,
-                            types,
-                            checked_local_fns,
-                            checked_queries,
-                            checked_spread_records,
-                            pattern_variables,
-                            origins,
-                            element,
-                        ),
-                    },
-                })
-                .collect(),
+                fields: std::iter::once(item0.as_ref().map(|item0| expressions.item(item0)))
+                    .chain(item1_up.iter().map(|item| item.item.as_ref()))
+                    .enumerate()
+                    .map(|(item_index, item)| syn::FieldValue {
+                        attrs: vec![],
+                        member: syn::Member::Named(syn_ident(&array_record_field_name_for_index(
+                            item_index,
+                        ))),
+                        colon_token: Some(syn::token::Colon(syn_span())),
+                        expr: match item {
+                            None => syn_expr_todo(),
+                            Some(item) => syntax_expression_to_rust(
+                                type_aliases,
+                                project_fns,
+                                expressions,
+                                patterns,
+                                types,
+                                checked_local_fns,
+                                checked_queries,
+                                checked_spread_records,
+                                pattern_variables,
+                                origins,
+                                item,
+                            ),
+                        },
+                    })
+                    .collect(),
                 dot2_token: None,
                 rest: None,
             });
             let array_record_struct_name = field_name_cows_to_rust_record_struct_name(
-                (0..(1 + element1_up.len()))
+                (0..(1 + item1_up.len()))
                     .map(|i| std::borrow::Cow::Owned(array_record_field_name_for_index(i))),
             );
             const split_last_and_extend_vec_with_before_local_function_name: &str =
@@ -10469,7 +10449,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                         params: std::iter::once(syn::GenericParam::Type(
                                             syn::TypeParam {
                                                 attrs: vec![],
-                                                ident: syn_ident("Element"),
+                                                ident: syn_ident("item"),
                                                 colon_token: None,
                                                 bounds: syn::punctuated::Punctuated::new(),
                                                 default: None,
@@ -10503,7 +10483,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                         [syn_type_construct(
                                                             ["std", "mem"],
                                                             "MaybeUninit",
-                                                            [syn_type_variable("Element")],
+                                                            [syn_type_variable("item")],
                                                         )],
                                                     )),
                                                 },
@@ -10523,9 +10503,9 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                 [],
                                                 &array_record_struct_name,
                                                 std::iter::repeat_with(|| {
-                                                    syn_type_variable("Element")
+                                                    syn_type_variable("item")
                                                 })
-                                                .take(1 + element1_up.len()),
+                                                .take(1 + item1_up.len()),
                                             )),
                                         }),
                                     ]
@@ -10534,13 +10514,13 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                     variadic: None,
                                     output: syn::ReturnType::Type(
                                         syn::token::RArrow(syn_span()),
-                                        Box::new(syn_type_variable("Element")),
+                                        Box::new(syn_type_variable("item")),
                                     ),
                                 },
                                 block: Box::new(syn::Block {
                                     brace_token: syn::token::Brace(syn_span()),
-                                    stmts: (0..element1_up.len())
-                                        .map(|element_index| {
+                                    stmts: (0..item1_up.len())
+                                        .map(|item_index| {
                                             let array_record_field_value =
                                                 syn::Expr::Field(syn::ExprField {
                                                     attrs: vec![],
@@ -10548,7 +10528,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                     dot_token: syn::token::Dot(syn_span()),
                                                     member: syn::Member::Named(syn_ident(
                                                         &array_record_field_name_for_index(
-                                                            element_index,
+                                                            item_index,
                                                         ),
                                                     )),
                                                 });
@@ -10590,7 +10570,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                 dot_token: syn::token::Dot(syn_span()),
                                                 member: syn::Member::Named(syn_ident(
                                                     &array_record_field_name_for_index(
-                                                        element1_up.len(),
+                                                        item1_up.len(),
                                                     ),
                                                 )),
                                             }),
@@ -10654,7 +10634,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_spread_records,
                 pattern_variables,
                 origins,
-                expressions.element(inner),
+                expressions.item(inner),
             ),
         },
         SyntaxExpression::Commented {
@@ -10673,7 +10653,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_spread_records,
                 pattern_variables,
                 origins,
-                expressions.element(expression),
+                expressions.item(expression),
             ),
         },
         SyntaxExpression::Query {
@@ -10687,7 +10667,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(queried) = queried else {
                 return syn_expr_todo();
             };
-            let queried = expressions.element(queried);
+            let queried = expressions.item(queried);
             if cases.is_empty() {
                 return syn_expr_todo();
             };
@@ -10870,7 +10850,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_spread_records,
                 pattern_variables,
                 origins,
-                expressions.element(result),
+                expressions.item(result),
             );
             let local_origin_rust_name = name_to_uppercase_rust(origin_name.value.as_str());
             let mut rust_statements = Vec::new();
@@ -11076,7 +11056,7 @@ pub fn syntax_type_variables_into<'a, Types>(
             argument1_up,
         } => {
             if let Some(argument0) = argument0 {
-                syntax_type_variables_into(type_variables, types.element(argument0), types);
+                syntax_type_variables_into(type_variables, types.item(argument0), types);
             }
             for argument in argument1_up {
                 if let Some(argument_type) = &argument.type_ {
@@ -11090,7 +11070,7 @@ pub fn syntax_type_variables_into<'a, Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                syntax_type_variables_into(type_variables, types.element(inner), types);
+                syntax_type_variables_into(type_variables, types.item(inner), types);
             }
         }
         SyntaxType::RecordEmpty { dot_start: _ } => {}
@@ -11100,7 +11080,7 @@ pub fn syntax_type_variables_into<'a, Types>(
             field1_up,
         } => {
             if let Some(field0_value) = field0_value {
-                syntax_type_variables_into(type_variables, types.element(field0_value), types);
+                syntax_type_variables_into(type_variables, types.item(field0_value), types);
             }
             for field in field1_up {
                 if let Some(value) = &field.value {
@@ -11115,7 +11095,7 @@ pub fn syntax_type_variables_into<'a, Types>(
             variant1_up,
         } => {
             if let Some(variant0_value) = variant0_value {
-                syntax_type_variables_into(type_variables, types.element(variant0_value), types);
+                syntax_type_variables_into(type_variables, types.item(variant0_value), types);
             }
             for variant in variant1_up {
                 if let Some(value) = &variant.value {
@@ -11141,7 +11121,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
             if let Some(value) = value {
                 syntax_pattern_type_variables_into(
                     type_variables,
-                    patterns.element(value),
+                    patterns.item(value),
                     patterns,
                     types,
                 );
@@ -11155,7 +11135,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
                         if let Some(value) = value {
                             syntax_pattern_type_variables_into(
                                 type_variables,
-                                patterns.element(value),
+                                patterns.item(value),
                                 patterns,
                                 types,
                             );
@@ -11168,7 +11148,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
                         if let Some(record) = record {
                             syntax_pattern_type_variables_into(
                                 type_variables,
-                                patterns.element(record),
+                                patterns.item(record),
                                 patterns,
                                 types,
                             );
@@ -11185,7 +11165,7 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_type_variables_into(
                     type_variables,
-                    patterns.element(inner),
+                    patterns.item(inner),
                     patterns,
                     types,
                 );
@@ -11819,9 +11799,9 @@ fn variant_names_to_rust_enum_name<'a>(field_names: impl Iterator<Item = &'a Nam
         })
 }
 const array_record_field_name_for_index0: Name = Name::from_static("el0");
-fn array_record_field_name_for_index(element_index: usize) -> Name {
+fn array_record_field_name_for_index(item_index: usize) -> Name {
     // there must be something faster
-    Name::from_string(format!("el{}", element_index))
+    Name::from_string(format!("el{}", item_index))
 }
 fn syn_span() -> proc_macro2::Span {
     proc_macro2::Span::call_site()
@@ -12046,16 +12026,16 @@ fn type_origin_uneraser(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
-fn type_buf(origin: Type, element: Type) -> Type {
+fn type_buf(origin: Type, item: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Buf"),
-        arguments: vec![origin, element],
+        arguments: vec![origin, item],
     }
 }
-fn type_buf_origin_erased(part: Type, element: Type) -> Type {
+fn type_buf_origin_erased(part: Type, item: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Buf-origin-erased"),
-        arguments: vec![part, element],
+        arguments: vec![part, item],
     }
 }
 fn type_slot(origin: Type) -> Type {
@@ -12082,16 +12062,16 @@ fn type_unset_span(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
-fn type_array(element: Type, record: Type) -> Type {
+fn type_array(item: Type, record: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Array"),
-        arguments: vec![element, record],
+        arguments: vec![item, record],
     }
 }
-fn type_unset_slice(element: Type) -> Type {
+fn type_unset_slice(item: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Unset-slice"),
-        arguments: vec![element],
+        arguments: vec![item],
     }
 }
 struct CoreFnInfo {
@@ -13294,52 +13274,52 @@ See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
             },
             CoreFnInfo {
                 name: "Buf-empty",
-                documentation: "Initialize a `Buf` with 0 elements.
+                documentation: "Initialize a `Buf` with 0 items and no pre-allocated space.
 Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-array`, `Buf-add-unset` etc.",
-                type_parameters: vec![Name::from_static("element")],
+                type_parameters: vec![Name::from_static("item")],
                 parameter_type: type_origin(type_variable("origin"), type_variable("part")),
                 result_type: type_buf(
                     type_origin(type_variable("origin"), type_variable("part")),
-                    type_variable("element")
+                    type_variable("item")
                 ),
             },
             CoreFnInfo {
                 name: "Buf-reuse",
-                documentation: "Initialize a `Buf` with 0 elements and spare allocated memory from an `Unset-slice`.
+                documentation: "Initialize a `Buf` with 0 items and spare allocated memory from an `Unset-slice`.
 This can be used to recycle `Buf` memory from one `Buf` with one origin into another `Buf` with a different origin.
 ```sloe
 fn Buf-recycle-empty
     .new-origin new-origin Origin _new-origin, _new-part
-    .old old Buf _old-origin, _element
-    : Buf (Origin _new-origin, _new-part), _element =
+    .old old Buf _old-origin, _item
+    : Buf (Origin _new-origin, _new-part), _item =
     ? Buf-to-unset old [unset-slice]
     Buf-reuse .origin new-origin .slice unset-slice
 ```",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("origin", type_origin(type_variable("origin"), type_variable("part"))),
-                    ("slice", type_unset_slice(type_variable("element"))),
+                    ("slice", type_unset_slice(type_variable("item"))),
                 ]),
                 result_type: type_buf(
                     type_origin(type_variable("origin"), type_variable("part")),
-                    type_variable("element")
+                    type_variable("item")
                 ),
             },
             CoreFnInfo {
                 name: "Buf-pre-allocate-at-least",
-                documentation: "Reserves spare capacity for at least `.length` more elements to be added.
+                documentation: "Reserves spare capacity for at least `.length` more items to be added.
 This can prevent frequent re-allocation of the underlying array.
-If you can guesstimate a lower bound of how many elements are ultimately added, this is always worth it!
+If you can guesstimate a lower bound of how many items are ultimately added, this is always worth it!
 Equivalent to `Buf-add-unset-length` followed by `Buf-opt-unset-span-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("length", type_u32),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-pre-allocation-rid",
@@ -13348,26 +13328,26 @@ Some allocators may scrap and re-allocate the whole `Buf` as a result.
 It's rarely useful but can reuce idle memory usage for `Buf`s that are very unlikely to be added to in the future.
 You may also use it to adjust memory usage after `Buf-reuse` when the given `Unset-slice` was large",
                 type_parameters: vec![],
-                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("item")),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-insert",
-                documentation: "Add a new element into the `Buf` and keep a slot to it,
+                documentation: "Add a new item into the `Buf` and keep a slot to it,
 reusing vacant space earlier in the `Buf` when available.
 Use `Buf-add` if you don't care about reuse.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
-                    ("new", type_variable("element")),
+                    ("new", type_variable("item")),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
@@ -13375,35 +13355,35 @@ Use `Buf-add` if you don't care about reuse.",
             CoreFnInfo {
                 name: "Buf-insert-unset",
                 documentation: "Like `Buf-insert` but without assigning a value just yet.
-This like initializing an element with undefined memory,
+This like initializing an item with undefined memory,
 with the difference that you can't possibly access it :)
 Assign an unset-slot with `Buf-set` or vacate it with `Buf-vacate`",
                 type_parameters: vec![],
-                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("item")),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-add",
-                documentation: "Add a new element to the end of the `Buf` and keep a slot to it without trying to reuse already vacant slots.
-Can be faster than `Buf-insert` when you expect no vacant elements or when all the storage gets scrapped soon anyway.",
+                documentation: "Add a new item to the end of the `Buf` and keep a slot to it without trying to reuse already vacant slots.
+Can be faster than `Buf-insert` when you expect no vacant items or when all the storage gets scrapped soon anyway.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
-                    ("new", type_variable("element")),
+                    ("new", type_variable("item")),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
@@ -13413,11 +13393,11 @@ Can be faster than `Buf-insert` when you expect no vacant elements or when all t
                 documentation: "Like `Buf-add` but without assigning a value just yet.
 Assign an unset-slot with `Buf-set` or vacate it with `Buf-vacate`",
                 type_parameters: vec![],
-                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("item")),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
@@ -13430,14 +13410,14 @@ Combined with `Buf-unset-span-rid` this has the same effect as `Buf-pre-allocate
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("length", type_p32),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_unset_span(type_variable("origin"))),
                 ]),
@@ -13451,61 +13431,61 @@ To get non-empty spans use `Buf-add-length-positive`",
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("length", type_u32),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-add-array",
-                documentation: "Add a given `Array` of new elements to the end of the `Buf` and keep a span to it without trying to reuse already vacant slots.
+                documentation: "Add a given `Array` of new items to the end of the `Buf` and keep a span to it without trying to reuse already vacant slots.
 Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
-                    ("new", type_array(type_variable("element"), type_variable("record"))),
+                    ("new", type_array(type_variable("item"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-remove",
-                documentation: "Vacate and retrieve an element from the `Buf` at a given slot (the inverse of `Buf-insert`/`Buf-add`).
+                documentation: "Vacate and retrieve an item from the `Buf` at a given slot (the inverse of `Buf-insert`/`Buf-add`).
 Short for `Buf-unset` followed by `Buf-unset-slot-rid`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
-                    ("element", type_variable("element")),
+                    ("item", type_variable("item")),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-unset",
-                documentation: "Retrieve an element from the `Buf` at a given slot (the inverse of `Buf-set`)
+                documentation: "Retrieve an item from the `Buf` at a given slot (the inverse of `Buf-set`)
 ```sloe
 fn Buf-copy-u32-at
     .buf buf Buf _origin, u32
@@ -13513,127 +13493,127 @@ fn Buf-copy-u32-at
     :
     .buf Buf _origin, u32
     .slot Slot _origin
-    .element u32
+    .item u32
     =
     ? Buf-unset .buf buf .slot slot
-    [.buf buf .element element .slot unset-slot]
-    ? U32-dup element [.a element .b element-copied]
-    ? Buf-set .buf buf .slot unset-slot .new element [.buf buf .slot slot]
-    .buf buf .slot slot .element element-copied
+    [.buf buf .item item .slot unset-slot]
+    ? U32-dup item [.a item .b item-copied]
+    ? Buf-set .buf buf .slot unset-slot .new item [.buf buf .slot slot]
+    .buf buf .slot slot .item item-copied
 ```
 A little roundabout but it works.
 You'll most likely want to create a generic helper for this yourself
 ```sloe
-fn Buf-element-dup
-    .buf buf Buf _origin, _element
+fn Buf-item-dup
+    .buf buf Buf _origin, _item
     .slot slot Slot _origin
-    .dup (dup Fn _element, .a _element .b _element)
+    .dup (dup Fn _item, .a _item .b _item)
     :
-    .buf Buf _origin, _element
+    .buf Buf _origin, _item
     .slot Slot _origin
-    .element _element
+    .item _item
     =
-    ? Buf-unset .buf buf .slot slot [.buf buf .slot slot .element element]
-    ? Call .fn dup .in element [.a element .b element-duped]
-    ? Buf-set .buf buf .slot slot .new element [.buf buf .slot slot]
-    .buf buf .slot slot .element element-duped
+    ? Buf-unset .buf buf .slot slot [.buf buf .slot slot .item item]
+    ? Call .fn dup .in item [.a item .b item-duped]
+    ? Buf-set .buf buf .slot slot .new item [.buf buf .slot slot]
+    .buf buf .slot slot .item item-duped
 ```
 You can give back an `Unset-slot` for future reuse by functions like `Buf-insert`
-using `Buf-unset-slot-rid`, or instead directly remove the element entirely with `Buf-remove`",
+using `Buf-unset-slot-rid`, or instead directly remove the item entirely with `Buf-remove`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
-                    ("element", type_variable("element")),
+                    ("item", type_variable("item")),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-set",
-                documentation: "Put an element back into the given `Unset-slot` (the inverse of `Buf-unset`)",
+                documentation: "Put an item back into the given `Unset-slot` (the inverse of `Buf-unset`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
-                    ("new", type_variable("element")),
+                    ("new", type_variable("item")),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-span-unset",
-                documentation: "Mark each element in a given `Span` as \"won't be used anymore\"
+                documentation: "Mark each item in a given `Span` as \"won't be used anymore\"
 and return the now `Unset-span`.
 You can use `Buf-unset-span-rid` to scrap it or switch to `Buf-span-rid` entirely.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
                     ("span", type_span(type_variable("origin"))),
-                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                    ("item-rid", type_fn(type_variable("item"), type_record_empty)),
                 ]),
                 result_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
                     ("span", type_unset_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-unset",
-                documentation: "Mark each element in a given `Opt Span` as \"won't be used anymore\"
+                documentation: "Mark each item in a given `Opt Span` as \"won't be used anymore\"
 and return the now unset `Opt Unset-span`.
 You can use `Buf-opt-unset-span-rid` to scrap it or switch to `Buf-opt-span-rid` entirely.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
                     ("span", type_opt(type_span(type_variable("origin")))),
-                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                    ("item-rid", type_fn(type_variable("item"), type_record_empty)),
                 ]),
                 result_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
                     ("span", type_opt(type_unset_span(type_variable("origin"))))
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-span-rid",
-                documentation: "Mark elements as \"won't be used anymore\"
+                documentation: "Mark items as \"won't be used anymore\"
 and return their `Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.
 Equivalent to `Buf-span-unset` followed by `Buf-unset-span-rid`.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
                     ("span", type_span(type_variable("origin"))),
-                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                    ("item-rid", type_fn(type_variable("item"), type_record_empty)),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-rid",
-                documentation: "Mark elements as \"won't be used anymore\"
+                documentation: "Mark items as \"won't be used anymore\"
 and return their `Opt Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.
 Equivalent to `Buf-opt-span-unset` followed by `Buf-opt-unset-span-rid`.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("element"))),
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
                     ("span", type_opt(type_span(type_variable("origin")))),
-                    ("element-rid", type_fn(type_variable("element"), type_record_empty)),
+                    ("item-rid", type_fn(type_variable("item"), type_record_empty)),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-unset-slot-rid",
@@ -13642,11 +13622,11 @@ Equivalent to `Buf-opt-span-unset` followed by `Buf-opt-unset-span-rid`.",
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_unset_slot(type_variable("origin"))),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-unset-span-rid",
@@ -13655,11 +13635,11 @@ Equivalent to `Buf-opt-span-unset` followed by `Buf-opt-unset-span-rid`.",
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_unset_span(type_variable("origin"))),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-opt-unset-span-rid",
@@ -13668,128 +13648,128 @@ Equivalent to `Buf-opt-span-unset` followed by `Buf-opt-unset-span-rid`.",
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("element")),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-span-reverse",
-                documentation: "Order the referenced elements such that the previously last is now first, second last is second etc.",
+                documentation: "Order the referenced items such that the previously last is now first, second last is second etc.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-reverse",
-                documentation: "Order the referenced elements such that the previously last is now first, second last is second etc.",
+                documentation: "Order the referenced items such that the previously last is now first, second last is second etc.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-add",
-                documentation: "Attach a given element at the end of the span.",
+                documentation: "Attach a given item at the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
-                    ("new", type_variable("element")),
+                    ("new", type_variable("item")),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-span-add",
-                documentation: "Attach a given element at the end of the span",
+                documentation: "Attach a given item at the end of the span",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
-                    ("new", type_variable("element")),
+                    ("new", type_variable("item")),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-span-add-array",
-                documentation: "Attach a given `Array` of elements at the end of the span.
+                documentation: "Attach a given `Array` of items at the end of the span.
 This can remove a bunch of noise compared to chaining `Buf-span-add` operations",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
-                    ("new", type_array(type_variable("element"), type_variable("record"))),
+                    ("new", type_array(type_variable("item"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-add-array",
-                documentation: "Attach a given `Array` of elements at the end of the span.
+                documentation: "Attach a given `Array` of items at the end of the span.
 This can remove a bunch of noise compared to chaining `Buf-span-add` operations",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
-                    ("new", type_array(type_variable("element"), type_variable("record"))),
+                    ("new", type_array(type_variable("item"), type_variable("record"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin")))
                 ]),
@@ -13961,14 +13941,14 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
@@ -13980,72 +13960,72 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-span-move-to-end",
-                documentation: "Move the given span to after all existing elements if necessary.",
+                documentation: "Move the given span to after all existing items if necessary.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-move-to-end",
-                documentation: "Move the given span to after all existing elements if necessary.",
+                documentation: "Move the given span to after all existing items if necessary.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-span-add-own-span",
-                documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+                documentation: "Append the items of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
 As an example, you could implement `Buf-span-add` in sloe itself as
 ```sloe
 fn Buf-span-add
-    .buf buf Buf _origin, _element
+    .buf buf Buf _origin, _item
     .span span Span _origin
-    .new new _element
+    .new new _item
     :
-    .buf Buf _origin, _element
+    .buf Buf _origin, _item
     .span Span _origin
     =
     # the first line is optional: it ensures that the new slot will actually be connected,
-    # meaning the new element can stay at its position
+    # meaning the new item can stay at its position
     ? Buf-span-move-to-end .buf buf .span span [.buf buf .span .span]
     ? Buf-add .buf buf .new new [.buf buf .slot new-slot]
     Buf-span-add-own-span
@@ -14057,7 +14037,7 @@ fn Buf-span-add
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("start", type_span(type_variable("origin"))),
                     ("end", type_span(type_variable("origin"))),
@@ -14065,21 +14045,21 @@ fn Buf-span-add
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-span-add-own-opt-span",
-                documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+                documentation: "Append the items of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
 The most common use case is re-combining spans that have been split up with e.g. `Span-start` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("start", type_span(type_variable("origin"))),
                     ("end", type_opt(type_span(type_variable("origin")))),
@@ -14087,21 +14067,21 @@ The most common use case is re-combining spans that have been split up with e.g.
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-add-own-span",
-                documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+                documentation: "Append the items of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
 The most common use case is re-combining spans that have been split up with e.g. `Span-end` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("start", type_opt(type_span(type_variable("origin")))),
                     ("end", type_span(type_variable("origin"))),
@@ -14109,20 +14089,20 @@ The most common use case is re-combining spans that have been split up with e.g.
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_span(type_variable("origin"))),
                 ]),
             },
             CoreFnInfo {
                 name: "Buf-opt-span-add-own-opt-span",
-                documentation: "Append the elements of a given end span directly after the start span, returning the combined span.
+                documentation: "Append the items of a given end span directly after the start span, returning the combined span.
 If start and end spans are not already connected, both are appended at the end and their original spans are vacated",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("start", type_opt(type_span(type_variable("origin")))),
                     ("end", type_opt(type_span(type_variable("origin")))),
@@ -14130,7 +14110,7 @@ If start and end spans are not already connected, both are appended at the end a
                 result_type: type_record([
                     (
                         "buf",
-                        type_buf(type_variable("origin"), type_variable("element")),
+                        type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                 ]),
@@ -14138,51 +14118,50 @@ If start and end spans are not already connected, both are appended at the end a
             CoreFnInfo {
                 name: "Buf-origin-isolate",
                 documentation: "Replace its origin type by `erased`,
-along with erasing the origin in its elements if necessary.
+along with erasing the origin in its items if necessary.
 An example of a `Buf inner, Opt Span inner`:
 ```sloe
 Buf-origin-isolate
 .buf buf-inner
-.element-isolate [element Opt Span inner] Opt-span-origin-isolate element
+.item-isolate [item Opt Span inner] Opt-span-origin-isolate item
 ```
-Small warning: while the function type allows completely changing the contents of each element,
-I strongly recommend against it.
-For one, changing elements to a wildly different type
-may re-allocate the whole `Buf`.
+Small warning: while the function type allows completely changing the contents of each item,
+I recommend against it.
+For one, changing items to a wildly different type may re-allocate the whole `Buf`.
 For two, this may be seen as spooky action at a distance (albeit not that great of a distance):
-Changing an element that is referenced by an outside slot/span etc. may be unexpected.",
+Changing an item that is referenced by an outside slot/span etc. may be unexpected.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
                         "buf",
                         type_buf(
                             type_origin(type_variable("origin"), type_variable("part")),
-                            type_variable("element")
+                            type_variable("item")
                         ),
                     ),
                     (
-                        "element-isolate",
+                        "item-isolate",
                         type_fn(
-                            type_variable("element"),
+                            type_variable("item"),
                             type_origin_isolated(
                                 type_variable("origin"),
-                                type_variable("element-erased")
+                                type_variable("item-erased")
                             ),
                         )
                     )
                 ]),
                 result_type: type_origin_isolated(
                     type_variable("origin"),
-                    type_buf_origin_erased(type_variable("part"), type_variable("element-erased"))
+                    type_buf_origin_erased(type_variable("part"), type_variable("item-erased"))
                 ),
             },
             CoreFnInfo {
-                name: "Buf-origin-unerase-keep-elements",
+                name: "Buf-origin-unerase-keep-items",
                 documentation: "Replace its origin type from `erased`.
-Use instead of `Buf-origin-unerase` when the elements don't reference an origin.",
+Use instead of `Buf-origin-unerase` when the items don't reference an origin.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("element"))),
+                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("item"))),
                     ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
                 result_type: type_record([
@@ -14190,7 +14169,7 @@ Use instead of `Buf-origin-unerase` when the elements don't reference an origin.
                         "buf",
                         type_buf(
                             type_origin(type_variable("origin"), type_variable("part")),
-                            type_variable("element")
+                            type_variable("item")
                         )
                     ),
                     ("uneraser", type_origin_uneraser(type_variable("origin"))),
@@ -14199,8 +14178,8 @@ Use instead of `Buf-origin-unerase` when the elements don't reference an origin.
             CoreFnInfo {
                 name: "Buf-origin-unerase",
                 documentation: "Replace its origin type from `erased`,
-along with un-erasing the origin in its elements.
-Use `Buf-origin-unerase` instead when the elements don't reference an origin.
+along with un-erasing the origin in its items.
+Use `Buf-origin-unerase` instead when the items don't reference an origin.
 ```sloe
 fn Example-unerase
     .buf buf-inner Buf (Origin erased, .), Opt Span Origin erased, .
@@ -14212,34 +14191,34 @@ fn Example-unerase
     Buf-origin-unerase
     .buf buf-inner
     .uneraser uneraser
-    .element-unerase
+    .item-unerase
     [
-    .element element Opt Span Origin erased, .
+    .item item Opt Span Origin erased, .
     .uneraser uneraser Origin-uneraser Origin _inner, .
     ]
-    ? Opt-span-origin-unerase .span element .uneraser uneraser
-    [.span element-unerased .uneraser uneraser]
-    .element element-unerased .uneraser uneraser
+    ? Opt-span-origin-unerase .span item .uneraser uneraser
+    [.span item-unerased .uneraser uneraser]
+    .item item-unerased .uneraser uneraser
 ```
-Small warning: while the function type allows completely changing the contents of each element,
+Small warning: while the function type allows completely changing the contents of each item,
 I strongly recommend against it.
-For one, changing elements to a wildly different type
+For one, changing items to a wildly different type
 may re-allocate the whole `Buf`.
 For two, this may be seen as spooky action at a distance (albeit not that great of a distance):
-Changing an element that is referenced by an outside slot/span etc. may be unexpected.",
+Changing an item that is referenced by an outside slot/span etc. may be unexpected.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("element-erased"))),
+                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("item-erased"))),
                     ("uneraser", type_origin_uneraser(type_variable("origin"))),
                     (
-                        "element-unerase",
+                        "item-unerase",
                         type_fn(
                             type_record([
-                                ("element", type_variable("element-erased")),
+                                ("item", type_variable("item-erased")),
                                 ("uneraser", type_origin_uneraser(type_variable("origin"))),
                             ]),
                             type_record([
-                                ("element", type_variable("element")),
+                                ("item", type_variable("item")),
                                 ("uneraser", type_origin_uneraser(type_variable("origin"))),
                             ]),
                         )
@@ -14250,7 +14229,7 @@ Changing an element that is referenced by an outside slot/span etc. may be unexp
                         "buf",
                         type_buf(
                             type_origin(type_variable("origin"), type_variable("part")),
-                            type_variable("element")
+                            type_variable("item")
                         )
                     ),
                     ("uneraser", type_origin_uneraser(type_variable("origin"))),
@@ -14258,46 +14237,46 @@ Changing an element that is referenced by an outside slot/span etc. may be unexp
             },
             CoreFnInfo {
                 name: "Buf-to-unset",
-                documentation: "Extract the underlying slice that been used to store elements in including spare capacity.
-This `Unset-slice` can if necessary be casted to a new element type with `Unset-slice-cast-or-rid-and-allocate`.
+                documentation: "Extract the underlying slice that been used to store items in including spare capacity.
+This `Unset-slice` can if necessary be casted to a new item type with `Unset-slice-cast-or-rid-and-allocate`.
 Finally, the allocation can be the base of a new `Buf` with `Buf-reuse` or be scrapped with `Unset-slice-rid`",
                 type_parameters: vec![],
-                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
-                result_type: type_unset_slice(type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("item")),
+                result_type: type_unset_slice(type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-rid",
                 documentation: "Mark the given `Buf` value as \"won't be used anymore\".
-Used for temporary `Buf`s at the end of their scope once all of their elements are used up.
+Used for temporary `Buf`s at the end of their scope once all of their items are used up.
 If any slots or spans are still floating around, you will not be able to get rid of them.
-This nicely forces you to handle all remaining elements before you can get rid of the `Buf`.
+This nicely forces you to handle all remaining items before you can get rid of the `Buf`.
 To reuse the underlying allocation, use `Buf-to-unset`",
                 type_parameters: vec![],
-                parameter_type: type_buf(type_variable("origin"), type_variable("element")),
+                parameter_type: type_buf(type_variable("origin"), type_variable("item")),
                 result_type: type_record_empty,
             },
             CoreFnInfo {
                 name: "Unset-slice-allocate-length",
                 documentation: "Create a new `Unset-slice` with a given length.
 There rarely is a need to use this except when a function expects an `Unset-slice` as an argument",
-                type_parameters: vec![Name::from_static("element")],
+                type_parameters: vec![Name::from_static("item")],
                 parameter_type: type_u32,
-                result_type: type_unset_slice(type_variable("element")),
+                result_type: type_unset_slice(type_variable("item")),
             },
             CoreFnInfo {
                 name: "Unset-slice-length",
-                documentation: "How many elements could fit",
+                documentation: "How many items could fit",
                 type_parameters: vec![],
-                parameter_type: type_unset_slice(type_variable("element")),
+                parameter_type: type_unset_slice(type_variable("item")),
                 result_type: type_record([
-                    ("slice", type_unset_slice(type_variable("element"))),
+                    ("slice", type_unset_slice(type_variable("item"))),
                     ("length", type_u32),
                 ]),
             },
             CoreFnInfo {
                 name: "Unset-slice-cast-or-rid-and-allocate",
-                documentation: r#"Reinterpret the slice of unset bytes as a slice of a different element type.
-This only works when the new element type has the same "size" (byte count including padding bits)
+                documentation: r#"Reinterpret the slice of unset bytes as a slice of a different item type.
+This only works when the new item type has the same "size" (byte count including padding bits)
 and equal "alignment" (byte count of the biggest field).
 For example, `u32` consists of 4 bytes, just like `i32`, so they can be reinterpreted.
 Similarly `.x f32 .y f32` can be reinterpreted as `.width i32 .height i32` and so forth.
@@ -14308,17 +14287,17 @@ Note: This difference in behavior does not get reported at compile-time
 which is a bit of a stinker. The reasons are:
 - different compilation targets may have a different memory packing of sloe values,
   so we can never really guarantee this reinterpretation works
-- it could be possible to fit different element sizes into the slice
-  (if size of NewElement is multiple of unset-slice length).
+- it could be possible to fit different item sizes into the slice
+  (if size of NewItem is multiple of unset-slice length).
   For example, 3 u32s could be transformed into 6 u16s and the other way around.
   For bigger sizes, this is only possible at runtime
-- it could be possible to reinterpret element types with different alignments.
+- it could be possible to reinterpret item types with different alignments.
   For growing alignments, this is only possible at runtime
   when the slice pointer happens to align correctly
 - sloe has a simple type system so I'm happy such a compromise can exist at all"#,
-                type_parameters: vec![Name::from_static("new-element")],
-                parameter_type: type_unset_slice(type_variable("element")),
-                result_type: type_unset_slice(type_variable("new-element"))
+                type_parameters: vec![Name::from_static("new-item")],
+                parameter_type: type_unset_slice(type_variable("item")),
+                result_type: type_unset_slice(type_variable("new-item"))
             },
             CoreFnInfo {
                 name: "Unset-slice-rid",
@@ -14328,7 +14307,7 @@ fn Hand-warmer-in-debug-mode . : . =
     Unset-slice-rid Unset-slice-allocate-length 9999999
 ```",
                 type_parameters: vec![],
-                parameter_type: type_unset_slice(type_variable("element")),
+                parameter_type: type_unset_slice(type_variable("item")),
                 result_type: type_record_empty,
             },
         ].map(|core_fn_info| {
@@ -14550,7 +14529,7 @@ It's also extremely important for `Origin-isolated`"
                 name_range: None,
                 documentation: Some(Box::from(
                     "Self-contained value where each part had the same unique origin.
-Can be used to for example create Bufs containing Bufs without having inner incompatible origin types between elements.
+Can be used to for example create Bufs containing Bufs without having inner incompatible origin types between items.
 An `Origin-erased` value can be turned back into a proper value with a new specific origin on demand with `Origin-unerase`.
 If none of this sounded useful to you, you don't need this (yet).
 ```sloe
@@ -14599,7 +14578,7 @@ Origin-unerase
 ]
 ? Slot-origin-unerase .slot slot-erased .uneraser uneraser
 [.slot slot-inner0 .uneraser uneraser]
-? Buf-origin-unerase-keep-elements .buf buf-erased .uneraser uneraser
+? Buf-origin-unerase-keep-items .buf buf-erased .uneraser uneraser
 [.buf buf-inner0 .uneraser uneraser]
 .unerased (.buf buf-inner0 .slot slot-inner0)
 .uneraser uneraser
@@ -14658,22 +14637,22 @@ See `Origin-erased`, `Slot-origin-unerase`, `Span-origin-unerase`, `Opt-span-ori
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A grow- and shrinkable array buffer of elements.
+                    "A grow- and shrinkable array buffer of items.
 Has constant time access and update and constant time add.
 ```sloe
 fn Use-a-buf . : u32 =
-    ^my-elements-origin
-    ? Buf-empty{u32} my-elements-origin [my-elements]
-    ? Buf-add .buf my-elements .element 609 u32
-    [.buf my-elements .slot first-element-slot]
-    ? Buf-remove .buf my-elements .slot first-element-slot
-    [.buf my-elements .element first-element]
-    ? Buf-rid my-elements [.]
-    first-element # = 609 u32
+    ^my-items-origin
+    ? Buf-empty{u32} my-items-origin [my-items]
+    ? Buf-add .buf my-items .item 609 u32
+    [.buf my-items .slot first-item-slot]
+    ? Buf-remove .buf my-items .slot first-item-slot
+    [.buf my-items .item first-item]
+    ? Buf-rid my-items [.]
+    first-item # = 609 u32
 ```"
                 )),
-                parameters: vec![Name::from_static("origin"), Name::from_static("element")],
-                type_: Some(type_buf(type_variable("origin"), type_variable("element"))),
+                parameters: vec![Name::from_static("origin"), Name::from_static("item")],
+                type_: Some(type_buf(type_variable("origin"), type_variable("item"))),
             },
         ),
         (
@@ -14688,8 +14667,8 @@ As such, it cannot be interacted with at all, except for unerasing it in `Origin
 This restriction is necessary because unerase can leave bufs with unerased origins erased.
 One could for example access an origin erased Buf with an origin erased slot pointing into a different buf."
                 )),
-                parameters: vec![Name::from_static("part"), Name::from_static("element")],
-                type_: Some(type_buf_origin_erased(type_variable("part"), type_variable("element"))),
+                parameters: vec![Name::from_static("part"), Name::from_static("item")],
+                type_: Some(type_buf_origin_erased(type_variable("part"), type_variable("item"))),
             },
         ),
         (
@@ -14697,7 +14676,7 @@ One could for example access an origin erased Buf with an origin erased slot poi
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "A valid position of an element in a collection.
+                    "A valid position of an item in a collection.
 This works because each collection has a unique origin and only gives out one slot for each position.
 For consecutive `Slot`s, check out `Span`."
                 )),
@@ -14725,7 +14704,7 @@ For potentially 0-length spans, use `Opt Span`"
                 documentation: Some(Box::from(
                     "Like `Slot` but referencing an unoccupied position.
 It's similar to what languages use uninitialized memory/undefined for.
-As this prevents another element from filling this position, you shouldn't keep it around for too long."
+As this prevents another item from filling this position, you shouldn't keep it around for too long."
                 )),
                 parameters: vec![Name::from_static("origin")],
                 type_: Some(type_unset_slot(type_variable("origin"))),
@@ -14738,7 +14717,7 @@ As this prevents another element from filling this position, you shouldn't keep 
                 documentation: Some(Box::from(
                     "Like `Span` but referencing an unoccupied range.
 It's similar to what languages use uninitialized memory/undefined for.
-As this prevents other elements from filling these positions, you shouldn't keep it around for too long."
+As this prevents other items from filling these positions, you shouldn't keep it around for too long."
                 )),
                 parameters: vec![Name::from_static("origin")],
                 type_: Some(type_unset_span(type_variable("origin"))),
@@ -14752,7 +14731,7 @@ As this prevents other elements from filling these positions, you shouldn't keep
                     "A heap-allocated array with unknown length and undefined contents.
 Can be constructed manually or as an intermediate type when recycling the allocated space of a collection,
 see `Buf-to-unset`.
-Since you can't read from it, you can also safely attempt to reuse this allocation for a different element type,
+Since you can't read from it, you can also safely attempt to reuse this allocation for a different item type,
 see `Unset-slice-cast-or-rid-and-allocate`.
 Note that `Unset-slice` does not have a dup function to make heap allocation explicit.
 Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same effect."
@@ -14767,7 +14746,7 @@ Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same e
                 name_range: None,
                 documentation: Some(Box::from(
                     "An array of known, positive length, stack-allocated if the target language supports it.
-Arrays make adding multiple elements of the same type much less cumbersome,
+Arrays make adding multiple items of the same type much less cumbersome,
 see `Buf-add-array`/`Buf-span-add-array`/`Buf-opt-span-add-array`.
 This is a very bare-bones feature because of sloe's simple type system.
 
@@ -14781,8 +14760,8 @@ This is quite cursed!
 It is _not_ recommended or useful to use an `Array` with a non-variable record type argument _ever_.
 Use a regular record instead!"
                 )),
-                parameters: vec![Name::from_static("element"), Name::from_static("record")],
-                type_: Some(type_array(type_variable("element"), type_variable("record"))),
+                parameters: vec![Name::from_static("item"), Name::from_static("record")],
+                type_: Some(type_array(type_variable("item"), type_variable("record"))),
             },
         ),
     ])
@@ -15007,10 +14986,10 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> String {
     let mut formatted = String::with_capacity(source.len() + 8);
-    for element in &project.elements {
-        // consider not formatting an element that is followed by Unrecognized
-        match element {
-            SyntaxProjectElement::TypeAlias {
+    for item in &project.items {
+        // TODO don't format an item that is followed by Unrecognized
+        match item {
+            SyntaxProjectItem::TypeAlias {
                 ty_keyword_start: _,
                 name,
                 parameters,
@@ -15072,7 +15051,7 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 }
                 formatted.push('\n');
             }
-            SyntaxProjectElement::Fn {
+            SyntaxProjectItem::Fn {
                 fn_keyword_start,
                 name,
                 type_parameters,
@@ -15165,13 +15144,13 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 }
                 formatted.push('\n');
             }
-            SyntaxProjectElement::Comments(comments) => {
+            SyntaxProjectItem::Comments(comments) => {
                 if comments.line0.start.line >= 1 {
                     formatted.push('\n');
                 }
                 syntax_comments_format(&mut formatted, 0, comments);
             }
-            SyntaxProjectElement::Unrecognized { range: _, source } => {
+            SyntaxProjectItem::Unrecognized { range: _, source } => {
                 formatted.push_str(source);
             }
         }
@@ -15274,7 +15253,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             argument,
         } => match argument {
             Some(argument) => {
-                syntax_expression_open_end(expressions.element(argument), expressions, types)
+                syntax_expression_open_end(expressions.item(argument), expressions, types)
             }
             None => no_open_end_kinds,
         },
@@ -15284,9 +15263,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             name: _,
             value,
         } => match value {
-            Some(value) => {
-                syntax_expression_open_end(expressions.element(value), expressions, types)
-            }
+            Some(value) => syntax_expression_open_end(expressions.item(value), expressions, types),
             None => no_open_end_kinds,
         },
         SyntaxExpression::Fn {
@@ -15296,7 +15273,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             result,
         } => match result {
             Some(result) => {
-                syntax_expression_open_end(expressions.element(result), expressions, types)
+                syntax_expression_open_end(expressions.item(result), expressions, types)
             }
             None => no_open_end_kinds,
         },
@@ -15305,7 +15282,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             let last_field_open_end = match part1_up.last().unwrap_or(part0) {
                 SyntaxRecordPart::Field { name: _, value } => match value {
                     Some(last_part_value) => syntax_expression_open_end(
-                        expressions.element(last_part_value),
+                        expressions.item(last_part_value),
                         expressions,
                         types,
                     ),
@@ -15316,7 +15293,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
                     record,
                 } => match record {
                     Some(last_part_record) => syntax_expression_open_end(
-                        expressions.element(last_part_record),
+                        expressions.item(last_part_record),
                         expressions,
                         types,
                     ),
@@ -15330,27 +15307,24 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            match element1_up
+            match item1_up
                 .last()
-                .and_then(|element| element.element.as_ref())
-                .or_else(|| {
-                    element0
-                        .as_ref()
-                        .map(|element0| expressions.element(element0))
-                }) {
+                .and_then(|item| item.item.as_ref())
+                .or_else(|| item0.as_ref().map(|item0| expressions.item(item0)))
+            {
                 None => OpenEndKinds {
                     expression_array: true,
                     ..no_open_end_kinds
                 },
-                Some(last_element) => {
-                    let last_element_open_end =
-                        { syntax_expression_open_end(last_element, expressions, types) };
+                Some(last_item) => {
+                    let last_item_open_end =
+                        syntax_expression_open_end(last_item, expressions, types);
                     OpenEndKinds {
                         expression_array: true,
-                        ..last_element_open_end
+                        ..last_item_open_end
                     }
                 }
             }
@@ -15360,9 +15334,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             inner,
             closed_paren_start: _,
         } => match inner {
-            Some(inner) => {
-                syntax_expression_open_end(expressions.element(inner), expressions, types)
-            }
+            Some(inner) => syntax_expression_open_end(expressions.item(inner), expressions, types),
             None => no_open_end_kinds,
         },
         SyntaxExpression::Commented {
@@ -15370,7 +15342,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             expression,
         } => match expression {
             Some(expression) => {
-                syntax_expression_open_end(expressions.element(expression), expressions, types)
+                syntax_expression_open_end(expressions.item(expression), expressions, types)
             }
             None => no_open_end_kinds,
         },
@@ -15398,7 +15370,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             result,
         } => match result {
             Some(result) => {
-                syntax_expression_open_end(expressions.element(result), expressions, types)
+                syntax_expression_open_end(expressions.item(result), expressions, types)
             }
             None => no_open_end_kinds,
         },
@@ -15492,7 +15464,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(argument),
+                    expressions.item(argument),
                 );
             }
         }
@@ -15527,7 +15499,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 }
             }
             if let Some(value) = value {
-                let value = expressions.element(value);
+                let value = expressions.item(value);
                 space_or_linebreak_indented_into(
                     formatted,
                     range_line_span(lsp_types::Range {
@@ -15582,7 +15554,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.item(result),
                 );
             }
         }
@@ -15619,18 +15591,18 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            let element_count = 1 + element1_up.len();
+            let item_count = 1 + item1_up.len();
             formatted.push(';');
-            match element0 {
+            match item0 {
                 None => {
                     formatted.push(' ');
                 }
-                Some(element0) => {
-                    let value = expressions.element(element0);
-                    maybe_open_end_whitespace_then_element_format(
+                Some(item0) => {
+                    let value = expressions.item(item0);
+                    maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -15645,7 +15617,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                         },
                         || syntax_expression_open_end(value, expressions, types),
                         |open_end| open_end.expression_array,
-                        element_count,
+                        item_count,
                         0,
                         *semicolon_start,
                         expression_range(value, expressions, patterns, types),
@@ -15654,16 +15626,15 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
             let line_span =
                 range_line_span(expression_range(expression, expressions, patterns, types));
-            for (element_index, element) in element1_up.iter().enumerate().map(|(i, e)| (i + 1, e))
-            {
+            for (item_index, item) in item1_up.iter().enumerate().map(|(i, it)| (i + 1, it)) {
                 space_or_linebreak_indented_into(formatted, line_span, indent);
                 formatted.push(';');
-                match &element.element {
+                match &item.item {
                     None => {
                         formatted.push(' ');
                     }
-                    Some(element_expression) => {
-                        maybe_open_end_whitespace_then_element_format(
+                    Some(item_expression) => {
+                        maybe_open_end_whitespace_then_item_format(
                             formatted,
                             indent,
                             |formatted, indent| {
@@ -15673,15 +15644,15 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                                     expressions,
                                     patterns,
                                     types,
-                                    element_expression,
+                                    item_expression,
                                 );
                             },
-                            || syntax_expression_open_end(element_expression, expressions, types),
+                            || syntax_expression_open_end(item_expression, expressions, types),
                             |open_end| open_end.expression_array,
-                            element_count,
-                            element_index,
-                            element.semicolon_start,
-                            expression_range(element_expression, expressions, patterns, types),
+                            item_count,
+                            item_index,
+                            item.semicolon_start,
+                            expression_range(item_expression, expressions, patterns, types),
                         );
                     }
                 }
@@ -15702,7 +15673,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(inner),
+                    expressions.item(inner),
                 );
             }
         },
@@ -15718,7 +15689,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(expression),
+                    expressions.item(expression),
                 );
             }
         }
@@ -15733,8 +15704,8 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                     formatted.push(' ');
                 }
                 Some(queried) => {
-                    let queried = expressions.element(queried);
-                    parenthesize_if_open_ended_whitespace_then_element_format(
+                    let queried = expressions.item(queried);
+                    parenthesize_if_open_ended_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -15849,7 +15820,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
-                        expressions.element(result),
+                        expressions.item(result),
                     );
                 }
             }
@@ -15901,8 +15872,8 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = expressions.element(value);
-                    maybe_open_end_whitespace_then_element_format(
+                    let value = expressions.item(value);
+                    maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -15933,7 +15904,7 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
                 formatted.push_str(".. ");
             }
             Some(record) => {
-                let record = expressions.element(record);
+                let record = expressions.item(record);
                 if record_part_count == 1 {
                     syntax_expression_unparenthesized_format(
                         formatted,
@@ -15945,7 +15916,7 @@ fn syntax_expression_record_part_format<Expressions, Patterns, Types>(
                     );
                 } else {
                     formatted.push_str("..");
-                    maybe_open_end_whitespace_then_element_format(
+                    maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -16005,7 +15976,7 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
                 Some(case_pattern) => pattern_start(case_pattern),
             };
             let result_range = expression_range(result, expressions, patterns, types);
-            maybe_open_end_whitespace_then_element_format(
+            maybe_open_end_whitespace_then_item_format(
                 formatted,
                 indent,
                 |formatted, indent| {
@@ -16036,78 +16007,78 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
         }
     }
 }
-fn maybe_open_end_whitespace_then_element_format(
+fn maybe_open_end_whitespace_then_item_format(
     formatted: &mut String,
     indent: usize,
-    element_unparenthesized_format: impl FnOnce(&mut String, usize),
-    element_open_end: impl FnOnce() -> OpenEndKinds,
-    open_end_kind_to_parenthesize_before_last_element: impl Fn(OpenEndKinds) -> bool,
-    element_count: usize,
-    element_index: usize,
-    syntax_before_element_start: lsp_types::Position,
-    element_range: lsp_types::Range,
+    item_unparenthesized_format: impl FnOnce(&mut String, usize),
+    item_open_end: impl FnOnce() -> OpenEndKinds,
+    open_end_kind_to_parenthesize_before_last_item: impl Fn(OpenEndKinds) -> bool,
+    item_count: usize,
+    item_index: usize,
+    syntax_before_item_start: lsp_types::Position,
+    item_range: lsp_types::Range,
 ) {
     let line_span = range_line_span(lsp_types::Range {
-        start: syntax_before_element_start,
-        end: element_range.end,
+        start: syntax_before_item_start,
+        end: item_range.end,
     });
-    if (element_index == element_count - 1) && (element_range.start.character as usize <= indent) {
+    if (item_index == item_count - 1) && (item_range.start.character as usize <= indent) {
         space_or_linebreak_indented_into(formatted, line_span, indent);
-        element_unparenthesized_format(formatted, indent);
+        item_unparenthesized_format(formatted, indent);
     } else {
-        parenthesize_if_open_ended_whitespace_then_element_format(
+        parenthesize_if_open_ended_whitespace_then_item_format(
             formatted,
             indent,
-            element_unparenthesized_format,
-            open_end_kind_to_parenthesize_before_last_element,
-            element_open_end(),
+            item_unparenthesized_format,
+            open_end_kind_to_parenthesize_before_last_item,
+            item_open_end(),
             line_span,
         );
     }
 }
-fn maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
+fn maybe_open_end_whitespace_then_item_last_always_unparenthesized_format(
     formatted: &mut String,
     indent: usize,
-    element_unparenthesized_format: impl FnOnce(&mut String, usize),
-    element_open_end: impl FnOnce() -> OpenEndKinds,
-    open_end_kind_to_parenthesize_before_last_element: fn(OpenEndKinds) -> bool,
-    element_count: usize,
-    element_index: usize,
-    syntax_before_element_start: lsp_types::Position,
-    element_range: lsp_types::Range,
+    item_unparenthesized_format: impl FnOnce(&mut String, usize),
+    item_open_end: impl FnOnce() -> OpenEndKinds,
+    open_end_kind_to_parenthesize_before_last_item: fn(OpenEndKinds) -> bool,
+    item_count: usize,
+    item_index: usize,
+    syntax_before_item_start: lsp_types::Position,
+    item_range: lsp_types::Range,
 ) {
     let line_span = range_line_span(lsp_types::Range {
-        start: syntax_before_element_start,
-        end: element_range.end,
+        start: syntax_before_item_start,
+        end: item_range.end,
     });
-    if element_index == element_count - 1 {
+    if item_index == item_count - 1 {
         space_or_linebreak_indented_into(formatted, line_span, indent);
-        element_unparenthesized_format(formatted, indent);
+        item_unparenthesized_format(formatted, indent);
     } else {
-        parenthesize_if_open_ended_whitespace_then_element_format(
+        parenthesize_if_open_ended_whitespace_then_item_format(
             formatted,
             indent,
-            element_unparenthesized_format,
-            open_end_kind_to_parenthesize_before_last_element,
-            element_open_end(),
+            item_unparenthesized_format,
+            open_end_kind_to_parenthesize_before_last_item,
+            item_open_end(),
             line_span,
         );
     }
 }
-fn parenthesize_if_open_ended_whitespace_then_element_format(
+fn parenthesize_if_open_ended_whitespace_then_item_format(
     formatted: &mut String,
     indent: usize,
-    element_unparenthesized_format: impl FnOnce(&mut String, usize),
-    open_end_kind_to_parenthesize_before_last_element: impl Fn(OpenEndKinds) -> bool,
-    element_open_end: OpenEndKinds,
+    item_unparenthesized_format: impl FnOnce(&mut String, usize),
+    open_end_kind_to_parenthesize_before_last_item: impl Fn(OpenEndKinds) -> bool,
+    item_open_end: OpenEndKinds,
     line_span: LineSpan,
 ) {
-    if open_end_kind_to_parenthesize_before_last_element(element_open_end) {
+    if open_end_kind_to_parenthesize_before_last_item(item_open_end) {
         formatted.push_str(" (");
         if line_span == LineSpan::Multiple {
             linebreak_indented_into(formatted, next_indent(indent));
         }
-        element_unparenthesized_format(formatted, next_indent(indent));
+        item_unparenthesized_format(formatted, next_indent(indent));
         if line_span == LineSpan::Multiple {
             // this one is an explicit decision. Most languages e.g. align the field name with the value close paren.
             // However, I find
@@ -16118,7 +16089,7 @@ fn parenthesize_if_open_ended_whitespace_then_element_format(
         formatted.push(')');
     } else {
         space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-        element_unparenthesized_format(formatted, next_indent(indent));
+        item_unparenthesized_format(formatted, next_indent(indent));
     }
 }
 fn syntax_pattern_open_end<Patterns, Types>(
@@ -16132,7 +16103,7 @@ fn syntax_pattern_open_end<Patterns, Types>(
             None => no_open_end_kinds,
         },
         SyntaxPattern::Variant { name: _, value } => match value {
-            Some(value) => syntax_pattern_open_end(patterns.element(value), patterns, types),
+            Some(value) => syntax_pattern_open_end(patterns.item(value), patterns, types),
             None => no_open_end_kinds,
         },
         SyntaxPattern::RecordEmpty { dot_start: _ } => no_open_end_kinds,
@@ -16140,18 +16111,14 @@ fn syntax_pattern_open_end<Patterns, Types>(
             let last_field_open_end = match part1_up.last().unwrap_or_else(|| part0) {
                 SyntaxRecordPart::Field { name: _, value } => match value {
                     None => no_open_end_kinds,
-                    Some(value) => {
-                        syntax_pattern_open_end(patterns.element(value), patterns, types)
-                    }
+                    Some(value) => syntax_pattern_open_end(patterns.item(value), patterns, types),
                 },
                 SyntaxRecordPart::Spread {
                     dot_dot_start: _,
                     record,
                 } => match record {
                     None => no_open_end_kinds,
-                    Some(record) => {
-                        syntax_pattern_open_end(patterns.element(record), patterns, types)
-                    }
+                    Some(record) => syntax_pattern_open_end(patterns.item(record), patterns, types),
                 },
             };
             OpenEndKinds {
@@ -16164,7 +16131,7 @@ fn syntax_pattern_open_end<Patterns, Types>(
             inner,
             closed_paren_start: _,
         } => match inner {
-            Some(inner) => syntax_pattern_open_end(patterns.element(inner), patterns, types),
+            Some(inner) => syntax_pattern_open_end(patterns.item(inner), patterns, types),
             None => no_open_end_kinds,
         },
     }
@@ -16201,7 +16168,7 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                     indent,
                     patterns,
                     types,
-                    patterns.element(value),
+                    patterns.item(value),
                 );
             }
         }
@@ -16235,7 +16202,7 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
                     indent,
                     patterns,
                     types,
-                    patterns.element(inner),
+                    patterns.item(inner),
                 );
             }
         },
@@ -16258,8 +16225,8 @@ fn syntax_pattern_record_part_unparenthesized_format<Types, Patterns>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = patterns.element(value);
-                    maybe_open_end_whitespace_then_element_format(
+                    let value = patterns.item(value);
+                    maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -16287,8 +16254,8 @@ fn syntax_pattern_record_part_unparenthesized_format<Types, Patterns>(
                     formatted.push(' ');
                 }
                 Some(record) => {
-                    let record = patterns.element(record);
-                    maybe_open_end_whitespace_then_element_format(
+                    let record = patterns.item(record);
+                    maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -16326,7 +16293,7 @@ fn syntax_type_open_end<Types>(
                 .unwrap_or_else(|| {
                     field0_value
                         .as_ref()
-                        .map(|field0_value| types.element(field0_value))
+                        .map(|field0_value| types.item(field0_value))
                 })
                 .map(|last_field_value| syntax_type_open_end(last_field_value, types))
                 .unwrap_or(no_open_end_kinds);
@@ -16347,7 +16314,7 @@ fn syntax_type_open_end<Types>(
                 .unwrap_or_else(|| {
                     variant0_value
                         .as_ref()
-                        .map(|variant0_value| types.element(variant0_value))
+                        .map(|variant0_value| types.item(variant0_value))
                 })
                 .map(|last_variant_value| syntax_type_open_end(last_variant_value, types))
                 .unwrap_or(no_open_end_kinds);
@@ -16365,7 +16332,7 @@ fn syntax_type_open_end<Types>(
             let last_argument_open_end = argument1_up
                 .last()
                 .map(|last_argument| last_argument.type_.as_ref())
-                .unwrap_or_else(|| argument0.as_ref().map(|argument0| types.element(argument0)))
+                .unwrap_or_else(|| argument0.as_ref().map(|argument0| types.item(argument0)))
                 .map(|last_argument| syntax_type_open_end(last_argument, types))
                 .unwrap_or(no_open_end_kinds);
             OpenEndKinds {
@@ -16378,7 +16345,7 @@ fn syntax_type_open_end<Types>(
             inner,
             closed_paren_start: _,
         } => match inner {
-            Some(inner) => syntax_type_open_end(types.element(inner), types),
+            Some(inner) => syntax_type_open_end(types.item(inner), types),
             None => no_open_end_kinds,
         },
     }
@@ -16413,8 +16380,8 @@ fn syntax_type_unparenthesized_format<Types>(
                     formatted.push(' ');
                 }
                 Some(argument0) => {
-                    let argument0 = types.element(argument0);
-                    maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
+                    let argument0 = types.item(argument0);
+                    maybe_open_end_whitespace_then_item_last_always_unparenthesized_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -16437,7 +16404,7 @@ fn syntax_type_unparenthesized_format<Types>(
                         linebreak_indented_into(formatted, indent);
                     }
                     formatted.push(',');
-                    maybe_open_end_whitespace_then_element_last_always_unparenthesized_format(
+                    maybe_open_end_whitespace_then_item_last_always_unparenthesized_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -16467,7 +16434,7 @@ fn syntax_type_unparenthesized_format<Types>(
                 formatted.push_str("()");
             }
             Some(inner) => {
-                syntax_type_unparenthesized_format(formatted, indent, types, types.element(inner));
+                syntax_type_unparenthesized_format(formatted, indent, types, types.item(inner));
             }
         },
         SyntaxType::RecordEmpty { dot_start: _ } => {
@@ -16485,8 +16452,8 @@ fn syntax_type_unparenthesized_format<Types>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = types.element(value);
-                    maybe_open_end_whitespace_then_element_format(
+                    let value = types.item(value);
+                    maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -16510,7 +16477,7 @@ fn syntax_type_unparenthesized_format<Types>(
                         formatted.push(' ');
                     }
                     Some(value) => {
-                        maybe_open_end_whitespace_then_element_format(
+                        maybe_open_end_whitespace_then_item_format(
                             formatted,
                             indent,
                             |formatted, indent| {
@@ -16542,8 +16509,8 @@ fn syntax_type_unparenthesized_format<Types>(
                     formatted.push(' ');
                 }
                 Some(value) => {
-                    let value = types.element(value);
-                    maybe_open_end_whitespace_then_element_format(
+                    let value = types.item(value);
+                    maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
                         |formatted, indent| {
@@ -16568,7 +16535,7 @@ fn syntax_type_unparenthesized_format<Types>(
                         formatted.push(' ');
                     }
                     Some(value) => {
-                        maybe_open_end_whitespace_then_element_format(
+                        maybe_open_end_whitespace_then_item_format(
                             formatted,
                             indent,
                             |formatted, indent| {
@@ -16607,7 +16574,7 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     TypeVariable {
         name: &'a Name,
         use_start: lsp_types::Position,
-        scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
+        scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
     },
     VariantOrUnknown(WithStartPosition<&'a Name>),
     ProjectFnOrUnknown {
@@ -16666,8 +16633,8 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
     types: &'a core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
     // TODO strongly consider binary search
-    project.elements.iter().find_map(|element| match element {
-        SyntaxProjectElement::TypeAlias {
+    project.items.iter().find_map(|item| match item {
+        SyntaxProjectItem::TypeAlias {
             ty_keyword_start: _,
             name,
             parameters,
@@ -16709,7 +16676,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             Some(SyntaxSymbol::TypeVariable {
                                 name,
                                 use_start: position_add_characters(underscore_start, 1),
-                                scope: element,
+                                scope: item,
                             })
                         } else {
                             None
@@ -16722,13 +16689,13 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             value,
                             position,
                             types,
-                            element,
+                            item,
                             &mut std::collections::HashMap::new(),
                         )
                     })
                 })
         }
-        SyntaxProjectElement::Fn {
+        SyntaxProjectItem::Fn {
             fn_keyword_start: _,
             name,
             type_parameters,
@@ -16767,7 +16734,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                         Some(SyntaxSymbol::TypeVariable {
                             name: name,
                             use_start: position_add_characters(underscore_start, 1),
-                            scope: element,
+                            scope: item,
                         })
                     } else {
                         None
@@ -16783,7 +16750,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             checked_spread_records,
                             patterns,
                             types,
-                            element,
+                            item,
                             result.as_ref(),
                             &mut std::collections::HashMap::new(),
                         )
@@ -16795,7 +16762,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             result_type,
                             position,
                             types,
-                            element,
+                            item,
                             &mut std::collections::HashMap::new(),
                         )
                     })
@@ -16837,15 +16804,15 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             expressions,
                             patterns,
                             types,
-                            element,
+                            item,
                             &mut pattern_variables,
                             &mut std::collections::HashMap::new(),
                         )
                     })
                 })
         }
-        SyntaxProjectElement::Comments(_) => None,
-        SyntaxProjectElement::Unrecognized { .. } => None,
+        SyntaxProjectItem::Comments(_) => None,
+        SyntaxProjectItem::Unrecognized { .. } => None,
     })
 }
 fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
@@ -16857,7 +16824,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
-    scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
+    scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
     pattern_variables: &mut std::collections::HashMap<
         &'a Name,
         PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
@@ -16947,7 +16914,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 .or_else(|| {
                     argument.as_ref().and_then(|argument| {
                         expression_symbol_at_position(
-                            expressions.element(argument),
+                            expressions.item(argument),
                             position,
                             type_aliases,
                             checked_queries,
@@ -16983,7 +16950,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 .or_else(|| {
                     value.as_ref().and_then(|value| {
                         expression_symbol_at_position(
-                            expressions.element(value),
+                            expressions.item(value),
                             position,
                             type_aliases,
                             checked_queries,
@@ -17004,7 +16971,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             closed_bracket_start: _,
             result,
         } => {
-            let result = result.as_ref().map(|result| expressions.element(result));
+            let result = result.as_ref().map(|result| expressions.item(result));
             pattern_variables.clear();
             parameter
                 .as_ref()
@@ -17070,7 +17037,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             .find_map(|part| match part {
                 SyntaxRecordPart::Field { name: _, value } => value.as_ref().and_then(|value| {
                     expression_symbol_at_position(
-                        expressions.element(value),
+                        expressions.item(value),
                         position,
                         type_aliases,
                         checked_queries,
@@ -17088,7 +17055,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     record,
                 } => record.as_ref().and_then(|record| {
                     expression_symbol_at_position(
-                        expressions.element(record),
+                        expressions.item(record),
                         position,
                         type_aliases,
                         checked_queries,
@@ -17104,19 +17071,15 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             }),
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
-        } => element0
+            item0,
+            item1_up,
+        } => item0
             .iter()
-            .map(|element0| expressions.element(element0))
-            .chain(
-                element1_up
-                    .iter()
-                    .filter_map(|element| element.element.as_ref()),
-            )
-            .find_map(|element| {
+            .map(|item0| expressions.item(item0))
+            .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
+            .find_map(|item| {
                 expression_symbol_at_position(
-                    element,
+                    item,
                     position,
                     type_aliases,
                     checked_queries,
@@ -17135,7 +17098,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             closed_paren_start: _,
         } => inner.as_ref().and_then(|inner| {
             expression_symbol_at_position(
-                expressions.element(inner),
+                expressions.item(inner),
                 position,
                 type_aliases,
                 checked_queries,
@@ -17153,7 +17116,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             expression,
         } => expression.as_ref().and_then(|expression| {
             expression_symbol_at_position(
-                expressions.element(expression),
+                expressions.item(expression),
                 position,
                 type_aliases,
                 checked_queries,
@@ -17174,7 +17137,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             .as_ref()
             .and_then(|queried| {
                 expression_symbol_at_position(
-                    expressions.element(queried),
+                    expressions.item(queried),
                     position,
                     type_aliases,
                     checked_queries,
@@ -17212,7 +17175,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             name,
             result,
         } => {
-            let result = result.as_ref().map(|result| expressions.element(result));
+            let result = result.as_ref().map(|result| expressions.item(result));
             if let Some(name) = name {
                 let origin_declaration_info = OriginDeclarationInfo {
                     start: name.start,
@@ -17279,7 +17242,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
-    scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
+    scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
     pattern_variables: &mut std::collections::HashMap<
         &'a Name,
         PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
@@ -17362,12 +17325,9 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
         }
         SyntaxPattern::Variant { name: _, value } => match value {
             None => state,
-            Some(value) => syntax_pattern_untyped_variables_fold(
-                patterns.element(value),
-                state,
-                reduce,
-                patterns,
-            ),
+            Some(value) => {
+                syntax_pattern_untyped_variables_fold(patterns.item(value), state, reduce, patterns)
+            }
         },
         SyntaxPattern::RecordEmpty { dot_start: _ } => state,
         SyntaxPattern::Record { part0, part1_up } => {
@@ -17377,7 +17337,7 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
                     SyntaxRecordPart::Field { name: _, value } => match value {
                         None => state,
                         Some(value) => syntax_pattern_untyped_variables_fold(
-                            patterns.element(value),
+                            patterns.item(value),
                             state,
                             reduce,
                             patterns,
@@ -17389,7 +17349,7 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
                     } => match record {
                         None => state,
                         Some(record) => syntax_pattern_untyped_variables_fold(
-                            patterns.element(record),
+                            patterns.item(record),
                             state,
                             reduce,
                             patterns,
@@ -17403,12 +17363,9 @@ fn syntax_pattern_untyped_variables_fold<'a, Patterns, Types, State>(
             closed_paren_start: _,
         } => match inner {
             None => state,
-            Some(inner) => syntax_pattern_untyped_variables_fold(
-                patterns.element(inner),
-                state,
-                reduce,
-                patterns,
-            ),
+            Some(inner) => {
+                syntax_pattern_untyped_variables_fold(patterns.item(inner), state, reduce, patterns)
+            }
         },
     }
 }
@@ -17429,7 +17386,7 @@ fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
         SyntaxPattern::Variant { name, value } => match value {
             None => state,
             Some(value) => syntax_pattern_typed_variables_fold(
-                patterns.element(value),
+                patterns.item(value),
                 expected_type
                     .and_then(|expected_type| match expected_type {
                         Type::Choice(expected_variants) => {
@@ -17456,7 +17413,7 @@ fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
                     SyntaxRecordPart::Field { name, value } => match value {
                         None => state,
                         Some(value) => syntax_pattern_typed_variables_fold(
-                            patterns.element(value),
+                            patterns.item(value),
                             expected_type
                                 .and_then(|expected_type| match expected_type {
                                     Type::Record(expected_fields) => {
@@ -17481,7 +17438,7 @@ fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
                     } => match record {
                         None => state,
                         Some(record) => syntax_pattern_typed_variables_fold(
-                            patterns.element(record),
+                            patterns.item(record),
                             expected_type
                                 .and_then(|expected_type| match expected_type {
                                     Type::Record(expected_fields) => checked_spread_records
@@ -17516,7 +17473,7 @@ fn syntax_pattern_typed_variables_fold<'a, Patterns, Types, State>(
         } => match inner {
             None => state,
             Some(inner) => syntax_pattern_typed_variables_fold(
-                patterns.element(inner),
+                patterns.item(inner),
                 expected_type,
                 state,
                 reduce,
@@ -17534,7 +17491,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
-    project_element_scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
+    project_item_scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
     expression_scope: Option<&'a SyntaxExpression<Expressions, Patterns, Types>>,
     origins: &mut std::collections::HashMap<
         &'a Name,
@@ -17562,7 +17519,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                 });
             }
             type_.as_ref().and_then(|type_| {
-                type_symbol_at_position(type_, position, types, project_element_scope, origins)
+                type_symbol_at_position(type_, position, types, project_item_scope, origins)
             })
         }
         SyntaxPattern::Variant { name, value } => {
@@ -17576,7 +17533,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             }
             value.as_ref().and_then(|value| {
                 pattern_symbol_at_position(
-                    patterns.element(value),
+                    patterns.item(value),
                     expected_type
                         .and_then(|expected_type| match expected_type {
                             Type::Choice(expected_variants) => {
@@ -17594,7 +17551,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                     checked_spread_records,
                     patterns,
                     types,
-                    project_element_scope,
+                    project_item_scope,
                     expression_scope,
                     origins,
                 )
@@ -17606,7 +17563,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             .find_map(|part| match part {
                 SyntaxRecordPart::Field { name, value } => value.as_ref().and_then(|value| {
                     pattern_symbol_at_position(
-                        patterns.element(value),
+                        patterns.item(value),
                         expected_type
                             .and_then(|expected_type| match expected_type {
                                 Type::Record(expected_fields) => {
@@ -17624,7 +17581,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         patterns,
                         types,
-                        project_element_scope,
+                        project_item_scope,
                         expression_scope,
                         origins,
                     )
@@ -17634,7 +17591,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                     record,
                 } => record.as_ref().and_then(|record| {
                     pattern_symbol_at_position(
-                        patterns.element(record),
+                        patterns.item(record),
                         expected_type
                             .and_then(|expected_type| match expected_type {
                                 Type::Record(expected_fields) => checked_spread_records
@@ -17659,7 +17616,7 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
                         checked_spread_records,
                         patterns,
                         types,
-                        project_element_scope,
+                        project_item_scope,
                         expression_scope,
                         origins,
                     )
@@ -17671,14 +17628,14 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
             closed_paren_start: _,
         } => inner.as_ref().and_then(|inner| {
             pattern_symbol_at_position(
-                patterns.element(inner),
+                patterns.item(inner),
                 expected_type,
                 position,
                 type_aliases,
                 checked_spread_records,
                 patterns,
                 types,
-                project_element_scope,
+                project_item_scope,
                 expression_scope,
                 origins,
             )
@@ -17689,7 +17646,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
     type_: &'a SyntaxType<Types>,
     position: lsp_types::Position,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
-    scope: &'a SyntaxProjectElement<Expressions, Patterns, Types>,
+    scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
     origins: &mut std::collections::HashMap<
         &'a Name,
         OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
@@ -17750,7 +17707,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             }
             argument0
                 .iter()
-                .map(|argument0| types.element(argument0))
+                .map(|argument0| types.item(argument0))
                 .chain(
                     argument1_up
                         .iter()
@@ -17765,7 +17722,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             inner,
             closed_paren_start: _,
         } => inner.as_ref().and_then(|inner| {
-            type_symbol_at_position(types.element(inner), position, types, scope, origins)
+            type_symbol_at_position(types.item(inner), position, types, scope, origins)
         }),
         SyntaxType::RecordEmpty { dot_start: _ } => None,
         SyntaxType::Record {
@@ -17774,7 +17731,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             field1_up,
         } => fields_find_symbol_at_position(
             with_start_position_as_ref(field0_name),
-            field0_value.as_ref().map(|value| types.element(value)),
+            field0_value.as_ref().map(|value| types.item(value)),
             field1_up,
             |_, value| type_symbol_at_position(value, position, types, scope, origins),
         ),
@@ -17785,7 +17742,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             variant1_up,
         } => variant0_value
             .iter()
-            .map(|value| types.element(value))
+            .map(|value| types.item(value))
             .chain(
                 variant1_up
                     .iter()
@@ -17826,8 +17783,8 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
             name: symbol_name,
             construct_info: _,
             origins: _,
-        } => project.elements.iter().find_map(|element| match element {
-            SyntaxProjectElement::TypeAlias {
+        } => project.items.iter().find_map(|item| match item {
+            SyntaxProjectItem::TypeAlias {
                 ty_keyword_start: _,
                 name: type_alias_name,
                 parameters: _,
@@ -17842,9 +17799,9 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                     None
                 }
             }
-            SyntaxProjectElement::Fn { .. }
-            | SyntaxProjectElement::Comments(_)
-            | SyntaxProjectElement::Unrecognized { .. } => None,
+            SyntaxProjectItem::Fn { .. }
+            | SyntaxProjectItem::Comments(_)
+            | SyntaxProjectItem::Unrecognized { .. } => None,
         }),
         SyntaxSymbol::Origin {
             name,
@@ -17879,7 +17836,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
             use_start: _,
             scope,
         } => match scope {
-            SyntaxProjectElement::TypeAlias {
+            SyntaxProjectItem::TypeAlias {
                 ty_keyword_start: _,
                 name: _,
                 parameters,
@@ -17907,7 +17864,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                     }
                 })
             }),
-            SyntaxProjectElement::Fn {
+            SyntaxProjectItem::Fn {
                 fn_keyword_start: _,
                 name: _,
                 type_parameters,
@@ -17934,7 +17891,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                         None
                     }
                 }),
-            SyntaxProjectElement::Comments(_) | SyntaxProjectElement::Unrecognized { .. } => None,
+            SyntaxProjectItem::Comments(_) | SyntaxProjectItem::Unrecognized { .. } => None,
         },
         SyntaxSymbol::VariantOrUnknown(_) => None,
         SyntaxSymbol::ProjectFnOrUnknown {
@@ -17942,8 +17899,8 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
             construct_info: _,
             pattern_variables: _,
             origins: _,
-        } => project.elements.iter().find_map(|element| match element {
-            SyntaxProjectElement::Fn {
+        } => project.items.iter().find_map(|item| match item {
+            SyntaxProjectItem::Fn {
                 fn_keyword_start: _,
                 name: Some(fn_name),
                 type_parameters: _,
@@ -18002,7 +17959,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
             use_start: _,
             scope,
         } => match scope {
-            SyntaxProjectElement::TypeAlias {
+            SyntaxProjectItem::TypeAlias {
                 ty_keyword_start: _,
                 name: _,
                 parameters: _,
@@ -18019,7 +17976,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                     );
                 }
             }
-            SyntaxProjectElement::Fn {
+            SyntaxProjectItem::Fn {
                 fn_keyword_start: _,
                 name: _,
                 type_parameters: _,
@@ -18062,8 +18019,8 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                     );
                 }
             }
-            SyntaxProjectElement::Comments(_) => {}
-            SyntaxProjectElement::Unrecognized { .. } => {}
+            SyntaxProjectItem::Comments(_) => {}
+            SyntaxProjectItem::Unrecognized { .. } => {}
         },
         SyntaxSymbol::PatternVariable {
             name: _,
@@ -18084,9 +18041,9 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
             }
         }
         SyntaxSymbol::ProjectTypeOrUnknown { .. } => {
-            for element in &project.elements {
-                match element {
-                    SyntaxProjectElement::Fn {
+            for item in &project.items {
+                match item {
+                    SyntaxProjectItem::Fn {
                         fn_keyword_start: _,
                         name: _,
                         type_parameters: _,
@@ -18129,7 +18086,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                             );
                         }
                     }
-                    SyntaxProjectElement::TypeAlias {
+                    SyntaxProjectItem::TypeAlias {
                         ty_keyword_start: _,
                         name: _,
                         parameters: _,
@@ -18146,15 +18103,15 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                             );
                         }
                     }
-                    SyntaxProjectElement::Comments(_) => {}
-                    SyntaxProjectElement::Unrecognized { .. } => {}
+                    SyntaxProjectItem::Comments(_) => {}
+                    SyntaxProjectItem::Unrecognized { .. } => {}
                 }
             }
         }
         SyntaxSymbol::VariantOrUnknown(_) | SyntaxSymbol::ProjectFnOrUnknown { .. } => {
-            for element in &project.elements {
-                match element {
-                    SyntaxProjectElement::Fn {
+            for item in &project.items {
+                match item {
+                    SyntaxProjectItem::Fn {
                         fn_keyword_start: _,
                         name: _,
                         type_parameters: _,
@@ -18210,9 +18167,9 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                             );
                         }
                     }
-                    SyntaxProjectElement::TypeAlias { .. } => {}
-                    SyntaxProjectElement::Comments(_) => {}
-                    SyntaxProjectElement::Unrecognized { .. } => {}
+                    SyntaxProjectItem::TypeAlias { .. } => {}
+                    SyntaxProjectItem::Comments(_) => {}
+                    SyntaxProjectItem::Unrecognized { .. } => {}
                 }
             }
         }
@@ -18252,7 +18209,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
         } => {
             for field_value in field0_value
                 .iter()
-                .map(|value| types.element(value))
+                .map(|value| types.item(value))
                 .chain(field1_up.iter().filter_map(|field| field.value.as_ref()))
             {
                 syntax_type_symbol_uses_into(uses, field_value, symbol, types, origins);
@@ -18264,15 +18221,11 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             variant0_value,
             variant1_up,
         } => {
-            for variant_value in variant0_value
-                .iter()
-                .map(|value| types.element(value))
-                .chain(
-                    variant1_up
-                        .iter()
-                        .filter_map(|variant| variant.value.as_ref()),
-                )
-            {
+            for variant_value in variant0_value.iter().map(|value| types.item(value)).chain(
+                variant1_up
+                    .iter()
+                    .filter_map(|variant| variant.value.as_ref()),
+            ) {
                 syntax_type_symbol_uses_into(uses, variant_value, symbol, types, origins);
             }
         }
@@ -18304,7 +18257,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             }
             for argument in argument0
                 .iter()
-                .map(|argument0| types.element(argument0))
+                .map(|argument0| types.item(argument0))
                 .chain(
                     argument1_up
                         .iter()
@@ -18320,7 +18273,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                syntax_type_symbol_uses_into(uses, types.element(inner), symbol, types, origins);
+                syntax_type_symbol_uses_into(uses, types.item(inner), symbol, types, origins);
             }
         }
     }
@@ -18349,7 +18302,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(value) = value {
                 syntax_pattern_symbol_uses_into(
                     uses,
-                    patterns.element(value),
+                    patterns.item(value),
                     symbol,
                     patterns,
                     types,
@@ -18365,7 +18318,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
                         if let Some(value) = value {
                             syntax_pattern_symbol_uses_into(
                                 uses,
-                                patterns.element(value),
+                                patterns.item(value),
                                 symbol,
                                 patterns,
                                 types,
@@ -18380,7 +18333,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
                         if let Some(record) = record {
                             syntax_pattern_symbol_uses_into(
                                 uses,
-                                patterns.element(record),
+                                patterns.item(record),
                                 symbol,
                                 patterns,
                                 types,
@@ -18399,7 +18352,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_pattern_symbol_uses_into(
                     uses,
-                    patterns.element(inner),
+                    patterns.item(inner),
                     symbol,
                     patterns,
                     types,
@@ -18491,7 +18444,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(argument) = argument {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(argument),
+                    expressions.item(argument),
                     symbol,
                     expressions,
                     patterns,
@@ -18521,7 +18474,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(value) = value {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(value),
+                    expressions.item(value),
                     symbol,
                     expressions,
                     patterns,
@@ -18559,7 +18512,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 }
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(result),
+                    expressions.item(result),
                     symbol,
                     expressions,
                     patterns,
@@ -18586,21 +18539,17 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            for element in element0
+            for item in item0
                 .iter()
-                .map(|element0| expressions.element(element0))
-                .chain(
-                    element1_up
-                        .iter()
-                        .filter_map(|element| element.element.as_ref()),
-                )
+                .map(|item0| expressions.item(item0))
+                .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
             {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    element,
+                    item,
                     symbol,
                     expressions,
                     patterns,
@@ -18618,7 +18567,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(inner) = inner {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(inner),
+                    expressions.item(inner),
                     symbol,
                     expressions,
                     patterns,
@@ -18635,7 +18584,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(expression) = expression {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(expression),
+                    expressions.item(expression),
                     symbol,
                     expressions,
                     patterns,
@@ -18653,7 +18602,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(queried) = queried {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(queried),
+                    expressions.item(queried),
                     symbol,
                     expressions,
                     patterns,
@@ -18725,7 +18674,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 }
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(result),
+                    expressions.item(result),
                     symbol,
                     expressions,
                     patterns,
@@ -18752,7 +18701,7 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(field_value) = value {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(field_value),
+                    expressions.item(field_value),
                     symbol,
                     expressions,
                     patterns,
@@ -18769,7 +18718,7 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
             if let Some(record) = record {
                 syntax_expression_symbol_uses_into(
                     uses,
-                    expressions.element(record),
+                    expressions.item(record),
                     symbol,
                     expressions,
                     patterns,
@@ -18845,12 +18794,12 @@ pub fn project_highlight<Expressions, Patterns, Types>(
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) {
-    for element in &project.elements {
-        match element {
-            SyntaxProjectElement::Comments(comments) => {
+    for item in &project.items {
+        match item {
+            SyntaxProjectItem::Comments(comments) => {
                 syntax_comments_highlight(state, comments);
             }
-            SyntaxProjectElement::TypeAlias {
+            SyntaxProjectItem::TypeAlias {
                 ty_keyword_start,
                 name,
                 parameters,
@@ -18898,7 +18847,7 @@ pub fn project_highlight<Expressions, Patterns, Types>(
                     syntax_type_highlight(state, types, type_);
                 }
             }
-            SyntaxProjectElement::Fn {
+            SyntaxProjectItem::Fn {
                 fn_keyword_start,
                 name,
                 type_parameters,
@@ -18967,7 +18916,7 @@ pub fn project_highlight<Expressions, Patterns, Types>(
                     syntax_expression_highlight(state, expressions, patterns, types, result);
                 }
             }
-            SyntaxProjectElement::Unrecognized { .. } => {}
+            SyntaxProjectItem::Unrecognized { .. } => {}
         }
     }
 }
@@ -19121,7 +19070,7 @@ fn syntax_pattern_highlight<Patterns, Types>(
         SyntaxPattern::Variant { name, value } => {
             syntax_optional_variant_name_highlight(state, name);
             if let Some(value) = value {
-                syntax_pattern_highlight(state, patterns, types, patterns.element(value));
+                syntax_pattern_highlight(state, patterns, types, patterns.item(value));
             }
         }
         SyntaxPattern::RecordEmpty { dot_start } => {
@@ -19133,12 +19082,7 @@ fn syntax_pattern_highlight<Patterns, Types>(
                     SyntaxRecordPart::Field { name, value } => {
                         syntax_optional_field_name_highlight(state, name);
                         if let Some(value) = value {
-                            syntax_pattern_highlight(
-                                state,
-                                patterns,
-                                types,
-                                patterns.element(value),
-                            );
+                            syntax_pattern_highlight(state, patterns, types, patterns.item(value));
                         }
                     }
                     SyntaxRecordPart::Spread {
@@ -19147,12 +19091,7 @@ fn syntax_pattern_highlight<Patterns, Types>(
                     } => {
                         keyword_highlight(state, "..", *dot_dot_start);
                         if let Some(record) = record {
-                            syntax_pattern_highlight(
-                                state,
-                                patterns,
-                                types,
-                                patterns.element(record),
-                            );
+                            syntax_pattern_highlight(state, patterns, types, patterns.item(record));
                         }
                     }
                 }
@@ -19164,7 +19103,7 @@ fn syntax_pattern_highlight<Patterns, Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                syntax_pattern_highlight(state, patterns, types, patterns.element(inner));
+                syntax_pattern_highlight(state, patterns, types, patterns.item(inner));
             }
         }
     }
@@ -19196,7 +19135,7 @@ pub fn syntax_type_highlight<Types>(
         } => {
             syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Function);
             if let Some(argument0) = argument0 {
-                syntax_type_highlight(state, types, types.element(argument0));
+                syntax_type_highlight(state, types, types.item(argument0));
             }
             for argument in argument1_up {
                 if let Some(argument_type) = &argument.type_ {
@@ -19210,7 +19149,7 @@ pub fn syntax_type_highlight<Types>(
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                syntax_type_highlight(state, types, types.element(inner));
+                syntax_type_highlight(state, types, types.item(inner));
             }
         }
         SyntaxType::RecordEmpty { dot_start } => {
@@ -19223,7 +19162,7 @@ pub fn syntax_type_highlight<Types>(
         } => {
             syntax_field_name_highlight(state, field0_name);
             if let Some(field0_value) = field0_value {
-                syntax_type_highlight(state, types, types.element(field0_value));
+                syntax_type_highlight(state, types, types.item(field0_value));
             }
             for field in field1_up {
                 syntax_trailing_field_highlight(state, field, |state, value| {
@@ -19239,7 +19178,7 @@ pub fn syntax_type_highlight<Types>(
         } => {
             syntax_variant_name_highlight(state, variant0_name);
             if let Some(variant0_value) = variant0_value {
-                syntax_type_highlight(state, types, types.element(variant0_value));
+                syntax_type_highlight(state, types, types.item(variant0_value));
             }
             for variant in variant1_up {
                 syntax_optional_variant_name_highlight(state, &variant.name);
@@ -19336,7 +19275,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(argument),
+                    expressions.item(argument),
                 );
             }
         }
@@ -19380,7 +19319,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(value),
+                    expressions.item(value),
                 );
             }
         }
@@ -19403,7 +19342,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.item(result),
                 );
             }
         }
@@ -19421,7 +19360,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                                 expressions,
                                 patterns,
                                 types,
-                                expressions.element(value),
+                                expressions.item(value),
                             );
                         }
                     }
@@ -19436,7 +19375,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                                 expressions,
                                 patterns,
                                 types,
-                                expressions.element(record),
+                                expressions.item(record),
                             );
                         }
                     }
@@ -19445,19 +19384,15 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            for element in element0
+            for item in item0
                 .iter()
-                .map(|element0| expressions.element(element0))
-                .chain(
-                    element1_up
-                        .iter()
-                        .filter_map(|element| element.element.as_ref()),
-                )
+                .map(|item0| expressions.item(item0))
+                .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
             {
-                syntax_expression_highlight(state, expressions, patterns, types, element);
+                syntax_expression_highlight(state, expressions, patterns, types, item);
             }
         }
         SyntaxExpression::Parenthesized {
@@ -19471,7 +19406,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(inner),
+                    expressions.item(inner),
                 );
             }
         }
@@ -19486,7 +19421,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(expression),
+                    expressions.item(expression),
                 );
             }
         }
@@ -19502,7 +19437,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(queried),
+                    expressions.item(queried),
                 );
             }
             for case in cases {
@@ -19537,7 +19472,7 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    expressions.element(result),
+                    expressions.item(result),
                 );
             }
         }
@@ -19780,14 +19715,14 @@ fn type_record_length_estimate(fields: &[TypeField]) -> usize {
         .sum()
 }
 
-pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
-    element: SyntaxProjectElement<Expressions, Patterns, Types>,
+pub fn syntax_project_item_rid<Expressions, Patterns, Types>(
+    item: SyntaxProjectItem<Expressions, Patterns, Types>,
     expressions: &mut core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) {
-    match element {
-        SyntaxProjectElement::TypeAlias {
+    match item {
+        SyntaxProjectItem::TypeAlias {
             ty_keyword_start: _,
             name: _,
             parameters: _,
@@ -19798,7 +19733,7 @@ pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
                 syntax_type_rid(type_, types);
             }
         }
-        SyntaxProjectElement::Fn {
+        SyntaxProjectItem::Fn {
             fn_keyword_start: _,
             name: _,
             type_parameters: _,
@@ -19819,8 +19754,8 @@ pub fn syntax_project_element_rid<Expressions, Patterns, Types>(
                 syntax_expression_rid(result, expressions, patterns, types);
             }
         }
-        SyntaxProjectElement::Comments(_) => {}
-        SyntaxProjectElement::Unrecognized {
+        SyntaxProjectItem::Comments(_) => {}
+        SyntaxProjectItem::Unrecognized {
             range: _,
             source: _,
         } => {}
@@ -20049,19 +19984,19 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
         }
         SyntaxExpression::Array {
             semicolon_start: _,
-            element0,
-            element1_up,
+            item0,
+            item1_up,
         } => {
-            if let Some(element0) = element0 {
-                syntax_expression_rid(expressions.remove(element0), expressions, patterns, types);
+            if let Some(item0) = item0 {
+                syntax_expression_rid(expressions.remove(item0), expressions, patterns, types);
             }
-            for SyntaxExpressionArrayElement {
+            for SyntaxExpressionArrayItem {
                 semicolon_start: _,
-                element,
-            } in element1_up
+                item,
+            } in item1_up
             {
-                if let Some(element) = element {
-                    syntax_expression_rid(element, expressions, patterns, types);
+                if let Some(item) = item {
+                    syntax_expression_rid(item, expressions, patterns, types);
                 }
             }
         }
