@@ -5013,7 +5013,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                             "A variant is part of a choice type (for example |a u32 |b str) but the expected type here is\n",
                         );
                         type_format(&mut error_message, 0, expected_type);
-                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for query case results");
+                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
                         errors.push(ErrorNode {
                             range: optional_variant_name_range(name),
                             message: error_message.into_boxed_str(),
@@ -5099,7 +5099,25 @@ fn syntax_pattern_check<'a, Patterns, Types>(
             }
         }
         SyntaxPattern::RecordEmpty { dot_start: _ } => {
-            // TODO check this matches up with the expected type
+            if let Some(expected_type) = expected_type
+                && match expected_type {
+                    Type::Record(type_fields) if type_fields.is_empty() => false,
+                    _ => true,
+                }
+            {
+                {
+                    let mut error_message: String = String::from(
+                        "This pattern matches an empty record but the expected type here is\n",
+                    );
+                    type_format(&mut error_message, 0, expected_type);
+                    error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
+                    errors.push(ErrorNode {
+                        range: pattern_range(pattern, patterns, types),
+                        message: error_message.into_boxed_str(),
+                    });
+                    return None;
+                }
+            }
             Some(CheckedPattern {
                 type_: Type::Record(vec![]),
                 catch: PatternCatch::Exhaustive,
@@ -5118,7 +5136,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                             "This pattern matches a record but the expected type here is\n",
                         );
                         type_format(&mut error_message, 0, expected_type);
-                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for query case results");
+                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
                         errors.push(ErrorNode {
                             range: pattern_range(pattern, patterns, types),
                             message: error_message.into_boxed_str(),
@@ -5173,7 +5191,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                         let error_message: String = format!(
                                             "This pattern matches a record with the field {} but the expected record type here only expects these fields
 .{}
-You might have intended this pattern to belong to a different query. Use parens for query case results",
+You might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases",
                                             field_name_value,
                                             expected_type_record.iter().map(|expected_type_field| expected_type_field.name.as_str()).collect::<Vec<_>>().join(" .")
                                         );
@@ -12337,42 +12355,54 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             CoreFnInfo {
                 name: "F32-ln",
                 documentation: "Its natural logarithm.
-If the result is too negative or the input is not positive, returns |no .",
+If the result is too negative or the input is not positive, returns |no .
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_opt(type_f32),
             },
             CoreFnInfo {
                 name: "F32-exp",
-                documentation: "e to the power of the given f32, known as the exponential function",
+                documentation: "e to the power of the given f32, known as the exponential function.
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_f32,
             },
             CoreFnInfo {
                 name: "F32-sin",
-                documentation: "The sine of given radians",
+                documentation: "The sine of given radians.
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_f32,
             },
             CoreFnInfo {
                 name: "F32-cos",
-                documentation: "The cosine of given radians",
+                documentation: "The cosine of given radians.
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_f32,
             },
             CoreFnInfo {
                 name: "F32-tan",
-                documentation: "The tangent of given radians",
+                documentation: "The tangent of given radians.
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_f32,
             },
             CoreFnInfo {
                 name: "F32-atan",
-                documentation: "The arctangent of given radians, returned in radians from -pi/2 to pi/2",
+                documentation: "The arctangent of given radians, returned in radians from -pi/2 to pi/2.
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_f32,
                 result_type: type_f32,
@@ -12401,14 +12431,18 @@ Try not to divide by 0.0, as 0.0 will be returned which is not mathematically co
             },
             CoreFnInfo {
                 name: "F32-pow-i32",
-                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined",
+                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined.
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_record([("base", type_f32), ("exponent", type_i32)]),
                 result_type: type_opt(type_f32),
             },
             CoreFnInfo {
                 name: "F32-pow",
-                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined",
+                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined.
+
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
                 parameter_type: type_record([("base", type_f32), ("exponent", type_f32)]),
                 result_type: type_opt(type_f32),

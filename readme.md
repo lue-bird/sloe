@@ -780,6 +780,8 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+-  consider adding deterministic alternatives like square-root
+
 - do introduce query pattern record spread syntax after all.
   It enables the "use the defaults except" pattern which would be inpossible annoying otherwise:
   ```sloe
@@ -822,6 +824,9 @@ cargo install --offline --debug --path . sloe
   ```
 
 - check Buf lengths after every append in rust the same way as done in zig and js but panic instead
+
+- consider adding `Buf-span-map-or-rid-and-allocate` (which tries to reuse the allocation).
+  Is there a use for this?
 
 - fix comment TODOs
 
