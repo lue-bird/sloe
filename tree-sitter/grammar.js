@@ -324,18 +324,26 @@ export default grammar({
     pattern_variant_untyped: ($) => seq($.variant_name_including_bar, $.pattern_untyped),
     pattern_record_empty: ($) => ".",
     pattern_record_typed: ($) =>
-      seq(repeat($.pattern_field_not_open_ending_in_record_typed), $.pattern_field_typed),
-    pattern_field_not_open_ending_in_record_typed: ($) =>
-      seq($.field_name, $.pattern_not_open_ending_in_record_typed),
-    pattern_field_typed: ($) => seq($.field_name, $.pattern_typed),
+      seq(repeat($.pattern_part_not_open_ending_in_record_typed), $.pattern_part_typed),
+    pattern_part_not_open_ending_in_record_typed: ($) =>
+      seq(
+        choice($.key_symbol_spread_fields, $.field_name),
+        $.pattern_not_open_ending_in_record_typed,
+      ),
+    pattern_part_typed: ($) =>
+      seq(choice($.key_symbol_spread_fields, $.field_name), $.pattern_typed),
     pattern_record_untyped: ($) =>
       seq(
-        repeat($.pattern_field_not_open_ending_in_record_untyped),
-        $.pattern_field_untyped,
+        repeat($.pattern_part_not_open_ending_in_record_untyped),
+        $.pattern_part_untyped,
       ),
-    pattern_field_not_open_ending_in_record_untyped: ($) =>
-      seq($.field_name, $.pattern_not_open_ending_in_record_untyped),
-    pattern_field_untyped: ($) => seq($.field_name, $.pattern_untyped),
+    pattern_part_not_open_ending_in_record_untyped: ($) =>
+      seq(
+        choice($.key_symbol_spread_fields, $.field_name),
+        $.pattern_not_open_ending_in_record_untyped,
+      ),
+    pattern_part_untyped: ($) =>
+      seq(choice($.key_symbol_spread_fields, $.field_name), $.pattern_untyped),
 
     type: ($) =>
       choice(

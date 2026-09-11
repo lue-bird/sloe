@@ -1,5 +1,6 @@
 # experiments
 *.cpp
 cpp-run.sh
-Core.cs
-compile.csproj
+*.cs
+*.csproj
+*.swift

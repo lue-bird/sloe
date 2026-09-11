@@ -1071,82 +1071,6 @@
     }
   },
   {
-    "type": "pattern_field_not_open_ending_in_record_typed",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "pattern_not_open_ending_in_record_typed",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "pattern_field_not_open_ending_in_record_untyped",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "pattern_not_open_ending_in_record_untyped",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "pattern_field_typed",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "pattern_typed",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "pattern_field_untyped",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "field_name",
-          "named": true
-        },
-        {
-          "type": "pattern_untyped",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "pattern_not_open_ending_in_record_typed",
     "named": true,
     "fields": {},
@@ -1223,6 +1147,98 @@
     }
   },
   {
+    "type": "pattern_part_not_open_ending_in_record_typed",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "pattern_not_open_ending_in_record_typed",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pattern_part_not_open_ending_in_record_untyped",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "pattern_not_open_ending_in_record_untyped",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pattern_part_typed",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "pattern_typed",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pattern_part_untyped",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "field_name",
+          "named": true
+        },
+        {
+          "type": "key_symbol_spread_fields",
+          "named": true
+        },
+        {
+          "type": "pattern_untyped",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "pattern_record_empty",
     "named": true,
     "fields": {}
@@ -1236,11 +1252,11 @@
       "required": true,
       "types": [
         {
-          "type": "pattern_field_not_open_ending_in_record_typed",
+          "type": "pattern_part_not_open_ending_in_record_typed",
           "named": true
         },
         {
-          "type": "pattern_field_typed",
+          "type": "pattern_part_typed",
           "named": true
         }
       ]
@@ -1255,11 +1271,11 @@
       "required": true,
       "types": [
         {
-          "type": "pattern_field_not_open_ending_in_record_untyped",
+          "type": "pattern_part_not_open_ending_in_record_untyped",
           "named": true
         },
         {
-          "type": "pattern_field_untyped",
+          "type": "pattern_part_untyped",
           "named": true
         }
       ]

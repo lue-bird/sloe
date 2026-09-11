@@ -547,7 +547,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
 - add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
 - when checking, avoid shortcutting early when possible, still traversing sub-items even when a clear error has been found
-- add c# compilation as well if there is demand
+- add c# or swift or erlang compilation as well if there is demand
+- add source maps for mjs
 - verify that origin creation is correct for all kinds of recursion! e.g. this one seems on the edge of correct:
   _different bufs have the same origin_ but their slots can't intermix.
   ```sloe
@@ -716,12 +717,21 @@ If you're looking to learn from sloe, maybe do not learn from these:
 
 - record spread. It provides an alternative syntax sugar for something that could already be expressed. I originally introduced it to make builders like string builers less jarring
   but I'm not so sure this worked.
-  I'm on the fence; if you have complaints I'll remove this feature
+  Especially for query case patterns where only one spread cn exist per pattern, I took a very long time before changing my mind to add it. 
+  It enables the "use the defaults except" pattern which would be inpossible annoying otherwise:
+  ```sloe
+  Some-fn
+  ? Some-fn-defaults [.. all .except except]
+  ? Except-rid except [.]
+  .. all .except new-value
+  ```
+  I've changed my mind on this being okay because you need to handle all fields anyway.
+  It's one of those "only need it in 5% of cases but then its unreplaceable" features, the nightmare of a language designer
 
 - nested pattern matching.
   It's existence makes compilation, exhaustiveness-checking, error messages and flow-typing-like matching (e.g. matching |a in <|a|b|c> leaving |b|c) harder.
   It also creates a "two modes of matching" problem: You e.g. can't match on numbers, chars, strings, span start and lengths etc. And so you sometimes need an extra step, leading to nested matches anyway (does not feel consistent).
-  It also "takes control from the user int othe magic hands of the compiler" and thus it may run checks etc. in a different order than you have.
+  It also "takes control from the user into the magic hands of the compiler" and thus it may run checks etc. in a different order than you have.
   I originally introduced it to make e.g. matching on multiple `Opt`s easier.
   It helps keep context clear and visible like "if the left sub is empty and the right sub is a branch with an empty left side, do this".
   Honestly I should not have been so hasty to add this feature
@@ -740,10 +750,10 @@ If you're looking to learn from sloe, maybe do not learn from these:
     - introduce syntactical diabetis or macro-esque bullshit for repeated function calls
       ```sloe
       ...
-      _@0 stack-cons .. example-stack .new 39 u32
-      & _@0 ..@ .new 3 u32
-      & _@0 ..@ .new 6 u32
-      & _@0 ..@ .new 9 u32
+      ? Stack-cons* .. example-stack .new 39 u32
+      [-]? * ..- .new 3 u32
+      [-]? * ..- .new 6 u32
+      [-]? * ..- .new 9 u32
       ```
       (the above is obviously insane in a bad way, but there may be a middle-ground)
   
@@ -781,16 +791,6 @@ cargo install --offline --debug --path . sloe
 # TODO
 
 -  consider adding deterministic alternatives like square-root
-
-- do introduce query pattern record spread syntax after all.
-  It enables the "use the defaults except" pattern which would be inpossible annoying otherwise:
-  ```sloe
-  Some-fn
-  ? Some-fn-defaults [.. all .except except]
-  ? Except-rid except [.]
-  .. all .except new-value
-  ```
-  I've changed my mind on this being okay because you need to handle all fields anyway
 
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 

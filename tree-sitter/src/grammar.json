@@ -1437,21 +1437,30 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "pattern_field_not_open_ending_in_record_typed"
+            "name": "pattern_part_not_open_ending_in_record_typed"
           }
         },
         {
           "type": "SYMBOL",
-          "name": "pattern_field_typed"
+          "name": "pattern_part_typed"
         }
       ]
     },
-    "pattern_field_not_open_ending_in_record_typed": {
+    "pattern_part_not_open_ending_in_record_typed": {
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "field_name"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "key_symbol_spread_fields"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "field_name"
+            }
+          ]
         },
         {
           "type": "SYMBOL",
@@ -1459,12 +1468,21 @@
         }
       ]
     },
-    "pattern_field_typed": {
+    "pattern_part_typed": {
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "field_name"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "key_symbol_spread_fields"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "field_name"
+            }
+          ]
         },
         {
           "type": "SYMBOL",
@@ -1479,21 +1497,30 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "pattern_field_not_open_ending_in_record_untyped"
+            "name": "pattern_part_not_open_ending_in_record_untyped"
           }
         },
         {
           "type": "SYMBOL",
-          "name": "pattern_field_untyped"
+          "name": "pattern_part_untyped"
         }
       ]
     },
-    "pattern_field_not_open_ending_in_record_untyped": {
+    "pattern_part_not_open_ending_in_record_untyped": {
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "field_name"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "key_symbol_spread_fields"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "field_name"
+            }
+          ]
         },
         {
           "type": "SYMBOL",
@@ -1501,12 +1528,21 @@
         }
       ]
     },
-    "pattern_field_untyped": {
+    "pattern_part_untyped": {
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "field_name"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "key_symbol_spread_fields"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "field_name"
+            }
+          ]
         },
         {
           "type": "SYMBOL",
