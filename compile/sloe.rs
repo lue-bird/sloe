@@ -331,6 +331,139 @@ pub fn optional_field_name_range(field_name: &WithStartPosition<Option<Name>>) -
         end: optional_field_name_end(field_name),
     }
 }
+#[must_use]
+pub fn project_item_range<Expressions, Patterns, Types>(
+    item: &SyntaxProjectItem<Expressions, Patterns, Types>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+) -> lsp_types::Range {
+    lsp_types::Range {
+        start: project_item_start(item),
+        end: project_item_end(item, expressions, patterns, types),
+    }
+}
+pub fn project_item_start<Expressions, Patterns, Types>(
+    item: &SyntaxProjectItem<Expressions, Patterns, Types>,
+) -> lsp_types::Position {
+    match item {
+        SyntaxProjectItem::TypeAlias {
+            ty_keyword_start,
+            name: _,
+            parameters: _,
+            documentation: _,
+            type_: _,
+        } => *ty_keyword_start,
+        SyntaxProjectItem::Fn {
+            fn_keyword_start,
+            name: _,
+            type_parameters: _,
+            parameter: _,
+            colon_start: _,
+            result_type: _,
+            equals_start: _,
+            documentation: _,
+            result: _,
+        } => *fn_keyword_start,
+        SyntaxProjectItem::Comments(syntax_comments) => syntax_comments.line0.start,
+        SyntaxProjectItem::Unrecognized { range, source: _ } => range.start,
+    }
+}
+pub fn project_item_end<Expressions, Patterns, Types>(
+    item: &SyntaxProjectItem<Expressions, Patterns, Types>,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+) -> lsp_types::Position {
+    match item {
+        SyntaxProjectItem::TypeAlias {
+            ty_keyword_start,
+            name,
+            parameters,
+            documentation,
+            type_,
+        } => type_
+            .as_ref()
+            .map(|type_| type_end(type_, types))
+            .or_else(|| documentation.as_ref().map(|doc| comments_end(doc)))
+            .or_else(|| parameters.as_ref().map(|params| ty_parameters_end(params)))
+            .or_else(|| {
+                name.as_ref()
+                    .map(|name| name_end(with_start_position_as_ref(name)))
+            })
+            .unwrap_or_else(|| *ty_keyword_start),
+        SyntaxProjectItem::Fn {
+            fn_keyword_start,
+            name,
+            type_parameters,
+            parameter,
+            colon_start,
+            result_type,
+            equals_start,
+            documentation,
+            result,
+        } => result
+            .as_ref()
+            .map(|result| expression_end(result, expressions, patterns, types))
+            .or_else(|| documentation.as_ref().map(|doc| comments_end(doc)))
+            .or_else(|| *equals_start)
+            .or_else(|| {
+                result_type
+                    .as_ref()
+                    .map(|result_type| type_end(result_type, types))
+            })
+            .or_else(|| *colon_start)
+            .or_else(|| {
+                parameter
+                    .as_ref()
+                    .map(|parameter| pattern_end(parameter, patterns, types))
+            })
+            .or_else(|| {
+                type_parameters
+                    .last()
+                    .map(|last_type_param| braced_type_parameter_end(last_type_param))
+            })
+            .or_else(|| {
+                name.as_ref()
+                    .map(|name| name_end(with_start_position_as_ref(name)))
+            })
+            .unwrap_or_else(|| *fn_keyword_start),
+        SyntaxProjectItem::Comments(syntax_comments) => comments_end(syntax_comments),
+        SyntaxProjectItem::Unrecognized { range, source: _ } => range.end,
+    }
+}
+pub fn ty_parameters_end(ty_parameters: &TyParameters) -> lsp_types::Position {
+    match ty_parameters.parameter1_up.last() {
+        Some(last_parameter) => match last_parameter.underscore_start {
+            Some(last_parameter_underscore_start) => name_end(WithStartPosition {
+                value: &last_parameter.name,
+                start: last_parameter_underscore_start,
+            }),
+            None => last_parameter.comma_start,
+        },
+        None => name_end(WithStartPosition {
+            value: &ty_parameters.parameter0,
+            start: ty_parameters.parameter0_underscore_start,
+        }),
+    }
+}
+pub fn braced_type_parameter_end(
+    braced_type_parameter: &SyntaxBracedTypeParameter,
+) -> lsp_types::Position {
+    braced_type_parameter
+        .closed_brace_start
+        .or_else(|| {
+            braced_type_parameter
+                .underscore_start
+                .map(|underscore_start| {
+                    name_end(WithStartPosition {
+                        value: &braced_type_parameter.name,
+                        start: underscore_start,
+                    })
+                })
+        })
+        .unwrap_or_else(|| braced_type_parameter.open_brace_start)
+}
 pub fn type_range<Types>(
     type_: &SyntaxType<Types>,
     types: &core::Buf<Types, SyntaxType<Types>>,
@@ -1476,8 +1609,6 @@ fn parse_parameter_pattern_record<Patterns, Types>(
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
-    // TODO why not let Some(part0) = parse_parameter_pattern_record_part(state, patterns, types)
-    // else { return parse_pattern_record_empty(state); } ?
     let part0 = if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
         parse_sloe_whitespace(state);
         let record = parse_parameter_pattern(state, patterns, types);
@@ -1501,7 +1632,7 @@ fn parse_parameter_pattern_record<Patterns, Types>(
             value: value.map(|record| patterns.insert(record)),
         }
     } else {
-        return parse_pattern_record_empty(state);
+        return None;
     };
     parse_sloe_whitespace(state);
     let mut part1_up = Vec::new();
@@ -1537,23 +1668,35 @@ fn parse_parameter_pattern_record_part<Patterns, Types>(
         return None;
     }
 }
-fn parse_pattern_record_empty<Patterns, Types>(
-    state: &mut ParseState,
-) -> Option<SyntaxPattern<Patterns, Types>> {
-    let Some(dot_start) = parse_symbol_as_start(state, ".") else {
-        return None;
-    };
-    Some(SyntaxPattern::RecordEmpty {
-        dot_start: dot_start,
-    })
-}
 fn parse_query_pattern_record<Patterns, Types>(
     state: &mut ParseState,
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxPattern<Patterns, Types>> {
-    let Some(part0) = parse_query_pattern_record_part(state, patterns, types) else {
-        return parse_pattern_record_empty(state);
+    let part0 = if let Some(dot_dot_start) = parse_symbol_as_start(state, "..") {
+        parse_sloe_whitespace(state);
+        let record = parse_query_pattern(state, patterns, types);
+        SyntaxRecordPart::Spread {
+            dot_dot_start: dot_dot_start,
+            record: record.map(|record| patterns.insert(record)),
+        }
+    } else if let Some(name) = parse_field_name(state) {
+        let Some(name_value) = name.value else {
+            return Some(SyntaxPattern::RecordEmpty {
+                dot_start: name.start,
+            });
+        };
+        parse_sloe_whitespace(state);
+        let value = parse_query_pattern(state, patterns, types);
+        SyntaxRecordPart::Field {
+            name: WithStartPosition {
+                value: Some(name_value),
+                start: name.start,
+            },
+            value: value.map(|record| patterns.insert(record)),
+        }
+    } else {
+        return None;
     };
     parse_sloe_whitespace(state);
     let mut part1_up = Vec::new();
@@ -2619,7 +2762,7 @@ fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Typ
     project_fn_graph: &mut strongly_connected_components::Graph,
 ) {
     if let Some(result_node) = project_fn.result {
-        syntax_expression_connect_variables_in_graph_from(
+        syntax_expression_connect_fns_in_graph_from(
             project_fn_graph_node,
             project_fn_graph_node_by_name,
             expressions,
@@ -2751,9 +2894,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
         }
     }
 }
-// TODO check if currently pattern and origin variables can shadow project names.
-// If yes, track pattern variables and origins to avoid accidental misconnection
-fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Types>(
+fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
     origin_project_fn_graph_node: strongly_connected_components::Node,
     project_fn_graph_node_by_name: &std::collections::HashMap<
         &Name,
@@ -2781,7 +2922,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                 project_fn_graph.new_edge(origin_project_fn_graph_node, referenced_fn_graph_node);
             }
             if let Some(argument) = argument {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -2799,7 +2940,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             value,
         } => {
             if let Some(value) = value {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -2817,7 +2958,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             result,
         } => {
             if let Some(result) = result {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -2834,7 +2975,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                 match part {
                     SyntaxRecordPart::Field { name: _, value } => {
                         if let Some(value) = value {
-                            syntax_expression_connect_variables_in_graph_from(
+                            syntax_expression_connect_fns_in_graph_from(
                                 origin_project_fn_graph_node,
                                 project_fn_graph_node_by_name,
                                 expressions,
@@ -2850,7 +2991,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                         record,
                     } => {
                         if let Some(record) = record {
-                            syntax_expression_connect_variables_in_graph_from(
+                            syntax_expression_connect_fns_in_graph_from(
                                 origin_project_fn_graph_node,
                                 project_fn_graph_node_by_name,
                                 expressions,
@@ -2874,7 +3015,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
                 .map(|item0| expressions.item(item0))
                 .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
             {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -2891,7 +3032,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             closed_paren_start: _,
         } => {
             if let Some(inner) = inner {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -2907,7 +3048,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             expression,
         } => {
             if let Some(expression) = expression {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -2924,7 +3065,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             cases,
         } => {
             if let Some(queried) = queried {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -2936,7 +3077,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             }
             for case in cases {
                 if let Some(result) = &case.result {
-                    syntax_expression_connect_variables_in_graph_from(
+                    syntax_expression_connect_fns_in_graph_from(
                         origin_project_fn_graph_node,
                         project_fn_graph_node_by_name,
                         expressions,
@@ -2955,7 +3096,7 @@ fn syntax_expression_connect_variables_in_graph_from<Expressions, Patterns, Type
             result,
         } => {
             if let Some(result) = result {
-                syntax_expression_connect_variables_in_graph_from(
+                syntax_expression_connect_fns_in_graph_from(
                     origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
@@ -3032,7 +3173,6 @@ pub fn checked_project_to_rust<Expressions, Patterns, Types>(
             + choices_used.len(),
     );
     for (checked_type_alias_name, checked_type_alias) in checked_type_aliases {
-        // TODO a better solution is likely to set core .type_ = None
         if let Some(checked_aliased_type) = &checked_type_alias.type_
             && !core_type_aliases.contains_key(checked_type_alias_name)
         {
@@ -5914,7 +6054,6 @@ pub fn checked_project_to_zig<Expressions, Patterns, Types>(
     output.reserve(checked_project_fns.len() * 12 + checked_type_aliases.len() * 5);
 
     for (checked_type_alias_name, checked_type_alias) in checked_type_aliases {
-        // TODO a better solution is likely to set core .type_ = None
         if let Some(checked_aliased_type) = &checked_type_alias.type_
             && !core_type_aliases.contains_key(checked_type_alias_name)
         {
@@ -7417,7 +7556,6 @@ pub fn checked_project_to_js<Expressions, Patterns, Types>(
     output.reserve(checked_project_fns.len() * 12 + checked_type_aliases.len() * 5);
 
     for (checked_type_alias_name, checked_type_alias) in checked_type_aliases {
-        // TODO a better solution is likely to set core .type_ = None
         if let Some(checked_aliased_type) = &checked_type_alias.type_
             && !core_type_aliases.contains_key(checked_type_alias_name)
         {
@@ -9693,7 +9831,7 @@ Available variable names are {}",
                                 range: name_range(WithStartPosition { value: pattern_variable, start: pattern_variable_origin.origin_start }),
                                 message: Box::from("this query case pattern variable is not used in the result of the first case.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
-If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
+If you do not need to use this variable in that case, use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
                             });
                         }
                         (false, true) => {
@@ -9704,7 +9842,7 @@ If you do not need to use this variable in that case, just use any of the -rid f
                                 message: format!(
                                     "this query case pattern variable is not used in the result of the {} case.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
-If you do not need to use this variable in that case, just use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
+If you do not need to use this variable in that case, use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
                                     index_to_th(case_index)
                                 ).into_boxed_str()
                             });
@@ -15201,8 +15339,27 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> String {
     let mut formatted = String::with_capacity(source.len() + 8);
-    for item in &project.items {
-        // TODO don't format an item that is followed by Unrecognized
+    let mut items_iterator = project.items.iter().peekable();
+    'formatting_items: while let Some(item) = items_iterator.next() {
+        if let Some(SyntaxProjectItem::Unrecognized {
+            range: unrecognized_range,
+            source: _,
+        }) = items_iterator.peek()
+            && let Some(unformatted_source) = source.get(str_lsp_range_to_utf8_range(
+                source,
+                lsp_types::Range {
+                    start: project_item_start(item),
+                    end: unrecognized_range.end,
+                },
+            ))
+        {
+            // we handle the unrecognized range now so we skip it in the iterator
+            _ = items_iterator.next();
+            formatted.push('\n');
+            formatted.push_str(unformatted_source);
+            formatted.push('\n');
+            continue 'formatting_items;
+        }
         match item {
             SyntaxProjectItem::TypeAlias {
                 ty_keyword_start: _,
@@ -16847,8 +17004,25 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxSymbol<'a, Expressions, Patterns, Types>> {
-    // TODO strongly consider binary search
-    project.items.iter().find_map(|item| match item {
+    let Ok(item_containing_position_index) =
+        project
+            .items
+            .binary_search_by(|item| match project_item_start(item).cmp(&position) {
+                std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
+                std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
+                    match project_item_end(item, expressions, patterns, types).cmp(&position) {
+                        std::cmp::Ordering::Less => std::cmp::Ordering::Less,
+                        std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => {
+                            std::cmp::Ordering::Equal
+                        }
+                    }
+                }
+            })
+    else {
+        return None;
+    };
+    let item_containing_position = project.items.get(item_containing_position_index);
+    item_containing_position.and_then(|item| match item {
         SyntaxProjectItem::TypeAlias {
             ty_keyword_start: _,
             name,
@@ -20289,6 +20463,74 @@ pub fn with_start_position_as_ref<Value>(
         start: with_start_position.start,
         value: &with_start_position.value,
     }
+}
+
+pub fn str_lsp_range_to_utf8_range(str: &str, range: lsp_types::Range) -> std::ops::Range<usize> {
+    let start_line_offset: usize =
+        str_utf8_offset_after_n_lsp_linebreaks(str, range.start.line as usize);
+    let start_offset: usize = start_line_offset
+        + str_starting_utf8_length_for_utf16_length(
+            &str[start_line_offset..],
+            range.start.character as usize,
+        );
+    // can be optimized by only counting after the start line
+    let end_line_offset: usize =
+        str_utf8_offset_after_n_lsp_linebreaks(str, range.end.line as usize);
+    let end_offset: usize = end_line_offset
+        + str_starting_utf8_length_for_utf16_length(
+            &str[end_line_offset..],
+            range.end.character as usize,
+        );
+    start_offset..end_offset
+}
+pub fn str_utf8_offset_after_n_lsp_linebreaks(str: &str, linebreak_count_to_skip: usize) -> usize {
+    if linebreak_count_to_skip == 0 {
+        return 0;
+    }
+    let mut offset_after_n_linebreaks: usize = 0;
+    let mut encountered_linebreaks: usize = 0;
+    'finding_after_n_linebreaks_offset: loop {
+        if str[offset_after_n_linebreaks..].starts_with("\r\n") {
+            encountered_linebreaks += 1;
+            offset_after_n_linebreaks += 2;
+            if encountered_linebreaks >= linebreak_count_to_skip {
+                break 'finding_after_n_linebreaks_offset;
+            }
+        } else {
+            match str[offset_after_n_linebreaks..].chars().next() {
+                None => {
+                    break 'finding_after_n_linebreaks_offset;
+                }
+                // see EOL in https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocuments
+                Some('\r' | '\n') => {
+                    encountered_linebreaks += 1;
+                    offset_after_n_linebreaks += 1;
+                    if encountered_linebreaks >= linebreak_count_to_skip {
+                        break 'finding_after_n_linebreaks_offset;
+                    }
+                }
+                Some(next_char) => {
+                    offset_after_n_linebreaks += next_char.len_utf8();
+                }
+            }
+        }
+    }
+    offset_after_n_linebreaks
+}
+pub fn str_starting_utf8_length_for_utf16_length(
+    slice: &str,
+    starting_utf16_length: usize,
+) -> usize {
+    let mut utf8_length: usize = 0;
+    let mut so_far_length_utf16: usize = 0;
+    'traversing_utf16_length: for char in slice.chars() {
+        if so_far_length_utf16 >= starting_utf16_length {
+            break 'traversing_utf16_length;
+        }
+        utf8_length += char.len_utf8();
+        so_far_length_utf16 += char.len_utf16();
+    }
+    utf8_length
 }
 fn range_includes_position(range: lsp_types::Range, position: lsp_types::Position) -> bool {
     position >= range.start && position <= range.end

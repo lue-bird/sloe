@@ -408,10 +408,10 @@ fn check_main(maybe_input_file_path: Option<&std::path::Path>) -> Result<(), ()>
     } else {
         for output_error in output_errors.iter().rev() {
             eprintln!(
-                "{input_file_path}:{span_start_line}:{span_start_column} {message}",
+                "{input_file_path}:{range_start_line}:{range_start_column} {message}",
                 input_file_path = input_file_path.to_string_lossy(),
-                span_start_line = output_error.range.start.line + 1,
-                span_start_column = output_error.range.start.character + 1,
+                range_start_line = output_error.range.start.line + 1,
+                range_start_column = output_error.range.start.character + 1,
                 message = output_error.message
             );
         }
@@ -475,10 +475,10 @@ fn build_main(
     if !output_errors.is_empty() {
         for output_error in output_errors.iter().rev() {
             eprintln!(
-                "- {input_file_path}:{span_start_line}:{span_start_column} {message}",
+                "- {input_file_path}:{range_start_line}:{range_start_column} {message}",
                 input_file_path = input_file_path.to_string_lossy(),
-                span_start_line = output_error.range.start.line + 1,
-                span_start_column = output_error.range.start.character + 1,
+                range_start_line = output_error.range.start.line + 1,
+                range_start_column = output_error.range.start.character + 1,
                 message = output_error.message
             );
         }
@@ -918,12 +918,12 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
                     #[allow(deprecated)] match change.range_length {
                         // zed for example does not send a range length
                         None => {
-                            string_replace_lsp_span(&mut updated_source, change.range, &change.text);
+                            string_replace_lsp_range(&mut updated_source, change.range, &change.text);
                         }
                         // sending a range length is deprecated but e.g. vscode still sends it
                         // which allows us to do a faster string replace
                         Some(range_length) => {
-                            string_replace_lsp_span_for_length(
+                            string_replace_lsp_range_for_length(
                                 &mut updated_source,
                                 change.range,
                                 range_length as usize,
@@ -2055,90 +2055,32 @@ fn respond_to_document_symbols<Expressions, Patterns, Types>(
             .collect::<Vec<_>>(),
     ))
 }
-
-fn str_lsp_span_to_span(str: &str, range: lsp_types::Range) -> std::ops::Range<usize> {
-    let start_line_offset: usize =
-        str_offset_after_n_lsp_linebreaks(str, range.start.line as usize);
-    let start_offset: usize = start_line_offset
-        + str_starting_utf8_length_for_utf16_length(
-            &str[start_line_offset..],
-            range.start.character as usize,
-        );
-    // can be optimized by only counting after the start line
-    let end_line_offset: usize = str_offset_after_n_lsp_linebreaks(str, range.end.line as usize);
-    let end_offset: usize = end_line_offset
-        + str_starting_utf8_length_for_utf16_length(
-            &str[end_line_offset..],
-            range.end.character as usize,
-        );
-    start_offset..end_offset
+fn string_replace_lsp_range(string: &mut String, range: lsp_types::Range, replacement: &str) {
+    string.replace_range(
+        sloe::str_lsp_range_to_utf8_range(string, range),
+        replacement,
+    );
 }
-fn str_offset_after_n_lsp_linebreaks(str: &str, linebreak_count_to_skip: usize) -> usize {
-    if linebreak_count_to_skip == 0 {
-        return 0;
-    }
-    let mut offset_after_n_linebreaks: usize = 0;
-    let mut encountered_linebreaks: usize = 0;
-    'finding_after_n_linebreaks_offset: loop {
-        if str[offset_after_n_linebreaks..].starts_with("\r\n") {
-            encountered_linebreaks += 1;
-            offset_after_n_linebreaks += 2;
-            if encountered_linebreaks >= linebreak_count_to_skip {
-                break 'finding_after_n_linebreaks_offset;
-            }
-        } else {
-            match str[offset_after_n_linebreaks..].chars().next() {
-                None => {
-                    break 'finding_after_n_linebreaks_offset;
-                }
-                // see EOL in https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocuments
-                Some('\r' | '\n') => {
-                    encountered_linebreaks += 1;
-                    offset_after_n_linebreaks += 1;
-                    if encountered_linebreaks >= linebreak_count_to_skip {
-                        break 'finding_after_n_linebreaks_offset;
-                    }
-                }
-                Some(next_char) => {
-                    offset_after_n_linebreaks += next_char.len_utf8();
-                }
-            }
-        }
-    }
-    offset_after_n_linebreaks
-}
-fn string_replace_lsp_span(string: &mut String, range: lsp_types::Range, replacement: &str) {
-    string.replace_range(str_lsp_span_to_span(string, range), replacement);
-}
-/// slightly faster version of `string_replace_lsp_span` for when you know the length
-fn string_replace_lsp_span_for_length(
+/// slightly faster version of `string_replace_lsp_range` for when you know the length
+fn string_replace_lsp_range_for_length(
     string: &mut String,
     range: lsp_types::Range,
     range_length: usize,
     replacement: &str,
 ) {
     let start_line_offset: usize =
-        str_offset_after_n_lsp_linebreaks(string, range.start.line as usize);
+        sloe::str_utf8_offset_after_n_lsp_linebreaks(string, range.start.line as usize);
     let start_offset: usize = start_line_offset
-        + str_starting_utf8_length_for_utf16_length(
+        + sloe::str_starting_utf8_length_for_utf16_length(
             &string[start_line_offset..],
             range.start.character as usize,
         );
-    let span_length_utf8: usize =
-        str_starting_utf8_length_for_utf16_length(&string[start_offset..], range_length);
-    string.replace_range(start_offset..(start_offset + span_length_utf8), replacement);
-}
-fn str_starting_utf8_length_for_utf16_length(slice: &str, starting_utf16_length: usize) -> usize {
-    let mut utf8_length: usize = 0;
-    let mut so_far_length_utf16: usize = 0;
-    'traversing_utf16_length: for char in slice.chars() {
-        if so_far_length_utf16 >= starting_utf16_length {
-            break 'traversing_utf16_length;
-        }
-        utf8_length += char.len_utf8();
-        so_far_length_utf16 += char.len_utf16();
-    }
-    utf8_length
+    let range_length_utf8: usize =
+        sloe::str_starting_utf8_length_for_utf16_length(&string[start_offset..], range_length);
+    string.replace_range(
+        start_offset..(start_offset + range_length_utf8),
+        replacement,
+    );
 }
 
 /// This not airtight and thus should not be relied upon for critical code.
