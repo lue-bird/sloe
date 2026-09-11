@@ -9,5 +9,3 @@ Build with `trunk build --release --public-url "./"`
 and move the dist/ contents into the pages branch.
 
   - https://github.com/thedodd/trunk
-
-TODO it's in a quite messy state. Convert to sauron and clean up

@@ -14,7 +14,7 @@ fn Greet
 ```
 A `Greet` function taking a name and a buffer to append the greeting to.
 It appends the name and other strings to the chars to form and return a message span.
-[skip to more examples](#examples) [skip to syntax overview](#syntax) (TODO link repl website)
+[explore examples in an online editor](https://lue-bird.github.io/sloe/) [skip to more examples](#examples) [skip to syntax overview](#syntax)
 
 Install with (requires having [rust installed](https://rust-lang.org/tools/install/))
 ```bash
@@ -78,11 +78,11 @@ fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
 
 > Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been described similarly in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04).
 > With the small difference that in sloe's case the unique origin types only exist at compile-time and can thus mark spans, slots, unset spans, unset slots, bufs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
-
+>
 > The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
 > The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
 > (apart from security this is hardly ever worth it for regular users, considering it is also slower).
-
+>
 > I find it interesting that "storage" and "ownership over said storage" are decoupled. I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
 > I really like this idea but understand that it cannot be implemented in e.g. rust which needs to store its allocator in it's value body to guarantee its content isn't splattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
 > In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
@@ -829,6 +829,8 @@ cargo install --offline --debug --path . sloe
 
 - consider adding `Buf-span-map-or-rid-and-allocate` (which tries to reuse the allocation).
   Is there a use for this?
+  
+- website: in ext area: preven default on tab and insert four spaces instead
 
 - fix comment TODOs
 

@@ -4,44 +4,42 @@ use gen_lsp_types as lsp_types;
 use sloe_compile as sloe;
 
 fn main() {
-    yew::Renderer::<State>::new().render();
+    let selected_example: Example = web_sys::window()
+        .and_then(|window| window.location().search().ok())
+        .and_then(|search| {
+            let example_name = search.trim_start_matches("?example=");
+            example_infos
+                .into_iter()
+                .find(|(_, example_info)| example_info.name.replace(' ', "-") == example_name)
+                .map(|(example, _)| example)
+        })
+        .unwrap_or(Example::HelloWorld);
+    sauron::Program::mount_to_body(State {
+        text_area_content: example_source(selected_example).to_string(),
+        selected_example,
+        sloe_core_declarations_html_static: sloe_core_declarations_html(),
+    });
 }
 
 struct State {
     text_area_content: String,
     selected_example: Example,
     // there must be a better way to cache this...
-    sloe_core_declarations_html_static: yew::Html,
+    sloe_core_declarations_html_static: sauron::Node<Event>,
 }
 enum Event {
+    Error,
     TextAreaContentChanged(String),
     ExampleSelected(Example),
 }
-impl yew::Component for State {
-    type Message = Event;
-
-    type Properties = ();
-
-    fn create(_: &yew::Context<Self>) -> Self {
-        let selected_example: Example = web_sys::window()
-            .and_then(|window| window.location().search().ok())
-            .and_then(|search| {
-                let example_name = search.trim_start_matches("?example=");
-                example_infos
-                    .into_iter()
-                    .find(|(_, example_info)| example_info.name.replace(' ', "-") == example_name)
-                    .map(|(example, _)| example)
-            })
-            .unwrap_or(Example::HelloWorld);
-        State {
-            text_area_content: example_source(selected_example).to_string(),
-            selected_example,
-            sloe_core_declarations_html_static: sloe_core_declarations_html(),
-        }
+impl sauron::Application for State {
+    type MSG = Event;
+    fn init(&mut self) -> sauron::Cmd<Self::MSG> {
+        sauron::Cmd::none()
     }
-
-    fn update(&mut self, _: &yew::Context<Self>, event: Event) -> bool {
+    fn update(&mut self, event: Event) -> sauron::Cmd<Self::MSG> {
         match event {
+            Event::Error => {}
             Event::TextAreaContentChanged(new_text_area_content) => {
                 self.text_area_content = new_text_area_content;
             }
@@ -66,17 +64,15 @@ impl yew::Component for State {
                 }
             }
         }
-        true
+        sauron::Cmd::none()
     }
 
-    fn view(&self, context: &yew::Context<Self>) -> yew::Html {
-        html_element(
-            "main",
+    fn view(&self) -> sauron::Node<Self::MSG> {
+        sauron::main(
             [],
             [
-                html_element(
-                    "h2",
-                    [("style", "white-space: pre-line;".into())],
+                sauron::h2(
+                    [html_style("white-space: pre-line;")],
                     [html_text(
                         "small, fast programming language
 where indexes are valid
@@ -85,29 +81,21 @@ and values can't be shared: sloe",
                 ),
                 html_link_to("https://codeberg.org/lue-bird/sloe", "source code"),
                 html_text(". Try an example: "),
-                html_element(
-                    "p",
-                    [
-                        ("id", "example-select".into()),
-                        ("style", "display: inline".into()),
-                    ],
+                sauron::p(
+                    [sauron::id("example-select"), html_style("display: inline")],
                     example_infos
                         .into_iter()
                         .map(|(example_kind, example_info)| {
-                            let mut button = yew::virtual_dom::VTag::new("button");
-                            let link = context.link().clone();
-                            button.add_listener(std::rc::Rc::new(yew_listener(
-                                yew::virtual_dom::ListenerKind::onpointerdown,
-                                move |_| {
-                                    link.send_message(Event::ExampleSelected(example_kind));
-                                },
-                            )));
-                            button.add_child(html_text(example_info.name));
-                            yew::Html::from(button)
+                            sauron::button(
+                                [sauron::on_mousedown(move |_| {
+                                    Event::ExampleSelected(example_kind)
+                                })],
+                                [html_text(example_info.name)],
+                            )
                         }),
                 ),
                 linebreak_html(),
-                playground_html(self.selected_example, &self.text_area_content, context),
+                playground_html(self.selected_example, &self.text_area_content),
                 installation_html(),
                 usage_html(),
                 self.sloe_core_declarations_html_static.clone(),
@@ -115,76 +103,67 @@ and values can't be shared: sloe",
         )
     }
 }
-fn installation_html() -> yew::Html {
-    html_element(
-        "section",
+fn installation_html<Event>() -> sauron::Node<Event> {
+    sauron::section(
         [],
         [
             sub_heading_html("install"),
-            html_element(
-                "ol",
+            sauron::ol(
                 [],
                 [
                     html_link_to("https://rust-lang.org/tools/install/", "install rust"),
-                    html_element(
-                        "code",
+                    sauron::code(
                         [],
                         [html_text(
                             "cargo install --git https://github.com/lue-bird/sloe sloe",
                         )],
                     ),
                 ]
-                .map(|item| html_element("li", [], [item])),
+                .map(|item| sauron::li([], [item])),
             ),
         ],
     )
 }
-fn usage_html() -> yew::Html {
-    html_element(
-        "section",
+fn usage_html<Event>() -> sauron::Node<Event> {
+    sauron::section(
         [],
         [
             sub_heading_html("use"),
-            html_element(
-                "ul",
+            sauron::ul(
                 [],
                 [
                     html_link_to(
                         "https://codeberg.org/lue-bird/sloe#editor-setups",
-                        "detailed lsp setups and extensions",
+                        "lsp setups and extensions",
                     ),
                     html_link_to(
                         "https://codeberg.org/lue-bird/sloe",
                         "more examples of e.g. compiling to zig or rust",
                     ),
                 ]
-                .map(|item| html_element("li", [], [item])),
+                .map(|item| sauron::li([], [item])),
             ),
         ],
     )
 }
-fn playground_html(
-    selected_example: Example,
-    text_area_content: &str,
-    context: &yew::Context<State>,
-) -> yew::Html {
+fn playground_html(selected_example: Example, text_area_content: &str) -> sauron::Node<Event> {
     // stacked on top but still allow filling height:
     // https://stackoverflow.com/a/51949049
     // Originally I was doing position:absolute for the text area
     // and field-sizing: content and as a fallback for firefox height: line count * factor
     // but this ended up an infuriating mess since height:..em was rendering at different lengths in gecko.
     // I also tried display:flex but this didn't consistently ignore the textarea space and also didn't fill its height
-    let mut text_area_stack = yew::virtual_dom::VTag::new("div");
-    text_area_stack.add_attribute("style", "display: grid;");
+    let mut text_area_stack = sauron::div([html_style("display: grid;")], []);
 
-    let mut interactive_text_area = yew::virtual_dom::VTag::new("textarea");
-    interactive_text_area.add_attribute("autocorrect", "off");
-    interactive_text_area.add_attribute("spellcheck", "false");
-    interactive_text_area.add_attribute("autofocus", "true");
-    interactive_text_area.add_attribute("name", "playground");
-    interactive_text_area.add_attribute(
-        "style",
-        r#"grid-column: 1;
+    let cursor_offset = text_area_content.find("insert your name here").unwrap_or(0);
+    let interactive_text_area = sauron::textarea(
+        [
+            sauron::attr("autocorrect", "off"),
+            sauron::spellcheck("false"),
+            sauron::autofocus("true"),
+            sauron::name("playground"),
+            html_style(
+                r#"grid-column: 1;
         grid-row: 1;
         height: 100%;
         width: 100%;
@@ -201,26 +180,24 @@ fn playground_html(
         position: relative;
         top: 0.335em;
         left: -0.1em"#,
+            ),
+            sauron::value(text_area_content.to_string()),
+            sauron::attr("selectionStart", cursor_offset),
+            sauron::attr("selectionEnd", cursor_offset),
+            sauron::on_input(move |event: sauron::InputEvent| {
+                let Some(event_target) = event.event.target() else {
+                    return Event::Error;
+                };
+                let text_area_object: web_sys::HtmlTextAreaElement =
+                    web_sys::HtmlTextAreaElement::from(web_sys::wasm_bindgen::JsValue::from(
+                        event_target,
+                    ));
+                Event::TextAreaContentChanged(text_area_object.value())
+            }),
+        ],
+        [],
     );
-    interactive_text_area.add_property("value", text_area_content);
-    let cursor_offset = text_area_content.find("insert your name here").unwrap_or(0);
-    interactive_text_area.add_property("selectionStart", cursor_offset);
-    interactive_text_area.add_property("selectionEnd", cursor_offset);
-    // this seems a bit over the top for a simple event handler
-    let link = context.link().clone();
-    interactive_text_area.add_listener(std::rc::Rc::new(yew_listener(
-        yew::virtual_dom::ListenerKind::oninput,
-        move |event: web_sys::Event| {
-            let Some(event_target) = event.target() else {
-                return;
-            };
-            let text_area_object: web_sys::HtmlTextAreaElement = web_sys::HtmlTextAreaElement::from(
-                web_sys::wasm_bindgen::JsValue::from(event_target),
-            );
-            link.send_message(Event::TextAreaContentChanged(text_area_object.value()));
-        },
-    )));
-    text_area_stack.add_child(interactive_text_area.into());
+    _ = text_area_stack.add_children([interactive_text_area]);
 
     sloe::core::origin_new!(expressions_origin, Expressions);
     sloe::core::origin_new!(patterns_origin, Patterns);
@@ -248,26 +225,21 @@ fn playground_html(
         &patterns,
         &types,
     );
-    text_area_stack.add_child(html_element(
-        "div",
+    _ = text_area_stack.add_children([sauron::div(
         [
-            ("aria-hidden", "true".into()),
-            (
-                "style",
-                "grid-column: 1; grid-row: 1; z-index: 1; pointer-events: none; user-select: none;"
-                    .into(),
+            sauron::attr("aria-hidden", "true"),
+            html_style(
+                "grid-column: 1; grid-row: 1; z-index: 1; pointer-events: none; user-select: none;",
             ),
         ],
         [highlighted_sloe_source_to_html(
             text_area_content,
             &mut highlights.tokens.into_iter(),
         )],
-    ));
-    let mut full = yew::virtual_dom::VTag::new("div");
-    full.add_child(text_area_stack.into());
+    )]);
+    let mut full = sauron::div([], [text_area_stack]);
 
-    let mut evaluated_variables_html = yew::virtual_dom::VTag::new("ul");
-    evaluated_variables_html.add_attribute("style", r#"list-style-type: "↪ ""#);
+    let mut evaluated_variables_html = sauron::ul([html_style(r#"list-style-type: "↪ ""#)], []);
     let mut errors = Vec::new();
     let checked_project = sloe::syntax_project_check(
         &mut errors,
@@ -298,58 +270,57 @@ fn playground_html(
             compiled_project.replace("export ", ""),
             sloe::name_to_lowercase_js(project_fn_name),
         );
-        let mut evaluated_variable_html = yew::virtual_dom::VTag::new("li");
-        evaluated_variable_html.add_child(html_element(
-            "code",
+        let mut evaluated_variable_html = sauron::li(
             [],
-            [html_text_dynamic(project_fn_name)],
-        ));
-        evaluated_variable_html.add_child(html_text(" is "));
+            [
+                sauron::code([], [sauron::text(project_fn_name)]),
+                html_text(" is "),
+            ],
+        );
         let function_to_evaluate = web_sys::js_sys::Function::new_no_args(&to_evaluate);
         let evaluated = function_to_evaluate.call(&web_sys::wasm_bindgen::JsValue::NULL, ());
         match evaluated {
             Ok(evaluated) => {
                 let mut result_as_sloe = String::new();
                 sloe_value_as_js_value_print(&mut result_as_sloe, &evaluated);
-                evaluated_variable_html.add_child(html_element(
-                    "code",
-                    [],
-                    [html_text_dynamic(result_as_sloe)],
-                ));
+                _ = evaluated_variable_html
+                    .add_children([sauron::code([], [sauron::text(result_as_sloe)])]);
             }
-            Err(error) => evaluated_variable_html.add_child(html_text_dynamic(
-                match web_sys::wasm_bindgen::JsCast::dyn_ref::<web_sys::js_sys::Error>(&error) {
-                    Some(error) => format!("error: {:?}", error.message()),
-                    None => format!("error: {:?}", error),
-                },
-            )),
+            Err(error) => {
+                _ = evaluated_variable_html.add_children([sauron::text(
+                    match web_sys::wasm_bindgen::JsCast::dyn_ref::<web_sys::js_sys::Error>(&error) {
+                        Some(error) => format!("error: {:?}", error.message()),
+                        None => format!("error: {:?}", error),
+                    },
+                )]);
+            }
         }
-        evaluated_variables_html.add_child(evaluated_variable_html.into());
+        _ = evaluated_variables_html.add_children([evaluated_variable_html]);
     }
-    full.add_child(evaluated_variables_html.into());
-    let mut errors_html = yew::virtual_dom::VTag::new("ul");
-    errors_html.add_attribute("style", r#"list-style-type: "⚠︎ ""#);
-    for error in errors {
-        errors_html.add_child(html_element(
-            "li",
-            [],
-            [html_text_dynamic(format!(
-                "line {} char {}: {}",
-                error.range.start.line, error.range.start.character, error.message
-            ))],
-        ));
-    }
-    full.add_child(errors_html.into());
-
-    full.add_child(html_element(
-        "p",
-        [("style", "font: inherit; white-space: pre-line;".into())],
-        [
-            html_text("💡 "),
-            html_text(example_explainer(selected_example)),
-        ],
-    ));
-    full.into()
+    _ = full.add_children([evaluated_variables_html]);
+    let errors_html = sauron::ul(
+        [html_style(r#"list-style-type: "⚠︎ ""#)],
+        errors.iter().rev().map(|error| {
+            sauron::li(
+                [],
+                [sauron::text(format!(
+                    "line {} char {}: {}",
+                    error.range.start.line, error.range.start.character, error.message
+                ))],
+            )
+        }),
+    );
+    _ = full.add_children([
+        errors_html,
+        sauron::p(
+            [html_style("font: inherit; white-space: pre-line;")],
+            [
+                html_text("💡 "),
+                html_text(example_explainer(selected_example)),
+            ],
+        ),
+    ]);
+    full
 }
 fn sloe_value_as_js_value_print(formatted: &mut String, js_value: &web_sys::wasm_bindgen::JsValue) {
     use std::fmt::Write as _;
@@ -404,26 +375,25 @@ fn sloe_value_as_js_value_print(formatted: &mut String, js_value: &web_sys::wasm
         let _ = write!(formatted, "{:?}", js_value);
     }
 }
-fn sloe_core_declarations_html() -> yew::Html {
-    let mut section = yew::virtual_dom::VTag::new("section");
-    section.add_child(sub_heading_html("core declarations"));
+fn sloe_core_declarations_html<Event>() -> sauron::Node<Event> {
+    let mut section = sauron::section([], [sub_heading_html("core declarations")]);
     let mut type_aliases_sorted = sloe::core_type_aliases.iter().collect::<Vec<_>>();
     type_aliases_sorted.sort_unstable_by_key(|(name, _)| *name);
-    section.add_children(type_aliases_sorted.into_iter().map(
+    _ = section.add_children(type_aliases_sorted.into_iter().map(
         |(core_choice_type_name, core_choice_type_info)| {
             sloe_type_alias_to_html(core_choice_type_name, core_choice_type_info)
         },
     ));
     let mut project_fns_sorted = sloe::core_fns.iter().collect::<Vec<(&sloe::Name, _)>>();
     project_fns_sorted.sort_unstable_by_key(|(name, _)| *name);
-    section.add_children(project_fns_sorted.into_iter().map(
+    _ = section.add_children(project_fns_sorted.into_iter().map(
         |(core_variable_name, core_variable_info)| {
             sloe_project_fn_to_html(core_variable_name, core_variable_info)
         },
     ));
-    section.into()
+    section
 }
-fn sloe_project_source_to_html(project_source: &str) -> yew::Html {
+fn sloe_project_source_to_html<Event>(project_source: &str) -> sauron::Node<Event> {
     sloe::core::origin_new!(expressions_origin, Expressions);
     sloe::core::origin_new!(patterns_origin, Patterns);
     sloe::core::origin_new!(types_origin, Types);
@@ -448,20 +418,24 @@ fn sloe_project_source_to_html(project_source: &str) -> yew::Html {
     );
     highlighted_sloe_source_to_html(project_source, &mut highlights.tokens.into_iter())
 }
-fn sloe_type_alias_to_html(name: &sloe::Name, type_alias: &sloe::CheckedTypeAlias) -> yew::Html {
-    let mut section_html = yew::virtual_dom::VTag::new("section");
-    section_html.add_child(documentation_heading_html(name));
+fn sloe_type_alias_to_html<Event>(
+    name: &sloe::Name,
+    type_alias: &sloe::CheckedTypeAlias,
+) -> sauron::Node<Event> {
+    let mut section_html = sauron::section([], [documentation_heading_html(name)]);
     let mut formatted = String::new();
     sloe::checked_type_alias_format(&mut formatted, name, type_alias);
-    section_html.add_child(sloe_project_source_to_html(&formatted));
+    _ = section_html.add_children([sloe_project_source_to_html(&formatted)]);
     if let Some(documentation) = &type_alias.documentation {
-        section_html.add_child(sloe_documentation_markdown_to_html(documentation));
+        _ = section_html.add_children([sloe_documentation_markdown_to_html(documentation)]);
     }
-    section_html.into()
+    section_html
 }
-fn sloe_project_fn_to_html(name: &sloe::Name, project_fn: &sloe::CheckedProjectFn) -> yew::Html {
-    let mut section_html = yew::virtual_dom::VTag::new("section");
-    section_html.add_child(documentation_heading_html(name));
+fn sloe_project_fn_to_html<Event>(
+    name: &sloe::Name,
+    project_fn: &sloe::CheckedProjectFn,
+) -> sauron::Node<Event> {
+    let mut section_html = sauron::section([], [documentation_heading_html(name)]);
     let mut formatted = String::new();
     sloe::checked_project_fn_format(&mut formatted, name, project_fn);
     sloe::core::origin_new!(types_origin, Types);
@@ -485,37 +459,39 @@ fn sloe_project_fn_to_html(name: &sloe::Name, project_fn: &sloe::CheckedProjectF
             },
         };
         sloe::project_fn_signature_highlight(&mut highlights, &types, &project_fn_signature);
-        section_html.add_child(highlighted_sloe_source_to_html(
+        _ = section_html.add_children([highlighted_sloe_source_to_html(
             &formatted,
             highlights.tokens.into_iter(),
-        ));
+        )]);
     }
     if let Some(documentation) = &project_fn.documentation {
-        section_html.add_child(sloe_documentation_markdown_to_html(documentation));
+        _ = section_html.add_children([sloe_documentation_markdown_to_html(documentation)]);
     }
-    section_html.into()
+    section_html
 }
-fn documentation_heading_html(name: &str) -> yew::Html {
-    html_element("h4", [], [html_link_to_self(name)])
+fn documentation_heading_html<Event>(name: &str) -> sauron::Node<Event> {
+    sauron::h4([], [html_link_to_self(name)])
 }
-fn html_link_to_self(name: &str) -> yew::Html {
+fn html_link_to_self<Event>(name: &str) -> sauron::Node<Event> {
     let id = name.replace(" ", "-");
-    html_element(
-        "a",
-        [("href", format!("#{id}").into()), ("id", id.into())],
-        [html_text_dynamic(format!("#{name}"))],
+    sauron::a(
+        [sauron::href(format!("#{id}")), sauron::id(id)],
+        [sauron::text(format!("#{name}"))],
     )
 }
-fn sub_heading_html(name: &str) -> yew::Html {
-    html_element("h3", [], [html_link_to_self(name)])
+fn sub_heading_html<Event>(name: &str) -> sauron::Node<Event> {
+    sauron::h3([], [html_link_to_self(name)])
 }
-fn highlighted_sloe_source_to_html(
+fn highlighted_sloe_source_to_html<Event>(
     source: &str,
     mut highlights: impl Iterator<Item = lsp_types::SemanticToken>,
-) -> yew::Html {
-    let mut html = yew::virtual_dom::VTag::new("pre");
-    html.add_attribute("style", r#"line-height: inherit; font-size: medium; font-family: "Liga NovaMono", monospace, sans-serif; margin-top: 0.5em"#);
-
+) -> sauron::Node<Event> {
+    let mut html = sauron::pre(
+        [html_style(
+            r#"line-height: inherit; font-size: medium; font-family: "Liga NovaMono", monospace, sans-serif; margin-top: 0.5em"#,
+        )],
+        [],
+    );
     let mut previous_token_start = lsp_types::Position {
         line: 0,
         character: 0,
@@ -547,42 +523,36 @@ fn highlighted_sloe_source_to_html(
             let highlight_end_offset_in_line =
                 utf16_offset_to_utf8_in(source_line, highlight_range.end.character as usize);
 
-            html.add_child(html_element(
-                "code",
-                [],
-                [html_text_dynamic(
-                    &source_line[current_offset_in_line..highlight_start_offset_in_line],
-                )],
-            ));
-            html.add_child(html_element(
-                "code",
-                [(
-                    "style",
-                    format!(
+            _ = html.add_children([
+                sauron::code(
+                    [],
+                    [sauron::text(
+                        &source_line[current_offset_in_line..highlight_start_offset_in_line],
+                    )],
+                ),
+                sauron::code(
+                    [html_style(format!(
                         "color: {}",
                         sloe_syntax_highlight_kind_to_css_color(
                             &sloe::token_types[highlight.token_type as usize]
                         )
-                    )
-                    .into(),
-                )],
-                [html_text_dynamic(
-                    &source_line[highlight_start_offset_in_line..highlight_end_offset_in_line],
-                )],
-            ));
+                    ))],
+                    [sauron::text(
+                        &source_line[highlight_start_offset_in_line..highlight_end_offset_in_line],
+                    )],
+                ),
+            ]);
 
             current_offset_in_line = highlight_end_offset_in_line;
             previous_token_start = highlight_start;
             maybe_next_highlight = highlights.next();
         }
-        html.add_child(html_element(
-            "code",
-            [],
-            [html_text_dynamic(&source_line[current_offset_in_line..])],
-        ));
-        html.add_child(html_element("code", [], [html_text("\n")]));
+        _ = html.add_children([
+            sauron::code([], [sauron::text(&source_line[current_offset_in_line..])]),
+            sauron::code([], [html_text("\n")]),
+        ]);
     }
-    html.into()
+    html
 }
 fn sloe_syntax_highlight_kind_to_css_color(kind: &lsp_types::SemanticTokenTypes) -> &'static str {
     match kind {
@@ -601,8 +571,10 @@ fn sloe_syntax_highlight_kind_to_css_color(kind: &lsp_types::SemanticTokenTypes)
         _ => "white",
     }
 }
-fn sloe_documentation_markdown_to_html(sloe_documentation_markdown: &str) -> yew::Html {
-    let mut html = yew::virtual_dom::VTag::new("p");
+fn sloe_documentation_markdown_to_html<Event>(
+    sloe_documentation_markdown: &str,
+) -> sauron::Node<Event> {
+    let mut html = sauron::p([], []);
     let mut maybe_current_code_block_start_line_index: Option<usize> = None;
     for (sloe_documentation_markdown_line_index, sloe_documentation_markdown_line) in
         sloe_documentation_markdown.lines().enumerate()
@@ -615,7 +587,7 @@ fn sloe_documentation_markdown_to_html(sloe_documentation_markdown: &str) -> yew
                 }
                 Some(current_code_block_start_line_index) => {
                     maybe_current_code_block_start_line_index = None;
-                    html.add_child(sloe_project_source_to_html(
+                    _ = html.add_children([sloe_project_source_to_html(
                         &sloe_documentation_markdown
                             .lines()
                             .skip(current_code_block_start_line_index + 1)
@@ -626,25 +598,27 @@ fn sloe_documentation_markdown_to_html(sloe_documentation_markdown: &str) -> yew
                             )
                             .collect::<Vec<&str>>()
                             .join("\n"),
-                    ));
+                    )]);
                 }
             },
             "" => {
                 if maybe_current_code_block_start_line_index.is_none() {
-                    html.add_child(linebreak_html());
+                    _ = html.add_children([linebreak_html()]);
                 }
             }
             _ => {
                 if maybe_current_code_block_start_line_index.is_none() {
                     // insert space before because otherwise if the previous line ends in
                     // punctuation like , the text in the next line would be attached directly after it
-                    html.add_child(html_text(" "));
-                    html.add_child(html_text_dynamic(sloe_documentation_markdown_line));
+                    _ = html.add_children([
+                        html_text(" "),
+                        sauron::text(sloe_documentation_markdown_line),
+                    ]);
                 }
             }
         }
     }
-    html.into()
+    html
 }
 
 #[derive(Copy, Clone)]
@@ -707,7 +681,7 @@ fn Hi
     origin Origin _origin, _part
     :
     .buf Buf (Origin _origin, _part), char
-    .span Span _origin
+    .span Span Origin _origin, _part
     =
     Greet .name "world" .buf Buf-empty{char} origin
 
@@ -835,9 +809,9 @@ fn Call-function-value . : i32 =
     .in .a 63 i32 .b 6 i32
 
 fn Buf-with-capacity{_item}
-    .origin origin Origin _o
+    .origin origin Origin _origin, _part
     .length length u32
-    : Buf _o, _item =
+    : Buf (Origin _origin, _part), _item =
     Buf-pre-allocate-at-least
     .length length
     .buf Buf-empty{_item} origin
@@ -1103,55 +1077,20 @@ This feature is not strictly necessary but it can make builders that carry e.g. 
 
 // //
 
-fn html_text(content: &'static str) -> yew::Html {
-    yew::Html::VText(yew::virtual_dom::VText {
-        text: yew::AttrValue::Static(content),
-    })
+fn html_text<Event>(content: &'static str) -> sauron::Node<Event> {
+    sauron::Node::Leaf(sauron::vdom::Leaf::Text(std::borrow::Cow::Borrowed(
+        content,
+    )))
 }
-fn html_text_dynamic(content: impl ToString) -> yew::Html {
-    yew::Html::VText(yew::virtual_dom::VText::from(content))
+fn html_link_to<Event>(resource: &str, name: &'static str) -> sauron::Node<Event> {
+    sauron::a([sauron::href(resource.to_string())], [html_text(name)])
 }
-fn html_link_to(resource: &str, name: &'static str) -> yew::Html {
-    html_element("a", [("href", resource.into())], [html_text(name)])
+fn linebreak_html<Event>() -> sauron::Node<Event> {
+    sauron::br([], [])
 }
-fn linebreak_html() -> yew::Html {
-    html_element("br", [], [])
+fn html_style<Event>(value: impl Into<sauron::Value>) -> sauron::Attribute<Event> {
+    sauron::attr("style", value)
 }
-fn html_element(
-    tag: &'static str,
-    modifiers: impl IntoIterator<Item = (&'static str, yew::AttrValue)>,
-    subs: impl IntoIterator<Item = yew::Html>,
-) -> yew::Html {
-    let mut yew_element = yew::virtual_dom::VTag::new(tag);
-    for (modifier_key, modifier_value) in modifiers {
-        yew_element.add_attribute(modifier_key, modifier_value);
-    }
-    yew_element.add_children(subs);
-    yew::Html::VTag(std::rc::Rc::new(yew_element))
-}
-fn yew_listener(
-    kind: yew::virtual_dom::ListenerKind,
-    handle: impl Fn(web_sys::Event),
-) -> impl yew::virtual_dom::Listener {
-    YewGenericListener { kind, handle }
-}
-struct YewGenericListener<Handle> {
-    kind: yew::virtual_dom::ListenerKind,
-    handle: Handle,
-}
-impl<Handle: Fn(web_sys::Event)> yew::virtual_dom::Listener for YewGenericListener<Handle> {
-    fn kind(&self) -> yew::virtual_dom::ListenerKind {
-        self.kind.clone()
-    }
-    fn handle(&self, event: web_sys::Event) {
-        (self.handle)(event)
-    }
-    fn passive(&self) -> bool {
-        true
-    }
-}
-
-// //
 
 fn utf16_offset_to_utf8_in(source: &str, utf16_offset: usize) -> usize {
     let mut utf8_length: usize = 0;
