@@ -699,7 +699,6 @@ static example_infos: [(Example, ExampleInfo); 13] = {
     ]
 };
 const fn example_info(example: Example) -> ExampleInfo {
-    // TODO convert all of them and add new ones
     match example {
         Example::HelloWorld => ExampleInfo {
             name:"hello world",
@@ -835,13 +834,13 @@ fn Call-function-value . : i32 =
     .fn Function-returning-a-function .
     .in .a 63 i32 .b 6 i32
 
-fn Buf-with-capacity{_element}
+fn Buf-with-capacity{_item}
     .origin origin Origin _o
     .length length u32
-    : Buf _o, _element =
+    : Buf _o, _item =
     Buf-pre-allocate-at-least
     .length length
-    .buf Buf-empty{_element} origin
+    .buf Buf-empty{_item} origin
 "#,
             explainer: "As seen in the last example, function declarations can also have type parameters if only the result type uses them.
 Each is specified in braces {_}. When calling, each type argument is aso wrapped in braces {}.
@@ -897,12 +896,12 @@ ty position .x f32 .y f32
 
 fn Default-config . : config =
     .line-separator "\r\n"
-    .element-separator ";"
+    .item-separator ";"
     .version 2 p32
 
 ty config
     .line-separator str
-    .element-separator str
+    .item-separator str
     .version p32
 
 ty vector .x f32 .y f32
@@ -965,7 +964,7 @@ fn Type-rid
         Type-span-rid .buf buf .span arguments
         )
     [|function .inputs inputs .output output] (
-        ? Buf-remove .buf buf .slot output [.buf buf .element output]
+        ? Buf-remove .buf buf .slot output [.buf buf .item output]
         ? Type-rid .buf buf .type output [buf]
         Type-span-rid .buf buf .span inputs
         )
@@ -980,7 +979,7 @@ fn Type-span-rid
     .state buf
     .step
     [.state buf Buf _types, Type-syntax _types .slot slot Slot _types]
-    ? Buf-remove .buf buf .slot slot [.buf buf .element type]
+    ? Buf-remove .buf buf .slot slot [.buf buf .item type]
     Type-rid .buf buf .type type
 "#,
             explainer: "Some info can come in multiple shapes (variants).
@@ -1027,20 +1026,20 @@ fn U32s-sum
     .state (.sum so-far u32 .buf buf Buf _origin, u32)
     .slot slot Slot _origin
     ]
-    ? Buf-remove .buf buf .slot slot [.buf buf .element element]
-    .buf buf .sum U32-add-clamp .a so-far .b element
+    ? Buf-remove .buf buf .slot slot [.buf buf .item item]
+    .buf buf .sum U32-add-clamp .a so-far .b item
 "#,
-            explainer: "an Array holds an exact amount of elements of the same type.
+            explainer: "an Array holds an exact amount of items of the same type.
 This is super convenient, as we can store it on the stack and pass it around freely,
-never having to think about hoow to free it. Create one by prefixing all elements with ;.
+never having to think about hoow to free it. Create one by prefixing all items with ;.
 
-A Buf holds a variable amount of elements of the same element type.
-To get its full power we need to store its elements on the heap.
-To refer to slices or specific elements inside the heap, one might think
+A Buf holds a variable amount of items of the same item type.
+To get its full power we need to store its items on the heap.
+To refer to slices or specific items inside the heap, one might think
 a simple pointer is enough but...
-If the Buf has fully occupied its allotted space on the heap and a new element gets added,
-the Buf must move its elements to a larger space, invalidating your pointers
-To combat this, you could move all slices and specific elements to each their own little space on the heap.
+If the Buf has fully occupied its allotted space on the heap and a new item gets added,
+the Buf must move its items to a larger space, invalidating your pointers
+To combat this, you could move all slices and specific items to each their own little space on the heap.
 This works well! But it can be slower as related memory is more fragmented and thus harder to find by the CPU.
 So, indexes and ranges? Yes! If we address the problems
 - we don't know which Buf to search in. Indexes are easy to confuse, leading to bugs
@@ -1049,7 +1048,7 @@ So, indexes and ranges? Yes! If we address the problems
   The cost is small but it's a bit sad
 The solution is qzite simple: Attach a unique type to each Buf
 and the indexes&ranges it gives out.
-- `Buf _origin, _element`: the resizable array on the heap, marked with _origin
+- `Buf _origin, _item`: the resizable array on the heap, marked with _origin
 - `Slot _origin` an index into the `Buf` with the same origin
 - `Span _origin` a range (start index + length) into the `Buf` with the same origin
 Unique new origins can be created with `^new-origin`;
