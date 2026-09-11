@@ -12,7 +12,9 @@ fn Greet
     ? Buf-char-span-add-str .. string .new name [string]
     Buf-char-span-add-str .. string .new "!\n"
 ```
-[skip to more examples](#examples)
+A `Greet` function taking a name and a buffer to append the greeting to.
+It appends the name and other strings to the chars to form and return a message span.
+[skip to more examples](#examples) [skip to syntax overview](#syntax) (TODO link repl website)
 
 Install with (requires having [rust installed](https://rust-lang.org/tools/install/))
 ```bash
@@ -27,12 +29,11 @@ Even variables holding plain numbers for example have to be explicitly duplicate
 With this:
 - values know when they aren't used anymore at compile time. Their memory is always explicitly reclaimed. No need for garbage collection or similar
 - values can be mutated internally without mutation being detectable
-- representing things that should only be consumed once, like thread join handles
-- representing things that should be cleaned up in a specific way, like memory that should be freed from a specific origin
-- guaranteeing properties like non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though I think currently the languages sloe compiles to [don't entirely exploit this fact](https://github.com/rust-lang/rust/issues/16515))
-
-This can feel annoying and clunky. Think e.g. `Span-length` which takes a span and gives back its size and the given span.
-Not ony is it clunky, it is also often conceptually less constrained than taking an immutable view (like &Span in rust) because `Span-length` could behind your back return a changed `Span` (this can also be an advantage but it usually isn't). If you wanted to track where a value changed, this makes things harder.
+- more complex clean-up, like a range of indexes freeing their memory by passing the containing collection
+- guaranteeing properties like non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes) (though we [don't really exploit this fact](https://github.com/rust-lang/rust/issues/16515))
+- threads can only be joined once for example
+- it sadly also feels clunky. Think e.g. `Span-length` which takes a span and gives back its size and the given span. `Span-length` could also return a changed `Span` behind your back. This flexibility can be an advantage but more importantly it sadly complicates tracking where a value changed.
+  An immutable view (like &Span in rust) would not have these difficulties
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
@@ -56,7 +57,7 @@ Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert y
 > The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types. This is not uncommon in languages like rust.
 However, sloe's goal is to do better here and to not bind storage to ownership over its items. Instead, we store a big array buffer of each kind and point into it.
 
-# concept: prevent mix-up between collections with an origin type parameter
+## concept: prevent mix-up between collections with an origin type parameter
 Every created collection has a unique origin.
 A value whose type contains an origin can't escape the scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
@@ -813,7 +814,7 @@ cargo install --offline --debug --path . sloe
 
 - try to make accidentally used _ in identifiers more gentle
 
-- "No local variable in scope has this name." should list available variable names
+- simplify exhaustiveness checking, possibly 
 
 - consider adding
   ```sloe

@@ -5485,7 +5485,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                         Some(expected_type_field) => &expected_type_field.value,
                                         None => {
                                             let error_message: String = format!(
-                                            "This pattern matches a record with the field {} but the expected record type here only expects these fields
+                                            "This pattern matches a record with the field .{} but the expected record type here only expects these fields
 .{}
 You might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases",
                                                 field_name_value,
