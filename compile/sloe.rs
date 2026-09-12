@@ -12749,6 +12749,13 @@ Try not to divide by 0.0, as 0.0 will be returned which is not mathematically co
                 result_type: type_f32,
             },
             CoreFnInfo {
+                name: "F32-square-root",
+                documentation: "n ^ 0.5, returning |no . when n < 0.0",
+                type_parameters: vec![],
+                parameter_type:  type_i32,
+                result_type: type_opt(type_f32),
+            },
+            CoreFnInfo {
                 name: "F32-pow-i32",
                 documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined.
 
@@ -12761,7 +12768,8 @@ Warning: Precision is unspecified and as such this function should never be used
                 name: "F32-pow",
                 documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined.
 
-Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
+Warning: Precision is unspecified and as such this function should never be used when determinism is desired.
+As such, prefer F32-square-root if you can",
                 type_parameters: vec![],
                 parameter_type: type_record([("base", type_f32), ("exponent", type_f32)]),
                 result_type: type_opt(type_f32),

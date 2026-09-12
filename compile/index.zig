@@ -62,6 +62,8 @@ test "various trivial" {
     try std.testing.expectEqual(0.6, core.f32_mul_clamp(.{ .a = -1.5, .b = -0.4 }));
     try std.testing.expectEqual(121, core.u32_pow_clamp(.{ .base = 11, .exponent = core.P32{ .positive = 2 } }));
     try std.testing.expectEqual(121, core.i32_pow_clamp(.{ .base = -11, .exponent = core.P32{ .positive = 2 } }));
+    try std.testing.expectEqual(core.Opt(core.F32){ .yes = 4 }, core.f32_square_root(16));
+    try std.testing.expectEqual(core.Opt(core.F32){ .no = {} }, core.f32_square_root(-16));
     try std.testing.expectEqual(core.Opt(core.F32){ .yes = 134.56001 }, core.f32_pow_i32(.{ .base = -11.6, .exponent = 2 }));
     try std.testing.expectEqual(core.Opt(core.F32){ .yes = 50.118725 }, core.f32_pow(.{ .base = 10, .exponent = 1.7 }));
     try std.testing.expectEqual(core.Opt(core.F32){ .no = {} }, core.f32_pow(.{ .base = -11, .exponent = 0.5 }));

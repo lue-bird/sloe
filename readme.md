@@ -517,7 +517,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Ascii-is-lower ascii : Opt ascii # maybe |yes.|no. instead
   fn Ascii-is-upper ascii : Opt ascii # maybe |yes.|no. instead
   ```
-- change unicode \u{hex} syntax to \u() because {} is used for types
 - combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth.
   For extra convenience, it may be reasonable to implement some ByteDecode and ByteEncode traits in rust directly, so that in the common case that the state type is fully known you can hot reload with close to no glue code
 - add byte-level APIs, like `Buf-opt-span-take-i32 enianness` and `Buf-opt-span-take-f32 enianness`. Ultimately, these sould allow got reloading or simple byte protocols in general
@@ -588,11 +587,24 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
 - (once allocator API is stabilized) allocate all collections with an origin that was declared in sloe using a locally-passed `impl Allocator<>`
 - I think in theory there should be all the bits and pieces present to allow for struct-of-arrays and arrays-of-variant-values (made up name). E.g. internally compiling
-    - `Buf Origin, .a A .b B` to `A·B<Buf<A>, Buf<B>>`
-    - for `Buf Origin, |a A |b B` to either 
-        - `Tag·ValueIndex·A·B<Buf<A_or_B_Tag>, Buf<u32>, Buf<A>, Buf<B>>` (which also has ~2 hops but makes sense when sizes of A and B are different enough)
-        - `A·B<Buf<A>, Buf<B>>` (which requires the index to hold both the tag and the value index, aka 64 bit instead of 32, which somewhat defeats the point of reducing padding of the variant when values get bigger. Potentially there could however be struct-of-arrays for individual variant values making this worth it: https://github.com/dist1ll/osmium & https://alic.dev/blog/dense-enums)
-        - `A·B<Buf<A>, Map<u32, B>>` (which is inefficient, and wasteful if `B` is common, and also doesn't scale with more than 2 variants)
+    - `Buf _origin, .a A .b B` to
+      ```sloe
+      .a Buf _a-origin, A
+      .b Buf _b-origin, B
+      ```
+    - `Buf _origin, |a A |b B` to 
+      ```sloe
+      .slots Buf _slots-origin, |a Slot a-origin |b Slot b-origin
+      .a Buf _a-origin, A
+      .b Buf _b-origin, B
+      ```
+      or 
+      ```sloe
+      .tags Buf _tags-origin, |a . |b .
+      .slots Buf _slots-origin, Slot ??-origin
+      .a Buf _a-origin, A
+      .b Buf _b-origin, B
+      ```
 - look into `soa_derive` for rust, maybe this already does most of the useful work
 - (very out of scope but thinking never hurts) imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
 
@@ -615,7 +627,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   While this is bloody wonderful (succinct, intuitive-ish, great for builders), it doesn't quite have much of a purpose which pattern matching doesn't fill well already. But more importantly it is quite limiting (requires positional arguments, requires them in the right order, doesn't apply to variants and similar). It also introduces "yet another way of writing the same code" which is dislike
 - (rejected, but interesting in theory) making `Buf` etc store multiple kinds of data (heterogenous) and letting them give out `Slot origin, data-type` and `Span origin, data-type`. This means that usually only one `origin` needs to be passed to things like `expression` and slots/spans actually tell you what data they point to. Similarly, only one buf needs to be passed around.
   This makes the porpose of `Buf` being allocator-ish spaces rather that collections to query and edit more clear and makes passing them around to operations very simple, e.g. `expression-end .expression Expression _origin .data Buf _origin, ... : .buf Buf _origin ... .end text-position`.
-  This would also in theory enable a crazy representation of tagged unions as:
+  This would also enable below representation of tagged unions (this representation is not very flexible and otherwise also contradicts other basics of sloe):
   ```sloe
   ty Expression-slot _origin
       |int Slot _origin, i32
@@ -792,8 +804,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
--  consider adding deterministic alternatives like square-root
-
 - track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
 - add `Buf-(opt-)span-update` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
@@ -803,6 +813,21 @@ cargo install --offline --debug --path . sloe
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
 - (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
+
+- change unicode \u{hex} syntax to \u() because {} is used for types
+
+- change the representation of `Buf` in rust and zig to something like `ArrayList(Element?)` which:
+    - makes it much easier to check if a slot is occupied and mark it as such
+    - takes up less memory (3 words vs 6 words)
+    - simpler implementation
+  
+  Maybe combine this with storing the first/last vacant index such that insert is a little faster.
+
+- consider removing unset slots and spans in favor of remove and insert.
+  This is only viable if I can show that simple element update code gets optimized to the same code which does not touch memory of vacant ranges!
+  Adding operations like `Buf-(opt-)span-insert` etc which try to reuse vacant space would probably help.
+
+- (only if we can ensure no unset slots and spans exist!) add `Buf-fold-map`, `Buf-map`, `Buf-fold` (not sure). They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and make buf handling less painful
 
 - try to recover typed pattern without a variable more nicely by when all other cases fail trying to parse a type and representing it as a variable without a variable
 
@@ -830,7 +855,7 @@ cargo install --offline --debug --path . sloe
 - consider adding `Buf-span-map-or-rid-and-allocate` (which tries to reuse the allocation).
   Is there a use for this?
   
-- website: in ext area: preven default on tab and insert four spaces instead
+- website: in ext area: prevent default on tab and insert four spaces instead
 
 - fix comment TODOs
 

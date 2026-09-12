@@ -217,6 +217,10 @@ export function f32_div_clamp(div) {
     ? 0
     : Math.max(F32$MIN, Math.min(F32$MAX, Math.fround(div.n / div.by)));
 }
+/** @param {F32} n @returns {Opt<F32>} */
+export function f32_square_root(n) {
+  return n < 0.0 ? { no: undefined } : { yes: Math.sqrt(n) };
+}
 /** @param {{ base: F32, exponent: I32, }} pow @returns {Opt<F32>} */
 export function f32_pow_i32(pow) {
   return f32_pow(pow);

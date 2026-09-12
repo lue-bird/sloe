@@ -1235,6 +1235,9 @@ pub fn f32_div_clamp(@"%": Record(struct { n: F32, by: F32 })) F32 {
         return if (std.math.isNegativeInf(@"%div_result")) std.math.floatMin(f32) else if (std.math.isPositiveInf(@"%div_result")) std.math.floatMax(f32) else @"%div_result";
     };
 }
+pub fn f32_square_root(@"%n": F32) Opt(F32) {
+    return if (@"%n" < 0.0) .{ .no = {} } else .{ .yes = @sqrt(@"%n") };
+}
 pub fn f32_pow_i32(@"%": Record(struct { base: F32, exponent: I32 })) Opt(F32) {
     const @"%power" = std.math.pow(f32, @"%".base, @floatFromInt(@"%".exponent));
     return if (std.math.isFinite(@"%power")) .{ .yes = @"%power" } else .{ .no = {} };

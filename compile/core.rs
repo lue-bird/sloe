@@ -2154,6 +2154,13 @@ pub fn f32_div_clamp(Record·by·n { n, by }: Record·by·n<F32, F32>) -> F32 {
         (n / by).clamp(f32::MIN, f32::MAX)
     }
 }
+pub fn f32_square_root(n: F32) -> Opt<F32> {
+    if n < 0.0 {
+        Opt::No(())
+    } else {
+        Opt::Yes(n.sqrt())
+    }
+}
 pub fn f32_pow_i32(
     Record·base·exponent { base, exponent }: Record·base·exponent<F32, I32>,
 ) -> Opt<F32> {
