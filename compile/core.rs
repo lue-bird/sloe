@@ -1350,9 +1350,7 @@ impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
                 erased: Buf {
                     origin: std::marker::PhantomData::<Origin<Erased, Part>>,
                     // the optimizer should be able to figure out that the atual memory does not change here
-                    // when the `item_erase` really justs erases origins.
-                    // If it can't, look into branching on if ItemErased has the same size and alignment
-                    // and transmute
+                    // when the `item_erase` really justs erases origins
                     items: std::iter::Iterator::collect(std::iter::Iterator::map(
                         std::iter::IntoIterator::into_iter(self.items),
                         |item| match item {
@@ -1390,9 +1388,7 @@ impl<Item, Part> Buf<Origin<Erased, Part>, Item> {
         Buf {
             origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
             // the optimizer should be able to figure out that the atual memory does not change here
-            // when the `item_unerase` really justs unerases origins.
-            // If it can't, look into branching on if ItemUnerased has the same size and alignment
-            // and transmute
+            // when the `item_unerase` really justs unerases origins
             items: std::iter::Iterator::collect(std::iter::Iterator::map(
                 std::iter::IntoIterator::into_iter(self.items),
                 |item| match item {
