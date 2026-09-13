@@ -15098,7 +15098,7 @@ Note that `Unset-slice` does not have a dup function to make heap allocation exp
 Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same effect."
                 )),
                 parameters: vec![Name::from_static("origin")],
-                type_: Some(type_unset_span(type_variable("origin"))),
+                type_: Some(type_unset_slice(type_variable("origin"))),
             },
         ),
         (
