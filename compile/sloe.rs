@@ -2024,7 +2024,7 @@ fn parse_expression_array<Expressions, Patterns, Types>(
     }
     Some(SyntaxExpression::Array {
         semicolon_start: semicolon_start,
-        item0: item0.map(|item0| expressions.add(item0)),
+        item0: item0.map(|item0| expressions.insert(item0)),
         item1_up,
     })
 }
