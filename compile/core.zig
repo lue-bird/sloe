@@ -114,10 +114,10 @@ pub const Str = struct {
     utf8: std.unicode.Utf8View,
 
     pub fn fromComptime(comptime @"%bytes": []const u8) Str {
-        return comptime str: {
+        return comptime @"%str": {
             const @"%utf8_view" = std.unicode.Utf8View.initComptime(@"%bytes");
             if (std.math.cast(u32, @"%bytes".len) == null) @compileError(std.fmt.comptimePrint("Str byte length must fit in a u32, is {}", .{@"%bytes".len}));
-            break :str if (Str.fromUtf8View(@"%utf8_view")) |@"%str"| @"%str" else @compileError("Str must contain at least one codepoint");
+            break :@"%str" if (Str.fromUtf8View(@"%utf8_view")) |@"%str"| @"%str" else @compileError("Str must contain at least one codepoint");
         };
     }
     pub fn fromUtf8View(@"%utf8_view": std.unicode.Utf8View) ?Str {
@@ -370,7 +370,7 @@ pub fn Unset_slice(@"%Item": type) type {
         ) error{OutOfMemory}!@This() {
             return .{ .undefined_items = try @"%allocator".alloc(@"%Item", @"%length") };
         }
-        pub fn length(@"%unset_slice": @This()) u32 {
+        pub fn capacity(@"%unset_slice": @This()) u32 {
             return @intCast(@"%unset_slice".undefined_items.len);
         }
         /// the given unset slice is invalid after
@@ -391,7 +391,7 @@ pub fn Unset_slice(@"%Item": type) type {
                 ) };
             } else {
                 @"%unset_slice".rid(@"%allocator");
-                return Unset_slice(@"%NewItem").allocateLength(@"%allocator", @"%unset_slice".length());
+                return Unset_slice(@"%NewItem").allocateLength(@"%allocator", @"%unset_slice".capacity());
             }
         }
         pub fn rid(@"%unset_slice": @This(), @"%allocator": std.mem.Allocator) void {
@@ -567,16 +567,16 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         ) error{OutOfMemory}!void {
             var @"%maybe_vacant_span_index_connecting_earlier": ?usize = null;
             var @"%maybe_vacant_span_index_connecting_later": ?usize = null;
-            looking_for_connections: for (@"%buf".vacant.items, 0..) |@"%vacant_span", @"%vacant_span_index"| {
+            @"%looking_for_connections": for (@"%buf".vacant.items, 0..) |@"%vacant_span", @"%vacant_span_index"| {
                 if (@"%maybe_vacant_span_index_connecting_earlier" == null and @"%span_to_vacate".start == (@as(usize, @"%vacant_span".start) + @as(usize, @"%vacant_span".length.positive))) {
                     @"%maybe_vacant_span_index_connecting_earlier" = @"%vacant_span_index";
                     if (@"%maybe_vacant_span_index_connecting_later") |_| {
-                        break :looking_for_connections;
+                        break :@"%looking_for_connections";
                     }
                 } else if (@"%maybe_vacant_span_index_connecting_later" == null and (@as(usize, @"%span_to_vacate".start) + @as(usize, @"%span_to_vacate".length.positive)) == @"%vacant_span".start) {
                     @"%maybe_vacant_span_index_connecting_later" = @"%vacant_span_index";
                     if (@"%maybe_vacant_span_index_connecting_earlier") |_| {
-                        break :looking_for_connections;
+                        break :@"%looking_for_connections";
                     }
                 }
             }
@@ -865,7 +865,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%vacant".deinit(@"%allocator");
             var @"%items" = @"%buf".items;
             @"%items".clearRetainingCapacity();
-            return .{ .undefined_items = @"%items".unusedCapacitySlice() };
+            return .{ .undefined_items = @"%items".allocatedSlice() };
         }
         /// buf is invalid after
         pub fn rid(@"%buf": @This(), @"%allocator": std.mem.Allocator) void {
@@ -2026,15 +2026,15 @@ pub fn buf_origin_isolate(
         item_isolate: Fn(@"%Item", Origin_isolated(@"%Origin", @"%ItemErased")),
     }),
 ) error{OutOfMemory}!Origin_isolated(@"%Origin", Buf_origin_erased(@"%Part", @"%ItemErased")) {
-    const items_erased: std.ArrayList(@"%ItemErased") = items_erased: {
-        if (comptime can_reuse: {
-            break :can_reuse (@sizeOf(@"%Item") == @sizeOf(@"%ItemErased")) and
+    const items_erased: std.ArrayList(@"%ItemErased") = @"%items_erased": {
+        if (comptime @"%can_reuse": {
+            break :@"%can_reuse" (@sizeOf(@"%Item") == @sizeOf(@"%ItemErased")) and
                 (@alignOf(@"%Item") == @alignOf(@"%ItemErased"));
         }) {
             for (@"%".buf.items.items) |*item| {
                 item.* = @bitCast((try @"%".item_isolate(@"%allocator", item.*)).erased);
             }
-            break :items_erased .{
+            break :@"%items_erased" .{
                 .pointer_stability = @"%".buf.items.pointer_stability,
                 .capacity = @"%".buf.items.capacity,
                 .items = @ptrCast(@"%".buf.items.items),
@@ -2050,7 +2050,7 @@ pub fn buf_origin_isolate(
             }
             var @"%items" = @"%".buf.items;
             @"%items".deinit(@"%allocator");
-            break :items_erased @"%items_erased";
+            break :@"%items_erased" @"%items_erased";
         }
     };
     return .{ .erased = .{ .erased = .{
@@ -2106,9 +2106,9 @@ pub fn buf_origin_unerase(
     buf: Buf(Origin(@"%Origin", @"%Part"), @"%Item"),
     uneraser: Origin_uneraser(@"%Origin"),
 }) {
-    const @"%items_erased": std.ArrayList(@"%Item") = items_erased: {
-        if (comptime can_reuse: {
-            break :can_reuse (@sizeOf(@"%Item") == @sizeOf(@"%ItemErased")) and
+    const @"%items_erased": std.ArrayList(@"%Item") = @"%items_erased": {
+        if (comptime @"%can_reuse": {
+            break :@"%can_reuse" (@sizeOf(@"%Item") == @sizeOf(@"%ItemErased")) and
                 (@alignOf(@"%Item") == @alignOf(@"%ItemErased"));
         }) {
             for (@"%".buf.erased.items.items) |*item| {
@@ -2117,7 +2117,7 @@ pub fn buf_origin_unerase(
                     .uneraser = @"%".uneraser,
                 })).item);
             }
-            break :items_erased .{
+            break :@"%items_erased" .{
                 .pointer_stability = @"%".buf.erased.items.pointer_stability,
                 .capacity = @"%".buf.erased.items.capacity,
                 .items = @ptrCast(@"%".buf.erased.items.items),
@@ -2136,7 +2136,7 @@ pub fn buf_origin_unerase(
             }
             var @"%items" = @"%".buf.erased.items;
             @"%items".deinit(@"%allocator");
-            break :items_erased @"%items_erased";
+            break :@"%items_erased" @"%items_erased";
         }
     };
     return .{
@@ -2158,12 +2158,6 @@ pub fn unset_slice_allocate_length(
     @"%length": U32,
 ) error{OutOfMemory}!Unset_slice(@"%Item") {
     return Unset_slice(@"%Item").allocateLength(@"%allocator", @"%length");
-}
-pub fn unset_slice_length(
-    @"%Item": type,
-    @"%unset_slice": Unset_slice(@"%Item"),
-) Record(struct { length: U32, span: Unset_slice(@"%Item") }) {
-    return .{ .length = @"%unset_slice".length, .slice = @"%unset_slice" };
 }
 pub fn unset_slice_cast_or_rid_and_allocate(
     @"%Item": type,

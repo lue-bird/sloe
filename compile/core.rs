@@ -396,9 +396,8 @@ pub struct Origin_isolated<Origin, Value_erased> {
 pub struct Origin_uneraser<Origin>(std::marker::PhantomData<Origin>);
 
 pub struct Unset_slice<Item>(
-    // TODO change to std::vec::Vec<[std::option::Option<Item>]>
-    // to avoid needing to insert Nones when capacity exceeds len
-    std::boxed::Box<[std::option::Option<Item>]>,
+    // invariant: .len() == 0
+    std::vec::Vec<std::option::Option<Item>>,
 );
 #[derive(Debug)]
 #[non_exhaustive]
@@ -674,82 +673,30 @@ macro_rules! part_record_names_are_invalid {
 
 impl<Item> Unset_slice<Item> {
     pub fn allocate_length(length: u32) -> Self {
-        Unset_slice(std::iter::Iterator::collect(std::iter::Iterator::take(
-            std::iter::repeat_with(|| std::option::Option::None),
-            length as usize,
-        )))
+        Unset_slice(std::vec::Vec::with_capacity(length as usize))
     }
-    pub fn from_vec_option(mut maybe_uninit_buf: std::vec::Vec<std::option::Option<Item>>) -> Self {
-        let spare_capacity = maybe_uninit_buf.spare_capacity_mut().len();
-        std::iter::Extend::extend(
-            &mut maybe_uninit_buf,
-            std::iter::Iterator::take(
-                std::iter::repeat_with(|| std::option::Option::None),
-                spare_capacity,
-            ),
-        );
-        Unset_slice(maybe_uninit_buf.into_boxed_slice())
+    pub fn from_vec_option(mut vec_option: std::vec::Vec<std::option::Option<Item>>) -> Self {
+        vec_option.clear();
+        Unset_slice(vec_option)
     }
     pub fn as_slice(&self) -> &[std::option::Option<Item>] {
         &self.0
     }
-    pub fn length_usize(&self) -> usize {
-        self.as_slice().len()
-    }
-    pub fn length(&self) -> u32 {
-        self.as_slice().len() as u32
-    }
     pub fn cast_or_rid_and_allocate<NewItem>(self) -> Unset_slice<NewItem> {
-        const fn mem_stride_of<Item>() -> usize {
-            // at the time of writing, this is the same as size
-            // is there a nicer way?
-            std::mem::size_of::<Item>()
-        }
-        // safe alternative
-        // ```rust
-        // self.into_boxed_slice().into_iter().collect().into_boxed_slice()
-        // ```
-        // which should automatically reuse the memory if layouts are equal (in release mode)
-        if const {
-            mem_stride_of::<NewItem>() == mem_stride_of::<Item>()
-                && std::mem::align_of::<NewItem>() == std::mem::align_of::<Item>()
-        } {
-            // safe because all contained memory is None
-            Unset_slice(unsafe {
-                std::boxed::Box::from_raw(std::boxed::Box::into_raw(self.into_boxed_slice())
-                    as *mut [std::option::Option<NewItem>])
-            })
-        } else {
-            Unset_slice::<NewItem>::allocate_length(self.length())
-        }
+        Unset_slice(self.into_vec())
     }
-    pub fn into_boxed_slice(self) -> std::boxed::Box<[std::option::Option<Item>]> {
+    /// almost always you should prefer .into_vec
+    /// The only reason to use .into_vec_option is to speed up debug builds and to be sure no allocation is happening
+    pub fn into_vec_option(self) -> std::vec::Vec<std::option::Option<Item>> {
         self.0
     }
-    pub fn into_vec(self) -> std::vec::Vec<Item> {
-        let mut vec: std::vec::Vec<std::option::Option<Item>> = self.into_boxed_slice().into_vec();
-        vec.clear();
-        // only safe because there are no more safely accessible items in the Vec anymore
-        // and the spare_capacity is assumed to never be accessed via assume_init.
-        // IMO there should be a safe operation in std::vec::Vec for this.
-        //
-        // Safe alternative:
-        // ```rust
-        // vec.into_iter().map(|impossible| impossible.assume_init()).collect()
-        // // or
-        // vec.into_iter().map(|_| unsafe { std::hint::unreachable_unchecked() }).collect()
-        // ```
-        // combined with asserting equal size to reuse memory (in release mode)
-        let (buf_ptr, buf_length, buf_capacity) = vec.into_raw_parts();
-        unsafe { std::vec::Vec::from_raw_parts(buf_ptr.cast::<Item>(), buf_length, buf_capacity) }
-    }
-    pub fn into_vec_option(self) -> std::vec::Vec<std::option::Option<Item>> {
-        let mut vec: std::vec::Vec<std::option::Option<Item>> = self.into_boxed_slice().into_vec();
-        vec.clear();
-        vec
-    }
-    pub fn leak<'a>(self) -> &'a mut [std::option::Option<Item>] {
-        std::boxed::Box::leak(self.into_boxed_slice())
+    pub fn into_vec<NewItem>(self) -> std::vec::Vec<NewItem> {
+        // below will reinterpret the allocation in release mode without doing any work
+        std::assert!(self.0.is_empty());
+        std::iter::Iterator::collect(std::iter::Iterator::map(
+            std::iter::IntoIterator::into_iter(self.0),
+            |_| unsafe { std::hint::unreachable_unchecked() },
+        ))
     }
 }
 
@@ -1389,7 +1336,7 @@ impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
     pub fn reuse(_: Origin<LocalOrigin, Part>, allocation: Unset_slice<Item>) -> Self {
         Buf::<Origin<LocalOrigin, Part>, Item> {
             origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
-            first_none_index: allocation.length(),
+            first_none_index: 0,
             items: allocation.into_vec_option(),
         }
     }
@@ -2937,14 +2884,6 @@ pub fn buf_origin_unerase<Item, ItemErased, LocalOrigin, Part>(
 }
 
 pub fn unset_slice_rid<Item>(_: Unset_slice<Item>) -> Record {}
-pub fn unset_slice_length<Item>(
-    unset_slice: Unset_slice<Item>,
-) -> Record·length·slice<U32, Unset_slice<Item>> {
-    Record·length·slice {
-        length: unset_slice.length(),
-        slice: unset_slice,
-    }
-}
 pub fn unset_slice_allocate_length<Item>(length: U32) -> Unset_slice<Item> {
     Unset_slice::allocate_length(length)
 }

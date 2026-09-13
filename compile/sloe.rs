@@ -14229,16 +14229,6 @@ There rarely is a need to use this except when a function expects an `Unset-slic
                 result_type: type_unset_slice(type_variable("item")),
             },
             CoreFnInfo {
-                name: "Unset-slice-length",
-                documentation: "How many items could fit",
-                type_parameters: vec![],
-                parameter_type: type_unset_slice(type_variable("item")),
-                result_type: type_record([
-                    ("slice", type_unset_slice(type_variable("item"))),
-                    ("length", type_u32),
-                ]),
-            },
-            CoreFnInfo {
                 name: "Unset-slice-cast-or-rid-and-allocate",
                 documentation: r#"Reinterpret the slice of unset bytes as a slice of a different item type.
 This only works when the new item type has the same "size" (byte count including padding bits)
@@ -14671,9 +14661,7 @@ For potentially 0-length spans, use `Opt Span`"
 Can be constructed manually or as an intermediate type when recycling the allocated space of a collection,
 see `Buf-to-unset`.
 Since you can't read from it, you can also safely attempt to reuse this allocation for a different item type,
-see `Unset-slice-cast-or-rid-and-allocate`.
-Note that `Unset-slice` does not have a dup function to make heap allocation explicit.
-Use `Unset-slice-length` and `Unset-slice-allocate-length` to achieve the same effect."
+see `Unset-slice-cast-or-rid-and-allocate`."
                 )),
                 parameters: vec![Name::from_static("origin")],
                 type_: Some(type_unset_slice(type_variable("origin"))),

@@ -22,7 +22,9 @@
 /** @template $Origin @typedef {{} & { readonly uneraser_origin?: $Origin }} Origin_uneraser */
 /** @template $Origin, $Item @typedef {($Item | null)[] & { readonly origin?: $Origin }} Buf */
 /** @template $Part, $Item @typedef {Buf<Origin<Erased, $Part>, $Item> & { readonly origin_erased?: void }} Buf_origin_erased */
-/** @template $Item @typedef {($Item | null)[]} Unset_slice */
+/** @template $Item @typedef {($Item | null)[]} Unset_slice
+ * Assumed to contain an empty array (with spare capacity)
+ */
 /** @template $Origin @typedef {U32 & { readonly origin?: $Origin }} Slot */
 /** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly origin?: $Origin }} Span */
 /** @template $Item, _$Record @typedef {[$Item, ...$Item[]]} Array */
@@ -640,13 +642,13 @@ export function buf_opt_span_rid(unset) {
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, length: U32, }} pre_allocate @returns {Buf<$Origin, $Item>} */
 export function buf_pre_allocate_at_least(pre_allocate) {
-  // There seems to be no way which does not also influence the length.
-  // Maybe .length +=; followed by .length -=; does the job?
+  pre_allocate.buf.length += pre_allocate.length;
+  pre_allocate.buf.length -= pre_allocate.length;
   return pre_allocate.buf;
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, newø: $Item, }} add @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} */
 export function buf_add(add) {
-  let new_index = add.buf.length;
+  const new_index = add.buf.length;
   add.buf.push(add.newø);
   if (add.buf.length > U32$MAX)
     throw Error("Array length " + add.buf.length + " not representable as a u32");
@@ -659,7 +661,7 @@ export function buf_insert(insert) {
     insert.buf[existing_vacant_index] = insert.newø;
     return { buf: insert.buf, slot: existing_vacant_index };
   } else {
-    let new_index = insert.buf.length;
+    const new_index = insert.buf.length;
     insert.buf.push(insert.newø);
     if (insert.buf.length > U32$MAX)
       throw Error("Array length " + insert.buf.length + " not representable as a u32");
@@ -696,7 +698,7 @@ export function buf_span_add(add) {
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>>, newø: $Item, }} add @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
 export function buf_opt_span_add(add) {
   if ("no" in add.span) {
-    let new_index = add.buf.length;
+    const new_index = add.buf.length;
     add.buf.push(add.newø);
     if (add.buf.length > U32$MAX)
       throw Error("Array length " + add.buf.length + " not representable as a u32");
@@ -743,11 +745,11 @@ export function buf_opt_span_add_array(add) {
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} remove @returns {{ buf: Buf<$Origin, $Item>, item: $Item, }} */
 export function buf_remove(remove) {
   if (remove.slot + 1 < remove.buf.length) {
-    let item = /** @type {$Item} */ (remove.buf[remove.slot]);
+    const item = /** @type {$Item} */ (remove.buf[remove.slot]);
     remove.buf[remove.slot] = null;
     return { buf: remove.buf, item: item };
   } else {
-    let item = /** @type {$Item} */ (remove.buf.pop());
+    const item = /** @type {$Item} */ (remove.buf.pop());
     while (remove.buf[remove.buf.length - 1] === null) {
       remove.buf.length -= 1;
     }
@@ -1041,26 +1043,24 @@ export function buf_char_opt_span_add_f32(add) {
 }
 /** @template $Item, $Origin @param {Buf<$Origin, $Item>} buf @returns {Unset_slice<$Item>} */
 export function buf_to_unset(buf) {
+  buf.length = 0;
   return buf;
 }
 /** @template $Item, $Origin, $Part @param {{ origin: Origin<$Origin, $Part>, slice: Unset_slice<$Item>, }} reuse @returns {Buf<$Origin, $Item>} */
 export function buf_reuse(reuse) {
-  reuse.slice.length = 0;
   return reuse.slice;
 }
 
 /** @template $Item @param {Unset_slice<$Item>} _ @returns {void} */
 export function unset_slice_rid(_) {}
-/** @template $Item @param {Unset_slice<$Item>} unset_slice @returns {{ slice: Unset_slice<$Item>, length: U32, }} */
-export function unset_slice_length(unset_slice) {
-  return { slice: unset_slice, length: unset_slice.length };
-}
 /** @template $Item @param {U32} length @returns {Unset_slice<$Item>} */
 export function unset_slice_allocate_length(length) {
-  return Array(length).fill(null);
+  const array = Array(length);
+  array.length = 0;
+  return array;
 }
 /** @template $Item, $New_item @param {Unset_slice<$Item>} unset_slice @returns {Unset_slice<$New_item>} */
 export function unset_slice_cast_or_rid_and_allocate(unset_slice) {
-  // for once equal type sizes comes in clutch
+  // for once equal type sizes come in clutch
   return /** @type ($New_item | null)[] */ (unset_slice);
 }
