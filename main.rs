@@ -944,19 +944,17 @@ fn update_state_on_did_change_text_document<Expressions, Patterns, Types>(
         }
         if project_count == 1 {
             fn vec_should_be_empty<Origin, Item>(vec: &sloe::core::Buf<Origin, Item>) {
-                if !vec.maybe_uninit_items().is_empty() || !vec.vacant_spans().is_empty() {
+                if !vec.as_slice().is_empty() {
                     eprintln!(
-                        "vec not empty after rid step. remaining vacant spans: {:?}, remaining items ({} including vacant) maybe uninit: {:?}",
-                        vec.vacant_spans(),
-                        vec.maybe_uninit_items().len(),
-                        vec.maybe_uninit_items()
+                        "vec not empty after rid step. remaining vacant spans ({}): {:?}",
+                        vec.as_slice().len(),
+                        vec.as_slice()
                             .iter()
-                            .enumerate()
-                            .filter(|(i, _)| {
-                                !vec.vacant_spans()
-                                    .iter()
-                                    .any(|vacant_span| vacant_span.to_range().contains(i))
+                            .map(|option_item| match option_item {
+                                Some(_) => "y",
+                                None => "n",
                             })
+                            .collect::<Vec<_>>(),
                     );
                 }
             }

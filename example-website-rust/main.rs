@@ -69,22 +69,17 @@ fn sloe_dom_node_to_sauron<View: 'static>(
         sloe::Html::Text_static(text) => sauron::Node::Leaf(sauron::vdom::Leaf::Text(
             std::borrow::Cow::Borrowed(text.as_str()),
         )),
-        sloe::Html::Text_dynamic(text) => sauron::text(
-            chars
-                .opt_span_slice(text.as_ref())
-                .iter()
-                .collect::<String>(),
-        ),
+        sloe::Html::Text_dynamic(text) => {
+            sauron::text(chars.opt_span_iter(text.as_ref()).collect::<String>())
+        }
         sloe::Html::Element(element) => sauron::vdom::Node::Element(sauron::vdom::Element::new(
             None,
             element.tag.as_str(),
             modifiers
-                .opt_span_slice(element.modifiers.as_ref())
-                .iter()
+                .opt_span_iter(element.modifiers.as_ref())
                 .map(|modifier| sloe_dom_modifier_to_sauron(modifier, chars)),
             htmls
-                .opt_span_slice(element.subs.as_ref())
-                .iter()
+                .opt_span_iter(element.subs.as_ref())
                 .map(|sub| sloe_dom_node_to_sauron(sub, htmls, modifiers, chars)),
             false,
         )),
@@ -108,8 +103,7 @@ fn sloe_dom_modifier_to_sauron<View: 'static>(
             value: vec![sauron::AttributeValue::Simple(sauron::Value::Cow(
                 std::borrow::Cow::Owned(
                     chars
-                        .opt_span_slice(attribute.value.as_ref())
-                        .iter()
+                        .opt_span_iter(attribute.value.as_ref())
                         .collect::<String>(),
                 ),
             ))],
@@ -129,8 +123,7 @@ fn sloe_dom_modifier_to_sauron<View: 'static>(
                 name: std::borrow::Cow::Borrowed(style.key.as_str()),
                 value: sauron::Value::Cow(std::borrow::Cow::Owned(
                     chars
-                        .opt_span_slice(style.value.as_ref())
-                        .iter()
+                        .opt_span_iter(style.value.as_ref())
                         .collect::<String>(),
                 )),
             }])],
@@ -159,10 +152,7 @@ fn sloe_modifier_property_value_to_sauron<Chars>(
         sloe::Modifier_property_value::False(()) => sauron::Value::Bool(false),
         sloe::Modifier_property_value::Int(int) => sauron::Value::I32(*int),
         sloe::Modifier_property_value::String(span) => sauron::Value::Cow(std::borrow::Cow::Owned(
-            chars
-                .opt_span_slice(span.as_ref())
-                .iter()
-                .collect::<String>(),
+            chars.opt_span_iter(span.as_ref()).collect::<String>(),
         )),
     }
 }

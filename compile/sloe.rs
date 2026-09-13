@@ -7396,7 +7396,7 @@ fn name_to_uppercase_zig(name: &str) -> String {
     }
     // Not sure if type variables in core code can actually collide with generated type names?
     match sanitized.as_str() {
-        "OccupancySet" | "OccupancyUnset" | "Record" => sanitized + "ø",
+        "Record" | "Range" => sanitized + "ø",
         _ => sanitized,
     }
 }
@@ -10818,8 +10818,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                         ["std", "vec"],
                                                         "Vec",
                                                         [syn_type_construct(
-                                                            ["std", "mem"],
-                                                            "MaybeUninit",
+                                                            ["std", "option"],
+                                                            "Option",
                                                             [syn_type_variable("item")],
                                                         )],
                                                     )),
@@ -10881,10 +10881,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                                         syn::ExprCall {
                                                             attrs: vec![],
                                                             func: Box::new(syn_expr_reference([
-                                                                "std",
-                                                                "mem",
-                                                                "MaybeUninit",
-                                                                "new",
+                                                                "std", "option", "Option", "Some",
                                                             ])),
                                                             paren_token: syn::token::Paren(
                                                                 syn_span(),
@@ -11994,8 +11991,6 @@ fn name_to_uppercase_rust(name: &str) -> String {
         | record_empty_rust_struct_name
         | choice_empty_rust_struct_name
         | "OwnedSliceIterator"
-        | "Unset"
-        | "Set"
         | "Parts" => sanitized + "øø",
         _ => sanitized,
     }
@@ -12381,21 +12376,9 @@ fn type_slot(origin: Type) -> Type {
         arguments: vec![origin],
     }
 }
-fn type_unset_slot(origin: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::from_static("Unset-slot"),
-        arguments: vec![origin],
-    }
-}
 fn type_span(origin: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Span"),
-        arguments: vec![origin],
-    }
-}
-fn type_unset_span(origin: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::from_static("Unset-span"),
         arguments: vec![origin],
     }
 }
@@ -13279,13 +13262,6 @@ See `Origin-erased` for an example.",
                 ]),
             },
             CoreFnInfo {
-                name: "Unset-slot-to-span",
-                documentation: "Create an unset-span covering just the one given slot",
-                type_parameters: vec![],
-                parameter_type: type_unset_slot(type_variable("origin")),
-                result_type: type_unset_span(type_variable("origin")),
-            },
-            CoreFnInfo {
                 name: "Span-length",
                 documentation: "How many slots it spans",
                 type_parameters: vec![],
@@ -13481,159 +13457,6 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 ]),
             },
             CoreFnInfo {
-                name: "Unset-span-length",
-                documentation: "How many slots it spans",
-                type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("origin")),
-                result_type:
-                    type_record([
-                        (
-                            "span",
-                            type_unset_span(type_variable("origin"))
-                        ),
-                        ("length", type_p32)
-                    ]),
-            },
-            CoreFnInfo {
-                name: "Opt-unset-span-length",
-                documentation: "How many slots it spans",
-                type_parameters: vec![],
-                parameter_type: type_opt(type_unset_span(type_variable("origin"))),
-                result_type:
-                    type_record([
-                        (
-                            "span",
-                            type_opt(type_unset_span(type_variable("origin")))
-                        ),
-                        ("length", type_u32)
-                    ]),
-            },
-            CoreFnInfo {
-                name: "Unset-span-start",
-                documentation: "Split into the first slot and span after",
-                type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("origin")),
-                result_type:
-                    type_record([
-                        (
-                            "start",
-                            type_slot(type_variable("origin"))
-                        ),
-                        ("after", type_opt(type_unset_span(type_variable("origin"))))
-                    ]),
-            },
-            CoreFnInfo {
-                name: "Unset-span-end",
-                documentation: "Split into the last slot and span before",
-                type_parameters: vec![],
-                parameter_type: type_unset_span(type_variable("origin")),
-                result_type:
-                    type_record([
-                        (
-                            "end",
-                            type_slot(type_variable("origin"))
-                        ),
-                        ("before", type_opt(type_unset_span(type_variable("origin"))))
-                    ]),
-            },
-            CoreFnInfo {
-                name: "Unset-span-start-of-length-positive",
-                documentation: "Split after a given length with the start half known to have positive length.
-If the length is greater than the given span's length, .start will be the existing span and .after will be empty.
-```sloe
-fn Unset-span-slot-at
-    .span span Unset-span _origin
-    .index index u32
-    :
-    .before Opt Unset-span _origin
-    .at Slot _origin
-    .after Opt Unset-span _origin
-    =
-    ?
-        Unset-span-start-of-length-positive
-        .span span
-        .length (P32-add .p 1 p32 .u index)
-    [.start start .after after]
-    ? Unset-span-end start [.before before .end at]
-    .before before .at at .after after
-```
-See also `Unset-span-end-of-length-positive`, `Inset-span-start`.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("span", type_unset_span(type_variable("origin"))),
-                    ("length", type_p32),
-                ]),
-                result_type: type_record([
-                    ("start", type_unset_span(type_variable("origin"))),
-                    ("after", type_opt(type_unset_span(type_variable("origin"))))
-                ]),
-            },
-            CoreFnInfo {
-                name: "Unset-span-end-of-length-positive",
-                documentation: "Split before a given length from the end with the end half known to have positive length.
-If the length is greater than the given span's length, .end will be the existing span and .before will be empty.
-See also `Unset-span-start-of-length-positive`, `Unset-span-end`.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("span", type_unset_span(type_variable("origin"))),
-                    ("length", type_p32),
-                ]),
-                result_type: type_record([
-                    ("end", type_unset_span(type_variable("origin"))),
-                    ("before", type_opt(type_unset_span(type_variable("origin"))))
-                ]),
-            },
-            CoreFnInfo {
-                name: "Unset-span-fold",
-                documentation: "Step through all unset slots, updating the given initial state for each taken slot in line",
-                type_parameters: vec![],
-                parameter_type:
-                    type_record([
-                        (
-                            "span",
-                            type_opt(type_unset_span(type_variable("origin")))
-                        ),
-                        ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
-                        ("state", type_variable("state")),
-                        (
-                            "step",
-                            type_fn(
-                                type_record([
-                                    ("slot", type_unset_slot(type_variable("origin"))),
-                                    ("state", type_variable("state")),
-                                ]),
-                                type_variable("state")
-                            )
-                        )
-                    ]),
-                result_type: type_variable("state"),
-            },
-            CoreFnInfo {
-                name: "Opt-unset-span-fold",
-                documentation: "Step through all unset slots, updating the given initial state for each taken slot in line",
-                type_parameters: vec![],
-                parameter_type:
-                    type_record([
-                        (
-                            "span",
-                            type_unset_span(type_variable("origin"))
-                        ),
-                        ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
-                        ("state", type_variable("state")),
-                        (
-                            "step",
-                            type_fn(
-                                type_record([
-                                    ("slot", type_unset_slot(type_variable("origin"))),
-                                    ("state", type_variable("state")),
-                                ]),
-                                type_variable("state")
-                            )
-                        )
-                    ]),
-                result_type: type_variable("state"),
-            },
-            CoreFnInfo {
                 name: "Buf-empty",
                 documentation: "Initialize a `Buf` with 0 items and no pre-allocated space.
 Modify with `Buf-pre-allocate-at-least`, `Buf-add`, `Buf-add-array`, `Buf-add-unset` etc.",
@@ -13670,8 +13493,7 @@ fn Buf-recycle-empty
                 name: "Buf-pre-allocate-at-least",
                 documentation: "Reserves spare capacity for at least `.length` more items to be added.
 This can prevent frequent re-allocation of the underlying array.
-If you can guesstimate a lower bound of how many items are ultimately added, this is always worth it!
-Equivalent to `Buf-add-unset-length` followed by `Buf-opt-unset-span-rid`",
+If you can guesstimate a lower bound of how many items are ultimately added, this is always worth it!",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13714,22 +13536,6 @@ Use `Buf-add` if you don't care about reuse.",
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-insert-unset",
-                documentation: "Like `Buf-insert` but without assigning a value just yet.
-This like initializing an item with undefined memory,
-with the difference that you can't possibly access it :)
-Assign an unset-slot with `Buf-set` or vacate it with `Buf-vacate`",
-                type_parameters: vec![],
-                parameter_type: type_buf(type_variable("origin"), type_variable("item")),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
-                ]),
-            },
-            CoreFnInfo {
                 name: "Buf-add",
                 documentation: "Add a new item to the end of the `Buf` and keep a slot to it without trying to reuse already vacant slots.
 Can be faster than `Buf-insert` when you expect no vacant items or when all the storage gets scrapped soon anyway.",
@@ -13747,61 +13553,6 @@ Can be faster than `Buf-insert` when you expect no vacant items or when all the 
                         type_buf(type_variable("origin"), type_variable("item")),
                     ),
                     ("slot", type_slot(type_variable("origin"))),
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-add-unset",
-                documentation: "Like `Buf-add` but without assigning a value just yet.
-Assign an unset-slot with `Buf-set` or vacate it with `Buf-vacate`",
-                type_parameters: vec![],
-                parameter_type: type_buf(type_variable("origin"), type_variable("item")),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-add-unset-length-positive",
-                documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `Buf-unset-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("length", type_p32),
-                ]),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("span", type_unset_span(type_variable("origin"))),
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-add-unset-length",
-                documentation: "Claim a given count of new end slots to be set in the near future.
-Combined with `Buf-opt-unset-span-rid` this has the same effect as `Buf-pre-allocate-at-least` for example.
-To get non-empty spans use `Buf-add-length-positive`",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("length", type_u32),
-                ]),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
             },
             CoreFnInfo {
@@ -13845,116 +13596,9 @@ Short for `Buf-unset` followed by `Buf-unset-slot-rid`",
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-unset",
-                documentation: "Retrieve an item from the `Buf` at a given slot (the inverse of `Buf-set`)
-```sloe
-fn Buf-copy-u32-at
-    .buf buf Buf _origin, u32
-    .slot slot Slot _origin
-    :
-    .buf Buf _origin, u32
-    .slot Slot _origin
-    .item u32
-    =
-    ? Buf-unset .buf buf .slot slot
-    [.buf buf .item item .slot unset-slot]
-    ? U32-dup item [.a item .b item-copied]
-    ? Buf-set .buf buf .slot unset-slot .new item [.buf buf .slot slot]
-    .buf buf .slot slot .item item-copied
-```
-A little roundabout but it works.
-You'll most likely want to create a generic helper for this yourself
-```sloe
-fn Buf-item-dup
-    .buf buf Buf _origin, _item
-    .slot slot Slot _origin
-    .dup (dup Fn _item, .a _item .b _item)
-    :
-    .buf Buf _origin, _item
-    .slot Slot _origin
-    .item _item
-    =
-    ? Buf-unset .buf buf .slot slot [.buf buf .slot slot .item item]
-    ? Call .fn dup .in item [.a item .b item-duped]
-    ? Buf-set .buf buf .slot slot .new item [.buf buf .slot slot]
-    .buf buf .slot slot .item item-duped
-```
-You can give back an `Unset-slot` for future reuse by functions like `Buf-insert`
-using `Buf-unset-slot-rid`, or instead directly remove the item entirely with `Buf-remove`",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("slot", type_slot(type_variable("origin"))),
-                ]),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
-                    ("item", type_variable("item")),
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-set",
-                documentation: "Put an item back into the given `Unset-slot` (the inverse of `Buf-unset`)",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
-                    ("new", type_variable("item")),
-                ]),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("slot", type_slot(type_variable("origin"))),
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-span-unset",
-                documentation: "Mark each item in a given `Span` as \"won't be used anymore\"
-and return the now `Unset-span`.
-You can use `Buf-unset-span-rid` to scrap it or switch to `Buf-span-rid` entirely.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
-                    ("span", type_span(type_variable("origin"))),
-                    ("item-rid", type_fn(type_variable("item"), type_record_empty)),
-                ]),
-                result_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
-                    ("span", type_unset_span(type_variable("origin")))
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-opt-span-unset",
-                documentation: "Mark each item in a given `Opt Span` as \"won't be used anymore\"
-and return the now unset `Opt Unset-span`.
-You can use `Buf-opt-unset-span-rid` to scrap it or switch to `Buf-opt-span-rid` entirely.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
-                    ("span", type_opt(type_span(type_variable("origin")))),
-                    ("item-rid", type_fn(type_variable("item"), type_record_empty)),
-                ]),
-                result_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
-                    ("span", type_opt(type_unset_span(type_variable("origin"))))
-                ]),
-            },
-            CoreFnInfo {
                 name: "Buf-span-rid",
                 documentation: "Mark items as \"won't be used anymore\"
-and return their `Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.
-Equivalent to `Buf-span-unset` followed by `Buf-unset-span-rid`.",
+and return their `Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("buf", type_buf(type_variable("origin"), type_variable("item"))),
@@ -13966,52 +13610,12 @@ Equivalent to `Buf-span-unset` followed by `Buf-unset-span-rid`.",
             CoreFnInfo {
                 name: "Buf-opt-span-rid",
                 documentation: "Mark items as \"won't be used anymore\"
-and return their `Opt Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.
-Equivalent to `Buf-opt-span-unset` followed by `Buf-opt-unset-span-rid`.",
+and return their `Opt Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("buf", type_buf(type_variable("origin"), type_variable("item"))),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("item-rid", type_fn(type_variable("item"), type_record_empty)),
-                ]),
-                result_type: type_buf(type_variable("origin"), type_variable("item")),
-            },
-            CoreFnInfo {
-                name: "Buf-unset-slot-rid",
-                documentation: "Return an `Unset-slot` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("slot", type_unset_slot(type_variable("origin"))),
-                ]),
-                result_type: type_buf(type_variable("origin"), type_variable("item")),
-            },
-            CoreFnInfo {
-                name: "Buf-unset-span-rid",
-                documentation: "Return an `Unset-span` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("span", type_unset_span(type_variable("origin"))),
-                ]),
-                result_type: type_buf(type_variable("origin"), type_variable("item")),
-            },
-            CoreFnInfo {
-                name: "Buf-opt-unset-span-rid",
-                documentation: "Return an `Opt Unset-span` back to the `Buf` for potential future reuse by functions like `Buf-insert`",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    (
-                        "buf",
-                        type_buf(type_variable("origin"), type_variable("item")),
-                    ),
-                    ("span", type_opt(type_unset_span(type_variable("origin")))),
                 ]),
                 result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
@@ -14849,7 +14453,7 @@ When you create an `Origin` with `^some-origin expression`,
 The first type uniquely identifies the `Origin` with type `some-origin`.
 The second type here specifies that there are no `Origin` values with the same unique origin type.
 
-An `Origin` type will also be present in `Slot`, `Span`, `Buf`, `Unset-slot`, `Unset-span` as the first type argument.
+An `Origin` type will also be present in `Slot`, `Span`, `Buf`, as the first type argument.
 For example `Slot Origin some-origin, .`
 refers to an index in a `Buf (Origin some-origin, .), char`.
 
@@ -15059,32 +14663,6 @@ For potentially 0-length spans, use `Opt Span`"
             },
         ),
         (
-            Name::from_static("Unset-slot"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "Like `Slot` but referencing an unoccupied position.
-It's similar to what languages use uninitialized memory/undefined for.
-As this prevents another item from filling this position, you shouldn't keep it around for too long."
-                )),
-                parameters: vec![Name::from_static("origin")],
-                type_: Some(type_unset_slot(type_variable("origin"))),
-            },
-        ),
-        (
-            Name::from_static("Unset-span"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "Like `Span` but referencing an unoccupied range.
-It's similar to what languages use uninitialized memory/undefined for.
-As this prevents other items from filling these positions, you shouldn't keep it around for too long."
-                )),
-                parameters: vec![Name::from_static("origin")],
-                type_: Some(type_unset_span(type_variable("origin"))),
-            },
-        ),
-        (
             Name::from_static("Unset-slice"),
             CheckedTypeAlias {
                 name_range: None,
@@ -15207,12 +14785,7 @@ pub static core_choices: std::sync::LazyLock<std::collections::HashSet<&'static 
     });
 pub fn is_core_fn_taking_allocator_in_zig(fn_name: &str) -> bool {
     match fn_name {
-        "Unset-slice-rid"
-        | "Buf-rid"
-        | "Buf-to-unset"
-        | "Buf-unset-slot-rid"
-        | "Buf-unset-span-rid"
-        | "Buf-opt-unset-span-rid" => true,
+        "Unset-slice-rid" | "Buf-rid" | "Buf-to-unset" => true,
         _ => is_core_fn_that_can_run_out_of_memory_in_zig(fn_name),
     }
 }
@@ -15225,22 +14798,14 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Origin-unerase"
         | "Span-fold"
         | "Opt-span-fold"
-        | "Unset-span-fold"
-        | "Opt-unset-span-fold"
         | "Unset-slice-cast-or-rid-and-allocate"
         | "Unset-slice-allocate-length"
         | "Buf-origin-isolate"
         | "Buf-origin-unerase"
         | "Buf-opt-span-move-to-end"
         | "Buf-span-move-to-end"
-        | "Buf-span-unset"
-        | "Buf-opt-span-unset"
         | "Buf-span-rid"
         | "Buf-opt-span-rid"
-        | "Buf-opt-unset-span-add-own-opt-span"
-        | "Buf-unset-span-add-own-opt-span"
-        | "Buf-opt-unset-span-add-own-span"
-        | "Buf-unset-span-add-own-span"
         | "Buf-opt-span-add-own-opt-span"
         | "Buf-span-add-own-opt-span"
         | "Buf-opt-span-add-own-span"
@@ -20598,7 +20163,8 @@ mod core_declarations_are_implemented {
         for (core_fn_name, _) in core_fns.iter() {
             let core_fn_name = name_to_lowercase_rust(core_fn_name);
             assert!(
-                core_zig.contains(&format!("pub fn {}", core_fn_name)),
+                core_zig.contains(&format!("pub fn {}", core_fn_name))
+                    || core_zig.contains(&format!("pub inline fn {}", core_fn_name)),
                 "core.zig does not contain fn {}",
                 core_fn_name
             );

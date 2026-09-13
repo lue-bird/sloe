@@ -238,34 +238,27 @@ pub fn Origin_uneraser(@"%Origin": type) type {
         pub const origin = @"%Origin";
     };
 }
-pub fn Slot_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
+pub fn Slot(@"%Origin": type) type {
     return struct {
         index: u32,
         pub const origin = @"%Origin";
-        pub const occupancy = @"%Occupancy";
-        pub fn to_span(@"%slot": @This()) Span_with_occupancy(@"%Origin", @"%Occupancy") {
+        pub fn toSpan(@"%slot": @This()) Span(
+            @"%Origin",
+        ) {
             return .{ .start = @"%slot", .length = P32.one };
         }
     };
 }
-pub fn Slot(@"%Origin": type) type {
-    return Slot_with_occupancy(@"%Origin", OccupancySet);
-}
-pub fn Unset_slot(@"%Origin": type) type {
-    return Slot_with_occupancy(@"%Origin", OccupancyUnset);
-}
-pub const OccupancySet = enum {};
-pub const OccupancyUnset = enum {};
-pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
+pub fn Span(@"%Origin": type) type {
     return struct {
-        start: Slot_with_occupancy(@"%Origin", @"%Occupancy"),
+        start: Slot(@"%Origin"),
         length: P32,
         pub fn endIndex(@"%span": @This()) u32 {
             return @"%span".start.index + @"%span".length.predecessor();
         }
         pub fn splitStart(@"%span": @This()) struct {
-            after: Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
-            start: Slot_with_occupancy(@"%Origin", @"%Occupancy"),
+            after: Opt(Span(@"%Origin")),
+            start: Slot(@"%Origin"),
         } {
             return .{
                 .start = @"%span".start,
@@ -279,8 +272,8 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             };
         }
         pub fn splitEnd(@"%span": @This()) struct {
-            before: Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
-            end: Slot_with_occupancy(@"%Origin", @"%Occupancy"),
+            before: Opt(Span(@"%Origin")),
+            end: Slot(@"%Origin"),
         } {
             return .{
                 .end = .{ .index = @"%span".endIndex() },
@@ -297,8 +290,8 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             @"%span": @This(),
             @"%start_length_or_greater": P32,
         ) struct {
-            after: Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
-            start: Span_with_occupancy(@"%Origin", @"%Occupancy"),
+            after: Opt(Span(@"%Origin")),
+            start: Span(@"%Origin"),
         } {
             const @"%start_length" = P32.min(@"%start_length_or_greater", @"%span".length);
             return .{
@@ -315,8 +308,8 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
             @"%span": @This(),
             @"%end_length_or_greater": P32,
         ) struct {
-            before: Opt(Span_with_occupancy(@"%Origin", @"%Occupancy")),
-            end: Span_with_occupancy(@"%Origin", @"%Occupancy"),
+            before: Opt(Span(@"%Origin")),
+            end: Span(@"%Origin"),
         } {
             const @"%end_length" = P32.min(@"%end_length_or_greater", @"%span".length);
             const @"%before_length" = @"%span".length.positive - @"%end_length".positive;
@@ -366,12 +359,6 @@ pub fn Span_with_occupancy(@"%Origin": type, @"%Occupancy": type) type {
         }
     };
 }
-pub fn Span(@"%Origin": type) type {
-    return Span_with_occupancy(@"%Origin", OccupancySet);
-}
-pub fn Unset_span(@"%Origin": type) type {
-    return Span_with_occupancy(@"%Origin", OccupancyUnset);
-}
 /// slice whose actual items are undefined
 pub fn Unset_slice(@"%Item": type) type {
     return struct {
@@ -415,6 +402,22 @@ pub fn Unset_slice(@"%Item": type) type {
 pub fn Buf_origin_erased(@"%Part": type, @"%Item": type) type {
     return struct { erased: Buf(Origin(Erased, @"%Part"), @"%Item") };
 }
+const Range = struct {
+    start: u32,
+    length: P32,
+    pub fn splitStart(@"%range": @This()) struct { start: u32, after: ?Range } {
+        return .{
+            .start = @"%range".start,
+            .after = if (P32.fromU32(@"%range".length.predecessor())) |@"%end_length"|
+                .{
+                    .start = @"%range".start + 1,
+                    .length = @"%end_length",
+                }
+            else
+                null,
+        };
+    }
+};
 /// Not thread-safe.
 pub fn Buf(@"%Origin": type, @"%Item": type) type {
     return struct {
@@ -426,7 +429,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         ///   - the ABA problem
         ///     (e.g. a pointer to an item could point to a wrong, new item instead of invalid memory when its index was vacated and re-populated in between)
         items: std.ArrayList(@"%Item"),
-        vacant: std.ArrayList(Unset_span(@"%Origin")),
+        vacant: std.ArrayList(Range),
         const origin = @"%Origin";
 
         pub fn preAllocateAtLeast(
@@ -461,124 +464,40 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 .index = std.math.cast(u32, @"%buf".items.items.len - 1).?,
             };
         }
-        pub fn addUnset(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-        ) error{OutOfMemory}!Unset_slot(@"%Origin") {
-            try @"%buf".items.append(@"%allocator", undefined);
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            return Unset_slot(@"%Origin"){
-                .index = std.math.cast(u32, @"%buf".items.items.len - 1).?,
-            };
-        }
-        pub fn addUnsetLength(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-            @"%length": U32,
-        ) error{OutOfMemory}!Opt(Unset_span(@"%Origin")) {
-            if (P32.fromU32(@"%length")) |@"%length_positive"| {
-                const @"%span" = @"%buf".addUnsetLengthPositive(@"%allocator", @"%length_positive");
-                return .{ .yes = @"%span" };
-            } else {
-                return .{ .no = {} };
-            }
-        }
-        pub fn addUnsetLengthPositive(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-            @"%length": P32,
-        ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            try @"%buf".items.resize(@"%allocator", @"%buf".items.items.len + @"%length".positive);
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            return Unset_span(@"%Origin"){
-                .start = .{ .index = std.math.cast(u32, @"%buf".items.items.len).? },
-                .length = @"%length",
-            };
-        }
         pub fn insert(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%new_item": @"%Item",
         ) error{OutOfMemory}!Slot(@"%Origin") {
-            const @"%unset_slot" = try @"%buf".insertUnset(@"%allocator");
-            return @"%buf".set(@"%unset_slot", @"%new_item");
-        }
-        pub fn insertUnset(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-        ) error{OutOfMemory}!Unset_slot(@"%Origin") {
             if (@"%buf".vacant.lastPtr()) |@"%vacant_span_ptr"| {
                 const @"%vacant_span_start_end" = @"%vacant_span_ptr".splitStart();
-                switch (@"%vacant_span_start_end".after) {
-                    .no => {
-                        _ = @"%buf".vacant.pop();
-                    },
-                    .yes => |@"%new_shrunk_vacant_span"| {
-                        @"%vacant_span_ptr".* = @"%new_shrunk_vacant_span";
-                    },
+                if (@"%vacant_span_start_end".after) |@"%new_shrunk_vacant_span"| {
+                    @"%vacant_span_ptr".* = @"%new_shrunk_vacant_span";
+                } else {
+                    _ = @"%buf".vacant.pop();
                 }
-                return @"%vacant_span_start_end".start;
+                const unset_index = @"%vacant_span_start_end".start;
+                @"%buf".items.items[unset_index] = @"%new_item";
+                return Slot(@"%Origin"){ .index = unset_index };
             } else {
-                return @"%buf".addUnset(@"%allocator");
+                return @"%buf".add(@"%allocator", @"%new_item");
             }
         }
         /// slot is invalid while resulting ptr is live
-        pub fn item(@"%buf": @This(), @"%slot": Slot(@"%Origin")) *@"%Item" {
+        pub fn item_ptr(@"%buf": @This(), @"%slot": Slot(@"%Origin")) *@"%Item" {
             return &@"%buf".items.items[@"%slot".index];
+        }
+        pub fn item(@"%buf": @This(), @"%slot": Slot(@"%Origin")) @"%Item" {
+            return @"%buf".items.items[@"%slot".index];
         }
         pub fn remove(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%slot": Slot(@"%Origin"),
         ) error{OutOfMemory}!@"%Item" {
-            const @"%accessed" = @"%buf".unset(@"%slot");
-            try @"%buf".unsetSlotRid(@"%allocator", @"%accessed".slot);
-            return @"%accessed".item;
-        }
-        pub fn unset(
-            @"%buf": @This(),
-            @"%slot": Slot(@"%Origin"),
-        ) struct { item: @"%Item", slot: Unset_slot(@"%Origin") } {
-            const @"%accessed_item" = @"%buf".item(@"%slot").*;
-            return .{
-                .item = @"%accessed_item",
-                .slot = .{ .index = @"%slot".index },
-            };
-        }
-        pub fn set(
-            @"%buf": @This(),
-            @"%slot": Unset_slot(@"%Origin"),
-            @"%new": @"%Item",
-        ) Slot(@"%Origin") {
-            @"%buf".items.items[@"%slot".index] = @"%new";
-            return .{ .index = @"%slot".index };
-        }
-        pub fn spanUnset(
-            @"%buf": @This(),
-            @"%allocator": std.mem.Allocator,
-            @"%span": Span(@"%Origin"),
-            @"%item_rid": Fn(@"%Item", void),
-        ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            for (@"%buf".spanSlice(@"%span")) |@"%item"| {
-                try @"%item_rid"(@"%allocator", @"%item");
-            }
-            return .{
-                .start = .{ .index = @"%span".start.index },
-                .length = @"%span".length,
-            };
-        }
-        pub fn optSpanUnset(
-            @"%buf": @This(),
-            @"%allocator": std.mem.Allocator,
-            @"%opt_span": Opt(Span(@"%Origin")),
-            @"%item_rid": Fn(@"%Item", void),
-        ) error{OutOfMemory}!Opt(Unset_span(@"%Origin")) {
-            switch (@"%opt_span") {
-                .no => return .{ .no = {} },
-                .yes => |@"%span"| {
-                    return .{ .yes = try @"%buf".spanUnset(@"%allocator", @"%span", @"%item_rid") };
-                },
-            }
+            const @"%item" = @"%buf".item(@"%slot");
+            try @"%buf".unsetSpanRid(@"%allocator", .{ .start = @"%slot".index, .length = P32.one });
+            return @"%item";
         }
         pub fn spanRid(
             @"%buf": *@This(),
@@ -586,8 +505,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%span": Span(@"%Origin"),
             @"%item_rid": Fn(@"%Item", void),
         ) error{OutOfMemory}!void {
-            const @"%unset" = try @"%buf".spanUnset(@"%allocator", @"%span", @"%item_rid");
-            return @"%buf".unsetSpanRid(@"%allocator", @"%unset");
+            for (@"%buf".spanSlice(@"%span")) |@"%item"| {
+                try @"%item_rid"(@"%allocator", @"%item");
+            }
+            return @"%buf".unsetSpanRid(@"%allocator", .{
+                .start = @"%span".start.index,
+                .length = @"%span".length,
+            });
         }
         pub fn optSpanRid(
             @"%buf": *@This(),
@@ -602,78 +526,54 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 },
             }
         }
-        // The given span is invalid while the returned slice is live.
+        // The given span is invalid while the returned slice is live
         pub fn spanSlice(@"%buf": @This(), @"%span": Span(@"%Origin")) []@"%Item" {
             return @"%buf".items.items[@"%span".start.index..][0..@"%span".length.positive];
         }
-        // The given span is invalid while the returned slice is live.
+        // The given span is invalid while the returned slice is live
         pub fn optSpanSlice(@"%buf": @This(), @"%opt_span": Opt(Span(@"%Origin"))) []@"%Item" {
             return switch (@"%opt_span") {
                 .no => &.{},
                 .yes => |@"%span"| @"%buf".spanSlice(@"%span"),
             };
         }
-        /// The returned slice is only valid while buf.items.items is live.
-        /// The returned unset span is only valid once all items in the slice have been used
-        fn spanItems(
-            @"%buf": @This(),
+        /// The returned slice is only valid while buf.items.items is live
+        pub fn removeSpan(
+            @"%buf": *@This(),
+            @"%allocator": std.mem.Allocator,
             @"%span": Span(@"%Origin"),
-        ) struct { slice: []@"%Item", span: Unset_span(@"%Origin") } {
+        ) error{OutOfMemory}![]@"%Item" {
             const @"%slice" = @"%buf".spanSlice(@"%span");
-            return .{
-                .slice = @"%slice",
-                .span = .{
-                    .start = .{ .index = @"%span".start.index },
-                    .length = @"%span".length,
-                },
-            };
+            try @"%buf".unsetSpanRid(@"%allocator", .{ .start = @"%span".start.index, .length = @"%span".length });
+            return @"%slice";
         }
         /// The returned slice is only valid while buf.items.items is live
-        pub fn optSpanItems(
-            @"%buf": @This(),
+        pub fn removeOptSpan(
+            @"%buf": *@This(),
+            @"%allocator": std.mem.Allocator,
             @"%opt_span": Opt(Span(@"%Origin")),
-        ) struct { slice: []@"%Item", span: Opt(Unset_span(@"%Origin")) } {
+        ) error{OutOfMemory}![]@"%Item" {
             switch (@"%opt_span") {
-                .no => return .{ .slice = []@"%Item", .span = .{ .no = {} } },
+                .no => return []@"%Item",
                 .yes => |@"%span"| {
-                    return @"%buf".spanItems(@"%span");
+                    return @"%buf".removeSpan(@"%allocator", @"%span");
                 },
             }
         }
-        pub fn unsetSlotRid(
+        fn unsetSpanRid(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
-            @"%slot": Unset_slot(@"%Origin"),
-        ) error{OutOfMemory}!void {
-            // can maybe be optimized
-            return @"%buf".unsetSpanRid(@"%allocator", @"%slot".to_span());
-        }
-        pub fn optUnsetSpanRid(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-            @"%opt_span_to_vacate": Opt(Unset_span(@"%Origin")),
-        ) error{OutOfMemory}!void {
-            switch (@"%opt_span_to_vacate") {
-                .no => {},
-                .yes => |@"%span_to_vacate"| {
-                    return @"%buf".unsetSpanRid(@"%allocator", @"%span_to_vacate");
-                },
-            }
-        }
-        pub fn unsetSpanRid(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-            @"%span_to_vacate": Unset_span(@"%Origin"),
+            @"%span_to_vacate": Range,
         ) error{OutOfMemory}!void {
             var @"%maybe_vacant_span_index_connecting_earlier": ?usize = null;
             var @"%maybe_vacant_span_index_connecting_later": ?usize = null;
             looking_for_connections: for (@"%buf".vacant.items, 0..) |@"%vacant_span", @"%vacant_span_index"| {
-                if (@"%maybe_vacant_span_index_connecting_earlier" == null and @"%span_to_vacate".start.index == (@as(usize, @"%vacant_span".start.index) + @as(usize, @"%vacant_span".length.positive))) {
+                if (@"%maybe_vacant_span_index_connecting_earlier" == null and @"%span_to_vacate".start == (@as(usize, @"%vacant_span".start) + @as(usize, @"%vacant_span".length.positive))) {
                     @"%maybe_vacant_span_index_connecting_earlier" = @"%vacant_span_index";
                     if (@"%maybe_vacant_span_index_connecting_later") |_| {
                         break :looking_for_connections;
                     }
-                } else if (@"%maybe_vacant_span_index_connecting_later" == null and (@as(usize, @"%span_to_vacate".start.index) + @as(usize, @"%span_to_vacate".length.positive)) == @"%vacant_span".start.index) {
+                } else if (@"%maybe_vacant_span_index_connecting_later" == null and (@as(usize, @"%span_to_vacate".start) + @as(usize, @"%span_to_vacate".length.positive)) == @"%vacant_span".start) {
                     @"%maybe_vacant_span_index_connecting_later" = @"%vacant_span_index";
                     if (@"%maybe_vacant_span_index_connecting_earlier") |_| {
                         break :looking_for_connections;
@@ -691,7 +591,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                     _ = @"%buf".vacant.swapRemove(@"%vacant_span_index_connecting_later");
                 } else {
                     // maybeVacantSpanIndexConnectingLater == null
-                    if (@as(usize, @"%span_to_vacate".start.index) + @as(usize, @"%span_to_vacate".length.positive) == @"%buf".items.items.len) {
+                    if (@as(usize, @"%span_to_vacate".start) + @as(usize, @"%span_to_vacate".length.positive) == @"%buf".items.items.len) {
                         @"%buf".items.shrinkRetainingCapacity(
                             @"%buf".items.items.len - @as(usize, @"%vacant_span_connecting_earlier".length.positive) - @as(usize, @"%span_to_vacate".length.positive),
                         );
@@ -704,14 +604,14 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             } else if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
                 // maybeVacantSpanIndexConnectingEarlier == null
                 const @"%vacant_span_connecting_later" = &@"%buf".vacant.items[@"%vacant_span_index_connecting_later"];
-                @"%vacant_span_connecting_later".* = Unset_span(@"%Origin"){
+                @"%vacant_span_connecting_later".* = Range{
                     .start = @"%span_to_vacate".start,
                     .length = @"%vacant_span_connecting_later".length
                         .addAssumeNoOverflow(@"%span_to_vacate".length.positive),
                 };
             } else {
                 // maybeVacantSpanIndexConnectingEarlier == null and maybeVacantSpanIndexConnectingLater == null
-                if (@as(usize, @"%span_to_vacate".start.index) + @as(usize, @"%span_to_vacate".length.positive) == @"%buf".items.items.len) {
+                if (@as(usize, @"%span_to_vacate".start) + @as(usize, @"%span_to_vacate".length.positive) == @"%buf".items.items.len) {
                     @"%buf".items.shrinkRetainingCapacity(
                         std.math.sub(usize, @"%buf".items.items.len, @"%span_to_vacate".length.positive) catch 0,
                     );
@@ -732,8 +632,8 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             try @"%buf".items.ensureUnusedCapacity(@"%allocator", @"%span".length.positive);
             @"%buf".items.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            try @"%buf".unsetSpanRid(@"%allocator", Unset_span(@"%Origin"){
-                .start = .{ .index = @"%span".start.index },
+            try @"%buf".unsetSpanRid(@"%allocator", Range{
+                .start = @"%span".start.index,
                 .length = @"%span".length,
             });
             return Span(@"%Origin"){
@@ -778,52 +678,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 };
             }
         }
-        pub fn unsetSpanAddOwnSpan(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-            @"%start": Unset_span(@"%Origin"),
-            @"%end": Unset_span(@"%Origin"),
-        ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            if (@"%start".start.index + @"%start".length.positive == @"%end".start.index) {
-                return Unset_span(@"%Origin"){
-                    .start = @"%start".start,
-                    .length = @"%start".length.positive + @"%end".length.positive,
-                };
-            } else {
-                return @"%buf".addUnsetLengthPositive(
-                    @"%allocator",
-                    @"%start".length.positive + @"%end".length.positive,
-                );
-            }
-        }
-        pub fn unsetSpanAdd(
-            @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
-            @"%span": Unset_span(@"%Origin"),
-            @"%length_increase": Unset_span(@"%Origin"),
-        ) error{OutOfMemory}!Unset_span(@"%Origin") {
-            if (@"%span".start.index + @"%span".length.positive < @"%buf".items.items.len) {
-                try @"%buf".unsetSpanRid(@"%span");
-                return @"%buf".addUnsetLengthPositive(@"%allocator", @"%span".length.positive + @"%length_increase");
-            }
-            // span is at the end of items
-            try @"%buf".items.resize(
-                @"%allocator",
-                @"%buf".items.items.len + @"%length_increase",
-            );
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            return Unset_span(@"%Origin"){
-                .start = @"%span".start,
-                .length = @"%span".length.positive + @"%length_increase",
-            };
-        }
         fn markLengthPositiveAsOccupied(@"%buf": *@This(), @"%length_to_occupy": P32) ?u32 {
             for (@"%buf".vacant.items, 0..) |*@"%vacant", @"%vacant_index"| {
                 if (@"%vacant".length.positive > @"%length_to_occupy".positive) {
                     @"%vacant".length.positive -|= @"%length_to_occupy".positive;
-                    return @"%vacant".start.index;
+                    return @"%vacant".start;
                 } else if (@"%vacant".length.positive == @"%length_to_occupy".positive) {
-                    return @"%buf".vacant.swapRemove(@"%vacant_index").start.index;
+                    return @"%buf".vacant.swapRemove(@"%vacant_index").start;
                 }
             }
             return null;
@@ -898,7 +759,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%new_item": @"%Item",
         ) error{OutOfMemory}!Span(@"%Origin") {
             return switch (@"%opt_span") {
-                .no => (try @"%buf".add(@"%allocator", @"%new_item")).to_span(),
+                .no => (try @"%buf".add(@"%allocator", @"%new_item")).toSpan(),
                 .yes => |@"%span"| @"%buf".spanAdd(@"%allocator", @"%span", @"%new_item"),
             };
         }
@@ -1420,7 +1281,7 @@ pub fn slot_index(
     return .{ .slot = @"%slot", .index = @"%slot".index };
 }
 pub fn slot_to_span(@"%Origin": type, @"%slot": Slot(@"%Origin")) Span(@"%Origin") {
-    return @"%slot".to_span();
+    return @"%slot".toSpan();
 }
 pub fn slot_origin_isolate(
     @"%Origin": type,
@@ -1440,16 +1301,6 @@ pub fn slot_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct
         .slot = .{ .index = @"%".slot.index },
         .uneraser = @"%".uneraser,
     };
-}
-
-pub fn unset_slot_index(
-    @"%Origin": type,
-    @"%slot": Unset_slot(@"%Origin"),
-) Record(struct { index: U32, slot: Unset_slot(@"%Origin") }) {
-    return .{ .slot = @"%slot", .index = @"%slot".index };
-}
-pub fn unset_slot_to_span(@"%Origin": type, @"%slot": Unset_slot(@"%Origin")) Span(@"%Origin") {
-    return @"%slot".to_span();
 }
 
 pub fn span_length(
@@ -1580,85 +1431,6 @@ pub fn opt_span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(st
     };
 }
 
-pub fn unset_unset_span_rid(@"%Origin": type, _: Unset_span(@"%Origin")) void {}
-pub fn unset_span_length(
-    @"%Origin": type,
-    @"%span": Unset_span(@"%Origin"),
-) Record(struct { length: P32, span: Unset_span(@"%Origin") }) {
-    return .{ .span = @"%span", .length = @"%span".length };
-}
-pub fn opt_unset_span_length(
-    @"%Origin": type,
-    @"%opt_span": Opt(Unset_span(@"%Origin")),
-) Record(struct { length: U32, span: Opt(Unset_span(@"%Origin")) }) {
-    return .{
-        .span = @"%opt_span",
-        .length = switch (@"%opt_span") {
-            .no => 0,
-            .yes => |@"%span"| @"%span".length.positive,
-        },
-    };
-}
-pub fn unset_span_start(@"%Origin": type, @"%span": Unset_span(@"%Origin")) Record(struct {
-    after: Opt(Unset_span(@"%Origin")),
-    start: Unset_slot(@"%Origin"),
-}) {
-    return record(@"%span".splitStart());
-}
-pub fn unset_span_end(@"%Origin": type, @"%span": Unset_span(@"%Origin")) Record(struct {
-    before: Opt(Unset_span(@"%Origin")),
-    end: Unset_slot(@"%Origin"),
-}) {
-    return record(@"%span".splitEnd());
-}
-pub fn unset_span_start_of_length_positive(
-    @"%Origin": type,
-    @"%": Record(struct { length: P32, span: Unset_span(@"%Origin") }),
-) Record(struct {
-    after: Opt(Unset_span(@"%Origin")),
-    start: Unset_span(@"%Origin"),
-}) {
-    return @"%".span.splitAfterLengthPositive(@"%".length);
-}
-pub fn unset_span_end_of_length_positive(
-    @"%Origin": type,
-    @"%": Record(struct { length: P32, span: Unset_span(@"%Origin") }),
-) Record(struct {
-    before: Opt(Unset_span(@"%Origin")),
-    end: Unset_span(@"%Origin"),
-}) {
-    return @"%".span.splitBeforeEndLengthPositive(@"%".length);
-}
-pub fn opt_unset_span_fold(
-    @"%Origin": type,
-    @"%State": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        direction: @"|down|up"(void, void),
-        span: Opt(Unset_span(@"%Origin")),
-        state: @"%State",
-        step: Fn(Record(struct { slot: Unset_slot(@"%Origin"), state: @"%State" }), @"%State"),
-    }),
-) error{OutOfMemory}!@"%State" {
-    return switch (@"%".span) {
-        .no => @"%".state,
-        .yes => |@"%span"| @"%span".fold(@"%allocator", @"%".direction, @"%".state, @"%".step),
-    };
-}
-pub fn unset_span_fold(
-    @"%Origin": type,
-    @"%State": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        direction: @"|down|up"(void, void),
-        span: Unset_span(@"%Origin"),
-        state: @"%State",
-        step: Fn(Record(struct { slot: Unset_slot(@"%Origin"), state: @"%State" }), @"%State"),
-    }),
-) error{OutOfMemory}!@"%State" {
-    return @"%".span.fold(@"%allocator", @"%".direction, @"%".state, @"%".step);
-}
-
 pub fn array_rid(
     @"%Item": type,
     @"%Record": type,
@@ -1673,7 +1445,7 @@ pub fn buf_empty(
 ) Buf(Origin(@"%Origin", @"%Part"), @"%Item") {
     return .{
         .items = std.ArrayList(@"%Item").empty,
-        .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))).empty,
+        .vacant = std.ArrayList(Range).empty,
     };
 }
 pub fn buf_reuse(
@@ -1686,7 +1458,7 @@ pub fn buf_reuse(
     items.clearRetainingCapacity();
     return .{
         .items = items,
-        .vacant = std.ArrayList(Unset_span(@"%Origin")).empty,
+        .vacant = std.ArrayList(Range).empty,
     };
 }
 pub fn buf_pre_allocate_at_least(
@@ -1729,46 +1501,6 @@ pub fn buf_add(
     const @"%slot" = try @"%buf".add(@"%allocator", @"%".new);
     return .{ .buf = @"%buf", .slot = @"%slot" };
 }
-pub fn buf_insert_unset(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%buf": Buf(@"%Origin", @"%Item"),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), slot: Unset_slot(@"%Origin") }) {
-    var @"%buf_ptr" = &@"%buf";
-    const @"%slot" = try @"%buf_ptr".insertUnset(@"%allocator");
-    return .{ .buf = @"%buf_ptr", .slot = @"%slot" };
-}
-pub fn buf_add_unset(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%buf": Buf(@"%Origin", @"%Item"),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), slot: Unset_slot(@"%Origin") }) {
-    var @"%buf_ptr" = &@"%buf";
-    const @"%slot" = try @"%buf_ptr".addUnset(@"%allocator");
-    return .{ .buf = @"%buf_ptr", .slot = @"%slot" };
-}
-pub fn buf_add_unset_length(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), length: U32 }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Opt(Unset_span(@"%Origin")) }) {
-    var @"%buf" = @"%".buf;
-    const @"%unset_span" = try @"%buf".addUnsetLength(@"%allocator", @"%".length);
-    return .{ .buf = @"%buf", .span = @"%unset_span" };
-}
-pub fn buf_add_unset_length_positive(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), length: P32 }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Unset_span(@"%Origin") }) {
-    var @"%buf" = @"%".buf;
-    const @"%unset_span" = try @"%buf".addUnsetLengthPositive(@"%allocator", @"%".length);
-    return .{ .buf = @"%buf", .span = @"%unset_span" };
-}
 pub fn buf_add_array(
     @"%Item": type,
     @"%Origin": type,
@@ -1795,58 +1527,6 @@ pub fn buf_remove(
     var @"%buf" = @"%".buf;
     const @"%item" = try @"%buf".remove(@"%allocator", @"%".slot);
     return .{ .buf = @"%buf", .item = @"%item" };
-}
-pub fn buf_unset(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), slot: Slot(@"%Origin") }),
-) Record(struct {
-    buf: Buf(@"%Origin", @"%Item"),
-    item: @"%Item",
-    slot: Unset_slot(@"%Origin"),
-}) {
-    const @"%item" = @"%".buf.unset(@"%".slot);
-    return .{ .buf = @"%".buf, .item = @"%item".item, .slot = @"%item".slot };
-}
-pub fn buf_set(@"%Item": type, @"%Origin": type, @"%": Record(struct {
-    buf: Buf(@"%Origin", @"%Item"),
-    new: @"%Item",
-    slot: Unset_slot(@"%Origin"),
-})) Record(struct { buf: Buf(@"%Origin", @"%Item"), slot: Slot(@"%Origin") }) {
-    const @"%slot" = @"%".buf.set(@"%".slot, @"%".new);
-    return .{ .buf = @"%".buf, .slot = @"%slot" };
-}
-pub fn buf_span_unset(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        buf: Buf(@"%Origin", @"%Item"),
-        item_rid: Fn(@"%Item", void),
-        span: Span(@"%Origin"),
-    }),
-) error{OutOfMemory}!Record(struct {
-    buf: Buf(@"%Origin", @"%Item"),
-    span: Unset_span(@"%Origin"),
-}) {
-    const @"%unset" = try @"%".buf.spanUnset(@"%allocator", @"%".span, @"%".item_rid);
-    return .{ .buf = @"%".buf, .span = @"%unset" };
-}
-pub fn buf_opt_span_unset(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        buf: Buf(@"%Origin", @"%Item"),
-        item_rid: Fn(@"%Item", void),
-        span: Opt(Span(@"%Origin")),
-    }),
-) error{OutOfMemory}!Record(struct {
-    buf: Buf(@"%Origin", @"%Item"),
-    span: Opt(Unset_span(@"%Origin")),
-}) {
-    const @"%unset" = try @"%".buf.optSpanUnset(@"%allocator", @"%".span, @"%".item_rid);
-    return .{ .buf = @"%".buf, .span = @"%unset" };
 }
 pub fn buf_span_rid(
     @"%Item": type,
@@ -2080,15 +1760,14 @@ pub fn buf_span_add_buf_opt_span(
 ) error{OutOfMemory}!Record(struct {
     buf: Buf(@"%Origin", @"%Item"),
     source: Buf(@"%SourceOrigin", @"%Item"),
-    source_span: Opt(Unset_span(@"%SourceOrigin")),
     span: Span(@"%Origin"),
 }) {
-    const @"%sourced" = @"%".source.optSpanItems(@"%".source_span);
+    var @"%source" = @"%".source;
+    const @"%source_slice" = try @"%source".removeOptSpan(@"%allocator", @"%".source_span);
     var @"%buf" = @"%".buf;
-    const @"%combined_span" = try @"%buf".spanAddSlice(@"%allocator", @"%".span, @"%sourced".slice);
+    const @"%combined_span" = try @"%buf".spanAddSlice(@"%allocator", @"%".span, @"%source_slice");
     return .{
-        .source = @"%".source,
-        .source_span = @"%sourced".span,
+        .source = @"%source",
         .span = @"%combined_span",
         .buf = @"%buf",
     };
@@ -2107,15 +1786,14 @@ pub fn buf_span_add_buf_span(
 ) error{OutOfMemory}!Record(struct {
     buf: Buf(@"%Origin", @"%Item"),
     source: Buf(@"%SourceOrigin", @"%Item"),
-    source_span: Unset_span(@"%SourceOrigin"),
     span: Span(@"%Origin"),
 }) {
-    const @"%sourced" = @"%".source.spanItems(@"%".source_span);
+    var @"%source" = @"%".source;
+    const @"%source_slice" = try @"%source".removeSpan(@"%allocator", @"%".source_span);
     var @"%buf" = @"%".buf;
-    const @"%combined_span" = try @"%buf".spanAddSlice(@"%allocator", @"%".span, @"%sourced".slice);
+    const @"%combined_span" = try @"%buf".spanAddSlice(@"%allocator", @"%".span, @"%source_slice");
     return .{
-        .source = @"%".source,
-        .source_span = @"%sourced".span,
+        .source = @"%source",
         .span = @"%combined_span",
         .buf = @"%buf",
     };
@@ -2129,20 +1807,19 @@ pub fn buf_opt_span_add_buf_opt_span(
         buf: Buf(@"%Origin", @"%Item"),
         source: Buf(@"%SourceOrigin", @"%Item"),
         source_span: Opt(Span(@"%SourceOrigin")),
-        span: Span(@"%Origin"),
+        span: Opt(Span(@"%Origin")),
     }),
 ) error{OutOfMemory}!Record(struct {
     buf: Buf(@"%Origin", @"%Item"),
     source: Buf(@"%SourceOrigin", @"%Item"),
-    source_span: Opt(Unset_span(@"%SourceOrigin")),
     span: Opt(Span(@"%Origin")),
 }) {
-    const @"%sourced" = @"%".source.spanItems(@"%".source_span);
+    var @"%source" = @"%".source;
+    const @"%source_slice" = try @"%source".removeOptSpan(@"%allocator", @"%".source_span);
     var @"%buf" = @"%".buf;
-    const @"%combined_span" = try @"%buf".optSpanAddSlice(@"%allocator", @"%".span, @"%sourced".slice);
+    const @"%combined_span" = try @"%buf".optSpanAddSlice(@"%allocator", @"%".span, @"%source_slice");
     return .{
-        .source = @"%".source,
-        .source_span = @"%sourced".span,
+        .source = @"%source",
         .span = @"%combined_span",
         .buf = @"%buf",
     };
@@ -2161,18 +1838,15 @@ pub fn buf_opt_span_add_buf_span(
 ) error{OutOfMemory}!Record(struct {
     buf: Buf(@"%Origin", @"%Item"),
     source: Buf(@"%SourceOrigin", @"%Item"),
-    source_span: Unset_span(@"%SourceOrigin"),
     span: Span(@"%Origin"),
 }) {
-    // is there a better way?
-    const @"%sourced" = @"%".source.spanItems(@"%".source_span);
+    var @"%source" = @"%".source;
+    const @"%source_slice" = try @"%source".removeSpan(@"%allocator", @"%".source_span);
     var @"%buf" = @"%".buf;
-    const @"%span_combined_with_start" = try @"%buf".optSpanAdd(@"%allocator", @"%".span, @"%sourced".slice[0]);
-    const @"%combined_span" = try @"%buf".optSpanAddSlice(@"%allocator", @"%span_combined_with_start", @"%sourced".slice);
+    const @"%combined_span" = try @"%buf".optSpanAddSlice(@"%allocator", @"%".span, @"%source_slice");
     return .{
-        .source = @"%".source,
-        .source_span = @"%sourced".span,
-        .span = @"%combined_span",
+        .source = @"%source",
+        .span = @"%combined_span".yes,
         .buf = @"%buf",
     };
 }
@@ -2264,97 +1938,6 @@ pub fn buf_opt_span_add_own_opt_span(
         },
     }
 }
-pub fn buf_unset_span_add_own_span(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        buf: Buf(@"%Origin", @"%Item"),
-        end: Unset_span(@"%Origin"),
-        start: Unset_span(@"%Origin"),
-    }),
-) error{OutOfMemory}!Record(struct {
-    buf: Buf(@"%Origin", @"%Item"),
-    span: Unset_span(@"%Origin"),
-}) {
-    var @"%buf" = @"%".buf;
-    const @"%combined_span" = try @"%buf".unsetSpanAddOwnSpan(@"%allocator", @"%".start, @"%".end);
-    return .{
-        .span = @"%combined_span",
-        .buf = @"%buf",
-    };
-}
-pub fn buf_opt_unset_span_add_own_span(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        buf: Buf(@"%Origin", @"%Item"),
-        end: Opt(Unset_span(@"%Origin")),
-        start: Unset_span(@"%Origin"),
-    }),
-) error{OutOfMemory}!Record(struct {
-    buf: Buf(@"%Origin", @"%Item"),
-    span: Unset_span(@"%Origin"),
-}) {
-    switch (@"%".start) {
-        .no => return .{ .buf = @"%".buf, .span = @"%".end },
-        .yes => |@"%start"| {
-            const @"%combined_unset_span" = try @"%".buf.unsetSpanAddOwnSpan(@"%allocator", @"%start", @"%".end);
-            return .{
-                .span = @"%combined_unset_span",
-                .buf = @"%".buf,
-            };
-        },
-    }
-}
-pub fn buf_unset_span_add_own_opt_span(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        buf: Buf(@"%Origin", @"%Item"),
-        end: Unset_span(@"%Origin"),
-        start: Opt(Unset_span(@"%Origin")),
-    }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Unset_span(@"%Origin") }) {
-    switch (@"%".end) {
-        .no => return .{ .buf = @"%".buf, .span = @"%".start },
-        .yes => |@"%end"| {
-            const @"%combined_unset_span" = try @"%".buf.unsetSpanAddOwnSpan(@"%allocator", @"%".start, @"%end");
-            return .{
-                .span = @"%combined_unset_span",
-                .buf = @"%".buf,
-            };
-        },
-    }
-}
-pub fn buf_opt_unset_span_add_own_opt_span(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct {
-        buf: Buf(@"%Origin", @"%Item"),
-        end: Unset_span(@"%Origin"),
-        start: Opt(Unset_span(@"%Origin")),
-    }),
-) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Unset_span(@"%Origin") }) {
-    switch (@"%".start) {
-        .no => return .{ .buf = @"%".buf, .span = @"%".end },
-        .yes => |@"%start"| {
-            switch (@"%".end) {
-                .no => return .{ .buf = @"%".buf, .span = .{ .yes = @"%start" } },
-                .yes => |@"%end"| {
-                    const @"%combined_unset_span" = try @"%".buf.unsetSpanAddOwnSpan(@"%allocator", @"%start", @"%end");
-                    return .{
-                        .span = .{ .yes = @"%combined_unset_span" },
-                        .buf = @"%".buf,
-                    };
-                },
-            }
-        },
-    }
-}
 pub fn buf_span_move_to_vacant(
     @"%Item": type,
     @"%Origin": type,
@@ -2415,36 +1998,6 @@ pub fn buf_opt_span_reverse(
     const @"%reversed_span" = @"%".buf.optSpanReverse(@"%".span);
     return .{ .buf = @"%".buf, .span = @"%reversed_span" };
 }
-pub fn buf_unset_slot_rid(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), slot: Unset_slot(@"%Origin") }),
-) error{OutOfMemory}!Buf(@"%Origin", @"%Item") {
-    var @"%buf" = @"%".buf;
-    try @"%buf".unsetSlotRid(@"%allocator", @"%".span);
-    return @"%buf";
-}
-pub fn buf_unset_span_rid(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Unset_span(@"%Origin") }),
-) error{OutOfMemory}!Buf(@"%Origin", @"%Item") {
-    var @"%buf" = @"%".buf;
-    try @"%buf".unsetSpanRid(@"%allocator", @"%".span);
-    return @"%buf";
-}
-pub fn buf_opt_unset_span_rid(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%allocator": std.mem.Allocator,
-    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Opt(Unset_span(@"%Origin")) }),
-) error{OutOfMemory}!Buf(@"%Origin", @"%Item") {
-    var @"%buf" = @"%".buf;
-    try @"%buf".optUnsetSpanRid(@"%allocator", @"%".span);
-    return @"%buf";
-}
 pub fn buf_to_unset(
     @"%Item": type,
     @"%Origin": type,
@@ -2501,11 +2054,7 @@ pub fn buf_origin_isolate(
         }
     };
     return .{ .erased = .{ .erased = .{
-        .vacant = std.ArrayList(Unset_span(Origin(Erased, @"%Part"))){
-            .pointer_stability = @"%".buf.vacant.pointer_stability,
-            .capacity = @"%".buf.vacant.capacity,
-            .items = @ptrCast(@"%".buf.vacant.items),
-        },
+        .vacant = @"%".buf.vacant,
         .items = items_erased,
     } } };
 }
@@ -2524,7 +2073,7 @@ pub fn buf_origin_unerase_keep_items(
     return .{
         .buf = .{
             .items = @"%".buf.erased.items,
-            .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
+            .vacant = std.ArrayList(Range){
                 .pointer_stability = @"%".buf.erased.vacant.pointer_stability,
                 .capacity = @"%".buf.erased.vacant.capacity,
                 .items = @ptrCast(@"%".buf.erased.vacant.items),
@@ -2592,7 +2141,7 @@ pub fn buf_origin_unerase(
     };
     return .{
         .buf = .{
-            .vacant = std.ArrayList(Unset_span(Origin(@"%Origin", @"%Part"))){
+            .vacant = std.ArrayList(Range){
                 .pointer_stability = @"%".buf.erased.vacant.pointer_stability,
                 .capacity = @"%".buf.erased.vacant.capacity,
                 .items = @ptrCast(@"%".buf.erased.vacant.items),

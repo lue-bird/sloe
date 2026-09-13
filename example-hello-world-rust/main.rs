@@ -10,8 +10,7 @@ fn main() {
         "{}",
         greeting
             .buf
-            .span_slice(&greeting.span)
-            .iter()
+            .span_iter(&greeting.span)
             .copied()
             .collect::<String>()
     );

@@ -24,9 +24,7 @@
 /** @template $Part, $Item @typedef {Buf<Origin<Erased, $Part>, $Item> & { readonly origin_erased?: void }} Buf_origin_erased */
 /** @template $Item @typedef {($Item | null)[]} Unset_slice */
 /** @template $Origin @typedef {U32 & { readonly origin?: $Origin }} Slot */
-/** @template $Origin @typedef {U32 & { readonly unset_origin?: $Origin }} Unset_slot */
 /** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly origin?: $Origin }} Span */
-/** @template $Origin @typedef {{ start: U32, length: U32 } & { readonly unset_origin?: $Origin }} Unset_span */
 /** @template $Item, _$Record @typedef {[$Item, ...$Item[]]} Array */
 
 const I32$MIN = -2147483648;
@@ -466,10 +464,6 @@ export function slot_origin_unerase(unerase) {
     unerase
   );
 }
-/** @template $Origin @param {Unset_slot<$Origin>} slot @returns {Unset_span<$Origin>} */
-export function unset_slot_to_span(slot) {
-  return slot_to_span(slot);
-}
 
 /** @template $Origin, $Part @param {Span<Origin<$Origin, $Part>>} span @returns {Origin_isolated<$Origin, Span<Origin<Erased, $Part>>>} */
 export function span_origin_isolate(span) {
@@ -499,14 +493,6 @@ export function span_length(span) {
 export function opt_span_length(span) {
   return { span: span, length: "no" in span ? 0 : span.yes.length };
 }
-/** @template $Origin @param {Unset_span<$Origin>} span @returns {{ span: Unset_span<$Origin>, length: P32, }} */
-export function unset_span_length(span) {
-  return span_length(span);
-}
-/** @template $Origin @param {Opt<Unset_span<$Origin>>} span @returns {{ span: Opt<Unset_span<$Origin>>, length: U32, }} */
-export function opt_unset_span_length(span) {
-  return opt_span_length(span);
-}
 /** @template $Origin @param {Span<$Origin>} span @returns {{ start: Slot<$Origin>, after: Opt<Span<$Origin>>, }} */
 export function span_start(span) {
   return {
@@ -517,10 +503,6 @@ export function span_start(span) {
         : { no: undefined },
   };
 }
-/** @template $Origin @param {Unset_span<$Origin>} span @returns {{ end: Slot<$Origin>, before: Opt<Unset_span<$Origin>>, }} */
-export function unset_span_end(span) {
-  return span_end(span);
-}
 /** @template $Origin @param {Span<$Origin>} span @returns {{ end: Slot<$Origin>, before: Opt<Span<$Origin>>, }} */
 export function span_end(span) {
   return {
@@ -530,10 +512,6 @@ export function span_end(span) {
         ? { yes: { start: span.start, length: span.length - 1 } }
         : { no: undefined },
   };
-}
-/** @template $Origin @param {Unset_span<$Origin>} unset_span @returns {{ start: Slot<$Origin>, after: Opt<Unset_span<$Origin>>, }} */
-export function unset_span_start(unset_span) {
-  return span_start(unset_span);
 }
 /** @template $Origin @param {{ span: Span<$Origin>, length: P32, }} take @returns {{ start: Span<$Origin>, after: Opt<Span<$Origin>>, }} */
 export function span_start_of_length_positive(take) {
@@ -549,10 +527,6 @@ export function span_start_of_length_positive(take) {
             },
           },
   };
-}
-/** @template $Origin @param {{ span: Unset_span<$Origin>, length: P32, }} take @returns {{ start: Unset_span<$Origin>, after: Opt<Unset_span<$Origin>>, }} */
-export function unset_span_start_of_length_positive(take) {
-  return span_start_of_length_positive(take);
 }
 /** @template $Origin @param {{ span: Span<$Origin>, length: P32, }} take @returns {{ end: Span<$Origin>, before: Opt<Span<$Origin>>, }} */
 export function span_end_of_length_positive(take) {
@@ -571,10 +545,6 @@ export function span_end_of_length_positive(take) {
             },
           },
   };
-}
-/** @template $Origin @param {{ span: Unset_span<$Origin>, length: P32, }} unset_span @returns{{ end: Unset_span<$Origin>, before: Opt<Unset_span<$Origin>>, }} */
-export function unset_span_end_of_length_positive(unset_span) {
-  return span_end_of_length_positive(unset_span);
 }
 /** @template $Origin, $State @param {{ span: Span<$Origin>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>, }} fold @returns {$State} */
 export function span_fold(fold) {
@@ -600,14 +570,6 @@ export function opt_span_fold(fold) {
     step: fold.step,
   });
 }
-/** @template $Origin, $State @param {{ span: Unset_span<$Origin>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Unset_slot<$Origin>, state: $State, }, $State>, }} fold @returns {$State} */
-export function unset_span_fold(fold) {
-  return span_fold(fold);
-}
-/** @template $Origin, $State @param {{ span: Opt<Unset_span<$Origin>>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Unset_slot<$Origin>, state: $State, }, $State>, }} fold @returns {$State} */
-export function opt_unset_span_fold(fold) {
-  return opt_span_fold(fold);
-}
 
 /** @template $Item, $Origin, $Part @param {Origin<$Origin, $Part>} _ @returns {Buf<$Origin, $Item>} */
 export function buf_empty(_) {
@@ -615,35 +577,6 @@ export function buf_empty(_) {
 }
 /** @template $Item, $Origin @param {Buf<$Origin, $Item>} _ @returns {void} */
 export function buf_rid(_) {}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, slot: Unset_slot<$Origin>, }} rid @returns {Buf<$Origin, $Item>} */
-export function buf_unset_slot_rid(rid) {
-  if (rid.slot + 1 === rid.buf.length) {
-    rid.buf.pop();
-  } else {
-    rid.buf[rid.slot] = null;
-  }
-  return rid.buf;
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Unset_span<$Origin>, }} rid @returns {Buf<$Origin, $Item>} */
-export function buf_unset_span_rid(rid) {
-  if (rid.span.start + rid.span.length === rid.buf.length) {
-    rid.buf.length -= rid.span.length;
-  } else {
-    for (let i = rid.span.start; i < rid.span.start + rid.span.length; i++) {
-      rid.buf[i] = null;
-    }
-  }
-  return rid.buf;
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Opt<Unset_span<$Origin>>, }} rid @returns {Buf<$Origin, $Item>} */
-export function buf_opt_unset_span_rid(rid) {
-  if ("yes" in rid.span) {
-    for (let i = rid.span.yes.start; i < rid.span.yes.start + rid.span.yes.length; i++) {
-      rid.buf[i] = null;
-    }
-  }
-  return rid.buf;
-}
 /** @template $Item, $Origin @param {Buf<$Origin, $Item>} buf @returns {Buf<$Origin, $Item>} */
 export function buf_pre_allocation_rid(buf) {
   return buf;
@@ -673,31 +606,23 @@ export function buf_origin_unerase(unerase) {
     uneraser: unerase.uneraser,
   };
 }
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item: $Item, slot: Slot<$Origin>, }} unset @returns {{ buf: Buf<$Origin, $Item>, slot: Unset_slot<$Origin>, item: $Item, }} */
-export function buf_unset(unset) {
-  return {
-    buf: unset.buf,
-    slot: unset.slot,
-    item: /** @type $Item */ (unset.buf[unset.slot]),
-  };
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, slot: Unset_slot<$Origin>, newø: $Item, }} set @returns {{ buf: Buf<$Origin, $Item>, slot: Unset_slot<$Origin>, }} */
-export function buf_set(set) {
-  set.buf[set.slot] = set.newø;
-  return { buf: set.buf, slot: set.slot };
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item_rid: Fn<$Item, void>, span: Span<$Origin>, }} unset @returns {{ buf: Buf<$Origin, $Item>, span: Unset_span<$Origin>, }} */
-export function buf_span_unset(unset) {
-  for (let i = unset.span.start; i < unset.span.start + unset.span.length; i++) {
-    unset.item_rid(/** @type $Item */ (unset.buf[i]));
+/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item_rid: Fn<$Item, void>, span: Span<$Origin>, }} unset @returns {Buf<$Origin, $Item>} */
+export function buf_span_rid(unset) {
+  if (unset.span.start + unset.span.length === unset.buf.length) {
+    for (let i = unset.span.start; i < unset.span.start + unset.span.length; i++) {
+      unset.item_rid(/** @type $Item */ (unset.buf[i]));
+    }
+    unset.buf.length -= unset.span.length;
+  } else {
+    for (let i = unset.span.start; i < unset.span.start + unset.span.length; i++) {
+      unset.item_rid(/** @type $Item */ (unset.buf[i]));
+      unset.buf[i] = null;
+    }
   }
-  return {
-    buf: unset.buf,
-    span: unset.span,
-  };
+  return unset.buf;
 }
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item_rid: Fn<$Item, void>, span: Opt<Span<$Origin>>, }} unset @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Unset_span<$Origin>>, }} */
-export function buf_opt_span_unset(unset) {
+/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item_rid: Fn<$Item, void>, span: Opt<Span<$Origin>>, }} unset @returns {Buf<$Origin, $Item>} */
+export function buf_opt_span_rid(unset) {
   if ("yes" in unset.span) {
     for (
       let i = unset.span.yes.start;
@@ -705,20 +630,10 @@ export function buf_opt_span_unset(unset) {
       i++
     ) {
       unset.item_rid(/** @type $Item */ (unset.buf[i]));
+      unset.buf[i] = null;
     }
   }
-  return {
-    buf: unset.buf,
-    span: unset.span,
-  };
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item_rid: Fn<$Item, void>, span: Span<$Origin>, }} unset @returns {Buf<$Origin, $Item>} */
-export function buf_span_rid(unset) {
-  return buf_unset_span_rid(buf_span_unset(unset));
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item_rid: Fn<$Item, void>, span: Opt<Span<$Origin>>, }} unset @returns {Buf<$Origin, $Item>} */
-export function buf_opt_span_rid(unset) {
-  return buf_opt_unset_span_rid(buf_opt_span_unset(unset));
+  return unset.buf;
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, length: U32, }} pre_allocate @returns {Buf<$Origin, $Item>} */
 export function buf_pre_allocate_at_least(pre_allocate) {
@@ -734,14 +649,6 @@ export function buf_add(add) {
     throw Error("Array length " + add.buf.length + " not representable as a u32");
   return { buf: add.buf, slot: new_index };
 }
-/** @template $Item, $Origin @param {Buf<$Origin, $Item>} buf @returns {{ buf: Buf<$Origin, $Item>, slot: Unset_slot<$Origin>, }} */
-export function buf_add_unset(buf) {
-  let new_index = buf.length;
-  buf.push(null);
-  if (buf.length > U32$MAX)
-    throw Error("Array length " + buf.length + " not representable as a u32");
-  return { buf: buf, slot: new_index };
-}
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, newø: $Item, }} insert @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} */
 export function buf_insert(insert) {
   const existing_vacant_index = insert.buf.findIndex((el) => el === null);
@@ -755,44 +662,6 @@ export function buf_insert(insert) {
       throw Error("Array length " + insert.buf.length + " not representable as a u32");
     return { buf: insert.buf, slot: new_index };
   }
-}
-/** @template $Item, $Origin @param {Buf<$Origin, $Item>} buf @returns {{ buf: Buf<$Origin, $Item>, slot: Unset_slot<$Origin>, }} */
-export function buf_insert_unset(buf) {
-  const existing_vacant_index = buf.findIndex((el) => el === null);
-  if (existing_vacant_index >= 0) {
-    buf[existing_vacant_index] = null;
-    return { buf: buf, slot: existing_vacant_index };
-  } else {
-    let new_index = buf.length;
-    buf.push(null);
-    if (buf.length > U32$MAX)
-      throw Error("Array length " + buf.length + " not representable as a u32");
-    return { buf: buf, slot: new_index };
-  }
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, length: U32, }} add @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Unset_span<$Origin>>, }} */
-export function buf_add_unset_length(add) {
-  if (add.length === 0) return { buf: add.buf, span: { no: undefined } };
-  let start = add.buf.length;
-  for (let count = 0; count < add.length; count++) {
-    add.buf.push(null);
-  }
-  if (add.buf.length > U32$MAX)
-    throw Error("Array length " + add.buf.length + " not representable as a u32");
-  return {
-    buf: add.buf,
-    span: { yes: { start: start, length: add.length } },
-  };
-}
-/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, length: P32, }} add @returns {{ buf: Buf<$Origin, $Item>, span: Unset_span<$Origin>, }} */
-export function buf_add_unset_length_positive(add) {
-  let start = add.buf.length;
-  for (let count = 0; count < add.length; count++) {
-    add.buf.push(null);
-  }
-  if (add.buf.length > U32$MAX)
-    throw Error("Array length " + add.buf.length + " not representable as a u32");
-  return { buf: add.buf, span: { start: start, length: add.length } };
 }
 /** @template $Item, $Origin @template $Record @param {{ buf: Buf<$Origin, $Item>, newø: Array<$Item, $Record>, }} add @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
 export function buf_add_array(add) {

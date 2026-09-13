@@ -42,7 +42,7 @@ The big advantage of this rule is how easy it is to understand and how much simp
 
 ## concept: consecutive memory, stable index collection `Buf`
 A collection which can mark some ranges within itself as vacant without moving existing items around (thus invalidating their indexes).
-This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-unset-slot-rid` and `Buf-unset-span-rid`.
+This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-span-rid`.
 Note that this functionality is entirely optional and you can just use it for temporary builders etc. which never vacate anything before they are scrapped.
 
 > Further reading if interested: This concept is often called slot map, reusing memory.
@@ -52,7 +52,7 @@ Note that this functionality is entirely optional and you can just use it for te
 ## concept: collections do not handle their items
 Similar to allocators, you cannot access, alter or iterate their contained values directly.
 Collections are seen as storage into which you can add items, build slices etc.
-Whenever you do so, you'll get `(Unset-)slot`s and `(Unset-)span`s that assert your permission to access and alter the referenced items as well as your responsibility to announce their release at some point.
+Whenever you do so, you'll get `Slot`s and `Span`s that assert your permission to access and alter the referenced items as well as your responsibility to announce their release at some point.
 
 > The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types. This is not uncommon in languages like rust.
 However, sloe's goal is to do better here and to not bind storage to ownership over its items. Instead, we store a big array buffer of each kind and point into it.
@@ -332,7 +332,7 @@ For other editors, there's usually a way to specify `sloe` as the language serve
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
-Writing these down has already helped a lot in coming up with fixes (e.g. `Unset-slot`, `Buf-span-add-own-span`, `Origin-erased` etc. did not exist at one point but were created in response to now deleted list items).
+Writing these down has already helped a lot in coming up with fixes (e.g. `Buf-span-add-own-span`, `Origin-erased` etc. did not exist at one point but were created in response to now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
 
 - it seems quite natural to represent a span of structs as e.g. `.field-names Span _field-names .field-values Span _values`. This pattern is more memory efficient and can reduce the amount of origins and Bufs necessary.
@@ -804,7 +804,7 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
+- in js, insert rid_trailing_unset after remove
 
 - add `Buf-(opt-)span-update` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
@@ -812,20 +812,9 @@ cargo install --offline --debug --path . sloe
 
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
 
-- (not fully sure) add `Buf-opt-unset-span-add-length-positive`, `Buf-opt-unset-span-add-length`, `Buf-unset-span-add-length`, `Buf-unset-span-add-own-opt-span`
-
 - change unicode \u{hex} syntax to \u() because {} is used for types
 
-- change the representation of `Buf` in rust and zig to something like `ArrayList(Element?)` which:
-    - makes it much easier to check if a slot is occupied and mark it as such
-    - takes up less memory (3 words vs 6 words)
-    - simpler implementation
-  
-  Maybe combine this with storing the first/last vacant index such that insert is a little faster.
-
-- consider removing unset slots and spans in favor of remove and insert.
-  This is only viable if I can show that simple element update code gets optimized to the same code which does not touch memory of vacant ranges!
-  Adding operations like `Buf-(opt-)span-insert` etc which try to reuse vacant space would probably help.
+- add operations like `Buf-(opt-)span-insert` etc.
 
 - (only if we can ensure no unset slots and spans exist!) add `Buf-fold-map`, `Buf-map`, `Buf-fold` (not sure). They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and make buf handling less painful
 
@@ -834,6 +823,8 @@ cargo install --offline --debug --path . sloe
 - give nicer error when only a field is missing or too much
 
 - find some way to generate nicer IDE type displays. Maybe tabs work?
+
+- consistently rename "vacant" to "unset"
 
 - remove Origin-erased-rid. It can't really be made useful
 
@@ -857,7 +848,13 @@ cargo install --offline --debug --path . sloe
   
 - website: in ext area: prevent default on tab and insert four spaces instead
 
+- drop the `fn` keyword as declaring functions is very common
+
+- read https://smallcultfollowing.com/babysteps/blog/2026/02/27/dada-internal-references/ and compare against carbon
+
 - fix comment TODOs
+
+- (not sure if it still exists) track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
 # not coherently formulated thoughts
 

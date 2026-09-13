@@ -213,12 +213,6 @@ test "simple slot and span queries" {
     try std.testing.expectEqual(10, (core.span_length(ExampleOrigin, span4_to_13)).length.positive);
     try std.testing.expectEqual(10, (core.opt_span_length(ExampleOrigin, .{ .yes = span4_to_13 })).length);
     try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, .{ .no = {} })).length);
-    const unset_slot4 = core.Unset_slot(ExampleOrigin){ .index = 4 };
-    const unset_span4_to_13 = core.Unset_span(ExampleOrigin){ .start = unset_slot4, .length = core.P32.fromComptime(10) };
-    try std.testing.expectEqual(4, (core.unset_slot_index(ExampleOrigin, unset_slot4)).index);
-    try std.testing.expectEqual(10, (core.unset_span_length(ExampleOrigin, unset_span4_to_13)).length.positive);
-    try std.testing.expectEqual(10, (core.opt_unset_span_length(ExampleOrigin, .{ .yes = unset_span4_to_13 })).length);
-    try std.testing.expectEqual(0, (core.opt_unset_span_length(ExampleOrigin, .{ .no = {} })).length);
 }
 test "span_start" {
     const ExampleOrigin = enum { buf };
@@ -317,24 +311,6 @@ test "span_fold down" {
     );
     reverse_indexes_array_list.deinit(std.testing.allocator);
 }
-test "unset_span_start" {
-    const ExampleOrigin = enum { buf };
-    const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot4_and_span5_to_13 = core.unset_span_start(ExampleOrigin, span4_to_13);
-    try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
-    try std.testing.expectEqual(5, slot4_and_span5_to_13.after.yes.start.index);
-    try std.testing.expectEqual(9, slot4_and_span5_to_13.after.yes.length.positive);
-    try std.testing.expectEqual(13, slot4_and_span5_to_13.after.yes.endIndex());
-}
-test "unset_span_end" {
-    const ExampleOrigin = enum { buf };
-    const span4_to_13 = core.Unset_span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const slot13_and_span4_to_12 = core.unset_span_end(ExampleOrigin, span4_to_13);
-    try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
-    try std.testing.expectEqual(4, slot13_and_span4_to_12.before.yes.start.index);
-    try std.testing.expectEqual(9, slot13_and_span4_to_12.before.yes.length.positive);
-    try std.testing.expectEqual(12, slot13_and_span4_to_12.before.yes.endIndex());
-}
 test "array create" {
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
     const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
@@ -374,46 +350,6 @@ test "buf_opt_span_add_array" {
         .new = example_array0,
     });
     core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, with_array.buf);
-}
-test "buf_span_unset" {
-    const ExampleOrigin = enum {};
-    const example_origin: core.Origin(ExampleOrigin, void) = .{};
-    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
-    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
-        .buf = example_buf,
-        .span = .{ .no = {} },
-        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
-    });
-    const unset = try core.buf_span_unset(u32, @TypeOf(example_origin), std.testing.allocator, .{
-        .buf = with_array.buf,
-        .span = with_array.span,
-        .item_rid = struct {
-            pub fn f(_: std.mem.Allocator, _: u32) error{OutOfMemory}!void {}
-        }.f,
-    });
-    const cleared = try core.buf_unset_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, unset);
-    try std.testing.expectEqual(0, cleared.items.items.len);
-    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, cleared);
-}
-test "buf_opt_span_unset" {
-    const ExampleOrigin = enum {};
-    const example_origin: core.Origin(ExampleOrigin, void) = .{};
-    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
-    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
-        .buf = example_buf,
-        .span = .{ .no = {} },
-        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
-    });
-    const unset = try core.buf_opt_span_unset(u32, @TypeOf(example_origin), std.testing.allocator, .{
-        .buf = with_array.buf,
-        .span = .{ .yes = with_array.span },
-        .item_rid = struct {
-            pub fn f(_: std.mem.Allocator, _: u32) error{OutOfMemory}!void {}
-        }.f,
-    });
-    const cleared = try core.buf_opt_unset_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, unset);
-    try std.testing.expectEqual(0, cleared.items.items.len);
-    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, cleared);
 }
 test "buf_span_rid" {
     const ExampleOrigin = enum {};
@@ -483,25 +419,6 @@ test "buf insert, add, take, notVacantCount, rid" {
     try std.testing.expectEqual(1, buf.notVacantCount());
     try std.testing.expectEqual(456, buf.remove(allocator, slot1));
     try std.testing.expectEqual(0, buf.notVacantCount());
-    buf.rid(allocator);
-}
-test "buf unset slot" {
-    const allocator = std.testing.allocator;
-    const BufOrigin = enum { buf };
-    try std.testing.expect(core.Slot(BufOrigin) != core.Unset_slot(BufOrigin));
-    const origin: core.Origin(BufOrigin, void) = .{};
-    var buf = core.buf_empty(u32, BufOrigin, void, origin);
-    try std.testing.expectEqual(0, buf.notVacantCount());
-    const slot0 = try buf.add(allocator, 123);
-    const slot1 = try buf.add(allocator, 456);
-    const item0 = buf.unset(slot0);
-    try std.testing.expectEqual(123, item0.item);
-    try std.testing.expectEqual(0, item0.slot.index);
-    const slot0_new = buf.set(item0.slot, 321);
-    try std.testing.expectEqual(321, buf.item(slot0_new).*);
-    try std.testing.expectEqual(0, slot0_new.index);
-    const item1 = buf.unset(slot1);
-    try buf.unsetSlotRid(allocator, item1.slot);
     buf.rid(allocator);
 }
 test "buf add to span" {
@@ -604,6 +521,28 @@ test "buf add remove stress test" {
     try std.testing.expectEqual(0, buf.items.items.len);
     buf.rid(allocator);
 }
+test "buf_span_add_buf_span" {
+    const allocator = std.testing.allocator;
+    const AOrigin = enum { origin };
+    const a_origin: core.Origin(AOrigin, void) = .{};
+    var a_buf = core.buf_empty(usize, AOrigin, void, a_origin);
+    const a_span = (try a_buf.add(std.testing.allocator, 123)).toSpan();
+    const BOrigin = enum { origin };
+    const b_origin: core.Origin(BOrigin, void) = .{};
+    var b_buf = core.buf_empty(usize, BOrigin, void, b_origin);
+    const b_span = (try b_buf.add(std.testing.allocator, 456)).toSpan();
+    var a_with_b = try core.buf_span_add_buf_span(usize, @TypeOf(a_origin), @TypeOf(b_origin), std.testing.allocator, .{
+        .buf = a_buf,
+        .span = a_span,
+        .source = b_buf,
+        .source_span = b_span,
+    });
+    try std.testing.expectEqual(0, a_with_b.source.items.items.len);
+    try std.testing.expectEqual(2, a_with_b.buf.items.items.len);
+    try std.testing.expectEqual(2, a_with_b.span.length.positive);
+    a_with_b.buf.rid(allocator);
+    a_with_b.source.rid(allocator);
+}
 test "buf into unset slice then reuse" {
     const allocator = std.testing.allocator;
     const AOrigin = enum { origin };
@@ -665,20 +604,6 @@ test "unset_slice_cast_or_rid_and_allocate u64 to struct{u32,u16}" {
     try std.testing.expectEqual(0, buf.items.items.len);
     try std.testing.expectEqual(unset_slice_u64_length, buf.items.capacity);
     buf.rid(allocator);
-}
-test "Unset_span != Span" {
-    const Origin = enum { origin };
-    const origin: core.Origin(Origin, void) = .{};
-    const a_span: core.Span(@TypeOf(origin)) = .{ .start = .{ .index = 0 }, .length = core.P32.one };
-    const b_span: core.Unset_span(@TypeOf(origin)) = .{ .start = .{ .index = 0 }, .length = core.P32.one };
-    try std.testing.expect(@TypeOf(a_span) != @TypeOf(b_span));
-}
-test "Unset_slot != Slot" {
-    const Origin = enum { origin };
-    const origin: core.Origin(Origin, void) = .{};
-    const a_slot: core.Slot(@TypeOf(origin)) = .{ .index = 0 };
-    const b_slot: core.Unset_slot(@TypeOf(origin)) = .{ .index = 0 };
-    try std.testing.expect(@TypeOf(a_slot) != @TypeOf(b_slot));
 }
 test "origin with enums containing the same member name" {
     const AOrigin = enum { origin };
@@ -887,7 +812,7 @@ test "origin_erase span + buf, then origin_unerase" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
     var buf = core.buf_empty(u32, Origin, void, origin);
-    const span = (try buf.add(std.testing.allocator, 1)).to_span();
+    const span = (try buf.add(std.testing.allocator, 1)).toSpan();
     const span_isolated = core.span_origin_isolate(Origin, void, span);
     const buf_isolated = try core.buf_origin_isolate(
         u32,
@@ -988,7 +913,7 @@ test "origin_erase span + buf, then origin_erased_rid" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
     var buf = core.buf_empty(u32, Origin, void, origin);
-    const span = (try buf.add(std.testing.allocator, 1)).to_span();
+    const span = (try buf.add(std.testing.allocator, 1)).toSpan();
     const span_isolated = core.span_origin_isolate(Origin, void, span);
     const buf_isolated = try core.buf_origin_isolate(
         u32,

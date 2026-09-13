@@ -237,6 +237,12 @@ pub struct Record·new·span<New, Span> {
     pub span: Span,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·buf·source·span<Buf, Source, Span> {
+    pub buf: Buf,
+    pub source: Source,
+    pub span: Span,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·source·source_span·span<Buf, Source, Source_span, Span> {
     pub buf: Buf,
     pub source: Source,
@@ -389,85 +395,35 @@ pub struct Origin_isolated<Origin, Value_erased> {
 #[non_exhaustive]
 pub struct Origin_uneraser<Origin>(std::marker::PhantomData<Origin>);
 
-pub struct Unset_slice<Item>(std::boxed::Box<[std::mem::MaybeUninit<Item>]>);
+pub struct Unset_slice<Item>(
+    // TODO change to std::vec::Vec<[std::option::Option<Item>]>
+    // to avoid needing to insert Nones when capacity exceeds len
+    std::boxed::Box<[std::option::Option<Item>]>,
+);
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Buf_origin_erased<Part, Item> {
     erased: Buf<Origin<Erased, Part>, Item>,
 }
 #[derive(Debug)]
-pub struct Buf<LocalOrigin, Item> {
-    // invariants (in addition to the invariants of (Unset_)slot/span):
-    // - no `Unset_span`s in `.vacant` are connected
-    //   (and thus could be combined into one larger consecutive span)
-    // - any index contained in any vacant `Unset_span` is less than items.len()
-    // - any index contained in any vacant `Unset_span` should be assumed uninitialized
-    //   in `.items`
-    //
-    // -------
-    // `.items` contains `std::mem::MaybeUninit<Item>` because
-    // - functions like `buf.add_unset` explicitly require uninitialized memory.
-    //   creating uninitialized memory of type `Item` out of thin air is UB
-    // - it matches well semantically: access is inherently unsafe.
-    //   vec::Vec<Item> makes it appear safe
-    // - drawbacks (like the removal of niches) do not have an impact here
-    // - it prevents drop from being called on items
-    //   which could double-free on already vacated items.
-    //   Buf originally implemented a custom Drop as
-    //   `for e in self.items.drain(..) { std::mem::forget(e); }`
-    //   with the following documentation:
-    //     At this point, all items are either
-    //     - handled (in sloe code this is always the case or you'll get an error)
-    //     - unhandled (only possible from rust code when a `Slot`/`Span` is dropped)
-    //     - empty (only possible from rust code when a `Unset_span`/`Unset_span` is dropped)
-    //     - occupied (only possible from rust code).
-    //
-    //     If we used the regular Drop implementation, items that were already vacated
-    //     or temporarily extracted (where e.g. the resulting `Unset_slot` from `buf.unset()` was dropped)
-    //     could be freed twice (!).
-    //     So the only thing that can realistically be done is to "leak" all remaining items.
-    //
-    //     To recap, if some rust code kept some slots occupied,
-    //     we _must_ prevent double-frees by leaking those items.
-    //     This is not as bad as you might think:
-    //     - dropping a `Slot`/`Unset_slot` is always a leak
-    //       but it cannot reasonably prevented in rust. It's the cost of doing business
-    //     - in a `Buf<Origin, Item>`, the item type will realistically not be a type that
-    //       directly points to the heap. In fact in sloe you cannot even put more than one buf inside of
-    //       another buf as each buf has a different origin!
-    //
-    //   However, just overwriting the Drop implementation is far from enough
-    //   as many Buf functions somewhat willy-nilly drop items if you're not careful.
-    //   An example is `truncate` which is used in `unset_span_rid`.
-    items: std::vec::Vec<std::mem::MaybeUninit<Item>>,
-    // Performance assumption:
-    // Neighboring items are way more likely to be vacated together.
-    // Think e.g. buf_span_add_buf_span but also
-    // regular chunks of nested individual slots which were likely allocated close to their neighbors.
-    //
-    // It is also assumed that there won't be a large amount of these vacant spans
-    // so e.g. HashSet loses despite having a faster "find out if this index is vacant".
-    // If usage ends up suggesting otherwise, we should change accordingly
-    vacant: std::vec::Vec<Unset_span<LocalOrigin>>,
+pub struct Buf<Origin, Item> {
+    // invariant: the last item in .items is Some(_)
+    items: std::vec::Vec<std::option::Option<Item>>,
+    // cached first Option::None item index in .items. Invariants:
+    // - if first_none == items.len() (TODO change to u32::MAX): all elements in .items re Some(_)
+    // - if first_none < items.len(): items[i] == None
+    first_none_index: u32,
+    origin: std::marker::PhantomData<Origin>,
 }
-pub type Slot<LocalOrigin> = Slot_with_occupancy<LocalOrigin, OccupancySet>;
-pub type Unset_slot<LocalOrigin> = Slot_with_occupancy<LocalOrigin, UccupancyUnset>;
-#[non_exhaustive]
-pub struct Slot_with_occupancy<LocalOrigin, Occupancy> {
+pub struct Slot<LocalOrigin> {
     pub origin: std::marker::PhantomData<LocalOrigin>,
-    pub occupancy: std::marker::PhantomData<Occupancy>,
     // consider switching to NonZeroU32 to create a niche for use with Option<Slot<>>
-    pub index: u32,
+    index: u32,
 }
-pub type Span<LocalOrigin> = Span_with_occupancy<LocalOrigin, OccupancySet>;
-pub type Unset_span<LocalOrigin> = Span_with_occupancy<LocalOrigin, UccupancyUnset>;
-#[non_exhaustive]
-pub struct Span_with_occupancy<LocalOrigin, Occupancy> {
-    pub start: Slot_with_occupancy<LocalOrigin, Occupancy>,
-    pub length: std::num::NonZeroU32,
+pub struct Span<LocalOrigin> {
+    start: Slot<LocalOrigin>,
+    length: std::num::NonZeroU32,
 }
-pub enum UccupancyUnset {}
-pub enum OccupancySet {}
 
 pub struct Array<Item, Record> {
     pub record: Record,
@@ -508,15 +464,15 @@ pub struct Array<Item, Record> {
     // Originally I split .record into .before and .last but it felt confusing
     // in sloe code that the specified record had 1 field less than actual items
     pub split_last_and_extend_vec_with_before:
-        fn(&mut std::vec::Vec<std::mem::MaybeUninit<Item>>, Record) -> Item,
+        fn(&mut std::vec::Vec<std::option::Option<Item>>, Record) -> Item,
 }
 
-impl<Origin, Occupancy> std::fmt::Debug for Slot_with_occupancy<Origin, Occupancy> {
+impl<Origin> std::fmt::Debug for Slot<Origin> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Slot").field("index", &self.index).finish()
     }
 }
-impl<Origin, Occupancy> std::fmt::Debug for Span_with_occupancy<Origin, Occupancy> {
+impl<Origin> std::fmt::Debug for Span<Origin> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Span")
             .field("start", &self.start)
@@ -594,36 +550,6 @@ impl<Exit, GoOn> Choice·Exit·Go_on<Exit, GoOn> {
             Choice·Exit·Go_on::Exit(exit) => std::ops::ControlFlow::Break(exit),
             Choice·Exit·Go_on::Go_on(go_on) => std::ops::ControlFlow::Continue(go_on),
         }
-    }
-}
-
-/// safe if the referenced segment of memory is known to never be accessed again
-/// and the resulting iterator is dropped before the mutable reference goes out of scope.
-/// Best to consume immediately
-unsafe fn mut_slice_into_owned_iterator<'a, A>(slice: &'a mut [A]) -> OwnedSliceIterator<'a, A> {
-    OwnedSliceIterator {
-        ref_mut_iterator: slice.iter_mut(),
-    }
-}
-// constructing is unsafe, use mut_slice_into_owned_iterator!
-pub struct OwnedSliceIterator<'a, Item> {
-    ref_mut_iterator: std::slice::IterMut<'a, Item>,
-}
-impl<'a, Item> std::iter::Iterator for OwnedSliceIterator<'a, Item> {
-    type Item = Item;
-    fn next(&mut self) -> std::option::Option<Self::Item> {
-        // usage is safe when constructor is safe, see mut_slice_into_owned_iterator
-        self.ref_mut_iterator.next().map(|item_ref| unsafe {
-            std::ptr::NonNull::read(std::ptr::NonNull::from_ref(item_ref))
-        })
-    }
-}
-impl<'a, Item> std::iter::DoubleEndedIterator for OwnedSliceIterator<'a, Item> {
-    fn next_back(&mut self) -> std::option::Option<Self::Item> {
-        // usage is safe when constructor is safe, see mut_slice_into_owned_iterator
-        self.ref_mut_iterator.next_back().map(|item_ref| unsafe {
-            std::ptr::NonNull::read(std::ptr::NonNull::from_ref(item_ref))
-        })
     }
 }
 
@@ -748,26 +674,23 @@ macro_rules! part_record_names_are_invalid {
 
 impl<Item> Unset_slice<Item> {
     pub fn allocate_length(length: u32) -> Self {
-        Unset_slice(std::boxed::Box::new_uninit_slice(length as usize))
+        Unset_slice(std::iter::Iterator::collect(std::iter::Iterator::take(
+            std::iter::repeat_with(|| std::option::Option::None),
+            length as usize,
+        )))
     }
-    pub fn from_buf_maybe_uninit(
-        mut maybe_uninit_buf: std::vec::Vec<std::mem::MaybeUninit<Item>>,
-    ) -> Self {
-        // This is the closest approximation for `vec.ptr[..vec.capacity]` I could find in safe rust.
-        // The first part should optimize to maybe_uninit_buf.set_len(maybe_uninit_buf.capacity())
-        // If it doesn't, change to that unsafe operation.
-        // Preferably there would be something like `vec.clear(); vec.into_spare_capacity()`
+    pub fn from_vec_option(mut maybe_uninit_buf: std::vec::Vec<std::option::Option<Item>>) -> Self {
         let spare_capacity = maybe_uninit_buf.spare_capacity_mut().len();
         std::iter::Extend::extend(
             &mut maybe_uninit_buf,
             std::iter::Iterator::take(
-                std::iter::repeat_with(|| std::mem::MaybeUninit::uninit()),
+                std::iter::repeat_with(|| std::option::Option::None),
                 spare_capacity,
             ),
         );
         Unset_slice(maybe_uninit_buf.into_boxed_slice())
     }
-    pub fn as_slice(&self) -> &[std::mem::MaybeUninit<Item>] {
+    pub fn as_slice(&self) -> &[std::option::Option<Item>] {
         &self.0
     }
     pub fn length_usize(&self) -> usize {
@@ -791,21 +714,20 @@ impl<Item> Unset_slice<Item> {
             mem_stride_of::<NewItem>() == mem_stride_of::<Item>()
                 && std::mem::align_of::<NewItem>() == std::mem::align_of::<Item>()
         } {
-            // safe because all contained memory is uninitialized
+            // safe because all contained memory is None
             Unset_slice(unsafe {
                 std::boxed::Box::from_raw(std::boxed::Box::into_raw(self.into_boxed_slice())
-                    as *mut [std::mem::MaybeUninit<NewItem>])
+                    as *mut [std::option::Option<NewItem>])
             })
         } else {
             Unset_slice::<NewItem>::allocate_length(self.length())
         }
     }
-    pub fn into_boxed_slice(self) -> std::boxed::Box<[std::mem::MaybeUninit<Item>]> {
+    pub fn into_boxed_slice(self) -> std::boxed::Box<[std::option::Option<Item>]> {
         self.0
     }
     pub fn into_vec(self) -> std::vec::Vec<Item> {
-        let mut vec: std::vec::Vec<std::mem::MaybeUninit<Item>> =
-            self.into_boxed_slice().into_vec();
+        let mut vec: std::vec::Vec<std::option::Option<Item>> = self.into_boxed_slice().into_vec();
         vec.clear();
         // only safe because there are no more safely accessible items in the Vec anymore
         // and the spare_capacity is assumed to never be accessed via assume_init.
@@ -821,13 +743,12 @@ impl<Item> Unset_slice<Item> {
         let (buf_ptr, buf_length, buf_capacity) = vec.into_raw_parts();
         unsafe { std::vec::Vec::from_raw_parts(buf_ptr.cast::<Item>(), buf_length, buf_capacity) }
     }
-    pub fn into_buf_maybe_uninit(self) -> std::vec::Vec<std::mem::MaybeUninit<Item>> {
-        let mut vec: std::vec::Vec<std::mem::MaybeUninit<Item>> =
-            self.into_boxed_slice().into_vec();
+    pub fn into_vec_option(self) -> std::vec::Vec<std::option::Option<Item>> {
+        let mut vec: std::vec::Vec<std::option::Option<Item>> = self.into_boxed_slice().into_vec();
         vec.clear();
         vec
     }
-    pub fn leak<'a>(self) -> &'a mut [std::mem::MaybeUninit<Item>] {
+    pub fn leak<'a>(self) -> &'a mut [std::option::Option<Item>] {
         std::boxed::Box::leak(self.into_boxed_slice())
     }
 }
@@ -846,117 +767,141 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     pub fn pre_allocation_rid(&mut self) {
         self.items.shrink_to_fit();
     }
+    pub fn as_slice<'a>(&'a self) -> &'a [std::option::Option<Item>] {
+        &self.items
+    }
+    fn item_option<'a>(&'a self, slot: &'a Slot<LocalOrigin>) -> &'a std::option::Option<Item> {
+        // new slots are bound to this collection origin and contain a known valid index
+        unsafe { self.items.get_unchecked(slot.index as usize) }
+    }
     pub fn item<'a>(&'a self, slot: &'a Slot<LocalOrigin>) -> &'a Item {
-        // the .items are never shortened and new slots are bound to this collection origin and contain a known valid index
-        unsafe {
-            self.items
-                .get_unchecked(slot.index as usize)
-                .assume_init_ref()
-        }
+        unsafe { self.item_option(slot).as_ref().unwrap_unchecked() }
+    }
+    fn item_option_mut<'a>(
+        &'a mut self,
+        slot: &'a mut Slot<LocalOrigin>,
+    ) -> &'a mut std::option::Option<Item> {
+        // new slots are bound to this collection origin and contain a known valid index
+        unsafe { self.items.get_unchecked_mut(slot.index as usize) }
     }
     pub fn item_mut<'a>(&'a mut self, slot: &'a mut Slot<LocalOrigin>) -> &'a mut Item {
-        // the .items are never shortened and new slots are bound to this collection origin and contain a known valid index
-        unsafe {
-            self.items
-                .get_unchecked_mut(slot.index as usize)
-                .assume_init_mut()
-        }
+        unsafe { self.item_option_mut(slot).as_mut().unwrap_unchecked() }
     }
-    pub fn opt_span_slice<'a>(&'a self, opt_span: Opt<&'a Span<LocalOrigin>>) -> &'a [Item] {
+    pub fn opt_span_slice_option<'a>(
+        &'a self,
+        opt_span: Opt<&'a Span<LocalOrigin>>,
+    ) -> &'a [std::option::Option<Item>] {
         match opt_span {
             Opt::No(()) => &[],
-            Opt::Yes(span) => self.span_slice(span),
+            Opt::Yes(span) => self.span_slice_option(span),
         }
     }
-    pub fn span_slice<'a>(&'a self, span: &'a Span<LocalOrigin>) -> &'a [Item] {
-        // the .items are never shortened and new slots are bound to this collection origin and contain a known valid range
-        unsafe { self.items.get_unchecked(span.to_range()).assume_init_ref() }
+    pub fn span_slice_option<'a>(
+        &'a self,
+        span: &'a Span<LocalOrigin>,
+    ) -> &'a [std::option::Option<Item>] {
+        // new slots are bound to this collection origin and contain a known valid range
+        unsafe { self.items.get_unchecked(span.to_range()) }
+    }
+    pub fn opt_span_iter<'a>(
+        &'a self,
+        opt_span: Opt<&'a Span<LocalOrigin>>,
+    ) -> impl std::iter::DoubleEndedIterator<Item = &'a Item> {
+        match opt_span {
+            Opt::No(()) => std::iter::Iterator::flatten(std::iter::IntoIterator::into_iter(
+                std::option::Option::None,
+            )),
+            Opt::Yes(span) => std::iter::Iterator::flatten(std::iter::IntoIterator::into_iter(
+                std::option::Option::Some(self.span_iter(span)),
+            )),
+        }
+    }
+    pub fn span_iter<'a>(
+        &'a self,
+        span: &'a Span<LocalOrigin>,
+    ) -> impl std::iter::DoubleEndedIterator<Item = &'a Item> {
+        // new slots are bound to this collection origin and contain a known valid range
+        std::iter::Iterator::map(self.span_slice_option(span).iter(), |item| unsafe {
+            item.as_ref().unwrap_unchecked()
+        })
+    }
+    fn opt_span_slice_option_mut<'a>(
+        &'a mut self,
+        opt_span: &'a mut Opt<Span<LocalOrigin>>,
+    ) -> &'a mut [std::option::Option<Item>] {
+        match opt_span {
+            Opt::No(()) => &mut [],
+            Opt::Yes(span) => self.span_slice_option_mut(span),
+        }
     }
     pub fn opt_span_slice_mut<'a>(
         &'a mut self,
         opt_span: &'a mut Opt<Span<LocalOrigin>>,
-    ) -> &'a mut [Item] {
+    ) -> impl std::iter::DoubleEndedIterator<Item = &'a mut Item> {
         match opt_span {
-            Opt::No(()) => &mut [],
-            Opt::Yes(span) => self.span_slice_mut(span),
+            Opt::No(()) => std::iter::Iterator::flatten(std::iter::IntoIterator::into_iter(
+                std::option::Option::None,
+            )),
+            Opt::Yes(span) => std::iter::Iterator::flatten(std::iter::IntoIterator::into_iter(
+                std::option::Option::Some(self.span_iter_mut(span)),
+            )),
         }
     }
-    pub fn span_slice_mut<'a>(&'a mut self, span: &'a mut Span<LocalOrigin>) -> &'a mut [Item] {
-        // the .items are never shortened and new slots are bound to this collection origin and contain a known valid range
-        unsafe { self.maybe_uninit_span_slice_mut(span).assume_init_mut() }
-    }
-    pub fn maybe_uninit_span_slice_mut<'a, Occupancy>(
+    pub fn span_iter_mut<'a>(
         &'a mut self,
-        span: &'a mut Span_with_occupancy<LocalOrigin, Occupancy>,
-    ) -> &'a mut [std::mem::MaybeUninit<Item>] {
-        // the .items are never shortened and new slots are bound to this collection origin and contain a known valid range
+        span: &'a mut Span<LocalOrigin>,
+    ) -> impl std::iter::DoubleEndedIterator<Item = &'a mut Item> {
+        std::iter::Iterator::map(self.span_slice_option_mut(span).iter_mut(), |item| unsafe {
+            item.as_mut().unwrap_unchecked()
+        })
+    }
+    fn span_slice_option_mut<'a>(
+        &'a mut self,
+        span: &'a mut Span<LocalOrigin>,
+    ) -> &'a mut [std::option::Option<Item>] {
+        // new slots are bound to this collection origin and contain a known valid range
         unsafe { self.items.get_unchecked_mut(span.to_range()) }
     }
-    pub fn span_into_iterator<'a>(
+    /// this APIs is a bit wonky and compromises on performance and useability
+    fn span_into_iter<'a, Out>(
         &'a mut self,
         span: Span<LocalOrigin>,
-    ) -> OwnedSliceIterator<'a, Item> {
-        // items in the opt_span are consumed and never accessed after. During this whole ordeal
-        // the items are "locked" behind a mut ref with the same lifetime as the iterator
-        unsafe {
-            mut_slice_into_owned_iterator(
-                self.items
-                    .get_unchecked_mut(span.to_range())
-                    .assume_init_mut(),
-            )
+        consume_iterator: impl std::ops::FnOnce(
+            &mut dyn std::iter::DoubleEndedIterator<Item = Item>,
+        ) -> Out,
+    ) -> Out {
+        if self.span_is_at_the_end_of_items(&span) {
+            let out = consume_iterator(&mut std::iter::Iterator::map(
+                self.items.drain((span.start.index as usize)..),
+                |item| unsafe { item.unwrap_unchecked() },
+            ));
+            self.rid_trailing_unset();
+            self.first_none_index = self.items.len() as u32;
+            out
+        } else {
+            let out = consume_iterator(&mut
+                // items in the span are consumed and never accessed after
+                unsafe {
+                    std::iter::Iterator::map(
+                        self.items.get_unchecked_mut(span.to_range()).iter_mut(),
+                        |item| item.take().unwrap_unchecked(),
+                    )
+                });
+            self.first_none_index = std::cmp::min(self.first_none_index, span.start.index);
+            out
         }
     }
-    pub fn remove(&mut self, slot: Slot<LocalOrigin>) -> Item {
-        // vacated opt_span items are never accessed, not even while vacating them
-        let item = self.unset(slot);
-        self.unset_slot_rid(item.slot);
-        item.item
-    }
-    pub fn unset(
-        &mut self,
-        mut slot: Slot<LocalOrigin>,
-    ) -> Record·item·slot<Item, Unset_slot<LocalOrigin>> {
-        // its unique slot is consumed, so this item cannot be accessed after
-        let item = unsafe {
-            std::ptr::NonNull::read(std::ptr::NonNull::from_ref(self.item_mut(&mut slot)))
-        };
-        Record·item·slot {
-            item: item,
-            slot: Unset_slot::<LocalOrigin>::from_index(slot.index),
+    pub fn remove(&mut self, mut slot: Slot<LocalOrigin>) -> Item {
+        if slot.index as usize + 1 < self.items.len() {
+            let item = unsafe { self.item_option_mut(&mut slot).take().unwrap_unchecked() };
+            self.first_none_index = std::cmp::min(self.first_none_index, slot.index);
+            item
+        } else {
+            let item = unsafe { self.items.pop().unwrap_unchecked().unwrap_unchecked() };
+            self.rid_trailing_unset();
+            self.first_none_index = std::cmp::min(self.first_none_index, self.items.len() as u32);
+            item
         }
-    }
-    pub fn span_unset(
-        &mut self,
-        span: Span<LocalOrigin>,
-        item_rid: impl std::ops::Fn(Item),
-    ) -> Unset_span<LocalOrigin> {
-        let unset_span = Unset_span::<LocalOrigin> {
-            start: Unset_slot::<LocalOrigin>::from_index(span.start.index),
-            length: span.length,
-        };
-        for item in self.span_into_iterator(span) {
-            item_rid(item)
-        }
-        unset_span
-    }
-    pub fn opt_span_unset(
-        &mut self,
-        span: Opt<Span<LocalOrigin>>,
-        item_rid: impl std::ops::Fn(Item),
-    ) -> Opt<Unset_span<LocalOrigin>> {
-        match span {
-            Opt::No(()) => Opt::No(()),
-            Opt::Yes(span) => Opt::Yes(self.span_unset(span, item_rid)),
-        }
-    }
-    pub fn slot_rid(&mut self, slot: Slot<LocalOrigin>, item_rid: impl std::ops::Fn(Item)) {
-        let unset = self.unset(slot);
-        item_rid(unset.item);
-        self.unset_slot_rid(unset.slot);
-    }
-    pub fn span_rid(&mut self, span: Span<LocalOrigin>, item_rid: impl std::ops::Fn(Item)) {
-        let unset = self.span_unset(span, item_rid);
-        self.unset_span_rid(unset);
     }
     pub fn opt_span_rid(
         &mut self,
@@ -967,189 +912,77 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             self.span_rid(span, item_rid);
         }
     }
-    pub fn set(&mut self, slot: Unset_slot<LocalOrigin>, item: Item) -> Slot<LocalOrigin> {
-        // Unset_slot always references valid position and is inaccessible after this operation
-        unsafe { self.items.get_unchecked_mut(slot.index as usize) }.write(item);
-        Slot::<LocalOrigin>::from_index(slot.index)
+    pub fn span_rid(&mut self, span: Span<LocalOrigin>, item_rid: impl std::ops::Fn(Item)) {
+        self.span_into_iter(span, |items| {
+            for item in items {
+                item_rid(item)
+            }
+        });
     }
-    pub fn unset_slot_rid(&mut self, slot_to_vacate: Unset_slot<LocalOrigin>) {
-        // can maybe be optimized
-        self.unset_span_rid(slot_to_vacate.to_span());
-    }
-    pub fn opt_unset_span_rid(&mut self, span_to_vacate: Opt<Unset_span<LocalOrigin>>) {
-        if let Opt::Yes(span_to_vacate) = span_to_vacate {
-            self.unset_span_rid(span_to_vacate);
-        }
-    }
-    pub fn unset_span_rid(&mut self, span_to_vacate: Unset_span<LocalOrigin>) {
-        let maybe_vacant_span_index_connecting_earlier: std::option::Option<usize> =
-            std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
-                std::cmp::PartialEq::<usize>::eq(
-                    &(vacant_span.start.index as usize + vacant_span.length.get() as usize),
-                    &(span_to_vacate.start.index as usize),
-                )
-            });
-        let maybe_vacant_span_index_connecting_later: std::option::Option<usize> =
-            std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
-                std::cmp::PartialEq::<usize>::eq(
-                    &(span_to_vacate.start.index as usize + span_to_vacate.length.get() as usize),
-                    &(vacant_span.start.index as usize),
-                )
-            });
-        match (
-            maybe_vacant_span_index_connecting_earlier,
-            maybe_vacant_span_index_connecting_later,
-        ) {
-            (std::option::Option::None, std::option::Option::None) => {
-                if span_to_vacate.start.index as usize + span_to_vacate.length.get() as usize
-                    == self.items.len()
-                {
-                    self.items
-                        .truncate(self.items.len() - span_to_vacate.length.get() as usize);
-                } else {
-                    self.vacant.push(span_to_vacate);
-                }
-            }
-            (
-                std::option::Option::Some(index_connecting_earlier),
-                std::option::Option::Some(index_connecting_later),
-            ) => {
-                // if both spans start connecting now, combine them
-                let (earlier_span_start, earlier_span_length) = {
-                    let earlier_span = &self.vacant[index_connecting_earlier];
-                    (earlier_span.start.index, earlier_span.length)
-                };
-                let later_span_to_extend = &mut self.vacant[index_connecting_later];
-                *later_span_to_extend = Unset_span {
-                    start: Unset_slot::<LocalOrigin>::from_index(earlier_span_start),
-                    length: std::num::NonZeroU32::saturating_add(
-                        std::num::NonZeroU32::saturating_add(
-                            earlier_span_length,
-                            later_span_to_extend.length.get(),
-                        ),
-                        span_to_vacate.length.get(),
-                    ),
-                };
-                self.vacant.swap_remove(index_connecting_earlier);
-            }
-            (std::option::Option::Some(index_connecting_earlier), std::option::Option::None) => {
-                let earlier_opt_span_to_extend = &mut self.vacant[index_connecting_earlier];
-                if span_to_vacate.start.index as usize + span_to_vacate.length.get() as usize
-                    == self.items.len()
-                {
-                    self.items.truncate(
-                        self.items.len()
-                            - span_to_vacate.length.get() as usize
-                            - earlier_opt_span_to_extend.length.get() as usize,
-                    );
-                    let _ = self.vacant.swap_remove(index_connecting_earlier);
-                } else {
-                    earlier_opt_span_to_extend.length = std::num::NonZeroU32::saturating_add(
-                        span_to_vacate.length,
-                        earlier_opt_span_to_extend.length.get(),
-                    );
-                }
-            }
-            (std::option::Option::None, std::option::Option::Some(index_connecting_after)) => {
-                let later_opt_span_to_extend = &mut self.vacant[index_connecting_after];
-                *later_opt_span_to_extend = Unset_span {
-                    start: span_to_vacate.start,
-                    length: std::num::NonZeroU32::saturating_add(
-                        span_to_vacate.length,
-                        later_opt_span_to_extend.length.get(),
-                    ),
-                };
-            }
+    fn rid_trailing_unset(&mut self) {
+        while let std::option::Option::Some(last_item) = self.items.last()
+            && last_item.is_none()
+        {
+            self.items.pop();
         }
     }
     pub fn add(&mut self, new_item: Item) -> Slot<LocalOrigin> {
-        let added_index = self.items.len();
-        self.items.push(std::mem::MaybeUninit::new(new_item));
-        Slot::from_index(added_index as u32)
-    }
-    pub fn add_unset(&mut self) -> Unset_slot<LocalOrigin> {
-        let added_index = self.items.len();
-        self.items.push(std::mem::MaybeUninit::uninit());
-        Unset_slot::from_index(added_index as u32)
+        let added_index = self.items.len() as u32;
+        self.items.push(std::option::Option::Some(new_item));
+        if self.first_none_index == added_index {
+            self.first_none_index += 1;
+        }
+        Slot::from_index(added_index)
     }
     pub fn insert(&mut self, new_item: Item) -> Slot<LocalOrigin> {
-        let unset_slot = self.insert_unset();
-        self.set(unset_slot, new_item)
-    }
-    pub fn insert_unset(&mut self) -> Unset_slot<LocalOrigin> {
-        match self.vacant.pop() {
-            std::option::Option::None => self.add_unset(),
-            std::option::Option::Some(vacant_opt_span_to_occupy) => {
-                if let std::option::Option::Some(remaining_length) =
-                    std::num::NonZeroU32::new(p32_predecessor(vacant_opt_span_to_occupy.length))
-                {
-                    self.vacant.push(Unset_span {
-                        start: Unset_slot::<LocalOrigin>::from_index(
-                            vacant_opt_span_to_occupy.start.index + 1,
-                        ),
-                        length: remaining_length,
-                    });
-                }
-                vacant_opt_span_to_occupy.start
+        let previous_first_none_index = self.first_none_index;
+        match self.items.get_mut(self.first_none_index as usize) {
+            std::option::Option::Some(item_option_to_set) => {
+                _ = item_option_to_set.insert(new_item);
+                self.first_none_index = std::iter::Iterator::find_map(
+                    &mut std::iter::Iterator::skip(
+                        std::iter::Iterator::enumerate(self.items.iter()),
+                        (self.first_none_index + 1) as usize,
+                    ),
+                    |(i, item)| match item {
+                        std::option::Option::None => std::option::Option::Some(i as u32),
+                        std::option::Option::Some(_) => std::option::Option::None,
+                    },
+                )
+                .unwrap_or_else(|| self.items.len() as u32);
+            }
+            std::option::Option::None => {
+                self.items.push(std::option::Option::Some(new_item));
+                self.first_none_index += 1;
             }
         }
+        Slot::<LocalOrigin>::from_index(previous_first_none_index)
     }
-    pub fn add_unset_length(&mut self, length: u32) -> Opt<Unset_span<LocalOrigin>> {
-        match P32::new(length) {
-            std::option::Option::None => Opt::No(()),
-            std::option::Option::Some(length) => {
-                let span = self.add_unset_length_positive(length);
-                Opt::Yes(span)
-            }
-        }
-    }
-    pub fn add_unset_length_positive(
+    fn find_unset_length_positive(
         &mut self,
-        length: std::num::NonZeroU32,
-    ) -> Unset_span<LocalOrigin> {
-        let unset_start_index = self.items.len();
-        // If below doesn't get optimized, an unsafe but maybe faster alternative would be
-        // using reserve + set_len(.len + length)
-        std::iter::Extend::extend(
-            &mut self.items,
-            std::iter::Iterator::take(
-                std::iter::repeat_with(|| std::mem::MaybeUninit::uninit()),
-                length.get() as usize,
-            ),
-        );
-        Unset_span {
-            start: Unset_slot::<LocalOrigin>::from_index(unset_start_index as u32),
-            length: length,
-        }
-    }
-    // potential improvement: return Unset_span
-    fn mark_length_positive_as_occupied(
-        &mut self,
-        length_to_occupy: std::num::NonZeroU32,
+        unset_length_to_find: std::num::NonZeroU32,
     ) -> std::option::Option<u32> {
-        let vacant_opt_span_to_reuse_index =
-            std::iter::Iterator::rposition(&mut self.vacant.iter(), |vacant_span| {
-                std::cmp::PartialOrd::ge(&vacant_span.length, &length_to_occupy)
-            });
-        match vacant_opt_span_to_reuse_index {
-            std::option::Option::None => std::option::Option::None,
-            std::option::Option::Some(vacant_opt_span_to_reuse_index) => {
-                let vacant_opt_span_to_occupy = &mut self.vacant[vacant_opt_span_to_reuse_index];
-                let start_to_occupy_from = vacant_opt_span_to_occupy.start.index;
-                match std::num::NonZeroU32::new(
-                    vacant_opt_span_to_occupy.length.get() - length_to_occupy.get(),
-                ) {
-                    std::option::Option::None => {
-                        // vacant_opt_span_to_occupy.length == length_to_occupy
-                        self.vacant.swap_remove(vacant_opt_span_to_reuse_index);
-                    }
-                    std::option::Option::Some(remaining_vacant_length) => {
-                        vacant_opt_span_to_occupy.length = remaining_vacant_length;
+        // can maybe be optimized by skipping unset_length_to_find - 1 ahead when encountering a None
+        // and going back to check that all are None only if the end is itself None
+        std::iter::Iterator::try_fold(
+            &mut std::iter::Iterator::skip(
+                std::iter::Iterator::enumerate(self.items.iter()),
+                self.first_none_index as usize,
+            ),
+            0,
+            |length_so_far, (index, item)| match item {
+                std::option::Option::None => std::ops::ControlFlow::Continue(0),
+                std::option::Option::Some(_) => {
+                    if length_so_far + 1 < unset_length_to_find.get() {
+                        std::ops::ControlFlow::Continue(length_so_far + 1)
+                    } else {
+                        std::ops::ControlFlow::Break((index, length_so_far + 1))
                     }
                 }
-                std::option::Option::Some(start_to_occupy_from)
-            }
-        }
+            },
+        )
+        .break_value()
+        .map(|(index, _)| index as u32)
     }
     // invariant! new_item_count must equal new_items.count()
     fn insert_iterator_filled(
@@ -1157,7 +990,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_items: impl std::iter::Iterator<Item = Item>,
         new_item_count: std::num::NonZeroU32,
     ) -> Span<LocalOrigin> {
-        match self.mark_length_positive_as_occupied(new_item_count) {
+        match self.find_unset_length_positive(new_item_count) {
             std::option::Option::None => self.add_iterator_filled(new_items, new_item_count),
             std::option::Option::Some(index_to_populate_from) => {
                 let new_span = Span {
@@ -1166,7 +999,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                 };
                 self.items.splice(
                     new_span.to_range(),
-                    new_items.map(std::mem::MaybeUninit::new),
+                    new_items.map(std::option::Option::Some),
                 );
                 new_span
             }
@@ -1177,7 +1010,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_items: impl std::iter::Iterator<Item = Item>,
     ) -> Opt<Span<LocalOrigin>> {
         let length_without_new_items = self.items.len();
-        std::iter::Extend::extend(&mut self.items, new_items.map(std::mem::MaybeUninit::new));
+        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
         match std::num::NonZeroU32::new((self.items.len() - length_without_new_items) as u32) {
             std::option::Option::None => Opt::No(()),
             std::option::Option::Some(new_length) => Opt::Yes(Span {
@@ -1192,8 +1025,8 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_after: impl std::iter::Iterator<Item = Item>,
     ) -> Span<LocalOrigin> {
         let length_before_new = self.items.len();
-        self.items.push(std::mem::MaybeUninit::new(new_start));
-        std::iter::Extend::extend(&mut self.items, new_after.map(std::mem::MaybeUninit::new));
+        self.items.push(std::option::Option::Some(new_start));
+        std::iter::Extend::extend(&mut self.items, new_after.map(std::option::Option::Some));
         Span {
             start: Slot::from_index(length_before_new as u32),
             length: std::num::NonZeroU32::MIN
@@ -1207,7 +1040,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_item_count: std::num::NonZeroU32,
     ) -> Span<LocalOrigin> {
         let length_without_new_items = self.items.len() as u32;
-        std::iter::Extend::extend(&mut self.items, new_items.map(std::mem::MaybeUninit::new));
+        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
         Span {
             start: Slot::from_index(length_without_new_items),
             length: new_item_count,
@@ -1244,7 +1077,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         let new_last =
             (new_items.split_last_and_extend_vec_with_before)(&mut self.items, new_items.record);
         let length_with_new_items_before_last = self.items.len();
-        self.items.push(std::mem::MaybeUninit::new(new_last));
+        self.items.push(std::option::Option::Some(new_last));
         Span {
             start: Slot::from_index(length_without_new_items as u32),
             length: std::num::NonZeroU32::MIN.saturating_add(
@@ -1256,66 +1089,46 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         &mut self,
         source: &mut Buf<SourceOrigin, Item>,
         source_span: Span<SourceOrigin>,
-    ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
-        let (source_span_start_index, source_span_length) =
-            (source_span.start.index, source_span.length);
-        let source_items = source.span_into_iterator(source_span);
-        let new_span = self.insert_iterator_filled(source_items, source_span_length);
-        (
-            Unset_span::<SourceOrigin> {
-                start: Unset_slot::<SourceOrigin>::from_index(source_span_start_index),
-                length: source_span_length,
-            },
-            new_span,
-        )
+    ) -> Span<LocalOrigin> {
+        let source_span_length = source_span.length;
+        let new_span = source.span_into_iter(source_span, |source_items| {
+            self.insert_iterator_filled(source_items, source_span_length)
+        });
+        new_span
     }
     pub fn add_buf_span<SourceOrigin>(
         &mut self,
         source: &mut Buf<SourceOrigin, Item>,
         source_span: Span<SourceOrigin>,
-    ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
-        let (source_span_start_index, source_span_length) =
-            (source_span.start.index, source_span.length);
-        let source_items = source.span_into_iterator(source_span);
-        let new_span = self.add_iterator_filled(source_items, source_span_length);
-        (
-            Unset_span::<SourceOrigin> {
-                start: Unset_slot::<SourceOrigin>::from_index(source_span_start_index),
-                length: source_span_length,
-            },
-            new_span,
-        )
+    ) -> Span<LocalOrigin> {
+        let source_span_length = source_span.length;
+        let new_span = source.span_into_iter(source_span, |source_items| {
+            self.add_iterator_filled(source_items, source_span_length)
+        });
+        new_span
     }
     pub fn span_add_buf_span<SourceOrigin>(
         &mut self,
         span: Span<LocalOrigin>,
         source: &mut Buf<SourceOrigin, Item>,
         source_span: Span<SourceOrigin>,
-    ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
-        let (source_span_start_index, source_span_length) =
-            (source_span.start.index, source_span.length);
-        let source_items = source.span_into_iterator(source_span);
-        let new_span = self.span_add_iterator(span, source_items);
-        (
-            Unset_span::<SourceOrigin> {
-                start: Unset_slot::<SourceOrigin>::from_index(source_span_start_index),
-                length: source_span_length,
-            },
-            new_span,
-        )
+    ) -> Span<LocalOrigin> {
+        let new_span = source.span_into_iter(source_span, |source_items| {
+            self.span_add_iterator(span, source_items)
+        });
+        new_span
     }
     pub fn span_add_buf_opt_span<SourceOrigin>(
         &mut self,
         span: Span<LocalOrigin>,
         source: &mut Buf<SourceOrigin, Item>,
         source_span: Opt<Span<SourceOrigin>>,
-    ) -> (Opt<Unset_span<SourceOrigin>>, Span<LocalOrigin>) {
+    ) -> Span<LocalOrigin> {
         match source_span {
-            Opt::No(()) => (Opt::No(()), span),
+            Opt::No(()) => span,
             Opt::Yes(source_span) => {
-                let (source_span, combined_span) =
-                    self.span_add_buf_span(span, source, source_span);
-                (Opt::Yes(source_span), combined_span)
+                let combined_span = self.span_add_buf_span(span, source, source_span);
+                combined_span
             }
         }
     }
@@ -1324,7 +1137,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         span: Opt<Span<LocalOrigin>>,
         source: &mut Buf<SourceOrigin, Item>,
         source_span: Span<SourceOrigin>,
-    ) -> (Unset_span<SourceOrigin>, Span<LocalOrigin>) {
+    ) -> Span<LocalOrigin> {
         match span {
             Opt::No(()) => self.add_buf_span(source, source_span),
             Opt::Yes(span) => self.span_add_buf_span(span, source, source_span),
@@ -1335,13 +1148,12 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         span: Opt<Span<LocalOrigin>>,
         source: &mut Buf<SourceOrigin, Item>,
         source_span: Opt<Span<SourceOrigin>>,
-    ) -> (Opt<Unset_span<SourceOrigin>>, Opt<Span<LocalOrigin>>) {
+    ) -> Opt<Span<LocalOrigin>> {
         match source_span {
-            Opt::No(()) => (Opt::No(()), span),
+            Opt::No(()) => span,
             Opt::Yes(source_span) => {
-                let (source_span, combined_span) =
-                    self.opt_span_add_buf_span(span, source, source_span);
-                (Opt::Yes(source_span), Opt::Yes(combined_span))
+                let combined_span = self.opt_span_add_buf_span(span, source, source_span);
+                Opt::Yes(combined_span)
             }
         }
     }
@@ -1352,7 +1164,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     ) -> Span<LocalOrigin> {
         let moved_span = self.span_move_to_end(span);
         let length_before_extend = self.items.len();
-        std::iter::Extend::extend(&mut self.items, new_items.map(std::mem::MaybeUninit::new));
+        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
         Span {
             start: moved_span.start,
             length: moved_span
@@ -1379,7 +1191,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         let length_before_extend = self.items.len();
         let new_last =
             (new_items.split_last_and_extend_vec_with_before)(&mut self.items, new_items.record);
-        self.items.push(std::mem::MaybeUninit::new(new_last));
+        self.items.push(std::option::Option::Some(new_last));
         Span {
             start: moved_span.start,
             length: moved_span
@@ -1399,72 +1211,77 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     }
     pub fn span_add(&mut self, span: Span<LocalOrigin>, new_item: Item) -> Span<LocalOrigin> {
         let moved_span = self.span_move_to_end(span);
-        self.items.push(std::mem::MaybeUninit::new(new_item));
+        self.items.push(std::option::Option::Some(new_item));
         Span {
             start: moved_span.start,
             length: moved_span.length.saturating_add(1),
         }
     }
     pub fn span_move_to_end(&mut self, span: Span<LocalOrigin>) -> Span<LocalOrigin> {
-        if span.start.index as usize + span.length.get() as usize == self.items.len() {
+        if self.span_is_at_the_end_of_items(&span) {
             return span;
         }
-        // span is not at the end already
+        // span is not at the end of iitems already
 
-        let move_destination_span = self.add_unset_length_positive(span.length);
-        {
-            let (before_move_destination, from_move_destination) = unsafe {
-                self.items
-                    .split_at_mut_unchecked(move_destination_span.start.index as usize)
-            };
-            // technically we just want to write the destination, not swap. Something like
-            // read_from_slice(&mut [MaybeUninit<A>], &[MaybeUninit<A>])
-            // I know there is std::ptr::copy_nonoverlapping(src, dst, count) but I'd prefer something higher-level
-            // If you know how to do this (nicely), open an issue please
-            unsafe { before_move_destination.get_unchecked_mut(span.to_range()) }
-                .swap_with_slice(from_move_destination);
-        }
-        self.unset_span_rid(Unset_span {
-            start: Unset_slot::<LocalOrigin>::from_index(span.start.index),
-            length: span.length,
-        });
+        let move_destination_start = self.items.len();
+        std::iter::Extend::extend(
+            &mut self.items,
+            std::iter::Iterator::take(
+                std::iter::repeat_with(|| std::option::Option::None),
+                span.length.get() as usize,
+            ),
+        );
+        let (before_move_destination, from_move_destination) =
+            unsafe { self.items.split_at_mut_unchecked(move_destination_start) };
+        unsafe { before_move_destination.get_unchecked_mut(span.to_range()) }
+            .swap_with_slice(from_move_destination);
+        self.first_none_index = std::cmp::min(self.first_none_index, span.start.index);
         Span {
-            start: Slot::<LocalOrigin>::from_index(move_destination_span.start.index),
-            length: move_destination_span.length,
+            start: Slot::<LocalOrigin>::from_index(move_destination_start as u32),
+            length: span.length,
         }
     }
-    pub fn span_is_at_the_end<Occupancy>(
-        &self,
-        span: &Span_with_occupancy<LocalOrigin, Occupancy>,
-    ) -> bool {
+    pub fn span_is_at_the_end_of_items(&self, span: &Span<LocalOrigin>) -> bool {
         (span.start.index as usize + span.length.get() as usize) < self.items.len()
     }
-    pub fn span_move_to_vacant(&mut self, mut span: Span<LocalOrigin>) -> Span<LocalOrigin> {
-        if self.span_is_at_the_end(&span) {
+    pub fn span_move_to_vacant(&mut self, span: Span<LocalOrigin>) -> Span<LocalOrigin> {
+        if !self.span_is_at_the_end_of_items(&span) {
             // moving this span would not reduce the amount of vacant space
             return span;
         }
         // span is at the end of items
 
-        let earlier_start_to_occupy_from = self.mark_length_positive_as_occupied(span.length);
+        let earlier_start_to_occupy_from = self.find_unset_length_positive(span.length);
         match earlier_start_to_occupy_from {
             std::option::Option::None => span,
             std::option::Option::Some(earlier_start_to_occupy_from) => {
-                // the range of the span will be truncated next.
-                // the &mut lifetime is ignored because the edited and read ranges do not overlap
-                let items_to_move = unsafe {
-                    mut_slice_into_owned_iterator(
-                        std::ptr::NonNull::from_mut(self.span_slice_mut(&mut span)).as_mut(),
-                    )
-                };
-                self.items.splice(
-                    (earlier_start_to_occupy_from as usize)
-                        ..(earlier_start_to_occupy_from as usize + span.length.get() as usize),
-                    std::iter::Iterator::map(items_to_move, std::mem::MaybeUninit::new),
+                let (items_before_span, items_from_span) =
+                    self.items.split_at_mut(span.start.index as usize);
+                items_from_span[0..span.length.get() as usize].swap_with_slice(
+                    &mut items_before_span[(earlier_start_to_occupy_from as usize)
+                        ..(earlier_start_to_occupy_from + span.length.get()) as usize],
                 );
-                // we could alternatively have swapped the non-overlapping slices. Not sure what is faster
+                // we could alternatively have used splice. Not sure what's faster
                 self.items
                     .truncate(self.items.len() - span.length.get() as usize);
+                if self.first_none_index == earlier_start_to_occupy_from {
+                    self.first_none_index = std::iter::Iterator::find_map(
+                        &mut std::iter::Iterator::skip(
+                            std::iter::Iterator::enumerate(self.items.iter()),
+                            (earlier_start_to_occupy_from + span.length.get()) as usize,
+                        ),
+                        |(i, item)| match item {
+                            std::option::Option::None => std::option::Option::Some(i as u32),
+                            std::option::Option::Some(_) => std::option::Option::None,
+                        },
+                    )
+                    .unwrap_or_else(|| self.items.len() as u32);
+                } else {
+                    // technically this could be unnecessary but it's nice to always
+                    // have first_none match the length if no None exists
+                    self.first_none_index =
+                        std::cmp::min(self.first_none_index, self.items.len() as u32);
+                }
                 Span {
                     start: Slot::<LocalOrigin>::from_index(earlier_start_to_occupy_from),
                     length: span.length,
@@ -1522,78 +1339,31 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             Opt::Yes(start) => Opt::Yes(self.span_add_own_opt_span(start, end)),
         }
     }
-    pub fn unset_span_add_own_span(
-        &mut self,
-        start: Unset_span<LocalOrigin>,
-        end: Unset_span<LocalOrigin>,
-    ) -> Unset_span<LocalOrigin> {
-        let combined_length = start.length.saturating_add(end.length.get());
-        if start.start.index as usize + start.length.get() as usize == end.start.index as usize {
-            Unset_span {
-                start: start.start,
-                length: combined_length,
-            }
-        } else {
-            self.add_unset_length_positive(combined_length)
-        }
-    }
-    pub fn unset_span_add_own_opt_span(
-        &mut self,
-        start: Unset_span<LocalOrigin>,
-        end: Opt<Unset_span<LocalOrigin>>,
-    ) -> Unset_span<LocalOrigin> {
-        match end {
-            Opt::No(()) => start,
-            Opt::Yes(end) => self.unset_span_add_own_span(start, end),
-        }
-    }
-    pub fn opt_unset_span_add_own_span(
-        &mut self,
-        start: Opt<Unset_span<LocalOrigin>>,
-        end: Unset_span<LocalOrigin>,
-    ) -> Unset_span<LocalOrigin> {
-        match start {
-            Opt::No(()) => end,
-            Opt::Yes(start) => self.unset_span_add_own_span(start, end),
-        }
-    }
-    pub fn opt_unset_span_add_own_opt_span(
-        &mut self,
-        start: Opt<Unset_span<LocalOrigin>>,
-        end: Opt<Unset_span<LocalOrigin>>,
-    ) -> Opt<Unset_span<LocalOrigin>> {
-        match start {
-            Opt::No(()) => end,
-            Opt::Yes(start) => Opt::Yes(self.unset_span_add_own_opt_span(start, end)),
-        }
-    }
-    pub fn vacant_spans<'a>(&'a self) -> &'a std::vec::Vec<Unset_span<LocalOrigin>> {
-        &self.vacant
-    }
-    pub fn maybe_uninit_items<'a>(&'a self) -> &'a std::vec::Vec<std::mem::MaybeUninit<Item>> {
-        &self.items
-    }
-    pub fn length_vacated_or_not(&self) -> usize {
-        self.items.len()
-    }
     pub fn vacant_count_usize(&self) -> usize {
-        std::iter::Iterator::sum(std::iter::Iterator::map(self.vacant.iter(), |r| {
-            r.length.get() as usize
-        }))
+        std::iter::Iterator::count(std::iter::Iterator::filter(
+            std::iter::Iterator::skip(self.items.iter(), self.first_none_index as usize),
+            |r| match r {
+                std::option::Option::None => true,
+                std::option::Option::Some(_) => false,
+            },
+        ))
     }
     pub fn vacant_count_u32(&self) -> u32 {
-        std::iter::Iterator::sum(std::iter::Iterator::map(self.vacant.iter(), |r| {
-            r.length.get()
-        }))
+        self.vacant_count_usize() as u32
     }
-    /// counts both occupied positions and temporarily empty ones referenced by `empty-slot`s
-    pub fn not_vacant_count_usize(&self) -> usize {
-        usize::saturating_sub(self.length_vacated_or_not(), self.vacant_count_usize())
+    pub fn occupied_count_usize(&self) -> usize {
+        std::iter::Iterator::count(std::iter::Iterator::filter(
+            std::iter::Iterator::skip(self.items.iter(), self.first_none_index as usize),
+            |r| match r {
+                std::option::Option::None => false,
+                std::option::Option::Some(_) => true,
+            },
+        ))
     }
     /// The raw allocation. Can be used to create new Vecs or even
     /// to drop the memory in a separate thread
     pub fn into_unset_slice(self) -> Unset_slice<Item> {
-        Unset_slice::from_buf_maybe_uninit(self.items)
+        Unset_slice::from_vec_option(self.items)
     }
 }
 impl<Origin> Buf<Origin, Char> {
@@ -1611,19 +1381,19 @@ impl<Origin> Buf<Origin, Char> {
 impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
     pub fn new(_: Origin<LocalOrigin, Part>) -> Self {
         Buf::<Origin<LocalOrigin, Part>, Item> {
+            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
             items: std::vec::Vec::new(),
-            vacant: std::vec::Vec::new(),
+            first_none_index: 0,
         }
     }
     pub fn reuse(_: Origin<LocalOrigin, Part>, allocation: Unset_slice<Item>) -> Self {
         Buf::<Origin<LocalOrigin, Part>, Item> {
-            items: allocation.into_buf_maybe_uninit(),
-            vacant: std::vec::Vec::new(),
+            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
+            first_none_index: allocation.length(),
+            items: allocation.into_vec_option(),
         }
     }
-    /// safe if no Unset_slot or Unset_span into the Buf with the same origin exists
-    /// at this point in time
-    pub unsafe fn origin_isolate_assume_no_unset<ItemErased>(
+    pub fn origin_isolate<ItemErased>(
         self,
         item_erase: impl std::ops::Fn(Item) -> Origin_isolated<LocalOrigin, ItemErased>,
     ) -> Origin_isolated<LocalOrigin, Buf_origin_erased<Part, ItemErased>> {
@@ -1631,35 +1401,21 @@ impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
             origin: std::marker::PhantomData::<LocalOrigin>,
             value_erased: Buf_origin_erased {
                 erased: Buf {
+                    origin: std::marker::PhantomData::<Origin<Erased, Part>>,
                     // the optimizer should be able to figure out that the atual memory does not change here
                     // when the `item_erase` really justs erases origins.
                     // If it can't, look into branching on if ItemErased has the same size and alignment
-                    // and transmute the vacant items instead of ::uninit()
+                    // and transmute
                     items: std::iter::Iterator::collect(std::iter::Iterator::map(
-                        std::iter::Iterator::enumerate(std::iter::IntoIterator::into_iter(
-                            self.items,
-                        )),
-                        |(item_index, item)| {
-                            if std::iter::Iterator::any(&mut self.vacant.iter(), |vacant_range| {
-                                vacant_range.to_range().contains(&item_index)
-                            }) {
-                                std::mem::MaybeUninit::uninit()
-                            } else {
-                                std::mem::MaybeUninit::new(
-                                    item_erase(unsafe { item.assume_init() }).value_erased,
-                                )
+                        std::iter::IntoIterator::into_iter(self.items),
+                        |item| match item {
+                            std::option::Option::None => std::option::Option::None,
+                            std::option::Option::Some(item) => {
+                                std::option::Option::Some(item_erase(item).value_erased)
                             }
                         },
                     )),
-                    vacant: std::iter::Iterator::collect(std::iter::Iterator::map(
-                        std::iter::IntoIterator::into_iter(self.vacant),
-                        |vacant_span| Unset_span {
-                            start: Unset_slot::<Origin<Erased, Part>>::from_index(
-                                vacant_span.start.index,
-                            ),
-                            length: vacant_span.length,
-                        },
-                    )),
+                    first_none_index: self.first_none_index,
                 },
             },
         }
@@ -1671,19 +1427,9 @@ impl<Item, Part> Buf<Origin<Erased, Part>, Item> {
         _: &Origin_uneraser<LocalOrigin>,
     ) -> Buf<Origin<LocalOrigin, Part>, Item> {
         Buf {
+            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
             items: self.items,
-            // the optimizer should be able to figure out that the atual memory does not change here
-            // If it can't, assert the same size and alignment
-            // and transmute
-            vacant: std::iter::Iterator::collect(std::iter::Iterator::map(
-                std::iter::IntoIterator::into_iter(self.vacant),
-                |vacant_span| Unset_span {
-                    start: Unset_slot::<Origin<LocalOrigin, Part>>::from_index(
-                        vacant_span.start.index,
-                    ),
-                    length: vacant_span.length,
-                },
-            )),
+            first_none_index: self.first_none_index,
         }
     }
     pub fn origin_unerase<LocalOrigin, ItemUnerased>(
@@ -1695,48 +1441,36 @@ impl<Item, Part> Buf<Origin<Erased, Part>, Item> {
         ) -> (ItemUnerased, Origin_uneraser<LocalOrigin>),
     ) -> Buf<Origin<LocalOrigin, Part>, ItemUnerased> {
         Buf {
+            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
             // the optimizer should be able to figure out that the atual memory does not change here
             // when the `item_unerase` really justs unerases origins.
             // If it can't, look into branching on if ItemUnerased has the same size and alignment
-            // and transmute the vacant items instead of ::uninit()
+            // and transmute
             items: std::iter::Iterator::collect(std::iter::Iterator::map(
-                std::iter::Iterator::enumerate(std::iter::IntoIterator::into_iter(self.items)),
-                |(item_index, item)| {
-                    if std::iter::Iterator::any(&mut self.vacant.iter(), |vacant_range| {
-                        vacant_range.to_range().contains(&item_index)
-                    }) {
-                        std::mem::MaybeUninit::uninit()
-                    } else {
-                        std::mem::MaybeUninit::new(
-                            item_unerase(
-                                // Unset_slot<Erased> and Unset_span<Erased> cannot be created
-                                // outside of this module
-                                unsafe { item.assume_init() },
-                                Origin_uneraser(uneraser.0),
-                            )
-                            .0,
-                        )
+                std::iter::IntoIterator::into_iter(self.items),
+                |item| match item {
+                    std::option::Option::None => std::option::Option::None,
+                    std::option::Option::Some(item) => {
+                        std::option::Option::Some(item_unerase(item, Origin_uneraser(uneraser.0)).0)
                     }
                 },
             )),
-            vacant: self.vacant,
+            first_none_index: self.first_none_index,
         }
-        .origin_unerase_keep_items(uneraser)
     }
 }
 
-impl<Origin, Occupancy> Slot_with_occupancy<Origin, Occupancy> {
+impl<Origin> Slot<Origin> {
     /// use with caution. duplicate use or out-of-bounds of the given index can lead to UB.
     /// consider making it unsafe and exposing it
-    fn from_index(index: u32) -> Slot_with_occupancy<Origin, Occupancy> {
-        Slot_with_occupancy {
+    fn from_index(index: u32) -> Slot<Origin> {
+        Slot {
             origin: std::marker::PhantomData::<Origin>,
-            occupancy: std::marker::PhantomData::<Occupancy>,
             index: index,
         }
     }
-    pub fn to_span(self) -> Span_with_occupancy<Origin, Occupancy> {
-        Span_with_occupancy {
+    pub fn to_span(self) -> Span<Origin> {
+        Span {
             start: self,
             length: std::num::NonZeroU32::MIN,
         }
@@ -1757,13 +1491,12 @@ impl<Part> Slot<Origin<Erased, Part>> {
     ) -> Slot<Origin<LocalOrigin, Part>> {
         Slot {
             origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
-            occupancy: self.occupancy,
             index: self.index,
         }
     }
 }
 
-impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
+impl<Origin> Span<Origin> {
     pub fn to_range(&self) -> std::ops::Range<usize> {
         let start_index = self.start.index as usize;
         start_index..(start_index + self.length.get() as usize)
@@ -1777,39 +1510,25 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
     pub fn end_index_usize(&self) -> usize {
         self.start.index as usize + p32_predecessor(self.length) as usize
     }
-    pub fn split_start(
-        self,
-    ) -> Record·after·start<
-        Opt<Span_with_occupancy<Origin, Occupancy>>,
-        Slot_with_occupancy<Origin, Occupancy>,
-    > {
+    pub fn split_start(self) -> Record·after·start<Opt<Span<Origin>>, Slot<Origin>> {
         Record·after·start {
             after: match std::num::NonZeroU32::new(p32_predecessor(self.length)) {
                 std::option::Option::None => Opt::No(()),
-                std::option::Option::Some(after_length) => Opt::Yes(Span_with_occupancy {
-                    start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
-                        self.start.index + 1,
-                    ),
+                std::option::Option::Some(after_length) => Opt::Yes(Span {
+                    start: Slot::<Origin>::from_index(self.start.index + 1),
                     length: after_length,
                 }),
             },
             start: self.start,
         }
     }
-    pub fn split_end(
-        self,
-    ) -> Record·before·end<
-        Opt<Span_with_occupancy<Origin, Occupancy>>,
-        Slot_with_occupancy<Origin, Occupancy>,
-    > {
+    pub fn split_end(self) -> Record·before·end<Opt<Span<Origin>>, Slot<Origin>> {
         Record·before·end {
-            end: Slot_with_occupancy::<Origin, Occupancy>::from_index(self.end_index()),
+            end: Slot::<Origin>::from_index(self.end_index()),
             before: match std::num::NonZeroU32::new(p32_predecessor(self.length)) {
                 std::option::Option::None => Opt::No(()),
-                std::option::Option::Some(before_length) => Opt::Yes(Span_with_occupancy {
-                    start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
-                        self.start.index - 1,
-                    ),
+                std::option::Option::Some(before_length) => Opt::Yes(Span {
+                    start: Slot::<Origin>::from_index(self.start.index - 1),
                     length: before_length,
                 }),
             },
@@ -1818,25 +1537,18 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
     pub fn split_after_length_positive(
         self,
         start_length_or_greater: std::num::NonZeroU32,
-    ) -> Record·after·start<
-        Opt<Span_with_occupancy<Origin, Occupancy>>,
-        Span_with_occupancy<Origin, Occupancy>,
-    > {
+    ) -> Record·after·start<Opt<Span<Origin>>, Span<Origin>> {
         let start_length =
             <std::num::NonZeroU32 as std::cmp::Ord>::min(start_length_or_greater, self.length);
         Record·after·start {
             after: match std::num::NonZeroU32::new(self.length.get() - start_length.get()) {
                 std::option::Option::None => Opt::No(()),
-                std::option::Option::Some(after_length) => {
-                    Opt::Yes(Span_with_occupancy::<Origin, Occupancy> {
-                        start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
-                            self.start.index + start_length.get(),
-                        ),
-                        length: after_length,
-                    })
-                }
+                std::option::Option::Some(after_length) => Opt::Yes(Span::<Origin> {
+                    start: Slot::<Origin>::from_index(self.start.index + start_length.get()),
+                    length: after_length,
+                }),
             },
-            start: Span_with_occupancy::<Origin, Occupancy> {
+            start: Span::<Origin> {
                 start: self.start,
                 length: start_length,
             },
@@ -1845,28 +1557,21 @@ impl<Origin, Occupancy> Span_with_occupancy<Origin, Occupancy> {
     pub fn split_before_end_length_positive(
         self,
         end_length_or_greater: std::num::NonZeroU32,
-    ) -> Record·before·end<
-        Opt<Span_with_occupancy<Origin, Occupancy>>,
-        Span_with_occupancy<Origin, Occupancy>,
-    > {
+    ) -> Record·before·end<Opt<Span<Origin>>, Span<Origin>> {
         let end_length =
             <std::num::NonZeroU32 as std::cmp::Ord>::min(end_length_or_greater, self.length);
         let before_length = self.length.get() - end_length.get();
         Record·before·end {
-            end: Span_with_occupancy::<Origin, Occupancy> {
-                start: Slot_with_occupancy::<Origin, Occupancy>::from_index(
-                    self.start.index + before_length,
-                ),
+            end: Span::<Origin> {
+                start: Slot::<Origin>::from_index(self.start.index + before_length),
                 length: end_length,
             },
             before: match std::num::NonZeroU32::new(before_length) {
                 std::option::Option::None => Opt::No(()),
-                std::option::Option::Some(before_length) => {
-                    Opt::Yes(Span_with_occupancy::<Origin, Occupancy> {
-                        start: self.start,
-                        length: before_length,
-                    })
-                }
+                std::option::Option::Some(before_length) => Opt::Yes(Span::<Origin> {
+                    start: self.start,
+                    length: before_length,
+                }),
             },
         }
     }
@@ -1894,7 +1599,7 @@ impl<Part> Span<Origin<Erased, Part>> {
     }
 }
 
-impl<Origin, Occupancy> Opt<&Span_with_occupancy<Origin, Occupancy>> {
+impl<Origin> Opt<&Span<Origin>> {
     pub fn to_range(self) -> std::ops::Range<usize> {
         match self {
             Opt::No(()) => <std::ops::Range<usize> as std::default::Default>::default(),
@@ -2433,18 +2138,6 @@ pub fn slot_to_span<Origin>(slot: Slot<Origin>) -> Span<Origin> {
     slot.to_span()
 }
 
-pub fn unset_slot_to_span<Origin>(slot: Unset_slot<Origin>) -> Unset_span<Origin> {
-    slot.to_span()
-}
-pub fn unset_slot_index<Origin>(
-    slot: Unset_slot<Origin>,
-) -> Record·index·slot<u32, Unset_slot<Origin>> {
-    Record·index·slot {
-        index: slot.index,
-        slot: slot,
-    }
-}
-
 pub fn span_length<Origin>(span: Span<Origin>) -> Record·length·span<P32, Span<Origin>> {
     Record·length·span {
         length: span.length,
@@ -2498,8 +2191,31 @@ pub fn opt_span_fold<Origin, State>(
         Fn<Record·slot·state<Slot<Origin>, State>, State>,
     >,
 ) -> State {
+    match span {
+        Opt::No(()) => initial_state,
+        Opt::Yes(span) => span_fold(Record·direction·span·state·step {
+            direction: direction,
+            span: span,
+            state: initial_state,
+            step: step,
+        }),
+    }
+}
+pub fn span_fold<Origin, State>(
+    Record·direction·span·state·step {
+        direction,
+        span,
+        state: initial_state,
+        step,
+    }: Record·direction·span·state·step<
+        Choice·Down·Up<Record, Record>,
+        Span<Origin>,
+        State,
+        Fn<Record·slot·state<Slot<Origin>, State>, State>,
+    >,
+) -> State {
     iterator_fold_in_direction(
-        span.as_ref().to_range_u32(),
+        span.to_range_u32(),
         direction,
         initial_state,
         |state, index| {
@@ -2613,74 +2329,6 @@ pub fn opt_span_origin_unerase<LocalOrigin, Part>(
     }
 }
 
-pub fn unset_span_length<Origin>(
-    span: Unset_span<Origin>,
-) -> Record·length·span<P32, Unset_span<Origin>> {
-    Record·length·span {
-        length: span.length,
-        span: span,
-    }
-}
-pub fn opt_unset_span_length<Origin>(
-    span: Opt<Unset_span<Origin>>,
-) -> Record·length·span<U32, Opt<Unset_span<Origin>>> {
-    Record·length·span {
-        length: span.as_ref().length(),
-        span: span,
-    }
-}
-pub fn unset_span_start<Origin>(
-    span: Unset_span<Origin>,
-) -> Record·after·start<Opt<Unset_span<Origin>>, Unset_slot<Origin>> {
-    span.split_start()
-}
-pub fn unset_span_end<Origin>(
-    span: Unset_span<Origin>,
-) -> Record·before·end<Opt<Unset_span<Origin>>, Unset_slot<Origin>> {
-    span.split_end()
-}
-pub fn unset_span_start_of_length_positive<Origin>(
-    Record·length·span {
-        length: start_length,
-        span,
-    }: Record·length·span<P32, Unset_span<Origin>>,
-) -> Record·after·start<Opt<Unset_span<Origin>>, Unset_span<Origin>> {
-    span.split_after_length_positive(start_length)
-}
-pub fn unset_span_end_of_length_positive<Origin>(
-    Record·length·span {
-        length: start_length,
-        span,
-    }: Record·length·span<P32, Unset_span<Origin>>,
-) -> Record·before·end<Opt<Unset_span<Origin>>, Unset_span<Origin>> {
-    span.split_before_end_length_positive(start_length)
-}
-pub fn opt_unset_span_fold<Origin, State>(
-    Record·direction·span·state·step {
-        direction,
-        span,
-        state: initial_state,
-        step,
-    }: Record·direction·span·state·step<
-        Choice·Down·Up<Record, Record>,
-        Opt<Unset_span<Origin>>,
-        State,
-        Fn<Record·slot·state<Unset_slot<Origin>, State>, State>,
-    >,
-) -> State {
-    iterator_fold_in_direction(
-        span.as_ref().to_range_u32(),
-        direction,
-        initial_state,
-        |state, index| {
-            step(Record·slot·state {
-                state,
-                slot: Unset_slot::<Origin>::from_index(index),
-            })
-        },
-    )
-}
-
 pub fn origin_rid<LocalOrigin, Part>(_: Origin<LocalOrigin, Part>) -> Record {}
 
 pub fn origin_isolate_constant<LocalOrigin, ValueErased>(
@@ -2767,55 +2415,6 @@ pub fn buf_remove<Item, Origin>(
         item: item,
     }
 }
-pub fn buf_unset<Item, Origin>(
-    Record·buf·slot { mut buf, slot }: Record·buf·slot<Buf<Origin, Item>, Slot<Origin>>,
-) -> Record·buf·item·slot<Buf<Origin, Item>, Item, Unset_slot<Origin>> {
-    let item = buf.unset(slot);
-    Record·buf·item·slot {
-        buf: buf,
-        item: item.item,
-        slot: item.slot,
-    }
-}
-pub fn buf_span_unset<Item, Origin>(
-    Record·buf·item_rid·span {
-        mut buf,
-        item_rid,
-        span,
-    }: Record·buf·item_rid·span<Buf<Origin, Item>, Fn<Item, Record>, Span<Origin>>,
-) -> Record·buf·span<Buf<Origin, Item>, Unset_span<Origin>> {
-    let unset = buf.span_unset(span, item_rid);
-    Record·buf·span {
-        buf: buf,
-        span: unset,
-    }
-}
-pub fn buf_opt_span_unset<Item, Origin>(
-    Record·buf·item_rid·span {
-        mut buf,
-        item_rid,
-        span,
-    }: Record·buf·item_rid·span<Buf<Origin, Item>, Fn<Item, Record>, Opt<Span<Origin>>>,
-) -> Record·buf·span<Buf<Origin, Item>, Opt<Unset_span<Origin>>> {
-    let unset = buf.opt_span_unset(span, item_rid);
-    Record·buf·span {
-        buf: buf,
-        span: unset,
-    }
-}
-pub fn buf_set<Item, Origin>(
-    Record·buf·new·slot {
-        mut buf,
-        slot,
-        new: item,
-    }: Record·buf·new·slot<Buf<Origin, Item>, Item, Unset_slot<Origin>>,
-) -> Record·buf·slot<Buf<Origin, Item>, Slot<Origin>> {
-    let set_slot = buf.set(slot, item);
-    Record·buf·slot {
-        buf: buf,
-        slot: set_slot,
-    }
-}
 pub fn buf_span_rid<Item, Origin>(
     Record·buf·item_rid·span {
         mut buf,
@@ -2834,33 +2433,6 @@ pub fn buf_opt_span_rid<Item, Origin>(
     }: Record·buf·item_rid·span<Buf<Origin, Item>, Fn<Item, Record>, Opt<Span<Origin>>>,
 ) -> Buf<Origin, Item> {
     buf.opt_span_rid(span, item_rid);
-    buf
-}
-pub fn buf_unset_slot_rid<Item, Origin>(
-    Record·buf·slot {
-        mut buf,
-        slot: slot_to_vacate,
-    }: Record·buf·slot<Buf<Origin, Item>, Unset_slot<Origin>>,
-) -> Buf<Origin, Item> {
-    buf.unset_slot_rid(slot_to_vacate);
-    buf
-}
-pub fn buf_unset_span_rid<Item, Origin>(
-    Record·buf·span {
-        span: span_to_vacate,
-        mut buf,
-    }: Record·buf·span<Buf<Origin, Item>, Unset_span<Origin>>,
-) -> Buf<Origin, Item> {
-    buf.unset_span_rid(span_to_vacate);
-    buf
-}
-pub fn buf_opt_unset_span_rid<Item, Origin>(
-    Record·buf·span {
-        span: span_to_vacate,
-        mut buf,
-    }: Record·buf·span<Buf<Origin, Item>, Opt<Unset_span<Origin>>>,
-) -> Buf<Origin, Item> {
-    buf.opt_unset_span_rid(span_to_vacate);
     buf
 }
 pub fn buf_rid<Item, Origin>(_: Buf<Origin, Item>) -> Record {}
@@ -2888,42 +2460,6 @@ pub fn buf_add<Item, Origin>(
         slot: slot,
     }
 }
-pub fn buf_insert_unset<Item, Origin>(
-    mut buf: Buf<Origin, Item>,
-) -> Record·buf·slot<Buf<Origin, Item>, Unset_slot<Origin>> {
-    let slot = buf.insert_unset();
-    Record·buf·slot {
-        buf: buf,
-        slot: slot,
-    }
-}
-pub fn buf_add_unset<Item, Origin>(
-    mut buf: Buf<Origin, Item>,
-) -> Record·buf·slot<Buf<Origin, Item>, Unset_slot<Origin>> {
-    let slot = buf.add_unset();
-    Record·buf·slot {
-        buf: buf,
-        slot: slot,
-    }
-}
-pub fn buf_add_unset_length<Item, Origin>(
-    Record·buf·length { length, mut buf }: Record·buf·length<Buf<Origin, Item>, U32>,
-) -> Record·buf·span<Buf<Origin, Item>, Opt<Unset_span<Origin>>> {
-    let span = buf.add_unset_length(length);
-    Record·buf·span {
-        buf: buf,
-        span: span,
-    }
-}
-pub fn buf_add_unset_length_positive<Item, Origin>(
-    Record·buf·length { length, mut buf }: Record·buf·length<Buf<Origin, Item>, P32>,
-) -> Record·buf·span<Buf<Origin, Item>, Unset_span<Origin>> {
-    let span = buf.add_unset_length_positive(length);
-    Record·buf·span {
-        buf: buf,
-        span: span,
-    }
-}
 pub fn buf_add_array<Item, Origin, Record>(
     Record·buf·new { mut buf, new }: Record·buf·new<Buf<Origin, Item>, Array<Item, Record>>,
 ) -> Record·buf·span<Buf<Origin, Item>, Span<Origin>> {
@@ -2948,7 +2484,7 @@ pub fn buf_char_add_str<Origin>(
 pub fn buf_opt_span_reverse<Item, Origin>(
     Record·buf·span { mut buf, mut span }: Record·buf·span<Buf<Origin, Item>, Opt<Span<Origin>>>,
 ) -> Record·buf·span<Buf<Origin, Item>, Opt<Span<Origin>>> {
-    buf.opt_span_slice_mut(&mut span).reverse();
+    buf.opt_span_slice_option_mut(&mut span).reverse();
     Record·buf·span {
         buf: buf,
         span: span,
@@ -2957,7 +2493,7 @@ pub fn buf_opt_span_reverse<Item, Origin>(
 pub fn buf_span_reverse<Item, Origin>(
     Record·buf·span { mut buf, mut span }: Record·buf·span<Buf<Origin, Item>, Span<Origin>>,
 ) -> Record·buf·span<Buf<Origin, Item>, Span<Origin>> {
-    buf.span_slice_mut(&mut span).reverse();
+    buf.span_slice_option_mut(&mut span).reverse();
     Record·buf·span {
         buf: buf,
         span: span,
@@ -3166,17 +2702,10 @@ pub fn buf_opt_span_add_buf_opt_span<Origin, SourceOrigin, Item>(
         Opt<Span<SourceOrigin>>,
         Opt<Span<Origin>>,
     >,
-) -> Record·buf·source·source_span·span<
-    Buf<Origin, Item>,
-    Buf<SourceOrigin, Item>,
-    Opt<Unset_span<SourceOrigin>>,
-    Opt<Span<Origin>>,
-> {
-    let (source_span, combined_span) =
-        buf.opt_span_add_buf_opt_span(span, &mut source, source_span);
-    Record·buf·source·source_span·span {
+) -> Record·buf·source·span<Buf<Origin, Item>, Buf<SourceOrigin, Item>, Opt<Span<Origin>>> {
+    let combined_span = buf.opt_span_add_buf_opt_span(span, &mut source, source_span);
+    Record·buf·source·span {
         source: source,
-        source_span: source_span,
         span: combined_span,
         buf: buf,
     }
@@ -3193,16 +2722,10 @@ pub fn buf_span_add_buf_opt_span<Origin, SourceOrigin, Item>(
         Opt<Span<SourceOrigin>>,
         Span<Origin>,
     >,
-) -> Record·buf·source·source_span·span<
-    Buf<Origin, Item>,
-    Buf<SourceOrigin, Item>,
-    Opt<Unset_span<SourceOrigin>>,
-    Span<Origin>,
-> {
-    let (source_span, combined_span) = buf.span_add_buf_opt_span(span, &mut source, source_span);
-    Record·buf·source·source_span·span {
+) -> Record·buf·source·span<Buf<Origin, Item>, Buf<SourceOrigin, Item>, Span<Origin>> {
+    let combined_span = buf.span_add_buf_opt_span(span, &mut source, source_span);
+    Record·buf·source·span {
         source: source,
-        source_span: source_span,
         span: combined_span,
         buf: buf,
     }
@@ -3219,16 +2742,10 @@ pub fn buf_opt_span_add_buf_span<Origin, SourceOrigin, Item>(
         Span<SourceOrigin>,
         Opt<Span<Origin>>,
     >,
-) -> Record·buf·source·source_span·span<
-    Buf<Origin, Item>,
-    Buf<SourceOrigin, Item>,
-    Unset_span<SourceOrigin>,
-    Span<Origin>,
-> {
-    let (source_span, combined_span) = buf.opt_span_add_buf_span(span, &mut source, source_span);
-    Record·buf·source·source_span·span {
+) -> Record·buf·source·span<Buf<Origin, Item>, Buf<SourceOrigin, Item>, Span<Origin>> {
+    let combined_span = buf.opt_span_add_buf_span(span, &mut source, source_span);
+    Record·buf·source·span {
         source: source,
-        source_span: source_span,
         span: combined_span,
         buf: buf,
     }
@@ -3245,16 +2762,10 @@ pub fn buf_span_add_buf_span<Origin, SourceOrigin, Item>(
         Span<SourceOrigin>,
         Span<Origin>,
     >,
-) -> Record·buf·source·source_span·span<
-    Buf<Origin, Item>,
-    Buf<SourceOrigin, Item>,
-    Unset_span<SourceOrigin>,
-    Span<Origin>,
-> {
-    let (source_span, combined_span) = buf.span_add_buf_span(span, &mut source, source_span);
-    Record·buf·source·source_span·span {
+) -> Record·buf·source·span<Buf<Origin, Item>, Buf<SourceOrigin, Item>, Span<Origin>> {
+    let combined_span = buf.span_add_buf_span(span, &mut source, source_span);
+    Record·buf·source·span {
         source: source,
-        source_span: source_span,
         span: combined_span,
         buf: buf,
     }
@@ -3312,63 +2823,6 @@ pub fn buf_opt_span_add_own_opt_span<Item, Origin>(
         buf: buf,
     }
 }
-pub fn buf_unset_span_add_own_span<Item, Origin>(
-    Record·buf·end·start {
-        end,
-        start,
-        mut buf,
-    }: Record·buf·end·start<Buf<Origin, Item>, Unset_span<Origin>, Unset_span<Origin>>,
-) -> Record·buf·span<Buf<Origin, Item>, Unset_span<Origin>> {
-    let combined_span = buf.unset_span_add_own_span(start, end);
-    Record·buf·span {
-        span: combined_span,
-        buf: buf,
-    }
-}
-pub fn buf_unset_span_add_own_opt_span<Item, Origin>(
-    Record·buf·end·start {
-        end,
-        start,
-        mut buf,
-    }: Record·buf·end·start<Buf<Origin, Item>, Opt<Unset_span<Origin>>, Unset_span<Origin>>,
-) -> Record·buf·span<Buf<Origin, Item>, Unset_span<Origin>> {
-    let combined_span = buf.unset_span_add_own_opt_span(start, end);
-    Record·buf·span {
-        span: combined_span,
-        buf: buf,
-    }
-}
-pub fn buf_opt_unset_span_add_own_span<Item, Origin>(
-    Record·buf·end·start {
-        end,
-        start,
-        mut buf,
-    }: Record·buf·end·start<Buf<Origin, Item>, Unset_span<Origin>, Opt<Unset_span<Origin>>>,
-) -> Record·buf·span<Buf<Origin, Item>, Unset_span<Origin>> {
-    let combined_span = buf.opt_unset_span_add_own_span(start, end);
-    Record·buf·span {
-        span: combined_span,
-        buf: buf,
-    }
-}
-pub fn buf_opt_unset_span_add_own_opt_span<Item, Origin>(
-    Record·buf·end·start {
-        end,
-        start,
-        mut buf,
-    }: Record·buf·end·start<
-        Buf<Origin, Item>,
-        Opt<Unset_span<Origin>>,
-        Opt<Unset_span<Origin>>,
-    >,
-) -> Record·buf·span<Buf<Origin, Item>, Opt<Unset_span<Origin>>> {
-    let combined_span = buf.opt_unset_span_add_own_opt_span(start, end);
-    Record·buf·span {
-        span: combined_span,
-        buf: buf,
-    }
-}
-
 pub fn buf_span_move_to_vacant<Item, Origin>(
     Record·buf·span { span, mut buf }: Record·buf·span<Buf<Origin, Item>, Span<Origin>>,
 ) -> Record·buf·span<Buf<Origin, Item>, Span<Origin>> {
@@ -3438,10 +2892,7 @@ fn buf_origin_isolate<Item, ItemErased, LocalOrigin, Part>(
         Fn<Item, Origin_isolated<LocalOrigin, ItemErased>>,
     >,
 ) -> Origin_isolated<LocalOrigin, Buf_origin_erased<Part, ItemErased>> {
-    // safe because origin_unerase is not public
-    // and called only from sloe which follows stricter rules (linear types)
-    // which prevent unset slots and spans to be scrapped (they cannot be origin-isolated)
-    unsafe { buf.origin_isolate_assume_no_unset(item_isolate) }
+    buf.origin_isolate(item_isolate)
 }
 pub fn buf_origin_unerase_keep_items<Item, LocalOrigin, Part>(
     Record·buf·uneraser { buf, uneraser }: Record·buf·uneraser<
@@ -3524,8 +2975,7 @@ mod core_test {
         for slot in slots {
             buf.remove(slot);
         }
-        std::assert_eq!(buf.vacant_spans().len(), 0);
-        std::assert_eq!(buf.maybe_uninit_items().len(), 0);
+        std::assert_eq!(buf.as_slice().len(), 0);
         crate::core::buf_rid(buf);
     }
     #[test]
