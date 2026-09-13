@@ -613,6 +613,9 @@ export function buf_span_rid(unset) {
       unset.item_rid(/** @type $Item */ (unset.buf[i]));
     }
     unset.buf.length -= unset.span.length;
+    while (unset.buf[unset.buf.length - 1] === null) {
+      unset.buf.length -= 1;
+    }
   } else {
     for (let i = unset.span.start; i < unset.span.start + unset.span.length; i++) {
       unset.item_rid(/** @type $Item */ (unset.buf[i]));
@@ -739,9 +742,17 @@ export function buf_opt_span_add_array(add) {
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} remove @returns {{ buf: Buf<$Origin, $Item>, item: $Item, }} */
 export function buf_remove(remove) {
-  let item = /** @type {$Item} */ (remove.buf[remove.slot]);
-  remove.buf[remove.slot] = null;
-  return { buf: remove.buf, item: item };
+  if (remove.slot + 1 < remove.buf.length) {
+    let item = /** @type {$Item} */ (remove.buf[remove.slot]);
+    remove.buf[remove.slot] = null;
+    return { buf: remove.buf, item: item };
+  } else {
+    let item = /** @type {$Item} */ (remove.buf.pop());
+    while (remove.buf[remove.buf.length - 1] === null) {
+      remove.buf.length -= 1;
+    }
+    return { buf: remove.buf, item: item };
+  }
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} move @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
 export function buf_span_move_to_end(move) {
@@ -790,6 +801,9 @@ export function buf_span_move_to_vacant(move) {
           move.buf[vacant_start + vacant_i] = move.buf[move.span.start + vacant_i];
         }
         move.buf.length -= move.span.length;
+        while (move.buf[move.buf.length - 1] === null) {
+          move.buf.length -= 1;
+        }
         return { buf: move.buf, span: { start: vacant_start, length: move.span.length } };
       }
     } else {
@@ -813,6 +827,9 @@ export function buf_opt_span_move_to_vacant(move) {
           move.buf[vacant_start + vacant_i] = move.buf[span.start + vacant_i];
         }
         move.buf.length -= span.length;
+        while (move.buf[move.buf.length - 1] === null) {
+          move.buf.length -= 1;
+        }
         return {
           buf: move.buf,
           span: { yes: { start: vacant_start, length: span.length } },

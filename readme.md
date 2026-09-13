@@ -804,8 +804,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- in js, insert rid_trailing_unset after remove
-
 - add `Buf-(opt-)span-update` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
