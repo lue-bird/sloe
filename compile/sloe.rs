@@ -13517,7 +13517,7 @@ You may also use it to adjust memory usage after `Buf-reuse` when the given `Uns
             CoreFnInfo {
                 name: "Buf-insert",
                 documentation: "Add a new item into the `Buf` and keep a slot to it,
-reusing vacant space earlier in the `Buf` when available.
+reusing unset space earlier in the `Buf` when available.
 Use `Buf-add` if you don't care about reuse.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13537,8 +13537,8 @@ Use `Buf-add` if you don't care about reuse.",
             },
             CoreFnInfo {
                 name: "Buf-add",
-                documentation: "Add a new item to the end of the `Buf` and keep a slot to it without trying to reuse already vacant slots.
-Can be faster than `Buf-insert` when you expect no vacant items or when all the storage gets scrapped soon anyway.",
+                documentation: "Add a new item to the end of the `Buf` and keep a slot to it without trying to reuse unset slots.
+Can be faster than `Buf-insert` when you expect no unset space or when all the storage gets scrapped soon anyway.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13557,7 +13557,7 @@ Can be faster than `Buf-insert` when you expect no vacant items or when all the 
             },
             CoreFnInfo {
                 name: "Buf-add-array",
-                documentation: "Add a given `Array` of new items to the end of the `Buf` and keep a span to it without trying to reuse already vacant slots.
+                documentation: "Add a given `Array` of new items to the end of the `Buf` and keep a span to it without trying to reuse unset slots.
 Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13577,8 +13577,7 @@ Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
             },
             CoreFnInfo {
                 name: "Buf-remove",
-                documentation: "Vacate and retrieve an item from the `Buf` at a given slot (the inverse of `Buf-insert`/`Buf-add`).
-Short for `Buf-unset` followed by `Buf-unset-slot-rid`",
+                documentation: "Unset and retrieve an item from the `Buf` at a given slot (the inverse of `Buf-insert`/`Buf-add`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13900,8 +13899,9 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-opt-span-move-to-vacant",
-                documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
+                name: "Buf-opt-span-move-to-unset",
+                documentation: "Move the given span to a unset range if there is unset space available where moving the given span to would reduce the amount of unset space.
+Try to use sparingly",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13919,8 +13919,8 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-span-move-to-vacant",
-                documentation: "Move the given span to a vacant range if there is vacant space available where moving the given span to would reduce the amount of vacant space.",
+                name: "Buf-span-move-to-unset",
+                documentation: "Move the given span to a unset range if there is unset space available where moving the given span to would reduce the amount of unset space.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13978,7 +13978,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
             CoreFnInfo {
                 name: "Buf-span-add-own-span",
                 documentation: "Append the items of a given end span directly after the start span, returning the combined span.
-If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
+If start and end spans are not already connected, both are appended at the end and their original spans are unset.
 As an example, you could implement `Buf-span-add` in sloe itself as
 ```sloe
 fn Buf-span-add
@@ -14018,7 +14018,7 @@ fn Buf-span-add
             CoreFnInfo {
                 name: "Buf-span-add-own-opt-span",
                 documentation: "Append the items of a given end span directly after the start span, returning the combined span.
-If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
+If start and end spans are not already connected, both are appended at the end and their original spans are unset.
 The most common use case is re-combining spans that have been split up with e.g. `Span-start` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -14040,7 +14040,7 @@ The most common use case is re-combining spans that have been split up with e.g.
             CoreFnInfo {
                 name: "Buf-opt-span-add-own-span",
                 documentation: "Append the items of a given end span directly after the start span, returning the combined span.
-If start and end spans are not already connected, both are appended at the end and their original spans are vacated.
+If start and end spans are not already connected, both are appended at the end and their original spans are unset.
 The most common use case is re-combining spans that have been split up with e.g. `Span-end` (see also `Slot-to-span`)",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -14062,7 +14062,7 @@ The most common use case is re-combining spans that have been split up with e.g.
             CoreFnInfo {
                 name: "Buf-opt-span-add-own-opt-span",
                 documentation: "Append the items of a given end span directly after the start span, returning the combined span.
-If start and end spans are not already connected, both are appended at the end and their original spans are vacated",
+If start and end spans are not already connected, both are appended at the end and their original spans are unset",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (

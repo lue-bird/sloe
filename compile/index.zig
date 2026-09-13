@@ -402,23 +402,23 @@ test "unset_slice castOrRidAndAllocate fallback" {
     try std.testing.expect(@intFromPtr(unset_slice_u32.undefined_items.ptr) != @intFromPtr(unset_slice_f128.undefined_items.ptr));
     unset_slice_f128.rid(allocator);
 }
-test "buf insert, add, take, notVacantCount, rid" {
+test "buf insert, add, take, occupiedCount, rid" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
-    try std.testing.expectEqual(0, buf.notVacantCount());
+    try std.testing.expectEqual(0, buf.occupiedCount());
     const slot0 = try buf.add(allocator, 123);
     const slot1 = try buf.add(allocator, 456);
-    try std.testing.expectEqual(2, buf.notVacantCount());
+    try std.testing.expectEqual(2, buf.occupiedCount());
     try std.testing.expectEqual(123, buf.remove(allocator, slot0));
-    try std.testing.expectEqual(1, buf.notVacantCount());
+    try std.testing.expectEqual(1, buf.occupiedCount());
     const slot0_reused = try buf.insert(allocator, 789);
     try std.testing.expectEqual(0, slot0_reused.index);
     try std.testing.expectEqual(789, buf.remove(allocator, slot0_reused));
-    try std.testing.expectEqual(1, buf.notVacantCount());
+    try std.testing.expectEqual(1, buf.occupiedCount());
     try std.testing.expectEqual(456, buf.remove(allocator, slot1));
-    try std.testing.expectEqual(0, buf.notVacantCount());
+    try std.testing.expectEqual(0, buf.occupiedCount());
     buf.rid(allocator);
 }
 test "buf add to span" {
@@ -432,7 +432,7 @@ test "buf add to span" {
     try std.testing.expectEqual(4, try buf.remove(allocator, slot_causing_span_move_to_end));
     try std.testing.expectEqual(2, span1.start.index);
     try std.testing.expectEqual(2, span1.length.positive);
-    const span1_moved = buf.spanMoveToVacant(span1);
+    const span1_moved = buf.spanMoveToUnset(span1);
     try std.testing.expectEqual(0, span1_moved.start.index);
     try std.testing.expectEqual(2, span1_moved.length.positive);
     buf.rid(allocator);
@@ -517,7 +517,7 @@ test "buf add remove stress test" {
         _ = try buf.remove(allocator, slot);
     }
     slots.deinit(allocator);
-    try std.testing.expectEqual(0, buf.vacant.items.len);
+    try std.testing.expectEqual(0, buf.unset.items.len);
     try std.testing.expectEqual(0, buf.items.items.len);
     buf.rid(allocator);
 }
@@ -567,7 +567,7 @@ test "buf into unset slice then reuse" {
 test "unset_slice_cast_or_rid_and_allocate u64 to i63" {
     const allocator = std.testing.allocator;
     const unset_slice_u64 = try core.unset_slice_allocate_length(u64, allocator, 20);
-    const unset_slice_u64_length = unset_slice_u64.length();
+    const unset_slice_u64_length = unset_slice_u64.undefined_items.len;
     try std.testing.expect(unset_slice_u64_length >= 20);
     const unset_slice_i63 = try core.unset_slice_cast_or_rid_and_allocate(u64, i63, allocator, unset_slice_u64);
     // memory is reused, not re-allocated
@@ -590,7 +590,7 @@ test "unset_slice_cast_or_rid_and_allocate u64 to i63" {
 test "unset_slice_cast_or_rid_and_allocate u64 to struct{u32,u16}" {
     const allocator = std.testing.allocator;
     const unset_slice_u64 = try core.unset_slice_allocate_length(u64, allocator, 20);
-    const unset_slice_u64_length = unset_slice_u64.length();
+    const unset_slice_u64_length = unset_slice_u64.undefined_items.len;
     try std.testing.expect(unset_slice_u64_length >= 20);
     const unset_slice_tuple_u32_u16 = try core.unset_slice_cast_or_rid_and_allocate(u64, struct { u32, u16 }, allocator, unset_slice_u64);
     const Origin = enum { origin };

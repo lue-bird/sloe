@@ -1009,7 +1009,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         &mut self,
         new_items: impl std::iter::Iterator<Item = Item> + std::clone::Clone,
     ) -> Opt<Span<LocalOrigin>> {
-        // can be optimized to only clone if there is actually existing vacant space to occupy.
+        // can be optimized to only clone if there is actually existing unset space to occupy.
         // Might make sense to also benchmark with simply writing to the end, then relocating
         let std::option::Option::Some(new_length) =
             std::num::NonZeroU32::new(std::iter::Iterator::count(new_items.clone()) as u32)
@@ -1191,9 +1191,9 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     pub fn span_is_at_the_end_of_items(&self, span: &Span<LocalOrigin>) -> bool {
         (span.start.index as usize + span.length.get() as usize) < self.items.len()
     }
-    pub fn span_move_to_vacant(&mut self, span: Span<LocalOrigin>) -> Span<LocalOrigin> {
+    pub fn span_move_to_unset(&mut self, span: Span<LocalOrigin>) -> Span<LocalOrigin> {
         if !self.span_is_at_the_end_of_items(&span) {
-            // moving this span would not reduce the amount of vacant space
+            // moving this span would not reduce the amount of unset space
             return span;
         }
         // span is at the end of items
@@ -1286,25 +1286,19 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             Opt::Yes(start) => Opt::Yes(self.span_add_own_opt_span(start, end)),
         }
     }
-    pub fn vacant_count_usize(&self) -> usize {
+    pub fn unset_count_usize(&self) -> usize {
         std::iter::Iterator::count(std::iter::Iterator::filter(
             std::iter::Iterator::skip(self.items.iter(), self.first_none_index as usize),
-            |r| match r {
-                std::option::Option::None => true,
-                std::option::Option::Some(_) => false,
-            },
+            |option| option.is_none(),
         ))
     }
-    pub fn vacant_count_u32(&self) -> u32 {
-        self.vacant_count_usize() as u32
+    pub fn unset_count_u32(&self) -> u32 {
+        self.unset_count_usize() as u32
     }
     pub fn occupied_count_usize(&self) -> usize {
         std::iter::Iterator::count(std::iter::Iterator::filter(
             std::iter::Iterator::skip(self.items.iter(), self.first_none_index as usize),
-            |r| match r {
-                std::option::Option::None => false,
-                std::option::Option::Some(_) => true,
-            },
+            |option| option.is_some(),
         ))
     }
     /// The raw allocation. Can be used to create new Vecs or even
@@ -2766,16 +2760,16 @@ pub fn buf_opt_span_add_own_opt_span<Item, Origin>(
         buf: buf,
     }
 }
-pub fn buf_span_move_to_vacant<Item, Origin>(
+pub fn buf_span_move_to_unset<Item, Origin>(
     Record·buf·span { span, mut buf }: Record·buf·span<Buf<Origin, Item>, Span<Origin>>,
 ) -> Record·buf·span<Buf<Origin, Item>, Span<Origin>> {
-    let moved_span = buf.span_move_to_vacant(span);
+    let moved_span = buf.span_move_to_unset(span);
     Record·buf·span {
         span: moved_span,
         buf: buf,
     }
 }
-pub fn buf_opt_span_move_to_vacant<Item, Origin>(
+pub fn buf_opt_span_move_to_unset<Item, Origin>(
     Record·buf·span { span, mut buf }: Record·buf·span<Buf<Origin, Item>, Opt<Span<Origin>>>,
 ) -> Record·buf·span<Buf<Origin, Item>, Opt<Span<Origin>>> {
     match span {
@@ -2784,7 +2778,7 @@ pub fn buf_opt_span_move_to_vacant<Item, Origin>(
             buf: buf,
         },
         Opt::Yes(span) => {
-            let moved_span = buf.span_move_to_vacant(span);
+            let moved_span = buf.span_move_to_unset(span);
             Record·buf·span {
                 span: Opt::Yes(moved_span),
                 buf: buf,

@@ -41,9 +41,9 @@ The big advantage of this rule is how easy it is to understand and how much simp
 > Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
 ## concept: consecutive memory, stable index collection `Buf`
-A collection which can mark some ranges within itself as vacant without moving existing items around (thus invalidating their indexes).
+A collection which can mark some ranges within itself as unset without moving existing items around (thus invalidating their indexes).
 This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-span-rid`.
-Note that this functionality is entirely optional and you can just use it for temporary builders etc. which never vacate anything before they are scrapped.
+Note that this functionality is entirely optional and you can just use it for temporary builders etc. which never unset anything before they are scrapped.
 
 > Further reading if interested: This concept is often called slot map, reusing memory.
 > In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest). [Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
@@ -368,89 +368,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add field and variant rename and references
 - add code action for spreading a pattern variable
 - similarly, add "add remaining query cases" code action
-- add `Unset-untracked` API to make deconstructing Bufs less reliant on opitimizers figuring out that allocating and tracking vacant spans is useless when all those spans are deallocated anyway at the end.
-  ```sloe
-  ty Unset-untracked _origin
-      # scattered memory spaces whose locations are not tracked.
-      # This is effectively temporarily leaked memory
-      # which will only be reclaimed when you call `Buf-with-unset-untracked-rid`.
-      # As a result, be very careful when trying to keep a value of this type
-      # in persistent memory or simply avoid it.
-      # 
-      # The usual way to give back slots and spans is to use operations like
-      # `Buf-remove`, `Buf-unset-slot-rid`, `Buf-unset-span-rid` etc.
-      # However, this internally marks these spaces as vacant,
-      # and doing this work may hinder the optimizer in figurinng out
-      # that you for example want to scrap the whole Buf (which should be a no-op).
-      # ```sloe
-      # ^origin
-      # ? Buf-empty{u32} origin [buf]
-      # ? Buf-add .buf buf .new 20 u32 [.buf buf .slot slot0]
-      # ? Buf-add-array .buf buf .new ; 1 u32 ; 2 u32 [.buf buf .span span12]
-      # ? Buf-untrack .buf buf .slot slot0 [.buf buf .untracked untracked .item sum]
-      # ? (
-      #     Span-fold
-      #     .span span12
-      #     .state (.buf buf .untracked untracked .sum sum)
-      #     .step
-      #     [
-      #     .state (.buf Buf (Origin _origin, .), u32 .untracked Unset-untracked origin .sum sum u32)
-      #     .slot Slot origin
-      #     ]
-      #     ? Buf-untrack .buf buf .slot slot [.item item]
-      #     .buf buf
-      #     .untracked untracked
-      #     .sum U32-add-clamp .a sum .b item
-      #     )
-      # [.buf buf .untracked untracked .sum sum]
-      # Buf-with-unset-untracked-rid .buf buf .untracked untracked
-      # ``
-      # If you're wondering why this even needs to be a value in the first place:
-      # - silently leaking memory of a persistent Buf is fairly nasty. Now you have to store an `Unset-untracked` as a ~mark of shame~ reminder of which Buf may have unreachable memory
-      # - `Origin-unerase` requires and checks that `Buf-unerase` and similar can't hit unset memory. Having an `Unset-untracked` makes it so you can't pass this check
-  
-  fn Unset-untracked-none . : Unset-untracked _origin
-  fn Unset-untracked-merge
-      .a Unset-untracked _origin
-      .b Unset-untracked _origin
-      : Unset-untracked _origin
-  fn Buf-untrack
-      :
-      .buf Buf _origin, _item
-      .untracked Unset-untracked _origin
-      .item _item
-      # short for Buf-unset followed by Buf-unset-slot-untrack
-  fn Buf-unset-slot-untrack
-      .buf Buf _origin, _item
-      .span Unset-slot _origin
-      :
-      .buf Buf _origin, _item
-      .untracked Unset-untracked _origin
-  fn Buf-unset-span-untrack
-      .buf Buf _origin, _item
-      .span Unset-span _origin
-      :
-      .buf Buf _origin, _item
-      .untracked Unset-untracked _origin
-  fn Buf-opt-unset-span-untrack
-      .buf Buf _origin, _item
-      .span Opt Unset-span _origin
-      :
-      .buf Buf _origin, _item
-      .untracked Unset-untracked _origin
-  fn Buf-vacant-untrack
-      Buf _origin, _item
-      :
-      .buf Buf _origin, _item
-      .untracked Unset-untracked _origin
-  fn Buf-with-unset-untracked-rid
-      .buf Buf _origin, _item
-      .untracked Unset-untracked _origin
-      : .
-  ```
-  This still works with `Origin-erase` due to not being rid-able without ridding the Buf.
-  Open question: there could be an API to recover untracked unset spaces.
-  Is there a use-case? I believe not because otherwise you could have just used
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions Buf _expressions, Expression _expressions _patterns _types` doesn't exactly roll easily over one's keyboard
 - add `Set _origin, _item` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _item` where key is derived from item) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
   Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `Buf` is fast enough
@@ -476,21 +393,21 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   
   Open question of representation:
     - `Buf<{ count: u32/16, item: Item }>`:
-      Finding vacant slots takes linear time. Generally fast.
+      Finding unset slots takes linear time. Generally fast.
       Takes the least space on the stack
     - `{ items: Buf<Item>, counts: Buf<u32/16> }`:
-      Finding vacant slots takes linear time. Generally fastest.
+      Finding unset slots takes linear time. Generally fastest.
       A bit more error-prone than single buf
-    - `{ items: Buf<Item>, vacant: Buf<u32>, occoupied_counts: Buf<NonZeroU32/16> }`:
-      Finding vacant slots takes constant time but doesn't feel deterministic.
-      Generally fastest but vacating is more expensive.
+    - `{ items: Buf<Item>, unset: Buf<u32>, occoupied_counts: Buf<NonZeroU32/16> }`:
+      Finding unset slots takes constant time but doesn't feel deterministic.
+      Generally fastest but unsetting is more expensive.
       More error-prone than single or double-buf.
       Takes most space on the stack
     - `{ items: Buf<Item>, counts: Buf<{ range: Range, count: u32/16 }>`:
       Tough to handle and error-prone.
       Inefficient for cases where slots are handled one by one (no spans exist).
       Efficient for things like inline storage where spans are clearly defined.
-    - the above but with vacant ranges and occupied counts split
+    - the above but with unset ranges and occupied counts split
 
   I think I prefer not storing counts in ranges, as for example for string interning, you could store counted spans in separate collections:
   ```sloe
@@ -804,6 +721,8 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- add `Buf-update` which can be used
+
 - add `Buf-(opt-)span-update` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
 - add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
@@ -812,7 +731,7 @@ cargo install --offline --debug --path . sloe
 
 - change unicode \u{hex} syntax to \u() because {} is used for types
 
-- add operations like `Buf-(opt-)span-insert` etc.
+- add operations like `Buf-(opt-)span-prepend` and change `Buf-(opt-)span-add` to try reuse unset space
 
 - (only if we can ensure no unset slots and spans exist!) add `Buf-fold-map`, `Buf-map`, `Buf-fold` (not sure). They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and make buf handling less painful
 
@@ -822,7 +741,7 @@ cargo install --offline --debug --path . sloe
 
 - find some way to generate nicer IDE type displays. Maybe tabs work?
 
-- consistently rename "vacant" to "unset"
+- change core.zig Buf implementation to match rust (or change both to a better but equivalent implementation)
 
 - remove Origin-erased-rid. It can't really be made useful
 

@@ -424,12 +424,12 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         /// Assumed to have a .items.len that fits into a u32.
         /// .items.capacity has no such constraint.
         /// if you want to directly access .items, be extra aware of
-        ///   - considering .vacant
+        ///   - considering .unset
         ///   - considering newly-created Unset_slots and similar
         ///   - the ABA problem
-        ///     (e.g. a pointer to an item could point to a wrong, new item instead of invalid memory when its index was vacated and re-populated in between)
+        ///     (e.g. a pointer to an item could point to a wrong, new item instead of invalid memory when its index was unset and re-occupied in between)
         items: std.ArrayList(@"%Item"),
-        vacant: std.ArrayList(Range),
+        unset: std.ArrayList(Range),
         const origin = @"%Origin";
 
         pub fn preAllocateAtLeast(
@@ -442,16 +442,16 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         pub fn preAllocationRid(@"%buf": *@This(), @"%allocator": std.mem.Allocator) error{OutOfMemory}!void {
             return @"%buf".items.shrinkAndFreePrecise(@"%allocator", @"%buf".items.items.len);
         }
-        pub fn vacantSlotCount(@"%buf": @This()) u32 {
+        pub fn unsetCount(@"%buf": @This()) u32 {
             var @"%combined_length": u32 = 0;
-            for (@"%buf".vacant.items) |@"%vacant"| {
-                @"%combined_length" += @"%vacant".length.positive;
+            for (@"%buf".unset.items) |@"%unset"| {
+                @"%combined_length" += @"%unset".length.positive;
             }
             return @"%combined_length";
         }
         /// counts both occupied positions and unset ones referenced by `unset-slot` and `unset-span`s
-        pub fn notVacantCount(@"%buf": @This()) usize {
-            return @"%buf".items.items.len - @"%buf".vacantSlotCount();
+        pub fn occupiedCount(@"%buf": @This()) usize {
+            return @"%buf".items.items.len - @"%buf".unsetCount();
         }
         pub fn add(
             @"%buf": *@This(),
@@ -469,14 +469,14 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%allocator": std.mem.Allocator,
             @"%new_item": @"%Item",
         ) error{OutOfMemory}!Slot(@"%Origin") {
-            if (@"%buf".vacant.lastPtr()) |@"%vacant_span_ptr"| {
-                const @"%vacant_span_start_end" = @"%vacant_span_ptr".splitStart();
-                if (@"%vacant_span_start_end".after) |@"%new_shrunk_vacant_span"| {
-                    @"%vacant_span_ptr".* = @"%new_shrunk_vacant_span";
+            if (@"%buf".unset.lastPtr()) |@"%unset_span_ptr"| {
+                const @"%unset_span_start_end" = @"%unset_span_ptr".splitStart();
+                if (@"%unset_span_start_end".after) |@"%new_shrunk_unset_span"| {
+                    @"%unset_span_ptr".* = @"%new_shrunk_unset_span";
                 } else {
-                    _ = @"%buf".vacant.pop();
+                    _ = @"%buf".unset.pop();
                 }
-                const unset_index = @"%vacant_span_start_end".start;
+                const unset_index = @"%unset_span_start_end".start;
                 @"%buf".items.items[unset_index] = @"%new_item";
                 return Slot(@"%Origin"){ .index = unset_index };
             } else {
@@ -563,60 +563,60 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         fn unsetSpanRid(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
-            @"%span_to_vacate": Range,
+            @"%span_to_unset": Range,
         ) error{OutOfMemory}!void {
-            var @"%maybe_vacant_span_index_connecting_earlier": ?usize = null;
-            var @"%maybe_vacant_span_index_connecting_later": ?usize = null;
-            @"%looking_for_connections": for (@"%buf".vacant.items, 0..) |@"%vacant_span", @"%vacant_span_index"| {
-                if (@"%maybe_vacant_span_index_connecting_earlier" == null and @"%span_to_vacate".start == (@as(usize, @"%vacant_span".start) + @as(usize, @"%vacant_span".length.positive))) {
-                    @"%maybe_vacant_span_index_connecting_earlier" = @"%vacant_span_index";
-                    if (@"%maybe_vacant_span_index_connecting_later") |_| {
+            var @"%maybe_unset_span_index_connecting_earlier": ?usize = null;
+            var @"%maybe_unset_span_index_connecting_later": ?usize = null;
+            @"%looking_for_connections": for (@"%buf".unset.items, 0..) |@"%unset_span", @"%unset_span_index"| {
+                if (@"%maybe_unset_span_index_connecting_earlier" == null and @"%span_to_unset".start == (@as(usize, @"%unset_span".start) + @as(usize, @"%unset_span".length.positive))) {
+                    @"%maybe_unset_span_index_connecting_earlier" = @"%unset_span_index";
+                    if (@"%maybe_unset_span_index_connecting_later") |_| {
                         break :@"%looking_for_connections";
                     }
-                } else if (@"%maybe_vacant_span_index_connecting_later" == null and (@as(usize, @"%span_to_vacate".start) + @as(usize, @"%span_to_vacate".length.positive)) == @"%vacant_span".start) {
-                    @"%maybe_vacant_span_index_connecting_later" = @"%vacant_span_index";
-                    if (@"%maybe_vacant_span_index_connecting_earlier") |_| {
+                } else if (@"%maybe_unset_span_index_connecting_later" == null and (@as(usize, @"%span_to_unset".start) + @as(usize, @"%span_to_unset".length.positive)) == @"%unset_span".start) {
+                    @"%maybe_unset_span_index_connecting_later" = @"%unset_span_index";
+                    if (@"%maybe_unset_span_index_connecting_earlier") |_| {
                         break :@"%looking_for_connections";
                     }
                 }
             }
-            if (@"%maybe_vacant_span_index_connecting_earlier") |@"%vacant_span_index_connecting_earlier"| {
-                var @"%vacant_span_connecting_earlier" = &@"%buf".vacant.items[@"%vacant_span_index_connecting_earlier"];
-                if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
-                    const @"%vacant_span_connecting_later" = @"%buf".vacant.items[@"%vacant_span_index_connecting_later"];
-                    @"%vacant_span_connecting_earlier".length =
-                        @"%vacant_span_connecting_earlier".length
-                            .addAssumeNoOverflow(@"%span_to_vacate".length.positive)
-                            .addAssumeNoOverflow(@"%vacant_span_connecting_later".length.positive);
-                    _ = @"%buf".vacant.swapRemove(@"%vacant_span_index_connecting_later");
+            if (@"%maybe_unset_span_index_connecting_earlier") |@"%unset_span_index_connecting_earlier"| {
+                var @"%unset_span_connecting_earlier" = &@"%buf".unset.items[@"%unset_span_index_connecting_earlier"];
+                if (@"%maybe_unset_span_index_connecting_later") |@"%unset_span_index_connecting_later"| {
+                    const @"%unset_span_connecting_later" = @"%buf".unset.items[@"%unset_span_index_connecting_later"];
+                    @"%unset_span_connecting_earlier".length =
+                        @"%unset_span_connecting_earlier".length
+                            .addAssumeNoOverflow(@"%span_to_unset".length.positive)
+                            .addAssumeNoOverflow(@"%unset_span_connecting_later".length.positive);
+                    _ = @"%buf".unset.swapRemove(@"%unset_span_index_connecting_later");
                 } else {
-                    // maybeVacantSpanIndexConnectingLater == null
-                    if (@as(usize, @"%span_to_vacate".start) + @as(usize, @"%span_to_vacate".length.positive) == @"%buf".items.items.len) {
+                    // maybe_unset_span_index_connecting_later == null
+                    if (@as(usize, @"%span_to_unset".start) + @as(usize, @"%span_to_unset".length.positive) == @"%buf".items.items.len) {
                         @"%buf".items.shrinkRetainingCapacity(
-                            @"%buf".items.items.len - @as(usize, @"%vacant_span_connecting_earlier".length.positive) - @as(usize, @"%span_to_vacate".length.positive),
+                            @"%buf".items.items.len - @as(usize, @"%unset_span_connecting_earlier".length.positive) - @as(usize, @"%span_to_unset".length.positive),
                         );
-                        _ = @"%buf".vacant.swapRemove(@"%vacant_span_index_connecting_earlier");
+                        _ = @"%buf".unset.swapRemove(@"%unset_span_index_connecting_earlier");
                     } else {
-                        @"%vacant_span_connecting_earlier".length = @"%vacant_span_connecting_earlier".length
-                            .addAssumeNoOverflow(@"%span_to_vacate".length.positive);
+                        @"%unset_span_connecting_earlier".length = @"%unset_span_connecting_earlier".length
+                            .addAssumeNoOverflow(@"%span_to_unset".length.positive);
                     }
                 }
-            } else if (@"%maybe_vacant_span_index_connecting_later") |@"%vacant_span_index_connecting_later"| {
-                // maybeVacantSpanIndexConnectingEarlier == null
-                const @"%vacant_span_connecting_later" = &@"%buf".vacant.items[@"%vacant_span_index_connecting_later"];
-                @"%vacant_span_connecting_later".* = Range{
-                    .start = @"%span_to_vacate".start,
-                    .length = @"%vacant_span_connecting_later".length
-                        .addAssumeNoOverflow(@"%span_to_vacate".length.positive),
+            } else if (@"%maybe_unset_span_index_connecting_later") |@"%unset_span_index_connecting_later"| {
+                // maybe_unset_span_index_connecting_earlier == null
+                const @"%unset_span_connecting_later" = &@"%buf".unset.items[@"%unset_span_index_connecting_later"];
+                @"%unset_span_connecting_later".* = Range{
+                    .start = @"%span_to_unset".start,
+                    .length = @"%unset_span_connecting_later".length
+                        .addAssumeNoOverflow(@"%span_to_unset".length.positive),
                 };
             } else {
-                // maybeVacantSpanIndexConnectingEarlier == null and maybeVacantSpanIndexConnectingLater == null
-                if (@as(usize, @"%span_to_vacate".start) + @as(usize, @"%span_to_vacate".length.positive) == @"%buf".items.items.len) {
+                // maybe_unset_span_index_connecting_earlier == null and maybe_unset_span_index_connecting_later == null
+                if (@as(usize, @"%span_to_unset".start) + @as(usize, @"%span_to_unset".length.positive) == @"%buf".items.items.len) {
                     @"%buf".items.shrinkRetainingCapacity(
-                        std.math.sub(usize, @"%buf".items.items.len, @"%span_to_vacate".length.positive) catch 0,
+                        std.math.sub(usize, @"%buf".items.items.len, @"%span_to_unset".length.positive) catch 0,
                     );
                 } else {
-                    try @"%buf".vacant.append(@"%allocator", @"%span_to_vacate");
+                    try @"%buf".unset.append(@"%allocator", @"%span_to_unset");
                 }
             }
         }
@@ -641,7 +641,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 .length = @"%span".length,
             };
         }
-        pub fn spanMoveToVacant(@"%buf": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
+        pub fn spanMoveToUnset(@"%buf": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
             if (@as(usize, @"%span".start.index) + @as(usize, @"%span".length.positive) < @"%buf".items.items.len) {
                 return @"%span";
             }
@@ -679,12 +679,12 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             }
         }
         fn markLengthPositiveAsOccupied(@"%buf": *@This(), @"%length_to_occupy": P32) ?u32 {
-            for (@"%buf".vacant.items, 0..) |*@"%vacant", @"%vacant_index"| {
-                if (@"%vacant".length.positive > @"%length_to_occupy".positive) {
-                    @"%vacant".length.positive -|= @"%length_to_occupy".positive;
-                    return @"%vacant".start;
-                } else if (@"%vacant".length.positive == @"%length_to_occupy".positive) {
-                    return @"%buf".vacant.swapRemove(@"%vacant_index").start;
+            for (@"%buf".unset.items, 0..) |*@"%unset", @"%unset_index"| {
+                if (@"%unset".length.positive > @"%length_to_occupy".positive) {
+                    @"%unset".length.positive -|= @"%length_to_occupy".positive;
+                    return @"%unset".start;
+                } else if (@"%unset".length.positive == @"%length_to_occupy".positive) {
+                    return @"%buf".unset.swapRemove(@"%unset_index").start;
                 }
             }
             return null;
@@ -861,8 +861,8 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%buf": @This(),
             @"%allocator": std.mem.Allocator,
         ) Unset_slice(@"%Item") {
-            var @"%vacant" = @"%buf".vacant;
-            @"%vacant".deinit(@"%allocator");
+            var @"%unset" = @"%buf".unset;
+            @"%unset".deinit(@"%allocator");
             var @"%items" = @"%buf".items;
             @"%items".clearRetainingCapacity();
             return .{ .undefined_items = @"%items".allocatedSlice() };
@@ -871,7 +871,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         pub fn rid(@"%buf": @This(), @"%allocator": std.mem.Allocator) void {
             var @"%buf_mut" = @"%buf";
             @"%buf_mut".items.deinit(@"%allocator");
-            @"%buf_mut".vacant.deinit(@"%allocator");
+            @"%buf_mut".unset.deinit(@"%allocator");
         }
     };
 }
@@ -1445,7 +1445,7 @@ pub fn buf_empty(
 ) Buf(Origin(@"%Origin", @"%Part"), @"%Item") {
     return .{
         .items = std.ArrayList(@"%Item").empty,
-        .vacant = std.ArrayList(Range).empty,
+        .unset = std.ArrayList(Range).empty,
     };
 }
 pub fn buf_reuse(
@@ -1458,7 +1458,7 @@ pub fn buf_reuse(
     items.clearRetainingCapacity();
     return .{
         .items = items,
-        .vacant = std.ArrayList(Range).empty,
+        .unset = std.ArrayList(Range).empty,
     };
 }
 pub fn buf_pre_allocate_at_least(
@@ -1938,15 +1938,15 @@ pub fn buf_opt_span_add_own_opt_span(
         },
     }
 }
-pub fn buf_span_move_to_vacant(
+pub fn buf_span_move_to_unset(
     @"%Item": type,
     @"%Origin": type,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Span(@"%Origin") }),
 ) Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Span(@"%Origin") }) {
-    const @"%moved_span" = @"%".buf.spanMoveToVacant(@"%".span);
+    const @"%moved_span" = @"%".buf.spanMoveToUnset(@"%".span);
     return .{ .buf = @"%".buf, .span = @"%moved_span" };
 }
-pub fn buf_opt_span_move_to_vacant(
+pub fn buf_opt_span_move_to_unset(
     @"%Item": type,
     @"%Origin": type,
     @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Opt(Span(@"%Origin")) }),
@@ -1954,7 +1954,7 @@ pub fn buf_opt_span_move_to_vacant(
     switch (@"%".span) {
         .no => return .{ .buf = @"%".buf, .span = .{ .no = {} } },
         .yes => |@"%span"| {
-            const @"%moved_span" = @"%".buf.spanMoveToVacant(@"%span");
+            const @"%moved_span" = @"%".buf.spanMoveToUnset(@"%span");
             return .{ .buf = @"%".buf, .span = .{ .yes = @"%moved_span" } };
         },
     }
@@ -2014,7 +2014,6 @@ pub fn buf_rid(
 ) void {
     @"%buf".rid(@"%allocator");
 }
-/// Assumes no Unset_slot or Unset_span still points into the given buf
 pub fn buf_origin_isolate(
     @"%Item": type,
     @"%ItemErased": type,
@@ -2054,7 +2053,7 @@ pub fn buf_origin_isolate(
         }
     };
     return .{ .erased = .{ .erased = .{
-        .vacant = @"%".buf.vacant,
+        .unset = @"%".buf.unset,
         .items = items_erased,
     } } };
 }
@@ -2073,10 +2072,10 @@ pub fn buf_origin_unerase_keep_items(
     return .{
         .buf = .{
             .items = @"%".buf.erased.items,
-            .vacant = std.ArrayList(Range){
-                .pointer_stability = @"%".buf.erased.vacant.pointer_stability,
-                .capacity = @"%".buf.erased.vacant.capacity,
-                .items = @ptrCast(@"%".buf.erased.vacant.items),
+            .unset = std.ArrayList(Range){
+                .pointer_stability = @"%".buf.erased.unset.pointer_stability,
+                .capacity = @"%".buf.erased.unset.capacity,
+                .items = @ptrCast(@"%".buf.erased.unset.items),
             },
         },
         .uneraser = @"%".uneraser,
@@ -2141,10 +2140,10 @@ pub fn buf_origin_unerase(
     };
     return .{
         .buf = .{
-            .vacant = std.ArrayList(Range){
-                .pointer_stability = @"%".buf.erased.vacant.pointer_stability,
-                .capacity = @"%".buf.erased.vacant.capacity,
-                .items = @ptrCast(@"%".buf.erased.vacant.items),
+            .unset = std.ArrayList(Range){
+                .pointer_stability = @"%".buf.erased.unset.pointer_stability,
+                .capacity = @"%".buf.erased.unset.capacity,
+                .items = @ptrCast(@"%".buf.erased.unset.items),
             },
             .items = @"%items_erased",
         },
