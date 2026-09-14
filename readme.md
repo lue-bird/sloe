@@ -353,7 +353,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_type-variable` and `minus-dash-hyphen`
-- variant expression syntax is _really_ ugly: `|{Opt example}yes value`. Especially when the type in the braces itself contains variants.
+- variant expression syntax is _really_ ugly: `|{Opt example}yes value`. Especially when the type in the braces itself contains variants. Also, the `|` is very easily confused as a letter which hinders readability
 - the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
   Sloe is most likely not the right vehicle to explore this space,
   still it seems like a warning sign for a supposed "general-purpose language"
@@ -721,8 +721,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `(Opt)Span-step-while`
-
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
@@ -763,7 +761,7 @@ cargo install --offline --debug --path . sloe
   
 - website: in ext area: prevent default on tab and insert four spaces instead
 
-- drop the `fn` keyword as declaring functions is very common
+- drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
 
 - (requires deterministic choice of free slots across all output language core implementations, looking at you, core.zig)
   re-introduce Unset-slot in some form and remove `Buf-item-step`.

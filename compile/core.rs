@@ -188,9 +188,9 @@ pub struct Record·origin·slice<Origin, Slice> {
     pub slice: Slice,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·exit·remaining<Exit, Remaining> {
-    pub exit: Exit,
-    pub remaining: Remaining,
+pub struct Record·done·rest<Done, Rest> {
+    pub done: Done,
+    pub rest: Rest,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·buf·length<Buf, Length> {
@@ -332,9 +332,9 @@ pub enum Choice·No·Yes<No, Yes> {
     Yes(Yes),
 }
 #[derive(Clone, Copy, Debug)]
-pub enum Choice·Exit·Go_on<Exit, Go_on> {
-    Exit(Exit),
-    Go_on(Go_on),
+pub enum Choice·Done·Going<Done, Going> {
+    Done(Done),
+    Going(Going),
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Choice·Down·Up<Down, Up> {
@@ -549,17 +549,17 @@ impl<Yes> Opt<Yes> {
     }
 }
 
-impl<Exit, GoOn> Choice·Exit·Go_on<Exit, GoOn> {
-    pub fn from_control_flow(control_flow: std::ops::ControlFlow<Exit, GoOn>) -> Self {
+impl<Done, Going> Choice·Done·Going<Done, Going> {
+    pub fn from_control_flow(control_flow: std::ops::ControlFlow<Done, Going>) -> Self {
         match control_flow {
-            std::ops::ControlFlow::Break(exit) => Choice·Exit·Go_on::Exit(exit),
-            std::ops::ControlFlow::Continue(go_on) => Choice·Exit·Go_on::Go_on(go_on),
+            std::ops::ControlFlow::Break(done) => Choice·Done·Going::Done(done),
+            std::ops::ControlFlow::Continue(doing) => Choice·Done·Going::Going(doing),
         }
     }
-    pub fn into_control_flow(self) -> std::ops::ControlFlow<Exit, GoOn> {
+    pub fn into_control_flow(self) -> std::ops::ControlFlow<Done, Going> {
         match self {
-            Choice·Exit·Go_on::Exit(exit) => std::ops::ControlFlow::Break(exit),
-            Choice·Exit·Go_on::Go_on(go_on) => std::ops::ControlFlow::Continue(go_on),
+            Choice·Done·Going::Done(done) => std::ops::ControlFlow::Break(done),
+            Choice·Done·Going::Going(doing) => std::ops::ControlFlow::Continue(doing),
         }
     }
 }
@@ -2034,7 +2034,7 @@ fn iterator_try_fold_in_direction<Item, B, C>(
         }
     }
 }
-pub fn str_chars_step_while<Exit, GoOn>(
+pub fn str_chars_step_while<Done, Going>(
     Record·direction·state·step·str {
         direction,
         str,
@@ -2042,17 +2042,17 @@ pub fn str_chars_step_while<Exit, GoOn>(
         step,
     }: Record·direction·state·step·str<
         Choice·Down·Up<Record, Record>,
-        GoOn,
-        Fn<Record·char·state<Char, GoOn>, Choice·Exit·Go_on<Exit, GoOn>>,
+        Going,
+        Fn<Record·char·state<Char, Going>, Choice·Done·Going<Done, Going>>,
         Str,
     >,
-) -> Choice·Exit·Go_on<Exit, GoOn> {
-    Choice·Exit·Go_on::from_control_flow(iterator_try_fold_in_direction(
+) -> Choice·Done·Going<Done, Going> {
+    Choice·Done·Going::from_control_flow(iterator_try_fold_in_direction(
         str.str.chars(),
         direction,
         initial_state,
         |state, char| {
-            Choice·Exit·Go_on::into_control_flow(step(Record·char·state { state, char }))
+            Choice·Done·Going::into_control_flow(step(Record·char·state { state, char }))
         },
     ))
 }
@@ -2186,7 +2186,13 @@ pub fn span_step<Origin, State>(
         },
     )
 }
-pub fn opt_span_step_while<Exit, GoOn, Origin>(
+pub fn done<Done, Going>(done: Done) -> Choice·Done·Going<Done, Going> {
+    Choice·Done·Going::Done(done)
+}
+pub fn going<Done, Going>(going: Going) -> Choice·Done·Going<Done, Going> {
+    Choice·Done·Going::Going(going)
+}
+pub fn opt_span_step_while<Done, Going, Origin>(
     Record·direction·span·state·step {
         direction,
         span,
@@ -2195,12 +2201,12 @@ pub fn opt_span_step_while<Exit, GoOn, Origin>(
     }: Record·direction·span·state·step<
         Choice·Down·Up<Record, Record>,
         Opt<Span<Origin>>,
-        GoOn,
-        Fn<Record·slot·state<Slot<Origin>, GoOn>, Choice·Exit·Go_on<Exit, GoOn>>,
+        Going,
+        Fn<Record·slot·state<Slot<Origin>, Going>, Choice·Done·Going<Done, Going>>,
     >,
-) -> Choice·Exit·Go_on<Record·exit·remaining<Exit, Opt<Span<Origin>>>, GoOn> {
+) -> Choice·Done·Going<Record·done·rest<Done, Opt<Span<Origin>>>, Going> {
     match span {
-        Opt::No(()) => Choice·Exit·Go_on::Go_on(initial_state),
+        Opt::No(()) => Choice·Done·Going::Going(initial_state),
         Opt::Yes(span) => span_step_while(Record·direction·span·state·step {
             direction: direction,
             span: span,
@@ -2209,7 +2215,7 @@ pub fn opt_span_step_while<Exit, GoOn, Origin>(
         }),
     }
 }
-pub fn span_step_while<Exit, GoOn, Origin>(
+pub fn span_step_while<Done, Going, Origin>(
     Record·direction·span·state·step {
         direction,
         span,
@@ -2218,16 +2224,16 @@ pub fn span_step_while<Exit, GoOn, Origin>(
     }: Record·direction·span·state·step<
         Choice·Down·Up<Record, Record>,
         Span<Origin>,
-        GoOn,
-        Fn<Record·slot·state<Slot<Origin>, GoOn>, Choice·Exit·Go_on<Exit, GoOn>>,
+        Going,
+        Fn<Record·slot·state<Slot<Origin>, Going>, Choice·Done·Going<Done, Going>>,
     >,
-) -> Choice·Exit·Go_on<Record·exit·remaining<Exit, Opt<Span<Origin>>>, GoOn> {
+) -> Choice·Done·Going<Record·done·rest<Done, Opt<Span<Origin>>>, Going> {
     let state_after_fold = iterator_try_fold_in_direction(
         span.to_range_u32(),
         direction,
         initial_state,
         |state, index| {
-            Choice·Exit·Go_on::into_control_flow(step(Record·slot·state {
+            Choice·Done·Going::into_control_flow(step(Record·slot·state {
                 state: state,
                 slot: Slot::<Origin>::from_index(index),
             }))
@@ -2235,15 +2241,15 @@ pub fn span_step_while<Exit, GoOn, Origin>(
         },
     );
     match state_after_fold {
-        std::ops::ControlFlow::Continue(state) => Choice·Exit·Go_on::Go_on(state),
+        std::ops::ControlFlow::Continue(state) => Choice·Done·Going::Going(state),
         std::ops::ControlFlow::Break((exit_index, exit_state)) => {
             let Record·after·start {
                 start: _,
                 after: not_folded_over_opt_span,
             } = span.split_after_length_positive(P32::MIN.saturating_add(exit_index));
-            Choice·Exit·Go_on::Exit(Record·exit·remaining {
-                exit: exit_state,
-                remaining: not_folded_over_opt_span,
+            Choice·Done·Going::Done(Record·done·rest {
+                done: exit_state,
+                rest: not_folded_over_opt_span,
             })
         }
     }

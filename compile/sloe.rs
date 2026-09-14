@@ -13010,9 +13010,15 @@ fn Three . : . =
             },
             CoreFnInfo {
                 name: "Choice-empty-to",
-                documentation: r#"The empty choice type (`|`) is a weird one
-(you may know it as never, noreturn, unreachable, uninhabited, bottom (⊥) or impossible).
+                documentation: r#"The empty choice type (`|`) is a weird one.
 No value of this type can ever exist and it's only use is some type trickery.
+You may already know it under one of these names:
+- never
+- noreturn
+- unreachable
+- uninhabited
+- bottom (⊥) or initial object
+- impossible,  or more rarely (and incorrectly) infallible
 
 For example, values of type `|success u32 |failure |` can be passed to any function expecting
 a success and failure variant to be possible.
@@ -13409,6 +13415,120 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                     )
                 ]),
                 result_type: type_variable("state"),
+            },
+            CoreFnInfo {
+                name: "Done",
+                documentation: "`Done{_going} done-value` is a shorthand for `|{|done done-type |going _going}done done-value`.
+It represents a completed state and can be interpreted as exiting a process or loop.
+An example can be found in `Opt-span-step-while`",
+                type_parameters: vec![Name::from_static("going")],
+                parameter_type: type_variable("done"),
+                result_type: type_choice([("done", type_variable("done")), ("going", type_variable("going"))]),
+            },
+            CoreFnInfo {
+                name: "Going",
+                documentation: "`Going{_done} going-value` is a shorthand for `|{|done _done |going going-type}going going-value`.
+It represents an unfinished, partial state and can be interpreted as a process or loop waiting to be resumed.
+An example can be found in `Opt-span-step-while`",
+                type_parameters: vec![Name::from_static("done")],
+                parameter_type: type_variable("going"),
+                result_type: type_choice([("done", type_variable("done")), ("going", type_variable("going"))]),
+            },
+            CoreFnInfo {
+                name: "Span-step-while",
+                documentation: "Step through all slots, updating the given initial state for each taken slot in line
+by returning `|going` or exiting early with `|done` (like calling `break` in other languages).
+An example can be found in `Opt-span-step-while`",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("span", type_span(type_variable("origin"))),
+                    ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
+                    ("state", type_variable("state")),
+                    (
+                        "step",
+                        type_fn(
+                            type_record([
+                                ("slot", type_slot(type_variable("origin"))),
+                                ("state", type_variable("state")),
+                            ]),
+                            type_choice([("done", type_variable("done")), ("going", type_variable("state"))])
+                        )
+                    )
+                ]),
+                result_type: type_choice([
+                    (
+                        "done",
+                        type_record([
+                            ("done", type_variable("done")),
+                            ("rest", type_opt(type_span(type_variable("origin"))))
+                        ])
+                    ),
+                    ("going", type_variable("state"))
+                ]),
+            },
+            CoreFnInfo {
+                name: "Opt-span-step-while",
+                documentation: "Step through all slots, updating the given initial state for each taken slot in line
+by returning `|going` or exiting early with `|done` (like calling `break` in other languages).
+```sloe
+fn Next-non-space
+    .chars chars Buf _origin, char
+    .span span Opt Span _origin
+    :
+    .chars Buf _origin, char
+    .non-space Opt char
+    .after Opt Span _origin
+    =
+    ? (
+        Opt-span-step-while
+        .span span
+        .direction |{|up . |down .}up .
+        .state chars
+        .step
+        [.slot slot Slot _origin .state chars Buf _origin, char]
+        ? Buf-remove .buf chars .slot slot [.buf chars .item char]
+        ? Char-dup char [.a char-use .b char]
+        ? U32-order .left Char-to-u32 char-use .right Char-to-u32 ' '
+        [|equal .] (
+            ? Char-rid char [.]
+            Going{.chars Buf _origin, char .non-space char} chars
+            )
+        [|less .] Done{Buf _origin, char} .chars chars .non-space char
+        [|greater .] Done{Buf _origin, char} .chars chars .non-space char
+        )
+    [|going chars]
+        .chars chars .non-space |{Opt char}no . .after |{Opt Span _origin}no .
+    [|done .rest span-after .done (.chars chars .non-space non-space)]
+        .chars chars .non-space Opt-yes non-space .after span-after
+```
+Note that `.rest` does not include any Slot given to the step function, even the Slot that resulted in `|done`.
+(This example looks convoluted. If you introduce helpers like Char-equal it gets more resonable)",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                    ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
+                    ("state", type_variable("state")),
+                    (
+                        "step",
+                        type_fn(
+                            type_record([
+                                ("slot", type_slot(type_variable("origin"))),
+                                ("state", type_variable("state")),
+                            ]),
+                            type_choice([("done", type_variable("done")), ("going", type_variable("state"))])
+                        )
+                    )
+                ]),
+                result_type: type_choice([
+                    (
+                        "done",
+                        type_record([
+                            ("done", type_variable("done")),
+                            ("rest", type_opt(type_span(type_variable("origin"))))
+                        ])
+                    ),
+                    ("going", type_variable("state"))
+                ]),
             },
             CoreFnInfo {
                 name: "Span-origin-isolate",
@@ -14838,6 +14958,8 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Origin-unerase"
         | "Span-step"
         | "Opt-span-step"
+        | "Span-step-while"
+        | "Opt-span-step-while"
         | "Unset-slice-cast-or-rid-and-allocate"
         | "Unset-slice-allocate-length"
         | "Buf-item-step"

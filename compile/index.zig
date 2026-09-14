@@ -206,7 +206,7 @@ test "choice_empty_to" {
     _ = choice_empty_rid;
 }
 test "simple slot and span queries" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const slot4 = core.Slot(ExampleOrigin){ .index = 4 };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
     try std.testing.expectEqual(4, (core.slot_index(ExampleOrigin, slot4)).index);
@@ -215,7 +215,7 @@ test "simple slot and span queries" {
     try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, .{ .no = {} })).length);
 }
 test "span_start" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot4_and_span5_to_13 = core.span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
@@ -224,7 +224,7 @@ test "span_start" {
     try std.testing.expectEqual(13, slot4_and_span5_to_13.after.yes.endIndex());
 }
 test "span_end" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const slot13_and_span4_to_12 = core.span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
@@ -233,7 +233,7 @@ test "span_end" {
     try std.testing.expectEqual(12, slot13_and_span4_to_12.before.yes.endIndex());
 }
 test "span_start_of_length_positive, normal inputs" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_10_and_11_to_13 = core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 7 } });
     try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.yes.start.index);
@@ -242,7 +242,7 @@ test "span_start_of_length_positive, normal inputs" {
     try std.testing.expectEqual(10, span4_to_10_and_11_to_13.start.endIndex());
 }
 test "span_start_of_length_positive, given length > given span length" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_13_and_empty = core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
     try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.after)).length);
@@ -250,7 +250,7 @@ test "span_start_of_length_positive, given length > given span length" {
     try std.testing.expectEqual(13, span4_to_13_and_empty.start.endIndex());
 }
 test "span_end_of_length_positive, normal inputs" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_10_and_11_to_13 = core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 3 } });
     try std.testing.expectEqual(11, span4_to_10_and_11_to_13.end.start.index);
@@ -259,7 +259,7 @@ test "span_end_of_length_positive, normal inputs" {
     try std.testing.expectEqual(10, span4_to_10_and_11_to_13.before.yes.endIndex());
 }
 test "span_end_of_length_positive, given length > given span length" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const span4_to_13_and_empty = core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
     try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.before)).length);
@@ -267,7 +267,7 @@ test "span_end_of_length_positive, given length > given span length" {
     try std.testing.expectEqual(13, span4_to_13_and_empty.end.endIndex());
 }
 test "span_step up" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_step(ExampleOrigin, u32, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
@@ -282,7 +282,7 @@ test "span_step up" {
     try std.testing.expectEqual(85, index_sum);
 }
 test "span_step down" {
-    const ExampleOrigin = enum { buf };
+    const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
     var reverse_indexes_array_list = try core.opt_span_step(
         ExampleOrigin,
@@ -310,6 +310,66 @@ test "span_step down" {
         reverse_indexes_array_list.items,
     );
     reverse_indexes_array_list.deinit(std.testing.allocator);
+}
+test "span_step_while up, never |done" {
+    const ExampleOrigin = enum {};
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const index_sum = try core.opt_span_step_while(core.Choice, u32, ExampleOrigin, std.testing.allocator, .{
+        .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
+        .direction = .{ .up = {} },
+        .state = 0,
+        .step = struct {
+            pub fn step(
+                _: std.mem.Allocator,
+                current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 }),
+            ) error{OutOfMemory}!core.@"|done|going"(core.Choice, u32) {
+                return .{ .going = current.state +| current.slot.index };
+            }
+        }.step,
+    });
+    try std.testing.expectEqual(85, index_sum.going);
+}
+test "span_step_while up, ending in |done" {
+    const ExampleOrigin = enum {};
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const index_sum = try core.opt_span_step_while(void, u32, ExampleOrigin, std.testing.allocator, .{
+        .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
+        .direction = .{ .up = {} },
+        .state = 0,
+        .step = struct {
+            pub fn step(
+                _: std.mem.Allocator,
+                current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 }),
+            ) error{OutOfMemory}!core.@"|done|going"(void, u32) {
+                return if (current.slot.index >= 10) .{ .done = {} } else .{ .going = current.state +| current.slot.index };
+            }
+        }.step,
+    });
+    try std.testing.expectEqual(core.Span(ExampleOrigin){
+        .start = .{ .index = 11 },
+        .length = core.P32.fromComptime(3),
+    }, index_sum.done.rest.yes);
+}
+test "span_step_while down, ending in |done" {
+    const ExampleOrigin = enum {};
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const index_sum = try core.opt_span_step_while(void, u32, ExampleOrigin, std.testing.allocator, .{
+        .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
+        .direction = .{ .down = {} },
+        .state = 0,
+        .step = struct {
+            pub fn step(
+                _: std.mem.Allocator,
+                current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 }),
+            ) error{OutOfMemory}!core.@"|done|going"(void, u32) {
+                return if (current.slot.index <= 10) .{ .done = {} } else .{ .going = current.state +| current.slot.index };
+            }
+        }.step,
+    });
+    try std.testing.expectEqual(core.Span(ExampleOrigin){
+        .start = .{ .index = 4 },
+        .length = core.P32.fromComptime(6),
+    }, index_sum.done.rest.yes);
 }
 test "array create" {
     const ExampleArrayRecord = struct { e0: u32, e1: u32 };
@@ -404,7 +464,7 @@ test "unset_slice castOrRidAndAllocate fallback" {
 }
 test "buf insert, add, take, occupiedCount, rid" {
     const allocator = std.testing.allocator;
-    const BufOrigin = enum { buf };
+    const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
     try std.testing.expectEqual(0, buf.occupiedCount());
@@ -441,7 +501,7 @@ test "buf_item_step" {
 }
 test "buf add to span" {
     const allocator = std.testing.allocator;
-    const BufOrigin = enum { buf };
+    const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
     const span0 = try buf.optSpanAdd(allocator, core.Opt(core.Span(@TypeOf(origin))){ .no = {} }, 123);
@@ -457,7 +517,7 @@ test "buf add to span" {
 }
 test "buf add strs" {
     const allocator = std.testing.allocator;
-    const BufOrigin = enum { buf };
+    const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
     const with_abcd = try core.buf_char_opt_span_add_str(
@@ -481,7 +541,7 @@ test "buf add strs" {
 }
 test "buf char add numbers" {
     const allocator = std.testing.allocator;
-    const BufOrigin = enum { buf };
+    const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
     const with_u32 = try core.buf_char_opt_span_add_u32(
@@ -510,7 +570,7 @@ test "buf char add numbers" {
 }
 test "buf span reverse" {
     const allocator = std.testing.allocator;
-    const BufOrigin = enum { buf };
+    const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
     const span = try buf.addSlice(allocator, &.{ 1, 2, 3, 4, 5, 6 });
@@ -521,7 +581,7 @@ test "buf span reverse" {
 }
 test "buf add remove stress test" {
     const allocator = std.testing.allocator;
-    const BufOrigin = enum { buf };
+    const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(usize, BufOrigin, void, origin);
     var slots = std.ArrayList(core.Slot(@TypeOf(origin))).empty;

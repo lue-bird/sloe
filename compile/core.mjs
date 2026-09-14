@@ -548,7 +548,14 @@ export function span_end_of_length_positive(take) {
           },
   };
 }
-/** @template $Origin, $State @param {{ span: Span<$Origin>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>, }} step @returns {$State} */
+/** @template $Origin, $State
+ * @param {{
+ *     span: Span<$Origin>,
+ *     direction: { up: void } | { down: void },
+ *     state: $State,
+ *     step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>,
+ * }} step
+ * @returns {$State} */
 export function span_step(step) {
   let state = step.state;
   if ("up" in step.direction) {
@@ -562,10 +569,89 @@ export function span_step(step) {
   }
   return state;
 }
-/** @template $Origin, $State @param {{ span: Opt<Span<$Origin>>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>, }} step @returns {$State} */
+/** @template $Origin, $State
+ * @param {{
+ *     span: Opt<Span<$Origin>>,
+ *     direction: { up: void } | { down: void },
+ *     state: $State,
+ *     step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>,
+ * }} step
+ * @returns {$State} */
 export function opt_span_step(step) {
   if ("no" in step.span) return step.state;
   return span_step({
+    span: step.span.yes,
+    direction: step.direction,
+    state: step.state,
+    step: step.step,
+  });
+}
+/** @template $Done, $Going @param {$Done} done @returns {{ going: $Going } | { done: $Done }} */
+export function done(done) {
+  return { done: done };
+}
+/** @template $Done, $Going @param {$Going} going @returns {{ done: $Done } | { going: $Going }} */
+export function going(going) {
+  return { going: going };
+}
+/** @template $Done, $Going, $Origin
+ * @param {{
+ *     span: Span<$Origin>,
+ *     direction: { up: void } | { down: void },
+ *     state: $Going,
+ *     step: Fn<{ slot: Slot<$Origin>, state: $Going, }, { going: $Going } | { done: $Done }>,
+ * }} step
+ * @returns {{ going: $Going } | { done: { done: $Done, rest: Opt<Span<$Origin>>} }} */
+export function span_step_while(step) {
+  let state = step.state;
+  if ("up" in step.direction) {
+    for (let i = step.span.start; i < step.span.start + step.span.length; i++) {
+      const step_result = step.step({ state: state, slot: i });
+      if ("done" in step_result) {
+        const rest_length = step.span.start + step.span.length - 1 - i;
+        return {
+          done: {
+            done: step_result.done,
+            rest:
+              rest_length >= 1
+                ? { yes: { start: i + 1, length: rest_length } }
+                : { no: undefined },
+          },
+        };
+      }
+      state = step_result.going;
+    }
+  } else {
+    for (let i = step.span.start + step.span.length - 1; i >= step.span.start; i--) {
+      const step_result = step.step({ state: state, slot: i });
+      if ("done" in step_result) {
+        const rest_length = i - step.span.start;
+        return {
+          done: {
+            done: step_result.done,
+            rest:
+              rest_length >= 1
+                ? { yes: { start: 0, length: rest_length } }
+                : { no: undefined },
+          },
+        };
+      }
+      state = step_result.going;
+    }
+  }
+  return { going: state };
+}
+/** @template $Done, $Going, $Origin
+ * @param {{
+ *     span: Opt<Span<$Origin>>,
+ *     direction: { up: void } | { down: void },
+ *     state: $Going,
+ *     step: Fn<{ slot: Slot<$Origin>, state: $Going, }, { going: $Going } | { done: $Done }>,
+ * }} step
+ * @returns {{ going: $Going } | { done: { done: $Done, rest: Opt<Span<$Origin>>} }} */
+export function opt_span_step_while(step) {
+  if ("no" in step.span) return { going: step.state };
+  return span_step_while({
     span: step.span.yes,
     direction: step.direction,
     state: step.state,

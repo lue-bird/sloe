@@ -62,6 +62,9 @@ pub fn @"|down|up"(@"%Down": type, @"%Up": type) type {
 pub fn @"|equal|greater|less"(@"%Equal": type, @"%Greater": type, @"%Less": type) type {
     return union(enum) { equal: @"%Equal", greater: @"%Greater", less: @"%Less" };
 }
+pub fn @"|done|going"(@"%Done": type, @"%Going": type) type {
+    return union(enum) { done: @"%Done", going: @"%Going" };
+}
 /// would preferably be noreturn but it isn't allowed in parameters for some reason
 pub const Choice = enum {};
 
@@ -356,6 +359,71 @@ pub fn Span(@"%Origin": type) type {
                 },
             }
             return @"%state";
+        }
+        pub fn step_while(
+            @"%span": Span(@"%Origin"),
+            @"%Done": type,
+            @"%allocator": std.mem.Allocator,
+            @"%direction": @"|down|up"(void, void),
+            @"%initial_state": anytype,
+            @"%step": Fn(
+                Record(struct { slot: Slot(@"%Origin"), state: @TypeOf(@"%initial_state") }),
+                @"|done|going"(@"%Done", @TypeOf(@"%initial_state")),
+            ),
+        ) error{OutOfMemory}!@"|done|going"(
+            Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
+            @TypeOf(@"%initial_state"),
+        ) {
+            var @"%state" = @"%initial_state";
+            switch (@"%direction") {
+                .up => {
+                    for (@"%span".start.index..(@"%span".start.index + @"%span".length.positive)) |@"%index_usize"| {
+                        const @"%index": u32 = @intCast(@"%index_usize");
+                        switch (try @"%step"(@"%allocator", .{
+                            .state = @"%state",
+                            .slot = .{ .index = @"%index" },
+                        })) {
+                            .going => |@"%new_state"| {
+                                @"%state" = @"%new_state";
+                            },
+                            .done => |@"%done"| {
+                                return .{ .done = .{
+                                    .done = @"%done",
+                                    .rest = if (P32.fromU32(
+                                        @"%span".start.index + @"%span".length.positive - 1 - @"%index",
+                                    )) |@"%rest_length"| .{
+                                        .yes = .{ .start = .{ .index = @"%index" + 1 }, .length = @"%rest_length" },
+                                    } else .{ .no = {} },
+                                } };
+                            },
+                        }
+                    }
+                },
+                .down => {
+                    // dear zig, add for (range) in reverse
+                    var @"%index": u32 = @"%span".start.index + @"%span".length.positive;
+                    while (@"%index" > @"%span".start.index) {
+                        @"%index" -= 1;
+                        switch (try @"%step"(@"%allocator", .{
+                            .state = @"%state",
+                            .slot = .{ .index = @"%index" },
+                        })) {
+                            .going => |@"%going"| {
+                                @"%state" = @"%going";
+                            },
+                            .done => |@"%done"| {
+                                return .{ .done = .{
+                                    .done = @"%done",
+                                    .rest = if (P32.fromU32(@"%index" - @"%span".start.index)) |@"%rest_length"| .{
+                                        .yes = .{ .start = @"%span".start, .length = @"%rest_length" },
+                                    } else .{ .no = {} },
+                                } };
+                            },
+                        }
+                    }
+                },
+            }
+            return .{ .going = @"%state" };
         }
     };
 }
@@ -1379,6 +1447,55 @@ pub fn span_step(
     }),
 ) error{OutOfMemory}!@"%State" {
     return @"%".span.step(@"%allocator", @"%".direction, @"%".state, @"%".step);
+}
+pub fn done(@"%Done": type, @"%Going": type, @"%done": @"%Done") @"|done|going"(@"%Done", @"%Going") {
+    return .{ .done = @"%done" };
+}
+pub fn going(@"%Done": type, @"%Going": type, @"%going": @"%Going") @"|done|going"(@"%Done", @"%Going") {
+    return .{ .going = @"%going" };
+}
+pub fn opt_span_step_while(
+    @"%Done": type,
+    @"%Going": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        direction: @"|down|up"(void, void),
+        span: Opt(Span(@"%Origin")),
+        state: @"%Going",
+        step: Fn(
+            Record(struct { slot: Slot(@"%Origin"), state: @"%Going" }),
+            @"|done|going"(@"%Done", @"%Going"),
+        ),
+    }),
+) error{OutOfMemory}!@"|done|going"(
+    Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
+    @"%Going",
+) {
+    return switch (@"%".span) {
+        .no => .{ .going = @"%".state },
+        .yes => |@"%span"| @"%span".step_while(@"%Done", @"%allocator", @"%".direction, @"%".state, @"%".step),
+    };
+}
+pub fn span_step_while(
+    @"%Done": type,
+    @"%Going": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        direction: @"|down|up"(void, void),
+        span: Span(@"%Origin"),
+        state: @"%Going",
+        step: Fn(
+            Record(struct { slot: Slot(@"%Origin"), state: @"%Going" }),
+            @"|done|going"(@"%Done", @"%Going"),
+        ),
+    }),
+) error{OutOfMemory}!@"|done|going"(
+    Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
+    @"%Going",
+) {
+    return @"%".span.step_while(@"%Done", @"%allocator", @"%".direction, @"%".state, @"%".step);
 }
 pub fn span_origin_isolate(
     @"%Origin": type,
