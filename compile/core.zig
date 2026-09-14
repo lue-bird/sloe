@@ -1528,6 +1528,27 @@ pub fn buf_remove(
     const @"%item" = try @"%buf".remove(@"%allocator", @"%".slot);
     return .{ .buf = @"%buf", .item = @"%item" };
 }
+pub fn buf_item_step(
+    @"%In": type,
+    @"%Item": type,
+    @"%Origin": type,
+    @"%Out": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        slot: Slot(@"%Origin"),
+        in: @"%In",
+        step: Fn(
+            Record(struct { in: @"%In", item: @"%Item" }),
+            Record(struct { item: @"%Item", out: @"%Out" }),
+        ),
+    }),
+) error{OutOfMemory}!@"%Out" {
+    const @"%item_ptr" = @"%".buf.item_ptr(@"%".slot);
+    const @"%stepped" = try @"%".step(@"%allocator", .{ .in = @"%".in, .item = @"%item_ptr".* });
+    @"%item_ptr".* = @"%stepped".item;
+    return @"%stepped".out;
+}
 pub fn buf_span_rid(
     @"%Item": type,
     @"%Origin": type,

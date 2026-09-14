@@ -13595,6 +13595,57 @@ Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
                 ]),
             },
             CoreFnInfo {
+                name: "Buf-item-step",
+                documentation: "Look at an item from the `Buf` at a given slot, change it and return something out.
+It behaves like `Buf-remove` followed by `Buf-insert` but is more performant because it always operates on the same slot.
+It's common to create simple helpers using `Buf-item-step`, for example
+```sloe
+fn Buf-item-dup
+    .buf buf Buf _origin, _item
+    .slot slot Slot _origin
+    .dup (dup Fn _item, .a _item .b _item)
+    :
+    .buf Buf _origin, _item
+    .slot Slot _origin
+    .item _item
+    =
+    ? (
+        Buf-update
+        .buf buf
+        .slot slot
+        .in .
+        [.in . .item item]
+        ? Call .fn dup .in item [.a item .b item-duped]
+        .item item .out item-duped
+        )
+    [.buf buf .slot slot .out item-duped]
+    .buf buf .slot slot .item item-duped
+```",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("slot", type_slot(type_variable("origin"))),
+                    ("in", type_variable("in")),
+                    (
+                        "step",
+                        type_fn(
+                            type_record([("in", type_variable("in")), ("item", type_variable("item"))]),
+                            type_record([("out", type_variable("out")), ("item", type_variable("item"))]))
+                        )
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("slot", type_slot(type_variable("origin"))),
+                    ("out", type_variable("out")),
+                ]),
+            },
+            CoreFnInfo {
                 name: "Buf-span-rid",
                 documentation: "Mark items as \"won't be used anymore\"
 and return their `Span` back to the `Buf` for potential future reuse by functions like `Buf-insert`.",
@@ -14788,6 +14839,7 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Opt-span-fold"
         | "Unset-slice-cast-or-rid-and-allocate"
         | "Unset-slice-allocate-length"
+        | "Buf-item-step"
         | "Buf-origin-isolate"
         | "Buf-origin-unerase"
         | "Buf-opt-span-move-to-end"

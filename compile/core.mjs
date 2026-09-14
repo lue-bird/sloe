@@ -756,6 +756,15 @@ export function buf_remove(remove) {
     return { buf: remove.buf, item: item };
   }
 }
+/** @template $In, $Item, $Origin, $Out
+ * @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, in: $In, step: Fn<{in:$In, item:$Item}, {item: $Item, out:$Out}>,}} step
+ * @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, out: $Out }} */
+export function buf_item_step(step) {
+  const item = /** @type {$Item} */ (step.buf[step.slot]);
+  const stepped = step.step({ in: step.in, item: item });
+  step.buf[step.slot] = stepped.item;
+  return { buf: step.buf, slot: step.slot, out: stepped.out };
+}
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} move @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
 export function buf_span_move_to_end(move) {
   if (move.span.start + move.span.length < move.buf.length) {

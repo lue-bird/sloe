@@ -148,6 +148,11 @@ pub struct Record·char·state<Char, State> {
     pub state: State,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·in_·item<In, Item> {
+    pub in_: In,
+    pub item: Item,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·item·out<Item, Out> {
     pub item: Item,
     pub out: Out,
@@ -196,6 +201,13 @@ pub struct Record·buf·length<Buf, Length> {
 pub struct Record·buf·slot<Buf, Slot> {
     pub buf: Buf,
     pub slot: Slot,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·buf·in_·slot·step<Buf, In, Slot, Step> {
+    pub buf: Buf,
+    pub in_: In,
+    pub slot: Slot,
+    pub step: Step,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·buf·item_rid·slot<Buf, Item_rid, Slot> {
@@ -849,6 +861,17 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             self.first_none_index = std::cmp::min(self.first_none_index, self.items.len() as u32);
             item
         }
+    }
+    pub fn item_step<'a, Out>(
+        &'a mut self,
+        slot: &'a mut Slot<LocalOrigin>,
+        step: impl std::ops::FnOnce(Item) -> (Item, Out),
+    ) -> Out {
+        let item_option = self.item_option_mut(slot);
+        let item = unsafe { item_option.take().unwrap_unchecked() };
+        let (new_item, out) = step(item);
+        _ = item_option.insert(new_item);
+        out
     }
     pub fn opt_span_rid(
         &mut self,
@@ -2350,6 +2373,32 @@ pub fn buf_remove<Item, Origin>(
     Record·buf·item {
         buf: buf,
         item: item,
+    }
+}
+pub fn buf_item_step<In, Item, Origin, Out>(
+    Record·buf·in_·slot·step {
+        mut buf,
+        in_,
+        mut slot,
+        step,
+    }: Record·buf·in_·slot·step<
+        Buf<Origin, Item>,
+        In,
+        Slot<Origin>,
+        Fn<Record·in_·item<In, Item>, Record·item·out<Item, Out>>,
+    >,
+) -> Record·buf·out·slot<Buf<Origin, Item>, Out, Slot<Origin>> {
+    let out = buf.item_step(&mut slot, move |item| {
+        let stepped = step(Record·in_·item {
+            in_: in_,
+            item: item,
+        });
+        (stepped.item, stepped.out)
+    });
+    Record·buf·out·slot {
+        buf: buf,
+        slot: slot,
+        out: out,
     }
 }
 pub fn buf_span_rid<Item, Origin>(

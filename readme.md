@@ -721,19 +721,21 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- add `Buf-update` which can be used
+- finish adding `Buf-item-step` which can be used to dup an item
 
-- add `Buf-(opt-)span-update` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
+- add `Buf-(opt-)span-alter` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
 
-- add `Buf-span-fold` and `Buf-opt-span-fold`. Their functionality is already covered but inconvenient considering how common that operation is
+- rename fold to step
 
-- add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-for-length-positive`, maybe even unfold
+- add `Buf-span-step` and `Buf-opt-span-step` for non--Span-destructive `Span-fold`
+
+- add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
 
 - change unicode \u{hex} syntax to \u() because {} is used for types
 
-- add operations like `Buf-(opt-)span-prepend` and change `Buf-(opt-)span-add` to try reuse unset space
+- (not sure) change `Buf-(opt-)span-add` to try reuse unset space (and add operations like `Buf-(opt-)span-prepend`?)
 
-- (only if we can ensure no unset slots and spans exist!) add `Buf-fold-map`, `Buf-map`, `Buf-fold` (not sure). They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and make buf handling less painful
+- add `Buf-step`, `Buf-map`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
 - try to recover typed pattern without a variable more nicely by when all other cases fail trying to parse a type and representing it as a variable without a variable
 
@@ -742,6 +744,8 @@ cargo install --offline --debug --path . sloe
 - find some way to generate nicer IDE type displays. Maybe tabs work?
 
 - change core.zig Buf implementation to match rust (or change both to a better but equivalent implementation)
+
+- when reporting a variable as unused in the first query case, still add it as used in the overall expression to avoid emitting 2 errors for the same variable
 
 - remove Origin-erased-rid. It can't really be made useful
 
@@ -766,6 +770,17 @@ cargo install --offline --debug --path . sloe
 - website: in ext area: prevent default on tab and insert four spaces instead
 
 - drop the `fn` keyword as declaring functions is very common
+
+- (requires deterministic choice of free slots across all output language core implementations, looking at you, core.zig)
+  re-introduce Unset-slot in some form and remove `Buf-item-step`.
+  But instead of taking Unset-slot as a guarantee of a free slot, there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
+  One possible API would be
+  ```sloe
+  fn Slot-index Slot _origin : .slot Slot _origin .index u32
+  fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item
+      : .buf Buf _origin, _item .slot Slot
+  ```
+  this does not feel very idiomatic (plenty of room to mess this hint up) but since there is a safe fallback and this isn't a default API I can accept it.
 
 - read https://smallcultfollowing.com/babysteps/blog/2026/02/27/dada-internal-references/ and compare against carbon
 

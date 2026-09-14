@@ -421,6 +421,24 @@ test "buf insert, add, take, occupiedCount, rid" {
     try std.testing.expectEqual(0, buf.occupiedCount());
     buf.rid(allocator);
 }
+test "buf_item_step" {
+    const BufOrigin = enum {};
+    const buf_origin: core.Origin(BufOrigin, void) = .{};
+    var buf = core.buf_empty(u32, BufOrigin, void, buf_origin);
+    const slot = try buf.add(std.testing.allocator, 123);
+    _ = try core.buf_item_step(void, u32, @TypeOf(buf_origin), void, std.testing.allocator, .{
+        .buf = buf,
+        .slot = slot,
+        .in = {},
+        .step = struct {
+            pub fn f(_: std.mem.Allocator, to_step: core.Record(struct { in: void, item: u32 })) error{OutOfMemory}!core.Record(struct { item: u32, out: void }) {
+                return .{ .item = to_step.item + 1, .out = to_step.in };
+            }
+        }.f,
+    });
+    try std.testing.expectEqual(124, buf.remove(std.testing.allocator, slot));
+    buf.rid(std.testing.allocator);
+}
 test "buf add to span" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum { buf };
