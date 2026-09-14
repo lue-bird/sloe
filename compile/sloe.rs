@@ -2156,7 +2156,7 @@ fn parse_text_content_char(state: &mut ParseState) -> Option<char> {
                 progressed_state.offset_utf8 = start_offset_utf8;
                 progressed_state.position = start_position;
             };
-            if !parse_symbol(state, "\\u{") {
+            if !parse_symbol(state, "\\(") {
                 return None;
             }
             let unicode_hex_start_offset_utf8: usize = state.offset_utf8;
@@ -14400,11 +14400,11 @@ fn Answer . : f32 =
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    r#"A unicode scalar like `'a'` or `'👀'` or `'\u{2665}'` (hex code for ♥).
+                    r#"A unicode scalar like `'a'` or `'👀'` or `'\(2665)'` (hex code for ♥).
 Keep in mind that a human-readable visual symbol can be composed of multiple such unicode scalars (forming a grapheme cluster), For example:
 ```sloe
 Str-start "🇺🇸"
-# = |yes .start '\u{1F1FA}' .after "\u{1F1F8}"
+# = |yes .start '\(1F1FA)' .after "\(1F1F8)"
 #                   Indicator U        Indicator S
 ```
 Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters)"#,
@@ -14419,8 +14419,8 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
                 name_range: None,
                 documentation: Some(Box::from(
                     r#"A positive-length piece of a known text which is valid for the entire program,
-like `"abc"` or `"\"hello 👀 \\\r\n world \u{2665}\""`
-(`\u{2665}` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
+like `"abc"` or `"\"hello 👀 \\\r\n world \(2665)\""`
+(`\(2665)` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
 When building new strings at runtime, use functions like `Buf-char-opt-span-add-str`."#,
                 )),
@@ -15164,7 +15164,7 @@ fn syntax_char_format(formatted: &mut String, maybe_char: Option<char>) {
                 '\\' => formatted.push_str("\\\\"),
                 '\t' => formatted.push_str("\\t"),
                 '\n' => formatted.push_str("\\n"),
-                '\r' => formatted.push_str("\\r"),
+                '\r' => formatted.push_str("\\(000D)"),
                 other_character => {
                     if char_needs_unicode_escaping(other_character) {
                         unicode_char_escape_into(formatted, other_character);
@@ -15183,7 +15183,7 @@ fn char_needs_unicode_escaping(char: char) -> bool {
 fn unicode_char_escape_into(so_far: &mut String, char: char) {
     let code: u32 = char.into();
     use std::fmt::Write as _;
-    let _ = write!(so_far, "\\u{{{:X}}}", code);
+    let _ = write!(so_far, "\\({:X})", code);
 }
 fn syntax_string_format(formatted: &mut String, content: &str) {
     formatted.push('"');
@@ -15193,7 +15193,7 @@ fn syntax_string_format(formatted: &mut String, content: &str) {
             '\\' => formatted.push_str("\\\\"),
             '\t' => formatted.push_str("\\t"),
             '\n' => formatted.push_str("\\n"),
-            '\u{000D}' => formatted.push_str("\\u{000D}"),
+            '\u{000D}' => formatted.push_str("\\(000D)"),
             other_character => {
                 if char_needs_unicode_escaping(other_character) {
                     unicode_char_escape_into(formatted, other_character);

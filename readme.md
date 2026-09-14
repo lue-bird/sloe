@@ -721,8 +721,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- change unicode \u{hex} syntax to \() because {} is used for types
-
 - add `(Opt)Span-step-while`
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
