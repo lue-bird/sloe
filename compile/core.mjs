@@ -548,28 +548,28 @@ export function span_end_of_length_positive(take) {
           },
   };
 }
-/** @template $Origin, $State @param {{ span: Span<$Origin>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>, }} fold @returns {$State} */
-export function span_fold(fold) {
-  let state = fold.state;
-  if ("up" in fold.direction) {
-    for (let i = fold.span.start; i < fold.span.start + fold.span.length; i++) {
-      state = fold.step({ state: state, slot: i });
+/** @template $Origin, $State @param {{ span: Span<$Origin>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>, }} step @returns {$State} */
+export function span_step(step) {
+  let state = step.state;
+  if ("up" in step.direction) {
+    for (let i = step.span.start; i < step.span.start + step.span.length; i++) {
+      state = step.step({ state: state, slot: i });
     }
   } else {
-    for (let i = fold.span.start + fold.span.length - 1; i >= fold.span.start; i--) {
-      state = fold.step({ state: state, slot: i });
+    for (let i = step.span.start + step.span.length - 1; i >= step.span.start; i--) {
+      state = step.step({ state: state, slot: i });
     }
   }
   return state;
 }
-/** @template $Origin, $State @param {{ span: Opt<Span<$Origin>>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>, }} fold @returns {$State} */
-export function opt_span_fold(fold) {
-  if ("no" in fold.span) return fold.state;
-  return span_fold({
-    span: fold.span.yes,
-    direction: fold.direction,
-    state: fold.state,
-    step: fold.step,
+/** @template $Origin, $State @param {{ span: Opt<Span<$Origin>>, direction: { up: void } | { down: void }, state: $State, step: Fn<{ slot: Slot<$Origin>, state: $State, }, $State>, }} step @returns {$State} */
+export function opt_span_step(step) {
+  if ("no" in step.span) return step.state;
+  return span_step({
+    span: step.span.yes,
+    direction: step.direction,
+    state: step.state,
+    step: step.step,
   });
 }
 

@@ -721,17 +721,13 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- finish adding `Buf-item-step` which can be used to dup an item
+- change unicode \u{hex} syntax to \() because {} is used for types
 
-- add `Buf-(opt-)span-alter` which asks for `.span Span _origin .item-update Fn _item, _item`. Same for Opt Span. This functionality is already possible but unnecessarily inconvenient
+- add `(Opt)Span-step-while`
 
-- rename fold to step
-
-- add `Buf-span-step` and `Buf-opt-span-step` for non--Span-destructive `Span-fold`
+- add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
-
-- change unicode \u{hex} syntax to \u() because {} is used for types
 
 - (not sure) change `Buf-(opt-)span-add` to try reuse unset space (and add operations like `Buf-(opt-)span-prepend`?)
 

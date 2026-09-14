@@ -266,10 +266,10 @@ test "span_end_of_length_positive, given length > given span length" {
     try std.testing.expectEqual(4, span4_to_13_and_empty.end.start.index);
     try std.testing.expectEqual(13, span4_to_13_and_empty.end.endIndex());
 }
-test "span_fold up" {
+test "span_step up" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    const index_sum = try core.opt_span_fold(ExampleOrigin, u32, std.testing.allocator, .{
+    const index_sum = try core.opt_span_step(ExampleOrigin, u32, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
         .state = 0,
@@ -281,10 +281,10 @@ test "span_fold up" {
     });
     try std.testing.expectEqual(85, index_sum);
 }
-test "span_fold down" {
+test "span_step down" {
     const ExampleOrigin = enum { buf };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
-    var reverse_indexes_array_list = try core.opt_span_fold(
+    var reverse_indexes_array_list = try core.opt_span_step(
         ExampleOrigin,
         std.ArrayList(u32),
         std.testing.allocator,

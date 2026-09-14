@@ -326,7 +326,7 @@ pub fn Span(@"%Origin": type) type {
                 } else .{ .no = {} },
             };
         }
-        pub fn fold(
+        pub fn step(
             @"%span": Span(@"%Origin"),
             @"%allocator": std.mem.Allocator,
             @"%direction": @"|down|up"(void, void),
@@ -1351,7 +1351,7 @@ pub fn span_end_of_length_positive(
 }) {
     return record(@"%".span.splitBeforeEndLengthPositive(@"%".length));
 }
-pub fn opt_span_fold(
+pub fn opt_span_step(
     @"%Origin": type,
     @"%State": type,
     @"%allocator": std.mem.Allocator,
@@ -1364,10 +1364,10 @@ pub fn opt_span_fold(
 ) error{OutOfMemory}!@"%State" {
     return switch (@"%".span) {
         .no => @"%".state,
-        .yes => |@"%span"| @"%span".fold(@"%allocator", @"%".direction, @"%".state, @"%".step),
+        .yes => |@"%span"| @"%span".step(@"%allocator", @"%".direction, @"%".state, @"%".step),
     };
 }
-pub fn span_fold(
+pub fn span_step(
     @"%Origin": type,
     @"%State": type,
     @"%allocator": std.mem.Allocator,
@@ -1378,7 +1378,7 @@ pub fn span_fold(
         step: Fn(Record(struct { slot: Slot(@"%Origin"), state: @"%State" }), @"%State"),
     }),
 ) error{OutOfMemory}!@"%State" {
-    return @"%".span.fold(@"%allocator", @"%".direction, @"%".state, @"%".step);
+    return @"%".span.step(@"%allocator", @"%".direction, @"%".state, @"%".step);
 }
 pub fn span_origin_isolate(
     @"%Origin": type,

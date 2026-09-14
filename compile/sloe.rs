@@ -13366,7 +13366,7 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 ]),
             },
             CoreFnInfo {
-                name: "Span-fold",
+                name: "Span-step",
                 documentation: "Step through all slots, updating the given initial state for each taken slot in line",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13387,7 +13387,7 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 result_type: type_variable("state"),
             },
             CoreFnInfo {
-                name: "Opt-span-fold",
+                name: "Opt-span-step",
                 documentation: "Step through all slots, updating the given initial state for each taken slot in line",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -14836,8 +14836,8 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Origin-isolate-constant"
         | "Origin-erased-rid"
         | "Origin-unerase"
-        | "Span-fold"
-        | "Opt-span-fold"
+        | "Span-step"
+        | "Opt-span-step"
         | "Unset-slice-cast-or-rid-and-allocate"
         | "Unset-slice-allocate-length"
         | "Buf-item-step"

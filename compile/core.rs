@@ -1988,7 +1988,7 @@ pub fn str_end(str: Str) -> Record·before·end<Opt<Str>, Char> {
         before: Opt::from_option(Str::from_str(before)),
     }
 }
-pub fn str_chars_fold<State>(
+pub fn str_chars_step<State>(
     Record·direction·state·step·str {
         direction,
         str,
@@ -2034,7 +2034,7 @@ fn iterator_try_fold_in_direction<Item, B, C>(
         }
     }
 }
-pub fn str_chars_fold_while<Exit, GoOn>(
+pub fn str_chars_step_while<Exit, GoOn>(
     Record·direction·state·step·str {
         direction,
         str,
@@ -2138,7 +2138,7 @@ pub fn span_end_of_length_positive<Origin>(
 ) -> Record·before·end<Opt<Span<Origin>>, Span<Origin>> {
     span.split_before_end_length_positive(start_length)
 }
-pub fn opt_span_fold<Origin, State>(
+pub fn opt_span_step<Origin, State>(
     Record·direction·span·state·step {
         direction,
         span,
@@ -2153,7 +2153,7 @@ pub fn opt_span_fold<Origin, State>(
 ) -> State {
     match span {
         Opt::No(()) => initial_state,
-        Opt::Yes(span) => span_fold(Record·direction·span·state·step {
+        Opt::Yes(span) => span_step(Record·direction·span·state·step {
             direction: direction,
             span: span,
             state: initial_state,
@@ -2161,7 +2161,7 @@ pub fn opt_span_fold<Origin, State>(
         }),
     }
 }
-pub fn span_fold<Origin, State>(
+pub fn span_step<Origin, State>(
     Record·direction·span·state·step {
         direction,
         span,
@@ -2186,7 +2186,7 @@ pub fn span_fold<Origin, State>(
         },
     )
 }
-pub fn opt_span_fold_while<Exit, GoOn, Origin>(
+pub fn opt_span_step_while<Exit, GoOn, Origin>(
     Record·direction·span·state·step {
         direction,
         span,
@@ -2201,7 +2201,7 @@ pub fn opt_span_fold_while<Exit, GoOn, Origin>(
 ) -> Choice·Exit·Go_on<Record·exit·remaining<Exit, Opt<Span<Origin>>>, GoOn> {
     match span {
         Opt::No(()) => Choice·Exit·Go_on::Go_on(initial_state),
-        Opt::Yes(span) => span_fold_while(Record·direction·span·state·step {
+        Opt::Yes(span) => span_step_while(Record·direction·span·state·step {
             direction: direction,
             span: span,
             state: initial_state,
@@ -2209,7 +2209,7 @@ pub fn opt_span_fold_while<Exit, GoOn, Origin>(
         }),
     }
 }
-pub fn span_fold_while<Exit, GoOn, Origin>(
+pub fn span_step_while<Exit, GoOn, Origin>(
     Record·direction·span·state·step {
         direction,
         span,
