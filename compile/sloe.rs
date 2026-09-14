@@ -13610,11 +13610,12 @@ fn Buf-item-dup
     .item _item
     =
     ? (
-        Buf-update
+        Buf-item-step
         .buf buf
         .slot slot
-        .in .
-        [.in . .item item]
+        .in dup
+        .step
+        [.in (dup Fn _item, .a _item .b _item) .item item _item]
         ? Call .fn dup .in item [.a item .b item-duped]
         .item item .out item-duped
         )
