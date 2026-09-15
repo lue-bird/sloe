@@ -37,7 +37,7 @@ With this:
 
 The big advantage of this rule is how easy it is to understand and how much simpler and faster it is to statically analyze compared to lifetimes or similar.
 
-> Further reading if interested: "linear types", [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), [nice short explainer in the austral language docs](https://austral-lang.org/linear-types), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
+> Further reading if interested: "linear types", [nice short explainer in the austral language docs](https://austral-lang.org/linear-types), [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
 > Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
 ## concept: consecutive memory, stable index collection `Buf`
@@ -585,10 +585,10 @@ It also makes initial_state much easier to call from the rust side (though we ne
 ## why no `&mut`/`inout`
 While seemingly convenient and magnitudes better than regular mutable pointers,
 - it's less obvious than passing values through
-- there's no easy way to change the name of a resulting value that represents something different now
+- there's sometimes no easy way to change the name of a resulting value that represents something different now
 - there's no way to "reconstruct" a different out value. Especially for non-trivial edits the &mut approach can get messy or it's straight up impossible and parts will need to get cloned unnecessarily
 - there's no way to change the type (e.g. from `Opt Span` to `Span`)
-- there's no there's two ways to specify most conversions, with usually no clear method of converting one to the other
+- there's two ways to specify most conversions, with usually no clear method of converting one to the other
 - it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn .context context ... : |exit found |go-on context` where found contains some parts of the context). This isn't modelled well with `&mut`
 - `&mut` means the resulting changed collection is not returned, making use as the input to another function impossible. This almost necessarily results in the classic procedural-style statement form as opposed to the functional-style expression form. Minor gripe: especially in languages that don't allow local scopes with local returns (far, far too many) this basically makes it impossible to locally introduce a value, change it and implant it somewhere; instead you have to move the variable up to the top level.
 - returning `.` (like returning `Unit` in gleam) feels super awkward to my brain. Most often, languages then automatically return void/... in the absence of a return and introduce all kinds of constructs like re-assignable variables, additional constructs for looping and branching that all can only return void/... . To my brain, this just confuses matters; it loves simple to follow flow of state!
@@ -735,9 +735,27 @@ cargo install --offline --debug --path . sloe
 
 - find some way to generate nicer IDE type displays. Maybe tabs work?
 
-- change core.zig Buf implementation to match rust (or change both to a better but equivalent implementation)
+- change core.zig Buf implementation to
+  ```zig
+  struct {
+      items: std.ArrayList(Item),
+      // invariant: len = @ceilDiv(items.items.len, 8)
+      unset: [*]u8, // 8 compact bits, 0 = unset, 1 = set
+      // invariant: u32_max if unset is all 0s, otherwise points to a valid index in items
+      first_unset_index: u32
+  }
+  ```
+  (current impl takes 1.5 words more space, is a bit less simple, takes longer to mark short spans as unset, is not deterministic)
 
 - when reporting a variable as unused in the first query case, still add it as used in the overall expression to avoid emitting 2 errors for the same variable
+
+- on missing expression after comment, only put the error on the # symbol of the first line
+
+- when formatting variant pattern, insert space after when value is missing
+
+- bug: rename (and thus also references) considers local function variables as outer variables
+
+- (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
 
 - remove Origin-erased-rid. It can't really be made useful
 

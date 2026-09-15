@@ -421,9 +421,9 @@ pub struct Buf<Origin, Item> {
     // invariant: the last item in .items is Some(_)
     items: std::vec::Vec<std::option::Option<Item>>,
     // cached first Option::None item index in .items. Invariants:
-    // - if first_none == items.len() (TODO change to u32::MAX): all elements in .items re Some(_)
+    // - if first_none == u32::MAX: all elements in .items are Some(_)
     // - if first_none < items.len(): items[i] == None
-    first_none_index: u32,
+    first_unset_index: u32,
     origin: std::marker::PhantomData<Origin>,
 }
 pub struct Slot<LocalOrigin> {
@@ -835,7 +835,6 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                 |item| unsafe { item.unwrap_unchecked() },
             ));
             self.rid_trailing_unset();
-            self.first_none_index = self.items.len() as u32;
             out
         } else {
             let out = consume_iterator(&mut
@@ -846,19 +845,18 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                         |item| item.take().unwrap_unchecked(),
                     )
                 });
-            self.first_none_index = std::cmp::min(self.first_none_index, span.start.index);
+            self.first_unset_index = std::cmp::min(self.first_unset_index, span.start.index);
             out
         }
     }
     pub fn remove(&mut self, mut slot: Slot<LocalOrigin>) -> Item {
-        if slot.index as usize + 1 < self.items.len() {
+        if slot.index + 1 < self.items.len() as u32 {
             let item = unsafe { self.item_option_mut(&mut slot).take().unwrap_unchecked() };
-            self.first_none_index = std::cmp::min(self.first_none_index, slot.index);
+            self.first_unset_index = std::cmp::min(self.first_unset_index, slot.index);
             item
         } else {
             let item = unsafe { self.items.pop().unwrap_unchecked().unwrap_unchecked() };
             self.rid_trailing_unset();
-            self.first_none_index = std::cmp::min(self.first_none_index, self.items.len() as u32);
             item
         }
     }
@@ -890,43 +888,39 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         });
     }
     fn rid_trailing_unset(&mut self) {
-        while let std::option::Option::Some(last_item) = self.items.last()
-            && last_item.is_none()
-        {
+        // this feels unoptimal somehow
+        while let std::option::Option::Some(std::option::Option::None) = self.items.last() {
             self.items.pop();
+        }
+        if self.first_unset_index == self.items.len() as u32 {
+            self.first_unset_index = u32::MAX;
         }
     }
     pub fn add(&mut self, new_item: Item) -> Slot<LocalOrigin> {
-        let added_index = self.items.len() as u32;
         self.items.push(std::option::Option::Some(new_item));
-        if self.first_none_index == added_index {
-            self.first_none_index += 1;
-        }
-        Slot::from_index(added_index)
+        Slot::from_index((self.items.len() - 1) as u32)
     }
     pub fn insert(&mut self, new_item: Item) -> Slot<LocalOrigin> {
-        let previous_first_none_index = self.first_none_index;
-        match self.items.get_mut(self.first_none_index as usize) {
+        // can maybe be optimized? first_unset_index is always valid if it's not ::MAX
+        match self.items.get_mut(self.first_unset_index as usize) {
             std::option::Option::Some(item_option_to_set) => {
                 _ = item_option_to_set.insert(new_item);
-                self.first_none_index = std::iter::Iterator::find_map(
+                let set_index = self.first_unset_index;
+                self.first_unset_index = std::iter::Iterator::find_map(
                     &mut std::iter::Iterator::skip(
                         std::iter::Iterator::enumerate(self.items.iter()),
-                        (self.first_none_index + 1) as usize,
+                        (self.first_unset_index + 1) as usize,
                     ),
                     |(i, item)| match item {
                         std::option::Option::None => std::option::Option::Some(i as u32),
                         std::option::Option::Some(_) => std::option::Option::None,
                     },
                 )
-                .unwrap_or_else(|| self.items.len() as u32);
+                .unwrap_or_else(|| u32::MAX);
+                Slot::<LocalOrigin>::from_index(set_index)
             }
-            std::option::Option::None => {
-                self.items.push(std::option::Option::Some(new_item));
-                self.first_none_index += 1;
-            }
+            std::option::Option::None => self.add(new_item),
         }
-        Slot::<LocalOrigin>::from_index(previous_first_none_index)
     }
     fn find_unset_length_positive(
         &mut self,
@@ -937,7 +931,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         std::iter::Iterator::try_fold(
             &mut std::iter::Iterator::skip(
                 std::iter::Iterator::enumerate(self.items.iter()),
-                self.first_none_index as usize,
+                self.first_unset_index as usize,
             ),
             0,
             |length_so_far, (index, item)| match item {
@@ -1205,7 +1199,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             unsafe { self.items.split_at_mut_unchecked(move_destination_start) };
         unsafe { before_move_destination.get_unchecked_mut(span.to_range()) }
             .swap_with_slice(from_move_destination);
-        self.first_none_index = std::cmp::min(self.first_none_index, span.start.index);
+        self.first_unset_index = std::cmp::min(self.first_unset_index, span.start.index);
         Span {
             start: Slot::<LocalOrigin>::from_index(move_destination_start as u32),
             length: span.length,
@@ -1234,8 +1228,8 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                 // we could alternatively have used splice. Not sure what's faster
                 self.items
                     .truncate(self.items.len() - span.length.get() as usize);
-                if self.first_none_index == earlier_start_to_occupy_from {
-                    self.first_none_index = std::iter::Iterator::find_map(
+                if self.first_unset_index == earlier_start_to_occupy_from {
+                    self.first_unset_index = std::iter::Iterator::find_map(
                         &mut std::iter::Iterator::skip(
                             std::iter::Iterator::enumerate(self.items.iter()),
                             (earlier_start_to_occupy_from + span.length.get()) as usize,
@@ -1245,12 +1239,9 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                             std::option::Option::Some(_) => std::option::Option::None,
                         },
                     )
-                    .unwrap_or_else(|| self.items.len() as u32);
+                    .unwrap_or_else(|| u32::MAX);
                 } else {
-                    // technically this could be unnecessary but it's nice to always
-                    // have first_none match the length if no None exists
-                    self.first_none_index =
-                        std::cmp::min(self.first_none_index, self.items.len() as u32);
+                    // self.first_unset_index is either u32::MAX or at an earlier index
                 }
                 Span {
                     start: Slot::<LocalOrigin>::from_index(earlier_start_to_occupy_from),
@@ -1311,7 +1302,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     }
     pub fn unset_count_usize(&self) -> usize {
         std::iter::Iterator::count(std::iter::Iterator::filter(
-            std::iter::Iterator::skip(self.items.iter(), self.first_none_index as usize),
+            std::iter::Iterator::skip(self.items.iter(), self.first_unset_index as usize),
             |option| option.is_none(),
         ))
     }
@@ -1319,10 +1310,9 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         self.unset_count_usize() as u32
     }
     pub fn occupied_count_usize(&self) -> usize {
-        std::iter::Iterator::count(std::iter::Iterator::filter(
-            std::iter::Iterator::skip(self.items.iter(), self.first_none_index as usize),
-            |option| option.is_some(),
-        ))
+        std::iter::Iterator::count(std::iter::Iterator::filter(self.items.iter(), |option| {
+            option.is_some()
+        }))
     }
     /// The raw allocation. Can be used to create new Vecs or even
     /// to drop the memory in a separate thread
@@ -1347,13 +1337,13 @@ impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
         Buf::<Origin<LocalOrigin, Part>, Item> {
             origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
             items: std::vec::Vec::new(),
-            first_none_index: 0,
+            first_unset_index: u32::MAX,
         }
     }
     pub fn reuse(_: Origin<LocalOrigin, Part>, allocation: Unset_slice<Item>) -> Self {
         Buf::<Origin<LocalOrigin, Part>, Item> {
             origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
-            first_none_index: 0,
+            first_unset_index: u32::MAX,
             items: allocation.into_vec_option(),
         }
     }
@@ -1377,7 +1367,7 @@ impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
                             }
                         },
                     )),
-                    first_none_index: self.first_none_index,
+                    first_unset_index: self.first_unset_index,
                 },
             },
         }
@@ -1391,7 +1381,7 @@ impl<Item, Part> Buf<Origin<Erased, Part>, Item> {
         Buf {
             origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
             items: self.items,
-            first_none_index: self.first_none_index,
+            first_unset_index: self.first_unset_index,
         }
     }
     pub fn origin_unerase<LocalOrigin, ItemUnerased>(
@@ -1415,7 +1405,7 @@ impl<Item, Part> Buf<Origin<Erased, Part>, Item> {
                     }
                 },
             )),
-            first_none_index: self.first_none_index,
+            first_unset_index: self.first_unset_index,
         }
     }
 }
