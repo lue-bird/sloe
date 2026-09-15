@@ -735,17 +735,11 @@ cargo install --offline --debug --path . sloe
 
 - find some way to generate nicer IDE type displays. Maybe tabs work?
 
-- change core.zig Buf implementation to
-  ```zig
-  struct {
-      items: std.ArrayList(Item),
-      // invariant: len = @ceilDiv(items.items.len, 8)
-      unset: [*]u8, // 8 compact bits, 0 = unset, 1 = set
-      // invariant: u32_max if unset is all 0s, otherwise points to a valid index in items
-      first_unset_index: u32
-  }
-  ```
-  (current impl takes 1.5 words more space, is a bit less simple, takes longer to mark short spans as unset, is not deterministic)
+- add `Slot-index`, `Span-start-index`
+
+- add `Buf-swap`
+
+- optimize core.zig Buf.markLengthPositiveAsSet
 
 - when reporting a variable as unused in the first query case, still add it as used in the overall expression to avoid emitting 2 errors for the same variable
 

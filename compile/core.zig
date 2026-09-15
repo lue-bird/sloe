@@ -254,6 +254,7 @@ pub fn Slot(@"%Origin": type) type {
 }
 pub fn Span(@"%Origin": type) type {
     return struct {
+        // TODO replace with start: u32, const origin = @"%Origin":,
         start: Slot(@"%Origin"),
         length: P32,
         pub fn endIndex(@"%span": @This()) u32 {
@@ -489,36 +490,56 @@ const Range = struct {
 /// Not thread-safe.
 pub fn Buf(@"%Origin": type, @"%Item": type) type {
     return struct {
-        /// Assumed to have a .items.len that fits into a u32.
+        /// Assumed to have an .items.len that fits into a u32.
         /// .items.capacity has no such constraint.
         /// if you want to directly access .items, be extra aware of
-        ///   - considering .unset
-        ///   - considering newly-created Unset_slots and similar
+        ///   - considering .unset_masks
         ///   - the ABA problem
-        ///     (e.g. a pointer to an item could point to a wrong, new item instead of invalid memory when its index was unset and re-occupied in between)
+        ///     (e.g. an index to an item could point to a wrong, new item instead of invalid memory when its index was unset and re-occupied in between)
         items: std.ArrayList(@"%Item"),
-        unset: std.ArrayList(Range),
+        /// true means unset, false means set. Use .unsetBitSet().
+        /// All bits at index >= .items.items.len should be set to false.
+        /// we do not store its .bit_length as it is equal to .items.capacity.
+        unset_masks: @TypeOf((std.bit_set.Dynamic{}).masks),
+        /// invariants:
+        /// - .none_unset if set_bit_set() is all false within 0..items.items.len
+        /// - _ points to a valid index in items
+        /// - _ points to the first false index in .unsetBitSet()
+        first_unset_index: UnsetIndexOrNone,
         const origin = @"%Origin";
+
+        pub const UnsetIndexOrNone = enum(u32) { none_unset = std.math.maxInt(u32), _ };
+
+        // Contains the set bits until .items.items.len (not its capacity).
+        // modifying the resulting value does not change the given Buf's .unset_masks
+        pub fn unsetBitSet(@"%buf": @This()) std.bit_set.Dynamic {
+            return std.bit_set.Dynamic{ .masks = @"%buf".unset_masks, .bit_length = @"%buf".items.items.len };
+        }
+        // modifying the resulting value does not change the given Buf's .unset_masks
+        pub fn unsetBitSetUntilCapacity(@"%buf": @This()) std.bit_set.Dynamic {
+            return std.bit_set.Dynamic{ .masks = @"%buf".unset_masks, .bit_length = @"%buf".items.capacity };
+        }
 
         pub fn preAllocateAtLeast(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%min_pre_allocated_length": u32,
         ) error{OutOfMemory}!void {
-            return @"%buf".items.ensureUnusedCapacity(@"%allocator", @"%min_pre_allocated_length");
+            var @"%unset_bit_set" = @"%buf".unsetBitSetUntilCapacity();
+            try @"%buf".items.ensureUnusedCapacity(@"%allocator", @"%min_pre_allocated_length");
+            try @"%unset_bit_set".resize(@"%allocator", @"%buf".items.capacity, false);
+            @"%buf".unset_masks = @"%unset_bit_set".masks;
         }
         pub fn preAllocationRid(@"%buf": *@This(), @"%allocator": std.mem.Allocator) error{OutOfMemory}!void {
-            return @"%buf".items.shrinkAndFreePrecise(@"%allocator", @"%buf".items.items.len);
+            try @"%buf".items.shrinkToLen(@"%allocator");
+            var @"%unset_bit_set" = @"%buf".unsetBitSetUntilCapacity();
+            try @"%unset_bit_set".resize(@"%allocator", @"%buf".items.items.len, false);
+            @"%buf".unset_masks = @"%unset_bit_set".masks;
         }
         pub fn unsetCount(@"%buf": @This()) u32 {
-            var @"%combined_length": u32 = 0;
-            for (@"%buf".unset.items) |@"%unset"| {
-                @"%combined_length" += @"%unset".length.positive;
-            }
-            return @"%combined_length";
+            return @intCast(@"%buf".unsetBitSet().count());
         }
-        /// counts both occupied positions and unset ones referenced by `unset-slot` and `unset-span`s
-        pub fn occupiedCount(@"%buf": @This()) usize {
+        pub fn setCount(@"%buf": @This()) usize {
             return @"%buf".items.items.len - @"%buf".unsetCount();
         }
         pub fn add(
@@ -526,30 +547,47 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%allocator": std.mem.Allocator,
             @"%new_item": @"%Item",
         ) error{OutOfMemory}!Slot(@"%Origin") {
-            try @"%buf".items.append(@"%allocator", @"%new_item");
+            var @"%unset_bit_set" = @"%buf".unsetBitSetUntilCapacity();
+            const @"%new_index": u32 = @intCast(@"%buf".items.items.len);
+            const @"%new_item_ptr" = try @"%buf".items.addOne(@"%allocator");
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            return Slot(@"%Origin"){
-                .index = std.math.cast(u32, @"%buf".items.items.len - 1).?,
-            };
+            @"%new_item_ptr".* = @"%new_item";
+            try @"%unset_bit_set".resize(@"%allocator", @"%buf".items.capacity, false);
+            @"%buf".unset_masks = @"%unset_bit_set".masks;
+            return Slot(@"%Origin"){ .index = @"%new_index" };
         }
         pub fn insert(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%new_item": @"%Item",
         ) error{OutOfMemory}!Slot(@"%Origin") {
-            if (@"%buf".unset.lastPtr()) |@"%unset_span_ptr"| {
-                const @"%unset_span_start_end" = @"%unset_span_ptr".splitStart();
-                if (@"%unset_span_start_end".after) |@"%new_shrunk_unset_span"| {
-                    @"%unset_span_ptr".* = @"%new_shrunk_unset_span";
-                } else {
-                    _ = @"%buf".unset.pop();
-                }
-                const unset_index = @"%unset_span_start_end".start;
-                @"%buf".items.items[unset_index] = @"%new_item";
-                return Slot(@"%Origin"){ .index = unset_index };
-            } else {
-                return @"%buf".add(@"%allocator", @"%new_item");
+            switch (@"%buf".first_unset_index) {
+                .none_unset => {
+                    return @"%buf".add(@"%allocator", @"%new_item");
+                },
+                _ => |@"%first_unset_index_enum"| {
+                    const @"%first_unset_index" = @intFromEnum(@"%first_unset_index_enum");
+                    @"%buf".items.items[@"%first_unset_index"] = @"%new_item";
+                    var @"%unset_bit_set" = @"%buf".unsetBitSet();
+                    @"%unset_bit_set".unset(@"%first_unset_index");
+                    const @"%set_slot" = Slot(@"%Origin"){ .index = @"%first_unset_index" };
+                    @"%buf".first_unset_index = @"%buf".firstUnsetIndexStartSearchFrom(@"%first_unset_index" + 1);
+                    return @"%set_slot";
+                },
             }
+        }
+        fn firstUnsetIndexStartSearchFrom(@"%buf": @This(), @"%search_start_index": u32) UnsetIndexOrNone {
+            const @"%unset_bit_set" = @"%buf".unsetBitSet();
+            // skip first_unset_index bits rounded down to the mask
+            const @"%unset_bit_mask_index_to_start_search" = @"%search_start_index" / @bitSizeOf(std.bit_set.Dynamic.MaskInt);
+            var @"%unset_bit_set_after_unset_index": std.bit_set.Dynamic = .{
+                .masks = @"%unset_bit_set".masks + @"%unset_bit_mask_index_to_start_search",
+                .bit_length = @"%buf".items.items.len - (@"%unset_bit_mask_index_to_start_search" * @bitSizeOf(std.bit_set.Dynamic.MaskInt)),
+            };
+            return if (@"%unset_bit_set_after_unset_index".findFirstSet()) |@"%new_first_unset_index"|
+                @enumFromInt(@as(u32, @intCast(@"%new_first_unset_index")))
+            else
+                .none_unset;
         }
         /// slot is invalid while resulting ptr is live
         pub fn item_ptr(@"%buf": @This(), @"%slot": Slot(@"%Origin")) *@"%Item" {
@@ -560,11 +598,10 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         }
         pub fn remove(
             @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
             @"%slot": Slot(@"%Origin"),
-        ) error{OutOfMemory}!@"%Item" {
+        ) @"%Item" {
             const @"%item" = @"%buf".item(@"%slot");
-            try @"%buf".unsetSpanRid(@"%allocator", .{ .start = @"%slot".index, .length = P32.one });
+            @"%buf".unsetSpanRid(.{ .start = @"%slot".index, .length = P32.one });
             return @"%item";
         }
         pub fn spanRid(
@@ -576,7 +613,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             for (@"%buf".spanSlice(@"%span")) |@"%item"| {
                 try @"%item_rid"(@"%allocator", @"%item");
             }
-            return @"%buf".unsetSpanRid(@"%allocator", .{
+            @"%buf".unsetSpanRid(.{
                 .start = @"%span".start.index,
                 .length = @"%span".length,
             });
@@ -608,121 +645,112 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         /// The returned slice is only valid while buf.items.items is live
         pub fn removeSpan(
             @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
             @"%span": Span(@"%Origin"),
-        ) error{OutOfMemory}![]@"%Item" {
+        ) []@"%Item" {
             const @"%slice" = @"%buf".spanSlice(@"%span");
-            try @"%buf".unsetSpanRid(@"%allocator", .{ .start = @"%span".start.index, .length = @"%span".length });
+            @"%buf".unsetSpanRid(.{ .start = @"%span".start.index, .length = @"%span".length });
             return @"%slice";
         }
         /// The returned slice is only valid while buf.items.items is live
         pub fn removeOptSpan(
             @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
             @"%opt_span": Opt(Span(@"%Origin")),
-        ) error{OutOfMemory}![]@"%Item" {
+        ) []@"%Item" {
             switch (@"%opt_span") {
                 .no => return []@"%Item",
                 .yes => |@"%span"| {
-                    return @"%buf".removeSpan(@"%allocator", @"%span");
+                    return @"%buf".removeSpan(@"%span");
                 },
             }
         }
         fn unsetSpanRid(
             @"%buf": *@This(),
-            @"%allocator": std.mem.Allocator,
             @"%span_to_unset": Range,
-        ) error{OutOfMemory}!void {
-            var @"%maybe_unset_span_index_connecting_earlier": ?usize = null;
-            var @"%maybe_unset_span_index_connecting_later": ?usize = null;
-            @"%looking_for_connections": for (@"%buf".unset.items, 0..) |@"%unset_span", @"%unset_span_index"| {
-                if (@"%maybe_unset_span_index_connecting_earlier" == null and @"%span_to_unset".start == (@as(usize, @"%unset_span".start) + @as(usize, @"%unset_span".length.positive))) {
-                    @"%maybe_unset_span_index_connecting_earlier" = @"%unset_span_index";
-                    if (@"%maybe_unset_span_index_connecting_later") |_| {
-                        break :@"%looking_for_connections";
-                    }
-                } else if (@"%maybe_unset_span_index_connecting_later" == null and (@as(usize, @"%span_to_unset".start) + @as(usize, @"%span_to_unset".length.positive)) == @"%unset_span".start) {
-                    @"%maybe_unset_span_index_connecting_later" = @"%unset_span_index";
-                    if (@"%maybe_unset_span_index_connecting_earlier") |_| {
-                        break :@"%looking_for_connections";
-                    }
-                }
-            }
-            if (@"%maybe_unset_span_index_connecting_earlier") |@"%unset_span_index_connecting_earlier"| {
-                var @"%unset_span_connecting_earlier" = &@"%buf".unset.items[@"%unset_span_index_connecting_earlier"];
-                if (@"%maybe_unset_span_index_connecting_later") |@"%unset_span_index_connecting_later"| {
-                    const @"%unset_span_connecting_later" = @"%buf".unset.items[@"%unset_span_index_connecting_later"];
-                    @"%unset_span_connecting_earlier".length =
-                        @"%unset_span_connecting_earlier".length
-                            .addAssumeNoOverflow(@"%span_to_unset".length.positive)
-                            .addAssumeNoOverflow(@"%unset_span_connecting_later".length.positive);
-                    _ = @"%buf".unset.swapRemove(@"%unset_span_index_connecting_later");
-                } else {
-                    // maybe_unset_span_index_connecting_later == null
-                    if (@as(usize, @"%span_to_unset".start) + @as(usize, @"%span_to_unset".length.positive) == @"%buf".items.items.len) {
-                        @"%buf".items.shrinkRetainingCapacity(
-                            @"%buf".items.items.len - @as(usize, @"%unset_span_connecting_earlier".length.positive) - @as(usize, @"%span_to_unset".length.positive),
-                        );
-                        _ = @"%buf".unset.swapRemove(@"%unset_span_index_connecting_earlier");
-                    } else {
-                        @"%unset_span_connecting_earlier".length = @"%unset_span_connecting_earlier".length
-                            .addAssumeNoOverflow(@"%span_to_unset".length.positive);
-                    }
-                }
-            } else if (@"%maybe_unset_span_index_connecting_later") |@"%unset_span_index_connecting_later"| {
-                // maybe_unset_span_index_connecting_earlier == null
-                const @"%unset_span_connecting_later" = &@"%buf".unset.items[@"%unset_span_index_connecting_later"];
-                @"%unset_span_connecting_later".* = Range{
-                    .start = @"%span_to_unset".start,
-                    .length = @"%unset_span_connecting_later".length
-                        .addAssumeNoOverflow(@"%span_to_unset".length.positive),
-                };
+        ) void {
+            if (@"%span_to_unset".start + @"%span_to_unset".length.positive < @as(u32, @intCast(@"%buf".items.items.len))) {
+                var @"%unset_bit_set" = @"%buf".unsetBitSet();
+                @"%unset_bit_set".setRangeValue(
+                    .{
+                        .start = @"%span_to_unset".start,
+                        .end = @"%span_to_unset".start + @"%span_to_unset".length.positive,
+                    },
+                    true,
+                );
+                @"%buf".first_unset_index = @enumFromInt(@min(@intFromEnum(@"%buf".first_unset_index), @"%span_to_unset".start));
             } else {
-                // maybe_unset_span_index_connecting_earlier == null and maybe_unset_span_index_connecting_later == null
-                if (@as(usize, @"%span_to_unset".start) + @as(usize, @"%span_to_unset".length.positive) == @"%buf".items.items.len) {
-                    @"%buf".items.shrinkRetainingCapacity(
-                        std.math.sub(usize, @"%buf".items.items.len, @"%span_to_unset".length.positive) catch 0,
+                // span is at the end
+                @"%buf".endUnsetSpanRid(@"%span_to_unset".length);
+            }
+        }
+        fn endUnsetSpanRid(
+            @"%buf": *@This(),
+            @"%length_to_unset": P32,
+        ) void {
+            var @"%unset_bit_set" = @"%buf".unsetBitSet();
+            // can be optimized a bit
+            var @"%length_to_keep" = @"%buf".items.items.len - @"%length_to_unset".positive;
+            while (@"%length_to_keep" >= 1) {
+                @"%length_to_keep" -= 1;
+                if (!@"%unset_bit_set".isSet(@"%length_to_keep")) {
+                    @"%length_to_keep" += 1;
+                    @"%buf".items.shrinkRetainingCapacity(@"%length_to_keep");
+                    @"%unset_bit_set".setRangeValue(
+                        .{
+                            .start = @"%length_to_keep",
+                            .end = @"%unset_bit_set".bit_length,
+                        },
+                        false,
                     );
-                } else {
-                    try @"%buf".unset.append(@"%allocator", @"%span_to_unset");
+                    if (@"%buf".first_unset_index == @as(UnsetIndexOrNone, @enumFromInt(@"%length_to_keep"))) {
+                        @"%buf".first_unset_index = .none_unset;
+                    }
+                    return;
                 }
             }
+            @"%buf".clearRetainingCapacity();
+        }
+        /// invalidates all Slots and Spans into this Buf
+        pub fn clearRetainingCapacity(@"%buf": *@This()) void {
+            @"%buf".items.clearRetainingCapacity();
+            var @"%unset_bit_set" = @"%buf".unsetBitSet();
+            @"%unset_bit_set".unsetAll();
+            @"%buf".first_unset_index = .none_unset;
         }
         pub fn spanMoveToEnd(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%span": Span(@"%Origin"),
         ) error{OutOfMemory}!Span(@"%Origin") {
-            if (@as(usize, @"%span".start.index) + @as(usize, @"%span".length.positive) == @"%buf".items.items.len) {
+            if (@"%span".start.index + @"%span".length.positive == @as(u32, @intCast(@"%buf".items.items.len))) {
                 return @"%span";
             }
             // span is not at the end already
-            try @"%buf".items.ensureUnusedCapacity(@"%allocator", @"%span".length.positive);
-            @"%buf".items.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
+            try @"%buf".preAllocateAtLeast(@"%allocator", @"%span".length.positive);
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            try @"%buf".unsetSpanRid(@"%allocator", Range{
+            @"%buf".items.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
+            @"%buf".unsetSpanRid(.{
                 .start = @"%span".start.index,
                 .length = @"%span".length,
             });
             return Span(@"%Origin"){
-                .start = .{ .index = std.math.cast(u32, @"%buf".items.items.len - @"%span".length.positive).? },
+                .start = .{ .index = @intCast(@"%buf".items.items.len - @"%span".length.positive) },
                 .length = @"%span".length,
             };
         }
         pub fn spanMoveToUnset(@"%buf": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
-            if (@as(usize, @"%span".start.index) + @as(usize, @"%span".length.positive) < @"%buf".items.items.len) {
+            if (@"%span".start.index + @"%span".length.positive < @as(u32, @intCast(@"%buf".items.items.len))) {
                 return @"%span";
             }
             // span is at the end of items
-            if (@"%buf".markLengthPositiveAsOccupied(@"%span".length)) |@"%earlier_start_to_occupy_from"| {
+            if (@"%buf".markLengthPositiveAsSet(@"%span".length)) |@"%earlier_start_to_set_from"| {
                 @"%buf".items.replaceRangeAssumeCapacity(
-                    @"%earlier_start_to_occupy_from",
+                    @"%earlier_start_to_set_from",
                     @"%span".length.positive,
                     @"%buf".spanSlice(@"%span"),
                 );
-                @"%buf".items.shrinkRetainingCapacity(@"%buf".items.items.len - @"%span".length.positive);
+                @"%buf".unsetSpanRid(.{ .start = @"%span".start.index, .length = @"%span".length });
                 return Span(@"%Origin"){
-                    .start = .{ .index = @"%earlier_start_to_occupy_from" },
+                    .start = .{ .index = @"%earlier_start_to_set_from" },
                     .length = @"%span".length,
                 };
             } else {
@@ -746,16 +774,49 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 };
             }
         }
-        fn markLengthPositiveAsOccupied(@"%buf": *@This(), @"%length_to_occupy": P32) ?u32 {
-            for (@"%buf".unset.items, 0..) |*@"%unset", @"%unset_index"| {
-                if (@"%unset".length.positive > @"%length_to_occupy".positive) {
-                    @"%unset".length.positive -|= @"%length_to_occupy".positive;
-                    return @"%unset".start;
-                } else if (@"%unset".length.positive == @"%length_to_occupy".positive) {
-                    return @"%buf".unset.swapRemove(@"%unset_index").start;
-                }
+        fn markLengthPositiveAsSet(@"%buf": *@This(), @"%length_to_set": P32) ?u32 {
+            switch (@"%buf".first_unset_index) {
+                .none_unset => {
+                    return null;
+                },
+                _ => |@"%first_unset_index_enum"| {
+                    const @"%first_unset_index" = @intFromEnum(@"%first_unset_index_enum");
+                    // can be optimized
+                    const @"%unset_bit_mask_index_to_start_search" = @"%first_unset_index" / @bitSizeOf(std.bit_set.Dynamic.MaskInt);
+                    var @"%unset_iterator" = (std.bit_set.Dynamic{
+                        .masks = @"%buf".unset_masks + @"%unset_bit_mask_index_to_start_search",
+                        .bit_length = @"%buf".items.items.len - (@"%unset_bit_mask_index_to_start_search" * @bitSizeOf(std.bit_set.Dynamic.MaskInt)),
+                    }).iterator(.{ .direction = .forward, .kind = .set });
+                    _ = @"%unset_iterator".next().?;
+                    var @"%unset_end_so_far" = @"%first_unset_index";
+                    var @"%unset_length_so_far": u32 = 1;
+                    while (@"%unset_iterator".next()) |@"%unset_index_usize"| {
+                        const @"%unset_index": u32 = @intCast(@"%unset_index_usize");
+                        if (@"%unset_end_so_far" + 1 > @"%unset_index") {
+                            @"%unset_length_so_far" = 0;
+                        } else {
+                            @"%unset_length_so_far" += 1;
+                            @"%unset_end_so_far" = @"%unset_index";
+                            if (@"%unset_length_so_far" == @"%length_to_set".positive) {
+                                const @"%found_start" = @as(u32, @intCast(@"%unset_index")) + 1 - @"%length_to_set".positive;
+                                var @"%unset_bit_set" = @"%buf".unsetBitSet();
+                                @"%unset_bit_set".setRangeValue(
+                                    .{
+                                        .start = @"%found_start",
+                                        .end = @"%found_start" + @"%length_to_set".positive,
+                                    },
+                                    false,
+                                );
+                                if (@"%first_unset_index" == @"%found_start") {
+                                    @"%buf".first_unset_index = @"%buf".firstUnsetIndexStartSearchFrom(@"%first_unset_index" + 1);
+                                }
+                                return @"%found_start";
+                            }
+                        }
+                    }
+                    return null;
+                },
             }
-            return null;
         }
         // add insertSlice?
         pub fn addSlice(
@@ -929,8 +990,8 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%buf": @This(),
             @"%allocator": std.mem.Allocator,
         ) Unset_slice(@"%Item") {
-            var @"%unset" = @"%buf".unset;
-            @"%unset".deinit(@"%allocator");
+            var @"%unset_bit_set" = @"%buf".unsetBitSetUntilCapacity();
+            @"%unset_bit_set".deinit(@"%allocator");
             var @"%items" = @"%buf".items;
             @"%items".clearRetainingCapacity();
             return .{ .undefined_items = @"%items".allocatedSlice() };
@@ -939,7 +1000,8 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         pub fn rid(@"%buf": @This(), @"%allocator": std.mem.Allocator) void {
             var @"%buf_mut" = @"%buf";
             @"%buf_mut".items.deinit(@"%allocator");
-            @"%buf_mut".unset.deinit(@"%allocator");
+            var @"%unset_bit_set" = @"%buf_mut".unsetBitSetUntilCapacity();
+            @"%unset_bit_set".deinit(@"%allocator");
         }
     };
 }
@@ -1562,7 +1624,8 @@ pub fn buf_empty(
 ) Buf(Origin(@"%Origin", @"%Part"), @"%Item") {
     return .{
         .items = std.ArrayList(@"%Item").empty,
-        .unset = std.ArrayList(Range).empty,
+        .unset_masks = (std.bit_set.Dynamic{}).masks,
+        .first_unset_index = .none_unset,
     };
 }
 pub fn buf_reuse(
@@ -1575,7 +1638,8 @@ pub fn buf_reuse(
     items.clearRetainingCapacity();
     return .{
         .items = items,
-        .unset = std.ArrayList(Range).empty,
+        .unset_masks = (std.bit_set.Dynamic{}).masks,
+        .first_unset_index = .none_unset,
     };
 }
 pub fn buf_pre_allocate_at_least(
@@ -1927,7 +1991,7 @@ pub fn buf_span_add_buf_span(
     span: Span(@"%Origin"),
 }) {
     var @"%source" = @"%".source;
-    const @"%source_slice" = try @"%source".removeSpan(@"%allocator", @"%".source_span);
+    const @"%source_slice" = @"%source".removeSpan(@"%".source_span);
     var @"%buf" = @"%".buf;
     const @"%combined_span" = try @"%buf".spanAddSlice(@"%allocator", @"%".span, @"%source_slice");
     return .{
@@ -1979,7 +2043,7 @@ pub fn buf_opt_span_add_buf_span(
     span: Span(@"%Origin"),
 }) {
     var @"%source" = @"%".source;
-    const @"%source_slice" = try @"%source".removeSpan(@"%allocator", @"%".source_span);
+    const @"%source_slice" = @"%source".removeSpan(@"%".source_span);
     var @"%buf" = @"%".buf;
     const @"%combined_span" = try @"%buf".optSpanAddSlice(@"%allocator", @"%".span, @"%source_slice");
     return .{
@@ -2191,7 +2255,8 @@ pub fn buf_origin_isolate(
         }
     };
     return .{ .erased = .{ .erased = .{
-        .unset = @"%".buf.unset,
+        .unset_masks = @"%".buf.unset_masks,
+        .first_unset_index = @"%".buf.first_unset_index,
         .items = items_erased,
     } } };
 }
@@ -2210,11 +2275,8 @@ pub fn buf_origin_unerase_keep_items(
     return .{
         .buf = .{
             .items = @"%".buf.erased.items,
-            .unset = std.ArrayList(Range){
-                .pointer_stability = @"%".buf.erased.unset.pointer_stability,
-                .capacity = @"%".buf.erased.unset.capacity,
-                .items = @ptrCast(@"%".buf.erased.unset.items),
-            },
+            .unset_masks = @"%".buf.erased.unset_masks,
+            .first_unset_index = @"%".buf.erased.first_unset_index,
         },
         .uneraser = @"%".uneraser,
     };
@@ -2278,12 +2340,9 @@ pub fn buf_origin_unerase(
     };
     return .{
         .buf = .{
-            .unset = std.ArrayList(Range){
-                .pointer_stability = @"%".buf.erased.unset.pointer_stability,
-                .capacity = @"%".buf.erased.unset.capacity,
-                .items = @ptrCast(@"%".buf.erased.unset.items),
-            },
             .items = @"%items_erased",
+            .unset_masks = @"%".buf.erased.unset_masks,
+            .first_unset_index = @"%".buf.erased.first_unset_index,
         },
         .uneraser = @"%".uneraser,
     };

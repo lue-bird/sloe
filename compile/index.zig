@@ -1,6 +1,49 @@
 const std = @import("std");
 const core = @import("core.zig");
 
+test "bit_set.Dynamic.findFirstSet does! look beyond bit_length" {
+    var bit_set: std.bit_set.Dynamic = try .initFull(std.testing.allocator, 10);
+    bit_set.unset(0);
+    bit_set.unset(1);
+    bit_set.unset(2);
+    var bit_set_slice0_to_2: std.bit_set.Dynamic = .{ .masks = bit_set.masks, .bit_length = 3 };
+    // I would prefer null, but this is the result:
+    try std.testing.expectEqual(3, bit_set_slice0_to_2.findFirstSet());
+    bit_set.deinit(std.testing.allocator);
+}
+test "bit_set.Dynamic.lastFirstSet does! look beyond bit_length" {
+    var bit_set: std.bit_set.Dynamic = try .initFull(std.testing.allocator, 10);
+    bit_set.unset(0);
+    bit_set.unset(1);
+    bit_set.unset(2);
+    var bit_set_slice0_to_2: std.bit_set.Dynamic = .{ .masks = bit_set.masks, .bit_length = 3 };
+    // I would prefer null, but this is the result:
+    try std.testing.expectEqual(9, bit_set_slice0_to_2.findLastSet());
+    bit_set.deinit(std.testing.allocator);
+}
+test "bit_set.Dynamic.iterator(.forward).next() does! look beyond bit_length" {
+    var bit_set: std.bit_set.Dynamic = try .initFull(std.testing.allocator, 10);
+    bit_set.unset(0);
+    bit_set.unset(1);
+    bit_set.unset(2);
+    var bit_set_slice0_to_2: std.bit_set.Dynamic = .{ .masks = bit_set.masks, .bit_length = 3 };
+    var bit_set_slice0_to_2_iterator = bit_set_slice0_to_2.iterator(.{ .direction = .forward, .kind = .set });
+    // I would prefer null, but this is the result:
+    try std.testing.expectEqual(3, bit_set_slice0_to_2_iterator.next());
+    bit_set.deinit(std.testing.allocator);
+}
+test "bit_set.Dynamic.iterator(.reverse).next() does not look beyond bit_length" {
+    var bit_set: std.bit_set.Dynamic = try .initFull(std.testing.allocator, 10);
+    bit_set.unset(0);
+    bit_set.unset(1);
+    bit_set.unset(2);
+    var bit_set_slice0_to_2: std.bit_set.Dynamic = .{ .masks = bit_set.masks, .bit_length = 3 };
+    var bit_set_slice0_to_2_iterator = bit_set_slice0_to_2.iterator(.{ .direction = .reverse, .kind = .set });
+    // I would prefer null, but this is the result:
+    try std.testing.expectEqual(9, bit_set_slice0_to_2_iterator.next());
+    bit_set.deinit(std.testing.allocator);
+}
+
 test "various trivial" {
     core.p32_rid(core.P32{ .positive = 11 });
     core.u32_rid(11);
@@ -462,23 +505,23 @@ test "unset_slice castOrRidAndAllocate fallback" {
     try std.testing.expect(@intFromPtr(unset_slice_u32.undefined_items.ptr) != @intFromPtr(unset_slice_f128.undefined_items.ptr));
     unset_slice_f128.rid(allocator);
 }
-test "buf insert, add, take, occupiedCount, rid" {
+test "buf insert, add, take, setCount, rid" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
-    try std.testing.expectEqual(0, buf.occupiedCount());
+    try std.testing.expectEqual(0, buf.setCount());
     const slot0 = try buf.add(allocator, 123);
     const slot1 = try buf.add(allocator, 456);
-    try std.testing.expectEqual(2, buf.occupiedCount());
-    try std.testing.expectEqual(123, buf.remove(allocator, slot0));
-    try std.testing.expectEqual(1, buf.occupiedCount());
+    try std.testing.expectEqual(2, buf.setCount());
+    try std.testing.expectEqual(123, buf.remove(slot0));
+    try std.testing.expectEqual(1, buf.setCount());
     const slot0_reused = try buf.insert(allocator, 789);
     try std.testing.expectEqual(0, slot0_reused.index);
-    try std.testing.expectEqual(789, buf.remove(allocator, slot0_reused));
-    try std.testing.expectEqual(1, buf.occupiedCount());
-    try std.testing.expectEqual(456, buf.remove(allocator, slot1));
-    try std.testing.expectEqual(0, buf.occupiedCount());
+    try std.testing.expectEqual(789, buf.remove(slot0_reused));
+    try std.testing.expectEqual(1, buf.setCount());
+    try std.testing.expectEqual(456, buf.remove(slot1));
+    try std.testing.expectEqual(0, buf.setCount());
     buf.rid(allocator);
 }
 test "buf_item_step" {
@@ -496,7 +539,7 @@ test "buf_item_step" {
             }
         }.f,
     });
-    try std.testing.expectEqual(124, buf.remove(std.testing.allocator, slot));
+    try std.testing.expectEqual(124, buf.remove(slot));
     buf.rid(std.testing.allocator);
 }
 test "buf add to span" {
@@ -507,7 +550,7 @@ test "buf add to span" {
     const span0 = try buf.optSpanAdd(allocator, core.Opt(core.Span(@TypeOf(origin))){ .no = {} }, 123);
     const slot_causing_span_move_to_end = try buf.add(allocator, 4);
     const span1 = try buf.spanAdd(allocator, span0, 567);
-    try std.testing.expectEqual(4, try buf.remove(allocator, slot_causing_span_move_to_end));
+    try std.testing.expectEqual(4, buf.remove(slot_causing_span_move_to_end));
     try std.testing.expectEqual(2, span1.start.index);
     try std.testing.expectEqual(2, span1.length.positive);
     const span1_moved = buf.spanMoveToUnset(span1);
@@ -592,10 +635,10 @@ test "buf add remove stress test" {
     var random = rng.random();
     random.shuffle(core.Slot(@TypeOf(origin)), slots.items);
     for (slots.items) |slot| {
-        _ = try buf.remove(allocator, slot);
+        _ = buf.remove(slot);
     }
     slots.deinit(allocator);
-    try std.testing.expectEqual(0, buf.unset.items.len);
+    try std.testing.expectEqual(0, buf.unsetCount());
     try std.testing.expectEqual(0, buf.items.items.len);
     buf.rid(allocator);
 }
