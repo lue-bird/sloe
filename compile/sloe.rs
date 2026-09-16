@@ -9568,10 +9568,7 @@ Available variable names are {}",
         } => match expression {
             None => {
                 errors.push(ErrorNode {
-                    range: lsp_types::Range {
-                        start: comments.line0.start,
-                        end: comments_end(comments),
-                    },
+                    range: symbol_range(comments.line0.start, "#"),
                     message: Box::from(
                         "missing expression after comments # your comment \\n ..here..",
                     ),
@@ -13662,7 +13659,7 @@ You may also use it to adjust memory usage after `Buf-reuse` when the given `Uns
             CoreFnInfo {
                 name: "Buf-insert",
                 documentation: "Add a new item into the `Buf` and keep a slot to it,
-reusing unset space earlier in the `Buf` when available.
+reusing unset space closest to the start of the `Buf` when available.
 Use `Buf-add` if you don't care about reuse.",
                 type_parameters: vec![],
                 parameter_type: type_record([

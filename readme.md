@@ -737,8 +737,6 @@ cargo install --offline --debug --path . sloe
 
 - when reporting a variable as unused in the first query case, still add it as used in the overall expression to avoid emitting 2 errors for the same variable
 
-- on missing expression after comment, only put the error on the # symbol of the first line
-
 - when formatting variant pattern, insert space after when value is missing
 
 - bug: rename (and thus also references) considers local function variables as outer variables
