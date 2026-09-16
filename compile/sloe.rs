@@ -13238,6 +13238,18 @@ See `Origin-erased` for an example.",
                 result_type: type_variable("value")
             },
             CoreFnInfo {
+                name: "Slot-index",
+                documentation: "At what offset the referenced item is located.
+For example, the second item in a Buf is at index 1",
+                type_parameters: vec![],
+                parameter_type: type_slot(type_variable("origin")),
+                result_type:
+                    type_record([
+                        ("slot", type_slot(type_variable("origin"))),
+                        ("index", type_u32)
+                    ]),
+            },
+            CoreFnInfo {
                 name: "Slot-to-span",
                 documentation: "Create a span covering just the one given slot",
                 type_parameters: vec![],
@@ -13266,6 +13278,18 @@ See `Origin-erased` for an example.",
                     ("slot", type_slot(type_origin(type_variable("origin"), type_variable("part")))),
                     ("uneraser", type_origin_uneraser(type_variable("origin"))),
                 ]),
+            },
+            CoreFnInfo {
+                name: "Span-start-index",
+                documentation: "At what offset the first contained slot is located.
+For example, the second item in a Buf is at index 1",
+                type_parameters: vec![],
+                parameter_type: type_span(type_variable("origin")),
+                result_type:
+                    type_record([
+                        ("span", type_span(type_variable("origin"))),
+                        ("index", type_u32)
+                    ]),
             },
             CoreFnInfo {
                 name: "Span-length",
@@ -13298,7 +13322,8 @@ See `Origin-erased` for an example.",
             CoreFnInfo {
                 name: "Span-start",
                 documentation: "Split into the first slot and span after.
-To join disconnected slots and spans back together, use helpers like `Buf-span-add-own-opt-span`",
+To join disconnected slots and spans back together, use helpers like `Buf-span-add-own-opt-span`.
+Note that to only read the start index you can directly call `Span-start-index`",
                 type_parameters: vec![],
                 parameter_type: type_span(type_variable("origin")),
                 result_type:

@@ -254,6 +254,7 @@ test "simple slot and span queries" {
     const slot4 = core.Slot(ExampleOrigin){ .index = 4 };
     const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
     try std.testing.expectEqual(4, (core.slot_index(ExampleOrigin, slot4)).index);
+    try std.testing.expectEqual(4, (core.span_start_index(ExampleOrigin, span4_to_13)).index);
     try std.testing.expectEqual(10, (core.span_length(ExampleOrigin, span4_to_13)).length.positive);
     try std.testing.expectEqual(10, (core.opt_span_length(ExampleOrigin, .{ .yes = span4_to_13 })).length);
     try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, .{ .no = {} })).length);

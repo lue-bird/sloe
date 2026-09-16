@@ -1434,6 +1434,12 @@ pub fn slot_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct
     };
 }
 
+pub fn span_start_index(
+    @"%Origin": type,
+    @"%span": Span(@"%Origin"),
+) Record(struct { index: U32, span: Span(@"%Origin") }) {
+    return .{ .span = @"%span", .index = @"%span".start.index };
+}
 pub fn span_length(
     @"%Origin": type,
     @"%span": Span(@"%Origin"),

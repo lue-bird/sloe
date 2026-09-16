@@ -452,6 +452,10 @@ export function origin_unerase(unerase) {
   return unerase.unerase({ erased: unerase.erased, uneraser: {} }).unerased;
 }
 
+/** @template $Origin @param {Slot<$Origin>} slot @returns {{ slot: Slot<$Origin>, index: U32 }} */
+export function slot_index(slot) {
+  return { slot: slot, index: slot };
+}
 /** @template $Origin @param {Slot<$Origin>} slot @returns {Span<$Origin>} */
 export function slot_to_span(slot) {
   return { start: slot, length: 1 };
@@ -486,6 +490,10 @@ export function opt_span_origin_unerase(span) {
   return /** @type {{ span: Opt<Span<Origin<$Origin, $Part>>>, uneraser: Origin_uneraser<$Origin> }} */ (
     span
   );
+}
+/** @template $Origin @param {Span<$Origin>} span @returns {{ span: Span<$Origin>, index: U32, }} */
+export function span_start_index(span) {
+  return { span: span, index: span.start };
 }
 /** @template $Origin @param {Span<$Origin>} span @returns {{ span: Span<$Origin>, length: P32, }} */
 export function span_length(span) {

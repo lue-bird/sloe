@@ -173,6 +173,11 @@ pub struct Record·index·slot<Index, Slot> {
     pub slot: Slot,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·index·span<Index, Span> {
+    pub index: Index,
+    pub span: Span,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·length·span<Length, Span> {
     pub length: Length,
     pub span: Span,
@@ -2088,6 +2093,12 @@ pub fn slot_to_span<Origin>(slot: Slot<Origin>) -> Span<Origin> {
     slot.to_span()
 }
 
+pub fn span_start_index<Origin>(span: Span<Origin>) -> Record·index·span<U32, Span<Origin>> {
+    Record·index·span {
+        index: span.start.index,
+        span: span,
+    }
+}
 pub fn span_length<Origin>(span: Span<Origin>) -> Record·length·span<P32, Span<Origin>> {
     Record·length·span {
         length: span.length,

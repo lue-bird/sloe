@@ -362,8 +362,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
 
 # potential improvements in the future
-- inline Origin paramters (origin, part) into Slot, Span, Buf, Unset-slot Unset-span.
-  This is less confusing IMO but clutters types a little in core signatures
+- IDE type and type diff error displays suck ass, mostly due to indentation being stripped. But markdown support seems to still be ways off for most editors for some reason. Anyone know a solution?
 - when in query case pattern record, suggest field name in completion
 - add field and variant rename and references
 - add code action for spreading a pattern variable
@@ -733,13 +732,9 @@ cargo install --offline --debug --path . sloe
 
 - give nicer error when only a field is missing or too much
 
-- find some way to generate nicer IDE type displays. Maybe tabs work?
-
-- add `Slot-index`, `Span-start-index`
-
 - add `Buf-swap`
 
-- add `Buf-add-str`, `Buf-insert-str`
+- add `Buf-char-add-str`
 
 - optimize core.zig Buf.markLengthPositiveAsSet
 
@@ -787,8 +782,6 @@ cargo install --offline --debug --path . sloe
       : .buf Buf _origin, _item .slot Slot
   ```
   this does not feel very idiomatic (plenty of room to mess this hint up) but since there is a safe fallback and this isn't a default API I can accept it.
-
-- read https://smallcultfollowing.com/babysteps/blog/2026/02/27/dada-internal-references/ and compare against carbon
 
 - fix comment TODOs
 
