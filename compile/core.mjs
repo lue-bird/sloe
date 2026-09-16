@@ -437,6 +437,10 @@ export function origin_rid(_) {}
 export function origin_isolate_constant(erase) {
   return /** @type Origin_isolated<$Origin, $Value_erased> */ (erase());
 }
+/** @template $Origin, $A, $B @param {{ isolated: Origin_isolated<$Origin, $A>, change: Fn<$A, $B>, }} map @returns {Origin_isolated<$Origin, $B>} */
+export function origin_isolated_map(map) {
+  return /** @type Origin_isolated<$Origin, $B> */ (map.change(map.isolated));
+}
 /** @template $Origin, $A, $B @param {{ a: Origin_isolated<$Origin, $A>, b: Origin_isolated<$Origin, $B>, }} ab @returns {Origin_isolated<$Origin, { a: $A, b: $B }>} */
 export function origin_isolated_merge(ab) {
   return ab;
@@ -750,10 +754,10 @@ export function buf_add(add) {
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, newø: $Item, }} insert @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} */
 export function buf_insert(insert) {
-  const existing_vacant_index = insert.buf.findIndex((el) => el === null);
-  if (existing_vacant_index >= 0) {
-    insert.buf[existing_vacant_index] = insert.newø;
-    return { buf: insert.buf, slot: existing_vacant_index };
+  const existing_unset_index = insert.buf.findIndex((el) => el === null);
+  if (existing_unset_index >= 0) {
+    insert.buf[existing_unset_index] = insert.newø;
+    return { buf: insert.buf, slot: existing_unset_index };
   } else {
     const new_index = insert.buf.length;
     insert.buf.push(insert.newø);
@@ -894,42 +898,42 @@ export function buf_opt_span_move_to_end(move) {
   };
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} move @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
-export function buf_span_move_to_vacant(move) {
+export function buf_span_move_to_unset(move) {
   if (move.span.start + move.span.length < move.buf.length) return move;
-  let vacant_length = 0;
+  let unset_length = 0;
   for (let i = 0; i < move.buf.length; i++) {
     if (move.buf[i] === null) {
-      vacant_length++;
-      if (vacant_length === move.span.length) {
-        const vacant_start = i - move.span.length + 1;
-        for (let vacant_i = 0; vacant_i < move.span.length; vacant_i++) {
-          move.buf[vacant_start + vacant_i] = move.buf[move.span.start + vacant_i];
+      unset_length++;
+      if (unset_length === move.span.length) {
+        const unset_start = i - move.span.length + 1;
+        for (let unset_i = 0; unset_i < move.span.length; unset_i++) {
+          move.buf[unset_start + unset_i] = move.buf[move.span.start + unset_i];
         }
         move.buf.length -= move.span.length;
         while (move.buf[move.buf.length - 1] === null) {
           move.buf.length -= 1;
         }
-        return { buf: move.buf, span: { start: vacant_start, length: move.span.length } };
+        return { buf: move.buf, span: { start: unset_start, length: move.span.length } };
       }
     } else {
-      vacant_length = 0;
+      unset_length = 0;
     }
   }
   return move;
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>>, }} move @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>>, }} */
-export function buf_opt_span_move_to_vacant(move) {
+export function buf_opt_span_move_to_unset(move) {
   if ("no" in move.span) return move;
   const span = move.span.yes;
   if (span.start + span.length < move.buf.length) return move;
-  let vacant_length = 0;
+  let unset_length = 0;
   for (let i = 0; i < move.buf.length; i++) {
     if (move.buf[i] === null) {
-      vacant_length++;
-      if (vacant_length === span.length) {
-        const vacant_start = i - span.length + 1;
-        for (let vacant_i = 0; vacant_i < span.length; vacant_i++) {
-          move.buf[vacant_start + vacant_i] = move.buf[span.start + vacant_i];
+      unset_length++;
+      if (unset_length === span.length) {
+        const unset_start = i - span.length + 1;
+        for (let unset_i = 0; unset_i < span.length; unset_i++) {
+          move.buf[unset_start + unset_i] = move.buf[span.start + unset_i];
         }
         move.buf.length -= span.length;
         while (move.buf[move.buf.length - 1] === null) {
@@ -937,11 +941,11 @@ export function buf_opt_span_move_to_vacant(move) {
         }
         return {
           buf: move.buf,
-          span: { yes: { start: vacant_start, length: span.length } },
+          span: { yes: { start: unset_start, length: span.length } },
         };
       }
     } else {
-      vacant_length = 0;
+      unset_length = 0;
     }
   }
   return move;

@@ -20366,7 +20366,7 @@ mod core_declarations_are_implemented {
     fn in_zig() {
         let core_zig = include_str!("core.zig");
         for (core_fn_name, _) in core_fns.iter() {
-            let core_fn_name = name_to_lowercase_rust(core_fn_name);
+            let core_fn_name = name_to_lowercase_zig(core_fn_name);
             assert!(
                 core_zig.contains(&format!("pub fn {}", core_fn_name))
                     || core_zig.contains(&format!("pub inline fn {}", core_fn_name)),
@@ -20376,11 +20376,33 @@ mod core_declarations_are_implemented {
         }
         for (core_fn_name, _) in core_type_aliases.iter() {
             // switch to name_to_uppercase_rust when available
-            let core_ty_name = name_to_uppercase_rust(core_fn_name);
+            let core_ty_name = name_to_uppercase_zig(core_fn_name);
             assert!(
                 core_zig.contains(&format!("fn {}", core_ty_name))
                     || core_zig.contains(&format!("const {}", core_ty_name)),
                 "core.zig does not contain ty {}",
+                core_ty_name
+            );
+        }
+    }
+    #[test]
+    fn in_mjs() {
+        let core_mjs = include_str!("core.mjs");
+        for (core_fn_name, _) in core_fns.iter() {
+            let core_fn_name = name_to_lowercase_js(core_fn_name);
+            assert!(
+                core_mjs.contains(&format!("export function {}", core_fn_name)),
+                "core.mjs does not contain fn {}",
+                core_fn_name
+            );
+        }
+        for (core_fn_name, _) in core_type_aliases.iter() {
+            let core_ty_name = name_to_uppercase_js(core_fn_name);
+            // this is quite approximate
+            assert!(
+                core_mjs.contains(&format!("}} {} */", core_ty_name))
+                    || core_mjs.contains(&format!("}} {}\n", core_ty_name)),
+                "core.mjs does not contain ty {}",
                 core_ty_name
             );
         }
