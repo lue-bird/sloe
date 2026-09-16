@@ -8726,8 +8726,6 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
-    // whenever a pattern variable has been used it will be removed here
-    // can maybe be optimized by using Cow<>/Rc<>
     pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     used_origin_variables: &mut std::collections::HashMap<
@@ -8883,7 +8881,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             *content_end
                         },
                     },
-                    message: Box::from("missing character between 'here'"),
+                    message: Box::from("missing character between single quotes 'here'"),
                 });
                 None
             }
@@ -9019,7 +9017,8 @@ Available variable names are {}",
             if syntax_type_arguments.len() != project_fn_info.type_parameters.len() {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
-                    message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you only provided {argument_count} as arguments. Type arguments are provided in a comma-separated list enclosed in angle brackets after the fn name, like in Buf-empty{{u32}} origin, each type parenthesized if necessary.",
+                    message: format!("incorrect number of type parameters. The project fn has {parameter_count} type {parameter_pluralized}, but you provided {argument_count} as arguments.
+Type arguments are provided each wrapped in curly braces after the fn name, like in Buf-empty{{u32}} origin.",
                         parameter_count = project_fn_info.type_parameters.len(),
                         parameter_pluralized = if project_fn_info.type_parameters.len() == 1 {
                             "parameter"
@@ -9106,7 +9105,7 @@ Available variable names are {}",
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_brace_start, "{"),
-                    message: Box::from("missing type argument in angle brackets. An example of a valid variant is |{Opt str}yes \"hi c:\""),
+                    message: Box::from("missing type argument in curly braces. An example of a valid variant is |{Opt str}yes \"hi c:\""),
                 });
                 return None;
             };
@@ -9823,24 +9822,28 @@ Available variable names are {}",
                         }
                         (true, false) => {
                             // only this case uses this pattern variable, not the first case
-                            // possible improvement: mention origin range pattern variable
                             errors.push(ErrorNode {
                                 range: name_range(WithStartPosition { value: pattern_variable, start: pattern_variable_origin.origin_start }),
-                                message: Box::from("this query case pattern variable is not used in the result of the first case.
+                                message: format!("this query case pattern variable is not used in the result of the first case starting at {}.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
-If you do not need to use this variable in that case, use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..")
+If you do not need to use this variable in that case, use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
+                                    position_to_string(expression_start(case0_result))
+                                ).into_boxed_str()
                             });
+                            // pretend the first case does use this pattern variable
+                            // so that this variable is not reported as unused twice
+                            case0_result_pattern_variables.remove(pattern_variable);
                         }
                         (false, true) => {
                             // only the first case uses this pattern variable, not this case
-                            // possible improvement: mention origin range pattern variable
                             errors.push(ErrorNode {
                                 range: name_range(WithStartPosition { value: pattern_variable, start: pattern_variable_origin.origin_start }),
                                 message: format!(
-                                    "this query case pattern variable is not used in the result of the {} case.
+                                    "this query case pattern variable is not used in the result of the {} case starting at {}.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
 If you do not need to use this variable in that case, use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
-                                    index_to_th(case_index)
+                                    index_to_th(case_index),
+                                    position_to_string(expression_start(case_result))
                                 ).into_boxed_str()
                             });
                         }

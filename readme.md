@@ -731,17 +731,46 @@ cargo install --offline --debug --path . sloe
 
 - optimize core.zig Buf.markLengthPositiveAsSet
 
-- when reporting a variable as unused in the first query case, still add it as used in the overall expression to avoid emitting 2 errors for the same variable
-
 - give nicer error when only a field is missing or too much
 
 - (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
 
-- remove Origin-erased-rid. It can't really be made useful
-
 - try to make accidentally used _ in identifiers more gentle
 
-- simplify exhaustiveness checking, possibly 
+- check Buf lengths after every append in rust the same way as done in zig and js but panic instead.
+  This prevents ugly wrap bahavior
+
+- New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
+  ```sloe
+  fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item
+      : .buf Buf _origin, _item .slot Slot
+  ```
+
+- (soft accept) again strongly consider allowing the variant choice type in `|{here}` to _not_ include the variant name. This would allow the removal of
+    - `Opt-yes v` which would be replaced by `|{|no .}yes v`
+    - `Done{g} d` which would be replaced by `|{|going g}done d`
+    - `Going{g} d` which would be replaced by `|{|going g}done d`
+    - user-defined types that follow a similar spirit, e.g. Error or Success
+  
+  Overall this makes sense in context of this language: You never _need_ to repeat yourself in explicitly provided types.
+
+  The reason I previously rejected this is that misspelling the variant name will lead to fairly confusing errors.
+  My sneaking suspicion is that moving the {type} to after the variant name (again) is going to make it more inuitive that the name is not necessarily included.
+  
+  Wondering: This may make proper unerase viable (unlikely). If it does, instant priorisation of this issue :)
+
+- consider adding `Buf-span-map-or-rid-and-allocate` (which tries to reuse the allocation).
+  Is there a use for this?
+  
+- website: in text area: prevent default on tab and insert four spaces instead
+
+- drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
+
+- fix comment TODOs
+
+- (if uneraser API is here to stay) remove Origin-erased-rid. It can't really be made useful
+
+- simplify exhaustiveness checking, possibly
 
 - consider adding
   ```sloe
@@ -751,30 +780,6 @@ cargo install --offline --debug --path . sloe
       :
       Origin-erased _value-erased-new
   ```
-
-- check Buf lengths after every append in rust the same way as done in zig and js but panic instead
-
-- consider adding `Buf-span-map-or-rid-and-allocate` (which tries to reuse the allocation).
-  Is there a use for this?
-  
-- website: in ext area: prevent default on tab and insert four spaces instead
-
-- drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
-
-- (requires deterministic choice of free slots across all output language core implementations, looking at you, core.zig)
-  re-introduce Unset-slot in some form and remove `Buf-item-step`.
-  But instead of taking Unset-slot as a guarantee of a free slot, there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
-  One possible API would be
-  ```sloe
-  fn Slot-index Slot _origin : .slot Slot _origin .index u32
-  fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item
-      : .buf Buf _origin, _item .slot Slot
-  ```
-  this does not feel very idiomatic (plenty of room to mess this hint up) but since there is a safe fallback and this isn't a default API I can accept it.
-
-- fix comment TODOs
-
-- (not sure if it still exists) track down formatting bug which can duplicate the last declaration (maybe related: document ends in unrecognized code). Then change error message of type construct with missing argument to explaining that types with no arguments are lowercase
 
 # not coherently formulated thoughts
 
