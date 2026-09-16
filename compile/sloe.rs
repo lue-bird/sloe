@@ -16304,12 +16304,12 @@ fn syntax_pattern_unparenthesized_format<Types, Patterns>(
         }
         SyntaxPattern::Variant { name, value } => {
             optional_variant_name_format(formatted, name.value.as_ref());
+            space_or_linebreak_indented_into(
+                formatted,
+                range_line_span(pattern_range(pattern, patterns, types)),
+                indent,
+            );
             if let Some(value) = value {
-                space_or_linebreak_indented_into(
-                    formatted,
-                    range_line_span(pattern_range(pattern, patterns, types)),
-                    indent,
-                );
                 syntax_pattern_unparenthesized_format(
                     formatted,
                     indent,

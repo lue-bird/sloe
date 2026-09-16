@@ -733,8 +733,6 @@ cargo install --offline --debug --path . sloe
 
 - when reporting a variable as unused in the first query case, still add it as used in the overall expression to avoid emitting 2 errors for the same variable
 
-- when formatting variant pattern, insert space after when value is missing
-
 - give nicer error when only a field is missing or too much
 
 - (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
