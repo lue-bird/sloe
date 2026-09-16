@@ -252,7 +252,7 @@ test "choice_empty_to" {
 test "simple slot and span queries" {
     const ExampleOrigin = enum {};
     const slot4 = core.Slot(ExampleOrigin){ .index = 4 };
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = slot4.index, .length = core.P32.fromComptime(10) };
     try std.testing.expectEqual(4, (core.slot_index(ExampleOrigin, slot4)).index);
     try std.testing.expectEqual(4, (core.span_start_index(ExampleOrigin, span4_to_13)).index);
     try std.testing.expectEqual(10, (core.span_length(ExampleOrigin, span4_to_13)).length.positive);
@@ -261,59 +261,59 @@ test "simple slot and span queries" {
 }
 test "span_start" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const slot4_and_span5_to_13 = core.span_start(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(4, slot4_and_span5_to_13.start.index);
-    try std.testing.expectEqual(5, slot4_and_span5_to_13.after.yes.start.index);
+    try std.testing.expectEqual(5, slot4_and_span5_to_13.after.yes.start);
     try std.testing.expectEqual(9, slot4_and_span5_to_13.after.yes.length.positive);
     try std.testing.expectEqual(13, slot4_and_span5_to_13.after.yes.endIndex());
 }
 test "span_end" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const slot13_and_span4_to_12 = core.span_end(ExampleOrigin, span4_to_13);
     try std.testing.expectEqual(13, slot13_and_span4_to_12.end.index);
-    try std.testing.expectEqual(4, slot13_and_span4_to_12.before.yes.start.index);
+    try std.testing.expectEqual(4, slot13_and_span4_to_12.before.yes.start);
     try std.testing.expectEqual(9, slot13_and_span4_to_12.before.yes.length.positive);
     try std.testing.expectEqual(12, slot13_and_span4_to_12.before.yes.endIndex());
 }
 test "span_start_of_length_positive, normal inputs" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const span4_to_10_and_11_to_13 = core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 7 } });
-    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.yes.start.index);
+    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.after.yes.start);
     try std.testing.expectEqual(13, span4_to_10_and_11_to_13.after.yes.endIndex());
-    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.start.start.index);
+    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.start.start);
     try std.testing.expectEqual(10, span4_to_10_and_11_to_13.start.endIndex());
 }
 test "span_start_of_length_positive, given length > given span length" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const span4_to_13_and_empty = core.span_start_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
     try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.after)).length);
-    try std.testing.expectEqual(4, span4_to_13_and_empty.start.start.index);
+    try std.testing.expectEqual(4, span4_to_13_and_empty.start.start);
     try std.testing.expectEqual(13, span4_to_13_and_empty.start.endIndex());
 }
 test "span_end_of_length_positive, normal inputs" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const span4_to_10_and_11_to_13 = core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 3 } });
-    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.end.start.index);
+    try std.testing.expectEqual(11, span4_to_10_and_11_to_13.end.start);
     try std.testing.expectEqual(13, span4_to_10_and_11_to_13.end.endIndex());
-    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.before.yes.start.index);
+    try std.testing.expectEqual(4, span4_to_10_and_11_to_13.before.yes.start);
     try std.testing.expectEqual(10, span4_to_10_and_11_to_13.before.yes.endIndex());
 }
 test "span_end_of_length_positive, given length > given span length" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const span4_to_13_and_empty = core.span_end_of_length_positive(ExampleOrigin, .{ .span = span4_to_13, .length = .{ .positive = 10000 } });
     try std.testing.expectEqual(0, (core.opt_span_length(ExampleOrigin, span4_to_13_and_empty.before)).length);
-    try std.testing.expectEqual(4, span4_to_13_and_empty.end.start.index);
+    try std.testing.expectEqual(4, span4_to_13_and_empty.end.start);
     try std.testing.expectEqual(13, span4_to_13_and_empty.end.endIndex());
 }
 test "span_step up" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_step(ExampleOrigin, u32, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
@@ -328,7 +328,7 @@ test "span_step up" {
 }
 test "span_step down" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     var reverse_indexes_array_list = try core.opt_span_step(
         ExampleOrigin,
         std.ArrayList(u32),
@@ -358,7 +358,7 @@ test "span_step down" {
 }
 test "span_step_while up, never |done" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_step_while(core.Choice, u32, ExampleOrigin, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
@@ -376,7 +376,7 @@ test "span_step_while up, never |done" {
 }
 test "span_step_while up, ending in |done" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_step_while(void, u32, ExampleOrigin, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
@@ -391,13 +391,13 @@ test "span_step_while up, ending in |done" {
         }.step,
     });
     try std.testing.expectEqual(core.Span(ExampleOrigin){
-        .start = .{ .index = 11 },
+        .start = 11,
         .length = core.P32.fromComptime(3),
     }, index_sum.done.rest.yes);
 }
 test "span_step_while down, ending in |done" {
     const ExampleOrigin = enum {};
-    const span4_to_13 = core.Span(ExampleOrigin){ .start = .{ .index = 4 }, .length = core.P32.fromComptime(10) };
+    const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
     const index_sum = try core.opt_span_step_while(void, u32, ExampleOrigin, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .down = {} },
@@ -412,7 +412,7 @@ test "span_step_while down, ending in |done" {
         }.step,
     });
     try std.testing.expectEqual(core.Span(ExampleOrigin){
-        .start = .{ .index = 4 },
+        .start = 4,
         .length = core.P32.fromComptime(6),
     }, index_sum.done.rest.yes);
 }
@@ -553,10 +553,10 @@ test "buf add to span" {
     const slot_causing_span_move_to_end = try buf.add(allocator, 4);
     const span1 = try buf.spanAdd(allocator, span0, 567);
     try std.testing.expectEqual(4, buf.remove(slot_causing_span_move_to_end));
-    try std.testing.expectEqual(2, span1.start.index);
+    try std.testing.expectEqual(2, span1.start);
     try std.testing.expectEqual(2, span1.length.positive);
     const span1_moved = buf.spanMoveToUnset(span1);
-    try std.testing.expectEqual(0, span1_moved.start.index);
+    try std.testing.expectEqual(0, span1_moved.start);
     try std.testing.expectEqual(2, span1_moved.length.positive);
     buf.rid(allocator);
 }
@@ -785,8 +785,8 @@ test "span origin erase, then unerase" {
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
     const span = core.Span(@TypeOf(origin)){
-        .start = .{ .index = 66 },
-        .length = core.P32{ .positive = 3 },
+        .start = 66,
+        .length = core.P32.fromComptime(3),
     };
     const span_erased = core.origin_erase(
         Origin,

@@ -130,13 +130,12 @@ pub const Str = struct {
             null;
     }
     pub fn utf8_byte_count_p32(@"%str": Str) P32 {
-        return P32.fromU32(std.math.cast(u32, @"%str".utf8.bytes.len).?).?;
+        return P32.fromU32(@intCast(@"%str".utf8.bytes.len)).?;
     }
     pub fn codepoint_count_p32(@"%str": Str) P32 {
-        return P32.fromU32(std.math.cast(
-            u32,
+        return P32.fromU32(@intCast(
             std.unicode.utf8CountCodepoints(@"%str".utf8.bytes) catch unreachable,
-        ).?).?;
+        )).?;
     }
     pub fn splitStart(@"%str": Str) struct { start: Char, after: std.unicode.Utf8View } {
         var @"%codepoint_iterator" = @"%str".utf8.iterator();
@@ -248,27 +247,28 @@ pub fn Slot(@"%Origin": type) type {
         pub fn toSpan(@"%slot": @This()) Span(
             @"%Origin",
         ) {
-            return .{ .start = @"%slot", .length = P32.one };
+            return .{ .start = @"%slot".index, .length = P32.one };
         }
     };
 }
+/// invariant: start + length <= intMax(u32)
 pub fn Span(@"%Origin": type) type {
     return struct {
-        // TODO replace with start: u32, const origin = @"%Origin":,
-        start: Slot(@"%Origin"),
+        start: u32,
         length: P32,
+        pub const origin = @"%Origin";
         pub fn endIndex(@"%span": @This()) u32 {
-            return @"%span".start.index + @"%span".length.predecessor();
+            return @"%span".start + @"%span".length.predecessor();
         }
         pub fn splitStart(@"%span": @This()) struct {
             after: Opt(Span(@"%Origin")),
             start: Slot(@"%Origin"),
         } {
             return .{
-                .start = @"%span".start,
+                .start = .{ .index = @"%span".start },
                 .after = if (P32.fromU32(@"%span".length.predecessor())) |@"%end_length"|
                     .{ .yes = .{
-                        .start = .{ .index = @"%span".start.index + 1 },
+                        .start = @"%span".start + 1,
                         .length = @"%end_length",
                     } }
                 else
@@ -302,7 +302,7 @@ pub fn Span(@"%Origin": type) type {
                 .start = .{ .start = @"%span".start, .length = @"%start_length" },
                 .after = if (P32.fromU32(@"%span".length.positive - @"%start_length".positive)) |@"%after_length_positive"| .{
                     .yes = .{
-                        .start = .{ .index = @"%span".start.index + @"%start_length".positive },
+                        .start = @"%span".start + @"%start_length".positive,
                         .length = @"%after_length_positive",
                     },
                 } else .{ .no = {} },
@@ -319,7 +319,7 @@ pub fn Span(@"%Origin": type) type {
             const @"%before_length" = @"%span".length.positive - @"%end_length".positive;
             return .{
                 .end = .{
-                    .start = .{ .index = @"%span".start.index + @"%before_length" },
+                    .start = @"%span".start + @"%before_length",
                     .length = @"%end_length",
                 },
                 .before = if (P32.fromU32(@"%before_length")) |@"%before_length_positive"| .{
@@ -340,7 +340,7 @@ pub fn Span(@"%Origin": type) type {
             var @"%state" = @"%initial_state";
             switch (@"%direction") {
                 .up => {
-                    for (@"%span".start.index..(@"%span".start.index + @"%span".length.positive)) |@"%index"| {
+                    for (@"%span".start..(@"%span".start + @"%span".length.positive)) |@"%index"| {
                         @"%state" = try @"%step"(@"%allocator", .{
                             .state = @"%state",
                             .slot = .{ .index = @intCast(@"%index") },
@@ -349,8 +349,8 @@ pub fn Span(@"%Origin": type) type {
                 },
                 .down => {
                     // dear zig, add for (range) in reverse
-                    var @"%index": u32 = @"%span".start.index + @"%span".length.positive;
-                    while (@"%index" > @"%span".start.index) {
+                    var @"%index": u32 = @"%span".start + @"%span".length.positive;
+                    while (@"%index" > @"%span".start) {
                         @"%index" -= 1;
                         @"%state" = try @"%step"(@"%allocator", .{
                             .state = @"%state",
@@ -378,7 +378,7 @@ pub fn Span(@"%Origin": type) type {
             var @"%state" = @"%initial_state";
             switch (@"%direction") {
                 .up => {
-                    for (@"%span".start.index..(@"%span".start.index + @"%span".length.positive)) |@"%index_usize"| {
+                    for (@"%span".start..(@"%span".start + @"%span".length.positive)) |@"%index_usize"| {
                         const @"%index": u32 = @intCast(@"%index_usize");
                         switch (try @"%step"(@"%allocator", .{
                             .state = @"%state",
@@ -391,9 +391,9 @@ pub fn Span(@"%Origin": type) type {
                                 return .{ .done = .{
                                     .done = @"%done",
                                     .rest = if (P32.fromU32(
-                                        @"%span".start.index + @"%span".length.positive - 1 - @"%index",
+                                        @"%span".start + @"%span".length.positive - 1 - @"%index",
                                     )) |@"%rest_length"| .{
-                                        .yes = .{ .start = .{ .index = @"%index" + 1 }, .length = @"%rest_length" },
+                                        .yes = .{ .start = @"%index" + 1, .length = @"%rest_length" },
                                     } else .{ .no = {} },
                                 } };
                             },
@@ -402,8 +402,8 @@ pub fn Span(@"%Origin": type) type {
                 },
                 .down => {
                     // dear zig, add for (range) in reverse
-                    var @"%index": u32 = @"%span".start.index + @"%span".length.positive;
-                    while (@"%index" > @"%span".start.index) {
+                    var @"%index": u32 = @"%span".start + @"%span".length.positive;
+                    while (@"%index" > @"%span".start) {
                         @"%index" -= 1;
                         switch (try @"%step"(@"%allocator", .{
                             .state = @"%state",
@@ -415,7 +415,7 @@ pub fn Span(@"%Origin": type) type {
                             .done => |@"%done"| {
                                 return .{ .done = .{
                                     .done = @"%done",
-                                    .rest = if (P32.fromU32(@"%index" - @"%span".start.index)) |@"%rest_length"| .{
+                                    .rest = if (P32.fromU32(@"%index" - @"%span".start)) |@"%rest_length"| .{
                                         .yes = .{ .start = @"%span".start, .length = @"%rest_length" },
                                     } else .{ .no = {} },
                                 } };
@@ -614,7 +614,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 try @"%item_rid"(@"%allocator", @"%item");
             }
             @"%buf".unsetSpanRid(.{
-                .start = @"%span".start.index,
+                .start = @"%span".start,
                 .length = @"%span".length,
             });
         }
@@ -633,7 +633,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         }
         // The given span is invalid while the returned slice is live
         pub fn spanSlice(@"%buf": @This(), @"%span": Span(@"%Origin")) []@"%Item" {
-            return @"%buf".items.items[@"%span".start.index..][0..@"%span".length.positive];
+            return @"%buf".items.items[@"%span".start..][0..@"%span".length.positive];
         }
         // The given span is invalid while the returned slice is live
         pub fn optSpanSlice(@"%buf": @This(), @"%opt_span": Opt(Span(@"%Origin"))) []@"%Item" {
@@ -648,7 +648,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%span": Span(@"%Origin"),
         ) []@"%Item" {
             const @"%slice" = @"%buf".spanSlice(@"%span");
-            @"%buf".unsetSpanRid(.{ .start = @"%span".start.index, .length = @"%span".length });
+            @"%buf".unsetSpanRid(.{ .start = @"%span".start, .length = @"%span".length });
             return @"%slice";
         }
         /// The returned slice is only valid while buf.items.items is live
@@ -721,7 +721,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%allocator": std.mem.Allocator,
             @"%span": Span(@"%Origin"),
         ) error{OutOfMemory}!Span(@"%Origin") {
-            if (@"%span".start.index + @"%span".length.positive == @as(u32, @intCast(@"%buf".items.items.len))) {
+            if (@"%span".start + @"%span".length.positive == @as(u32, @intCast(@"%buf".items.items.len))) {
                 return @"%span";
             }
             // span is not at the end already
@@ -729,16 +729,16 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             @"%buf".items.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
             @"%buf".unsetSpanRid(.{
-                .start = @"%span".start.index,
+                .start = @"%span".start,
                 .length = @"%span".length,
             });
             return Span(@"%Origin"){
-                .start = .{ .index = @intCast(@"%buf".items.items.len - @"%span".length.positive) },
+                .start = @as(u32, @intCast(@"%buf".items.items.len)) - @"%span".length.positive,
                 .length = @"%span".length,
             };
         }
         pub fn spanMoveToUnset(@"%buf": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
-            if (@"%span".start.index + @"%span".length.positive < @as(u32, @intCast(@"%buf".items.items.len))) {
+            if (@"%span".start + @"%span".length.positive < @as(u32, @intCast(@"%buf".items.items.len))) {
                 return @"%span";
             }
             // span is at the end of items
@@ -748,9 +748,9 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                     @"%span".length.positive,
                     @"%buf".spanSlice(@"%span"),
                 );
-                @"%buf".unsetSpanRid(.{ .start = @"%span".start.index, .length = @"%span".length });
+                @"%buf".unsetSpanRid(.{ .start = @"%span".start, .length = @"%span".length });
                 return Span(@"%Origin"){
-                    .start = .{ .index = @"%earlier_start_to_set_from" },
+                    .start = @"%earlier_start_to_set_from",
                     .length = @"%span".length,
                 };
             } else {
@@ -763,7 +763,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%start": Span(@"%Origin"),
             @"%end": Span(@"%Origin"),
         ) error{OutOfMemory}!Span(@"%Origin") {
-            if (@"%start".start.index + @"%start".length.positive == @"%end".start.index) {
+            if (@"%start".start + @"%start".length.positive == @"%end".start) {
                 return Span(@"%Origin"){ .start = @"%start".start, .length = @"%start".length.addAssumeNoOverflow(@"%end".length.positive) };
             } else {
                 const @"%moved_start" = try @"%buf".spanMoveToEnd(@"%allocator", @"%start");
@@ -820,22 +820,19 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             }
         }
         // add insertSlice?
+        /// Assumes a slice length <= intMax(u32)
         pub fn addSlice(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
             @"%new_items": []const @"%Item",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
             if (@"%new_items".len >= 1) {
-                try @"%buf".items.appendSlice(@"%allocator", @"%new_items");
+                try @"%buf".preAllocateAtLeast(@"%allocator", @as(u32, @intCast(@"%new_items".len)));
+                @"%buf".items.appendSliceAssumeCapacity(@"%new_items");
                 if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
                 return .{ .yes = .{
-                    .start = .{
-                        .index = std.math.cast(
-                            u32,
-                            @"%buf".items.items.len - @"%new_items".len,
-                        ).?,
-                    },
-                    .length = P32.fromU32(std.math.cast(u32, @"%new_items".len).?).?,
+                    .start = @as(u32, @intCast(@"%buf".items.items.len)) - @as(u32, @intCast(@"%new_items".len)),
+                    .length = P32.fromU32(@intCast(@"%new_items".len)).?,
                 } };
             } else return .{ .no = {} };
         }
@@ -846,21 +843,16 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%new_items": anytype,
             @"%next_item": fn (*@TypeOf(@"%new_items")) ?@"%Item",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
-            const @"%length_before_add" = std.math.cast(u32, @"%buf".items.items.len).?;
+            const @"%length_before_add": u32 = @intCast(@"%buf".items.items.len);
             var @"%new_items_iterator" = @"%new_items";
             while (@"%next_item"(&@"%new_items_iterator")) |@"%new_item"| {
-                try @"%buf".items.append(@"%allocator", @"%new_item");
+                _ = try @"%buf".add(@"%allocator", @"%new_item");
             }
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             return if (P32.fromU32(
-                std.math.cast(u32, @"%buf".items.items.len).? - @"%length_before_add",
+                @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add",
             )) |@"%new_length"|
-                .{ .yes = .{
-                    .start = .{
-                        .index = @"%length_before_add",
-                    },
-                    .length = @"%new_length",
-                } }
+                .{ .yes = .{ .start = @"%length_before_add", .length = @"%new_length" } }
             else
                 .{ .no = {} };
         }
@@ -870,16 +862,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%allocator": std.mem.Allocator,
             @"%new_items": Array(@"%Item", @"%Record"),
         ) error{OutOfMemory}!Span(@"%Origin") {
-            const @"%length_before_add" = @"%buf".items.items.len;
+            const @"%length_before_add": u32 = @intCast(@"%buf".items.items.len);
             try @"%buf".items.appendSlice(@"%allocator", &@"%new_items");
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
+            // TODO test that the length is correct
             return .{
-                .start = .{
-                    .index = std.math.cast(u32, @"%length_before_add").?,
-                },
-                .length = P32.fromU32(
-                    std.math.cast(u32, @"%buf".items.items.len - @"%length_before_add").?,
-                ).?,
+                .start = @"%length_before_add",
+                .length = P32.fromU32(@intCast(@"%new_items".len)).?,
             };
         }
         pub fn optSpanAdd(
@@ -930,7 +919,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = @"%moved_span".length.addAssumeNoOverflow(
-                    std.math.cast(u32, @"%new_items".len).?,
+                    @intCast(@"%new_items".len),
                 ),
             };
         }
@@ -966,13 +955,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%next_item": fn (*@TypeOf(@"%new_items")) ?@"%Item",
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
-            const @"%length_before_add" = @"%buf".items.items.len;
+            const @"%length_before_add": u32 = @intCast(@"%buf".items.items.len);
             var @"%new_items_iterator" = @"%new_items";
             while (@"%next_item"(&@"%new_items_iterator")) |@"%new_item"| {
                 try @"%buf".items.append(@"%allocator", @"%new_item");
             }
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            const @"%new_length" = std.math.cast(u32, @"%buf".items.items.len - @"%length_before_add").?;
+            const @"%new_length" = @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add";
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = @"%moved_span".length.addAssumeNoOverflow(@"%new_length"),
@@ -1438,7 +1427,7 @@ pub fn span_start_index(
     @"%Origin": type,
     @"%span": Span(@"%Origin"),
 ) Record(struct { index: U32, span: Span(@"%Origin") }) {
-    return .{ .span = @"%span", .index = @"%span".start.index };
+    return .{ .span = @"%span", .index = @"%span".start };
 }
 pub fn span_length(
     @"%Origin": type,
@@ -1571,7 +1560,7 @@ pub fn span_origin_isolate(
     @"%Part": type,
     @"%span": Span(Origin(@"%Origin", @"%Part")),
 ) Origin_isolated(@"%Origin", Span(Origin(Erased, @"%Part"))) {
-    return .{ .erased = .{ .start = .{ .index = @"%span".start.index }, .length = @"%span".length } };
+    return .{ .erased = .{ .start = @"%span".start, .length = @"%span".length } };
 }
 pub fn opt_span_origin_isolate(
     @"%Origin": type,
@@ -1581,7 +1570,7 @@ pub fn opt_span_origin_isolate(
     return .{ .erased = switch (@"%opt_span") {
         .no => .{ .no = {} },
         .yes => |@"%span"| .{ .yes = .{
-            .start = .{ .index = @"%span".start.index },
+            .start = @"%span".start,
             .length = @"%span".length,
         } },
     } };
@@ -1594,7 +1583,7 @@ pub fn span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct
     uneraser: Origin_uneraser(@"%Origin"),
 }) {
     return .{
-        .span = .{ .start = .{ .index = @"%".span.start.index }, .length = @"%".span.length },
+        .span = .{ .start = @"%".span.start, .length = @"%".span.length },
         .uneraser = @"%".uneraser,
     };
 }
@@ -1610,7 +1599,7 @@ pub fn opt_span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(st
         .span = switch (@"%".span) {
             .no => .{ .no = {} },
             .yes => |@"%span"| .{ .yes = .{
-                .start = .{ .index = @"%span".start.index },
+                .start = @"%span".start,
                 .length = @"%span".length,
             } },
         },

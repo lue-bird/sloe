@@ -8,13 +8,13 @@ pub fn main(init: std.process.Init) !void {
         .name = sloe.Str.fromComptime("world"),
         .buf = sloe.buf_empty(sloe.Char, ResultOrigin, void, result_origin),
     });
-    var greeting_string_buffer: [32]u8 = undefined;
+    var greeting_write_buffer: [32]u8 = undefined;
     var writer = std.Io.File.stdout().writer(
         init.io,
-        &greeting_string_buffer,
+        &greeting_write_buffer,
     );
-    for (greeting.buf.spanSlice(greeting.span)) |greeting_char| {
-        try writer.interface.print("{u}", .{greeting_char});
+    for (greeting.buf.spanSlice(greeting.span)) |char| {
+        try writer.interface.print("{u}", .{char});
     }
     try writer.flush();
     greeting.buf.rid(init.arena.allocator());
