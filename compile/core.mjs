@@ -759,11 +759,7 @@ export function buf_insert(insert) {
     insert.buf[existing_unset_index] = insert.newø;
     return { buf: insert.buf, slot: existing_unset_index };
   } else {
-    const new_index = insert.buf.length;
-    insert.buf.push(insert.newø);
-    if (insert.buf.length > U32$MAX)
-      throw Error("Array length " + insert.buf.length + " not representable as a u32");
-    return { buf: insert.buf, slot: new_index };
+    return buf_add(insert);
   }
 }
 /** @template $Item, $Origin @template $Record @param {{ buf: Buf<$Origin, $Item>, newø: Array<$Item, $Record>, }} add @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */

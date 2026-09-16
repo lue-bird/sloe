@@ -725,17 +725,11 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 return @"%span";
             }
             // span is not at the end already
-            try @"%buf".preAllocateAtLeast(@"%allocator", @"%span".length.positive);
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            @"%buf".items.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
             @"%buf".unsetSpanRid(.{
                 .start = @"%span".start,
                 .length = @"%span".length,
             });
-            return Span(@"%Origin"){
-                .start = @as(u32, @intCast(@"%buf".items.items.len)) - @"%span".length.positive,
-                .length = @"%span".length,
-            };
+            return (try @"%buf".addSlice(@"%allocator", @"%buf".spanSlice(@"%span"))).yes;
         }
         pub fn spanMoveToUnset(@"%buf": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
             if (@"%span".start + @"%span".length.positive < @as(u32, @intCast(@"%buf".items.items.len))) {
@@ -848,7 +842,6 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             while (@"%next_item"(&@"%new_items_iterator")) |@"%new_item"| {
                 _ = try @"%buf".add(@"%allocator", @"%new_item");
             }
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             return if (P32.fromU32(
                 @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add",
             )) |@"%new_length"|
@@ -875,7 +868,6 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
             _ = try @"%buf".add(@"%allocator", @"%new_item");
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = @"%moved_span".length.addAssumeNoOverflow(1),
@@ -900,7 +892,6 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
             _ = try @"%buf".addSlice(@"%allocator", @"%new_items");
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = @"%moved_span".length.addAssumeNoOverflow(
@@ -933,11 +924,10 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             while (@"%next_item"(&@"%new_items_iterator")) |@"%new_item"| {
                 _ = try @"%buf".add(@"%allocator", @"%new_item");
             }
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            const @"%new_length" = @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add";
+            const @"%iterated_length" = @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add";
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
-                .length = @"%moved_span".length.addAssumeNoOverflow(@"%new_length"),
+                .length = @"%moved_span".length.addAssumeNoOverflow(@"%iterated_length"),
             };
         }
         pub fn spanReverse(@"%buf": @This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
