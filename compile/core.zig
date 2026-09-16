@@ -856,21 +856,6 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             else
                 .{ .no = {} };
         }
-        pub fn addArray(
-            @"%buf": *@This(),
-            @"%Record": type,
-            @"%allocator": std.mem.Allocator,
-            @"%new_items": Array(@"%Item", @"%Record"),
-        ) error{OutOfMemory}!Span(@"%Origin") {
-            const @"%length_before_add": u32 = @intCast(@"%buf".items.items.len);
-            try @"%buf".items.appendSlice(@"%allocator", &@"%new_items");
-            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
-            // TODO test that the length is correct
-            return .{
-                .start = @"%length_before_add",
-                .length = P32.fromU32(@intCast(@"%new_items".len)).?,
-            };
-        }
         pub fn optSpanAdd(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
@@ -889,7 +874,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%new_item": @"%Item",
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
-            try @"%buf".items.append(@"%allocator", @"%new_item");
+            _ = try @"%buf".add(@"%allocator", @"%new_item");
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
@@ -914,25 +899,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%new_items": []const @"%Item",
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
-            try @"%buf".items.appendSlice(@"%allocator", @"%new_items");
+            _ = try @"%buf".addSlice(@"%allocator", @"%new_items");
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = @"%moved_span".length.addAssumeNoOverflow(
                     @intCast(@"%new_items".len),
                 ),
-            };
-        }
-        pub fn optSpanAddArray(
-            @"%buf": *@This(),
-            @"%Record": type,
-            @"%allocator": std.mem.Allocator,
-            @"%opt_span": Opt(Span(@"%Origin")),
-            @"%new_items": Array(@"%Item", @"%Record"),
-        ) error{OutOfMemory}!Span(@"%Origin") {
-            return switch (@"%opt_span") {
-                .no => @"%buf".addArray(@"%Record", @"%allocator", @"%new_items"),
-                .yes => |@"%span"| try @"%buf".spanAddSlice(@"%allocator", @"%span", &@"%new_items"),
             };
         }
         pub fn optSpanAddIterator(
@@ -958,7 +931,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             const @"%length_before_add": u32 = @intCast(@"%buf".items.items.len);
             var @"%new_items_iterator" = @"%new_items";
             while (@"%next_item"(&@"%new_items_iterator")) |@"%new_item"| {
-                try @"%buf".items.append(@"%allocator", @"%new_item");
+                _ = try @"%buf".add(@"%allocator", @"%new_item");
             }
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             const @"%new_length" = @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add";
@@ -1689,9 +1662,9 @@ pub fn buf_add_array(
     }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Span(@"%Origin") }) {
     var @"%buf" = @"%".buf;
-    const @"%new_span" = try @"%buf".addArray(@"%Record", @"%allocator", @"%".new);
+    const @"%new_span" = try @"%buf".addSlice(@"%allocator", &@"%".new);
     return .{
-        .span = @"%new_span",
+        .span = @"%new_span".yes,
         .buf = @"%buf",
     };
 }
@@ -1956,9 +1929,9 @@ pub fn buf_opt_span_add_array(
     }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Span(@"%Origin") }) {
     var @"%buf" = @"%".buf;
-    const @"%combined_span" = try @"%buf".optSpanAddArray(@"%Record", @"%allocator", @"%".span, @"%".new);
+    const @"%combined_span" = try @"%buf".optSpanAddSlice(@"%allocator", @"%".span, &@"%".new);
     return .{
-        .span = @"%combined_span",
+        .span = @"%combined_span".yes,
         .buf = @"%buf",
     };
 }

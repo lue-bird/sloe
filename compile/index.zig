@@ -441,6 +441,8 @@ test "buf_add_array" {
         .buf = example_buf,
         .new = example_array0,
     });
+    try std.testing.expectEqual(0, with_array.span.start);
+    try std.testing.expectEqual(2, with_array.span.length.positive);
     core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, with_array.buf);
 }
 test "buf_opt_span_add_array" {
