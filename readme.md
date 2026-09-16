@@ -735,9 +735,6 @@ cargo install --offline --debug --path . sloe
 
 - (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
 
-- check Buf lengths after every append in rust the same way as done in zig and js but panic instead.
-  This prevents ugly wrap bahavior
-
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
   fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item

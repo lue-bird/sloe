@@ -437,6 +437,7 @@ pub struct Slot<LocalOrigin> {
     index: u32,
 }
 pub struct Span<LocalOrigin> {
+    // it would probably be better to flatten the Slot out
     start: Slot<LocalOrigin>,
     length: std::num::NonZeroU32,
 }
@@ -903,7 +904,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     }
     pub fn add(&mut self, new_item: Item) -> Slot<LocalOrigin> {
         self.items.push(std::option::Option::Some(new_item));
-        Slot::from_index((self.items.len() - 1) as u32)
+        Slot::from_index(std::convert::TryInto::<u32>::try_into(self.items.len()).unwrap() - 1)
     }
     pub fn insert(&mut self, new_item: Item) -> Slot<LocalOrigin> {
         // can maybe be optimized? first_unset_index is always valid if it's not ::MAX
@@ -953,7 +954,65 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         .break_value()
         .map(|(index, _)| index as u32)
     }
-    // invariant! new_item_count must equal new_items.count()
+    pub fn add_iterator(
+        &mut self,
+        new_items: impl std::iter::Iterator<Item = Item>,
+    ) -> Opt<Span<LocalOrigin>> {
+        let length_without_new_items = self.items.len() as u32;
+        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
+        let length_with_new_items =
+            std::convert::TryInto::<u32>::try_into(self.items.len()).unwrap();
+        match std::num::NonZeroU32::new(length_with_new_items - length_without_new_items) {
+            std::option::Option::None => Opt::No(()),
+            std::option::Option::Some(new_length) => Opt::Yes(Span {
+                start: Slot::from_index(length_without_new_items),
+                length: new_length,
+            }),
+        }
+    }
+    pub fn add_one_then_iterator(
+        &mut self,
+        new_start: Item,
+        new_after: impl std::iter::Iterator<Item = Item>,
+    ) -> Span<LocalOrigin> {
+        let length_without_new_items = self.items.len() as u32;
+        self.items.push(std::option::Option::Some(new_start));
+        std::iter::Extend::extend(&mut self.items, new_after.map(std::option::Option::Some));
+        let length_with_new_items =
+            std::convert::TryInto::<u32>::try_into(self.items.len()).unwrap();
+        Span {
+            start: Slot::from_index(length_without_new_items),
+            length: std::num::NonZeroU32::MIN
+                .saturating_add(length_with_new_items - length_without_new_items - 1),
+        }
+    }
+    /// Important invariant! new_item_count must equal new_items.count()
+    /// The recommended, safe alternative is add_one_then_iterator
+    fn add_iterator_filled(
+        &mut self,
+        new_items: impl std::iter::Iterator<Item = Item>,
+        new_item_count: std::num::NonZeroU32,
+    ) -> Span<LocalOrigin> {
+        let length_without_new_items = self.items.len() as u32;
+        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
+        _ = std::convert::TryInto::<u32>::try_into(self.items.len()).unwrap();
+        Span {
+            start: Slot::from_index(length_without_new_items),
+            length: new_item_count,
+        }
+    }
+    pub fn insert_iterator(
+        &mut self,
+        new_items: impl std::iter::ExactSizeIterator<Item = Item>,
+    ) -> Opt<Span<LocalOrigin>> {
+        match std::num::NonZeroU32::new(new_items.len() as u32) {
+            std::option::Option::None => Opt::No(()),
+            std::option::Option::Some(new_item_count) => {
+                Opt::Yes(self.insert_iterator_filled(new_items, new_item_count))
+            }
+        }
+    }
+    /// Important invariant! new_item_count must equal new_items.count()
     fn insert_iterator_filled(
         &mut self,
         new_items: impl std::iter::Iterator<Item = Item>,
@@ -974,59 +1033,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             }
         }
     }
-    pub fn add_iterator(
-        &mut self,
-        new_items: impl std::iter::Iterator<Item = Item>,
-    ) -> Opt<Span<LocalOrigin>> {
-        let length_without_new_items = self.items.len();
-        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
-        match std::num::NonZeroU32::new((self.items.len() - length_without_new_items) as u32) {
-            std::option::Option::None => Opt::No(()),
-            std::option::Option::Some(new_length) => Opt::Yes(Span {
-                start: Slot::from_index(length_without_new_items as u32),
-                length: new_length,
-            }),
-        }
-    }
-    pub fn add_one_then_iterator(
-        &mut self,
-        new_start: Item,
-        new_after: impl std::iter::Iterator<Item = Item>,
-    ) -> Span<LocalOrigin> {
-        let length_before_new = self.items.len();
-        self.items.push(std::option::Option::Some(new_start));
-        std::iter::Extend::extend(&mut self.items, new_after.map(std::option::Option::Some));
-        Span {
-            start: Slot::from_index(length_before_new as u32),
-            length: std::num::NonZeroU32::MIN
-                .saturating_add((self.items.len() - (length_before_new + 1)) as u32),
-        }
-    }
-    // invariant! new_item_count must equal new_items.count()
-    fn add_iterator_filled(
-        &mut self,
-        new_items: impl std::iter::Iterator<Item = Item>,
-        new_item_count: std::num::NonZeroU32,
-    ) -> Span<LocalOrigin> {
-        let length_without_new_items = self.items.len() as u32;
-        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
-        Span {
-            start: Slot::from_index(length_without_new_items),
-            length: new_item_count,
-        }
-    }
-    pub fn insert_iterator(
-        &mut self,
-        new_items: impl std::iter::ExactSizeIterator<Item = Item>,
-    ) -> Opt<Span<LocalOrigin>> {
-        match std::num::NonZeroU32::new(new_items.len() as u32) {
-            std::option::Option::None => Opt::No(()),
-            std::option::Option::Some(new_item_count) => {
-                Opt::Yes(self.insert_iterator_filled(new_items, new_item_count))
-            }
-        }
-    }
-    // This will clone the iterator. Prefer add_iterator whenever possible
+    /// This will clone the iterator. Prefer add_iterator whenever possible
     pub fn insert_iterator_without_known_size(
         &mut self,
         new_items: impl std::iter::Iterator<Item = Item> + std::clone::Clone,
@@ -1042,16 +1049,14 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         Opt::Yes(new_span)
     }
     pub fn add_array<Record>(&mut self, new_items: Array<Item, Record>) -> Span<LocalOrigin> {
-        let length_without_new_items = self.items.len();
+        let length_without_new_items = self.items.len() as u32;
         let new_last =
             (new_items.split_last_and_extend_vec_with_before)(&mut self.items, new_items.record);
-        let length_with_new_items_before_last = self.items.len();
-        self.items.push(std::option::Option::Some(new_last));
+        let length_with_new_items_before_last = self.add(new_last).index;
         Span {
-            start: Slot::from_index(length_without_new_items as u32),
-            length: std::num::NonZeroU32::MIN.saturating_add(
-                (length_with_new_items_before_last - length_without_new_items) as u32,
-            ),
+            start: Slot::from_index(length_without_new_items),
+            length: std::num::NonZeroU32::MIN
+                .saturating_add(length_with_new_items_before_last - length_without_new_items),
         }
     }
     pub fn insert_buf_span<SourceOrigin>(
@@ -1132,13 +1137,12 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_items: impl std::iter::Iterator<Item = Item>,
     ) -> Span<LocalOrigin> {
         let moved_span = self.span_move_to_end(span);
-        let length_before_extend = self.items.len();
-        std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
+        let new_items_span = self.add_iterator(new_items);
         Span {
             start: moved_span.start,
             length: moved_span
                 .length
-                .saturating_add((self.items.len() - length_before_extend) as u32),
+                .saturating_add(new_items_span.as_ref().length()),
         }
     }
     pub fn opt_span_add_iterator(
@@ -1157,15 +1161,12 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_items: Array<Item, Record>,
     ) -> Span<LocalOrigin> {
         let moved_span = self.span_move_to_end(span);
-        let length_before_extend = self.items.len();
-        let new_last =
-            (new_items.split_last_and_extend_vec_with_before)(&mut self.items, new_items.record);
-        self.items.push(std::option::Option::Some(new_last));
+        let new_items_span = self.add_array(new_items);
         Span {
             start: moved_span.start,
             length: moved_span
                 .length
-                .saturating_add((self.items.len() - length_before_extend) as u32),
+                .saturating_add(new_items_span.length.get()),
         }
     }
     pub fn opt_span_add_array<Record>(
@@ -1180,7 +1181,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     }
     pub fn span_add(&mut self, span: Span<LocalOrigin>, new_item: Item) -> Span<LocalOrigin> {
         let moved_span = self.span_move_to_end(span);
-        self.items.push(std::option::Option::Some(new_item));
+        self.add(new_item);
         Span {
             start: moved_span.start,
             length: moved_span.length.saturating_add(1),
@@ -1200,6 +1201,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                 span.length.get() as usize,
             ),
         );
+        _ = std::convert::TryInto::<u32>::try_into(self.items.len());
         let (before_move_destination, from_move_destination) =
             unsafe { self.items.split_at_mut_unchecked(move_destination_start) };
         unsafe { before_move_destination.get_unchecked_mut(span.to_range()) }
@@ -1211,7 +1213,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         }
     }
     pub fn span_is_at_the_end_of_items(&self, span: &Span<LocalOrigin>) -> bool {
-        (span.start.index as usize + span.length.get() as usize) < self.items.len()
+        span.start.index + span.length.get() < self.items.len() as u32
     }
     pub fn span_move_to_unset(&mut self, span: Span<LocalOrigin>) -> Span<LocalOrigin> {
         if !self.span_is_at_the_end_of_items(&span) {
