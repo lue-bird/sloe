@@ -739,6 +739,8 @@ cargo install --offline --debug --path . sloe
 
 - add `Buf-swap`
 
+- add `Buf-add-str`, `Buf-insert-str`
+
 - optimize core.zig Buf.markLengthPositiveAsSet
 
 - when reporting a variable as unused in the first query case, still add it as used in the overall expression to avoid emitting 2 errors for the same variable

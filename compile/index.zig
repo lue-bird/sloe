@@ -112,6 +112,7 @@ test "various trivial" {
     try std.testing.expectEqual(core.Opt(core.F32){ .no = {} }, core.f32_pow(.{ .base = -11, .exponent = 0.5 }));
     try std.testing.expectEqual(std.math.maxInt(i32), core.u32_to_i32_clamp(std.math.maxInt(u32)));
     try std.testing.expectEqual(core.P32{ .positive = std.math.maxInt(u32) }, core.u32_successor_clamp(std.math.maxInt(u32)));
+    try std.testing.expectEqual(core.Opt(u32){ .yes = 3 }, core.opt_yes(u32, 3));
 }
 test "i32_to_u32" {
     try std.testing.expectEqual(core.Opt(core.U32){ .yes = 1 }, core.i32_to_u32(1));
