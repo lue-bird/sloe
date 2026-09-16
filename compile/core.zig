@@ -1706,6 +1706,25 @@ pub fn buf_add_array(
         .buf = @"%buf",
     };
 }
+pub fn buf_char_add_str(
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", Char),
+        new: Str,
+    }),
+) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", Char), span: Span(@"%Origin") }) {
+    var @"%buf" = @"%".buf;
+    const @"%new_span" = try @"%buf".addIterator(
+        @"%allocator",
+        @"%".new.utf8.iterator(),
+        std.unicode.Utf8Iterator.nextCodepoint,
+    );
+    return .{
+        .span = @"%new_span".yes,
+        .buf = @"%buf",
+    };
+}
 pub fn buf_remove(
     @"%Item": type,
     @"%Origin": type,

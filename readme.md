@@ -7,10 +7,9 @@ Hello, world!
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? .buf buf .span |{Opt Span _origin}no . [string]
-    ? Buf-char-opt-span-add-str .. string .new "Hello, " [string]
+    ? Buf-char-add-str .buf buf .new "Hello, " [string]
     ? Buf-char-span-add-str .. string .new name [string]
-    Buf-char-span-add-str .. string .new "!\n"
+    Buf-span-add .. string .new '!'
 ```
 A `Greet` function taking a name and a buffer to append the greeting to.
 It appends the name and other strings to the chars to form and return a message span.
@@ -733,8 +732,6 @@ cargo install --offline --debug --path . sloe
 - give nicer error when only a field is missing or too much
 
 - add `Buf-swap`
-
-- add `Buf-char-add-str`
 
 - optimize core.zig Buf.markLengthPositiveAsSet
 

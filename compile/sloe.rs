@@ -13721,6 +13721,26 @@ Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
                 ]),
             },
             CoreFnInfo {
+                name: "Buf-char-add-str",
+                documentation: "Attach the chars in a given `str` to the end of the `Buf` and keep a span to it without trying to reuse unset slots.
+Convenient equivalent to `Buf-char-opt-span-add-str` with an empty span.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
+                    ),
+                    ("new", type_str),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_char),
+                    ),
+                    ("span", type_span(type_variable("origin")))
+                ]),
+            },
+            CoreFnInfo {
                 name: "Buf-remove",
                 documentation: "Unset and retrieve an item from the `Buf` at a given slot (the inverse of `Buf-insert`/`Buf-add`)",
                 type_parameters: vec![],
@@ -15015,6 +15035,7 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Buf-span-add"
         | "Buf-opt-span-add"
         | "Buf-add-array"
+        | "Buf-char-add-str"
         | "Buf-add"
         | "Buf-insert"
         | "Buf-pre-allocation-rid"

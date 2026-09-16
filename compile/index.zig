@@ -565,10 +565,15 @@ test "buf add strs" {
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
+    const with_digits = try core.buf_char_add_str(
+        @TypeOf(origin),
+        allocator,
+        .{ .buf = buf, .new = core.Str.fromComptime("2468") },
+    );
     const with_abcd = try core.buf_char_opt_span_add_str(
         @TypeOf(origin),
         allocator,
-        .{ .buf = buf, .span = .{ .no = {} }, .new = core.Str.fromComptime("abcd") },
+        .{ .buf = with_digits.buf, .span = .{ .no = {} }, .new = core.Str.fromComptime("abcd") },
     );
     try std.testing.expectEqual(4, with_abcd.span.length.positive);
     const with_wrenches = try core.buf_char_opt_span_add_str(

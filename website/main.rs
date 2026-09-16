@@ -688,8 +688,7 @@ fn Hi
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? .buf buf .span |{Opt Span _origin}no . [string]
-    ? Buf-char-opt-span-add-str .. string .new "Hello, " [string]
+    ? Buf-char-add-str .. string .new "Hello, " [string]
     ? Buf-char-span-add-str .. string .new name [string]
     Buf-char-span-add-str .. string .new "!\n"
 "#,
