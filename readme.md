@@ -727,10 +727,6 @@ cargo install --offline --debug --path . sloe
 
 - add `Buf-step`, `Buf-map`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
-- try to recover typed pattern without a variable more nicely by when all other cases fail trying to parse a type and representing it as a variable without a variable
-
-- give nicer error when only a field is missing or too much
-
 - add `Buf-swap`
 
 - optimize core.zig Buf.markLengthPositiveAsSet
@@ -739,7 +735,7 @@ cargo install --offline --debug --path . sloe
 
 - when formatting variant pattern, insert space after when value is missing
 
-- bug: rename (and thus also references) considers local function variables as outer variables
+- give nicer error when only a field is missing or too much
 
 - (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
 

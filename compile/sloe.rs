@@ -18526,6 +18526,7 @@ fn syntax_pattern_symbol_uses_into<Expressions, Patterns, Types>(
         }
     }
 }
+// it would most likely be better to separate out variables as e.g. there can only be one
 fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
     uses: &mut Vec<lsp_types::Range>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
@@ -18654,11 +18655,19 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             closed_bracket_start: _,
             result,
         } => {
+            match symbol {
+                SyntaxSymbol::PatternVariable { .. } => return,
+                SyntaxSymbol::ProjectTypeOrUnknown { .. }
+                | SyntaxSymbol::Origin { .. }
+                | SyntaxSymbol::TypeVariable { .. }
+                | SyntaxSymbol::VariantOrUnknown(_)
+                | SyntaxSymbol::ProjectFnOrUnknown { .. } => {}
+            }
             if let Some(parameter) = parameter {
                 syntax_pattern_symbol_uses_into(uses, parameter, symbol, patterns, types, origins);
             }
             if let Some(result) = result {
-                let mut parameter_pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
+                let mut parameter_pattern_variables = std::collections::HashSet::new();
                 if let Some(parameter) = parameter {
                     syntax_pattern_symbol_uses_into(
                         uses, parameter, symbol, patterns, types, origins,
@@ -18667,9 +18676,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         parameter,
                         (),
                         &mut |(), pattern_variable_name, _type_| {
-                            parameter_pattern_variables
-                                .to_mut()
-                                .insert(pattern_variable_name.value);
+                            parameter_pattern_variables.insert(pattern_variable_name.value);
                         },
                         patterns,
                     );
@@ -18681,7 +18688,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    &std::collections::HashSet::new(),
+                    &parameter_pattern_variables,
                     origins,
                 );
             }
