@@ -735,8 +735,6 @@ cargo install --offline --debug --path . sloe
 
 - (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
 
-- try to make accidentally used _ in identifiers more gentle
-
 - check Buf lengths after every append in rust the same way as done in zig and js but panic instead.
   This prevents ugly wrap bahavior
 

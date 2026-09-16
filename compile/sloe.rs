@@ -2448,10 +2448,16 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
                 errors.push(ErrorNode {
                     range: *unknown_range,
                     message: format!("unrecognized syntax. {}
-If you wanted to start a project declaration, try one of:
+If this section of code is in a declaration, there might be another error for that declaration that can give more helpful hints.
+
+If you instead wanted to create a declaration, try one of:
   - fn Some-fn-name some-parameter some-parameter-type : some-result-type = some-result-value
   - ty some-type-name some type",
                     if unknown_source
+                        .starts_with('_') {
+                        "Identifiers can themselves not contain underscores; try using a dash - instead, like some-nice-name?
+If you were trying to start a type variable, no type was expected here. Maybe you're missing a pattern variable name in front, a comma or parenthesis?"
+                    } else if unknown_source
                         .starts_with(|c: char| c.is_ascii_lowercase())
                     {
                         "It could be that a name starting with an uppercase letter is expected here (only types with parameters and project function names start uppercase). Also, is it indented correctly?"
@@ -2462,7 +2468,7 @@ If you wanted to start a project declaration, try one of:
                     } else if unknown_source
                         .starts_with('#')
                     {
-                        "Comments can only be put in front of expressions, after the header of a project fn or ty or between these project items. Is it indented correctly?"
+                        "Comments can only be put in front of expressions, after the header of a project fn (before the =) or ty (before the aliased type) or outside of any declarations. Maybe you accidentally indented it?"
                     } else if unknown_source.starts_with("//")
                         || unknown_source.starts_with("--")
                     {
@@ -2470,11 +2476,20 @@ If you wanted to start a project declaration, try one of:
                     } else   if unknown_source
                         .starts_with('.')
                     {
-                        "Record access is not a feature in sloe. Instead, use pattern matching, like value ? your-value [.field variable ..other fields..] result. Otherwise, is everything indented correctly?"
+                        "Record.field access is not a feature in sloe. Instead, use pattern matching, like value ? your-value [.field variable ..other fields..] result. Otherwise, is everything indented correctly?"
                     } else if unknown_source
-                        .starts_with(['+', '-', '*', '^', '/', '!', '&'])
+                        .starts_with(['+', '*', '/', '!', '&'])
                     {
-                        "Operator application are not a feature in sloe. Instead, use regular function calls like f32-add, int-negate or unt-mul. Otherwise, is everything indented correctly?"
+                        "Operator application is not a feature in sloe. Instead, use regular function calls like F32-add-clamp, I32-negate or U32-mul-clamp. Otherwise, is everything indented correctly?"
+                    } else if unknown_source
+                        .starts_with(')') {
+                        "One too many closing paren ). Try removing it."
+                    } else if unknown_source
+                        .starts_with(']') {
+                        "One too many closing square bracket ]. Try removing it."
+                    } else if unknown_source
+                        .starts_with('}') {
+                        "One too many closing curly bracket }. Try removing it."
                     } else {
                         "Is it indented correctly? Are brackets/braces/parens/quotes or similar closed prematurely or too often?"
                     }).into_boxed_str(),
