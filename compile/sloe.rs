@@ -3172,7 +3172,7 @@ pub fn checked_project_to_rust<Expressions, Patterns, Types>(
         choices_used,
         checked_type_aliases,
         checked_project_fns,
-        checked_calls: _,
+        checked_calls,
         checked_local_fns,
         checked_queries,
         checked_spread_records,
@@ -3210,6 +3210,7 @@ pub fn checked_project_to_rust<Expressions, Patterns, Types>(
             rust_items.push(syntax_project_fn_to_rust(
                 &checked_type_aliases,
                 &checked_project_fns,
+                &checked_calls,
                 &checked_local_fns,
                 &checked_queries,
                 &checked_spread_records,
@@ -3779,6 +3780,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
 fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     project_fns: &std::collections::HashMap<Name, CheckedProjectFn>,
+    checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
@@ -3846,6 +3848,7 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
             expressions,
             patterns,
             types,
+            checked_calls,
             checked_local_fns,
             checked_queries,
             checked_spread_records,
@@ -4576,7 +4579,10 @@ fn type_to_possible_specific_pattern_catches<'a>(
     type_: &'a Type,
     possibilities: &mut Vec<SpecificPatternCatch<'a>>,
 ) {
-    // possible optimizations: calculate the count of possibilities in advance and pre-allocate
+    // possible optimizations:
+    // - calculate the count of possibilities in advance and pre-allocate
+    // - add SpecificPatternCatch::Mine(&'a Type) which expands only on encounter.
+    //   The more future-proof solution
     match type_ {
         Type::Variable(_) => {
             possibilities.push(SpecificPatternCatch::OnlyMatchableByVariable);
@@ -6157,10 +6163,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
     checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
-    checked_spread_records: &std::collections::HashMap<
-        /* .. start */ lsp_types::Position,
-        Vec<Name>,
-    >,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     pattern_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
@@ -6319,6 +6322,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
+            // can be optimized by avoiding the alloction
             let mut type_variable_arguments =
                 checked_call.argument_type_variable_replacements.clone();
             type_variable_arguments.extend(
@@ -8928,7 +8932,7 @@ If there should only ever by one variant, using a record with a single field is 
         SyntaxExpression::Fn {
             open_bracket_start,
             parameter,
-            closed_bracket_start: _,
+            closed_bracket_start,
             result,
         } => {
             let Some(parameter) = parameter else {
@@ -8961,8 +8965,10 @@ If there should only ever by one variant, using a record with a single field is 
             let mut result_used_origin_variables = std::collections::HashMap::new();
             let Some(result) = result else {
                 errors.push(ErrorNode {
-                    range: symbol_range(*open_bracket_start, "["),
-                    message: Box::from("missing result after [..pattern..] here"),
+                    range: closed_bracket_start
+                        .map(|closed_bracket_start| symbol_range(closed_bracket_start, "]"))
+                        .unwrap_or_else(|| symbol_range(*open_bracket_start, "[")),
+                    message: Box::from("missing function result after [..pattern..] here"),
                 });
                 return None;
             };
@@ -9889,6 +9895,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
+    checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<
@@ -10036,105 +10043,71 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             type_arguments: syntax_type_arguments,
             argument: syntax_argument,
         } => {
-            if let Some(variable_info) = pattern_variables.get(&name.value) {
-                let Some(_) = variable_info.type_.clone() else {
-                    return syn_expr_todo();
-                };
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
-                match syntax_argument {
-                    None => rust_reference,
-                    Some(syntax_argument) => {
-                        let syntax_argument = expressions.item(syntax_argument);
-                        let compiled_argument: syn::Expr = syntax_expression_to_rust(
-                            type_aliases,
-                            project_fns,
-                            expressions,
-                            patterns,
-                            types,
-                            checked_local_fns,
-                            checked_queries,
-                            checked_spread_records,
-                            pattern_variables,
-                            origins,
-                            syntax_argument,
-                        );
-                        syn::Expr::Call(syn::ExprCall {
+            let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
+                return syn_expr_todo();
+            };
+            if syntax_type_arguments.len() != project_fn_info.type_parameters.len() {
+                return syn_expr_todo();
+            }
+            let Some(checked_call) = checked_calls.get(&name.start) else {
+                return syn_expr_todo();
+            };
+            let rust_reference: syn::Expr =
+                syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
+            match syntax_argument {
+                None => rust_reference,
+                Some(syntax_argument) => {
+                    let syntax_argument = expressions.item(syntax_argument);
+                    let compiled_argument: syn::Expr = syntax_expression_to_rust(
+                        type_aliases,
+                        project_fns,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_calls,
+                        checked_local_fns,
+                        checked_queries,
+                        checked_spread_records,
+                        pattern_variables,
+                        origins,
+                        syntax_argument,
+                    );
+                    // can be optimized by avoiding the alloction
+                    let mut type_variable_arguments =
+                        checked_call.argument_type_variable_replacements.clone();
+                    type_variable_arguments.extend(
+                        project_fn_info.type_parameters.iter().cloned().zip(
+                            syntax_type_arguments
+                                .iter()
+                                .filter_map(|type_argument| type_argument.type_.as_ref())
+                                .filter_map(|type_argument| {
+                                    syntax_type_to_type(type_argument, type_aliases, types, origins)
+                                }),
+                        ),
+                    );
+                    // the fact that sometimes rustc can't figure out all type parameter replacements
+                    // even when no explicit sloe type parameters exist
+                    // and the types of all arguments are known
+                    // and even rust-analyzer knows the type
+                    // is a bit sad.
+                    // Because listing type variables for every-ish call is both slow and unreadable.
+                    // Maybe there's something else going on here, like as fn(_) -> _ making rust not sure enough?
+                    syn::Expr::Call(syn::ExprCall {
+                        attrs: vec![],
+                        func: Box::new(syn::Expr::Path(syn::ExprPath {
                             attrs: vec![],
-                            func: Box::new(syn_expr_reference([&name_to_lowercase_rust(
-                                &name.value,
-                            )])),
-                            paren_token: syn::token::Paren(syn_span()),
-                            args: std::iter::once(compiled_argument).collect(),
-                        })
-                    }
-                }
-            } else if let Some(_origin_info) = origins.get(&name.value) {
-                syn_expr_reference([&name_to_lowercase_rust(&name.value)])
-            } else {
-                let Some(project_fn_info) = project_fns.get(name.value.as_str()) else {
-                    return syn_expr_todo();
-                };
-                let Some((project_fn_parameter_type, project_fn_result_type)) = project_fn_info
-                    .parameter_type
-                    .as_ref()
-                    .zip(project_fn_info.result_type.as_ref())
-                else {
-                    return syn_expr_todo();
-                };
-                if syntax_type_arguments.len() != project_fn_info.type_parameters.len() {
-                    return syn_expr_todo();
-                }
-                let mut type_arguments = Vec::new();
-                for syntax_type_argument in syntax_type_arguments
-                    .iter()
-                    .filter_map(|argument| argument.type_.as_ref())
-                {
-                    let Some(type_argument) =
-                        syntax_type_to_type(syntax_type_argument, type_aliases, types, origins)
-                    else {
-                        return syn_expr_todo();
-                    };
-                    type_arguments.push(type_argument);
-                }
-                let type_parameter_replacements = project_fn_info
-                    .type_parameters
-                    .iter()
-                    .cloned()
-                    .zip(type_arguments)
-                    .collect();
-                let mut fn_parameter_type = project_fn_parameter_type.clone();
-                let mut fn_result_type = project_fn_result_type.clone();
-                type_replace_variables(&type_parameter_replacements, &mut fn_parameter_type);
-                type_replace_variables(&type_parameter_replacements, &mut fn_result_type);
-                let rust_reference: syn::Expr =
-                    syn_expr_reference([&name_to_lowercase_rust(&name.value)]);
-                match syntax_argument {
-                    None => rust_reference,
-                    Some(syntax_argument) => {
-                        let syntax_argument = expressions.item(syntax_argument);
-                        let compiled_argument: syn::Expr = syntax_expression_to_rust(
-                            type_aliases,
-                            project_fns,
-                            expressions,
-                            patterns,
-                            types,
-                            checked_local_fns,
-                            checked_queries,
-                            checked_spread_records,
-                            pattern_variables,
-                            origins,
-                            syntax_argument,
-                        );
-                        syn::Expr::Call(syn::ExprCall {
-                            attrs: vec![],
-                            func: Box::new(syn_expr_reference([&name_to_lowercase_rust(
-                                &name.value,
-                            )])),
-                            paren_token: syn::token::Paren(syn_span()),
-                            args: std::iter::once(compiled_argument).collect(),
-                        })
-                    }
+                            qself: None,
+                            path: syn_path_construct(
+                                [],
+                                &name_to_lowercase_rust(&name.value),
+                                type_variable_arguments.into_values().map(
+                                    |type_variable_argument| type_to_rust(&type_variable_argument),
+                                ),
+                            ),
+                        })),
+                        paren_token: syn::token::Paren(syn_span()),
+                        args: std::iter::once(compiled_argument).collect(),
+                    })
                 }
             }
         }
@@ -10171,6 +10144,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -10245,6 +10219,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -10372,6 +10347,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 expressions,
                                 patterns,
                                 types,
+                                checked_calls,
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
@@ -10406,6 +10382,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             expressions,
                             patterns,
                             types,
+                            checked_calls,
                             checked_local_fns,
                             checked_queries,
                             checked_spread_records,
@@ -10512,6 +10489,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 expressions,
                                 patterns,
                                 types,
+                                checked_calls,
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
@@ -10733,6 +10711,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -10752,6 +10731,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -10781,6 +10761,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -10844,6 +10825,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
+                    checked_calls,
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
@@ -10949,6 +10931,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 expressions,
                 patterns,
                 types,
+                checked_calls,
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
@@ -11956,31 +11939,38 @@ fn syn_type_construct<'a>(
     syn::Type::Path(syn::TypePath {
         attrs: vec![],
         qself: None,
-        path: syn::Path {
-            leading_colon: None,
-            segments: qualification
-                .into_iter()
-                .map(|qualifiction_name| syn::PathSegment {
-                    ident: syn_ident(qualifiction_name),
-                    arguments: syn::PathArguments::None,
-                })
-                .chain(std::iter::once(syn::PathSegment {
-                    ident: syn_ident(&name_to_uppercase_rust(parameterized)),
-                    arguments: syn::PathArguments::AngleBracketed(
-                        syn::AngleBracketedGenericArguments {
-                            colon2_token: None,
-                            lt_token: syn::token::Lt(syn_span()),
-                            args: arguments
-                                .into_iter()
-                                .map(|argument_type| syn::GenericArgument::Type(argument_type))
-                                .collect(),
-                            gt_token: syn::token::Gt(syn_span()),
-                        },
-                    ),
-                }))
-                .collect(),
-        },
+        path: syn_path_construct(qualification, parameterized, arguments),
     })
+}
+fn syn_path_construct<'a>(
+    qualification: impl IntoIterator<Item = &'a str>,
+    parameterized: &str,
+    arguments: impl IntoIterator<Item = syn::Type>,
+) -> syn::Path {
+    syn::Path {
+        leading_colon: None,
+        segments: qualification
+            .into_iter()
+            .map(|qualifiction_name| syn::PathSegment {
+                ident: syn_ident(qualifiction_name),
+                arguments: syn::PathArguments::None,
+            })
+            .chain(std::iter::once(syn::PathSegment {
+                ident: syn_ident(parameterized),
+                arguments: syn::PathArguments::AngleBracketed(
+                    syn::AngleBracketedGenericArguments {
+                        colon2_token: None,
+                        lt_token: syn::token::Lt(syn_span()),
+                        args: arguments
+                            .into_iter()
+                            .map(|argument_type| syn::GenericArgument::Type(argument_type))
+                            .collect(),
+                        gt_token: syn::token::Gt(syn_span()),
+                    },
+                ),
+            }))
+            .collect(),
+    }
 }
 fn syn_attribute_derive<'a>(trait_macro_names: impl Iterator<Item = &'a str>) -> syn::Attribute {
     syn::Attribute {
@@ -12877,7 +12867,7 @@ ty direction
 ```
 
 See also `Origin-isolated-map` on how to convert actual variant values",
-                type_parameters: vec![],
+                type_parameters: vec![Name::from_static("origin")],
                 parameter_type: type_fn(type_record_empty, type_variable("constant")),
                 result_type: type_origin_isolated(type_variable("origin"), type_variable("constant")),
             },

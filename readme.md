@@ -78,8 +78,8 @@ fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
 > Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been described similarly in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04).
 > With the small difference that in sloe's case the unique origin types only exist at compile-time and can thus mark spans, slots, unset spans, unset slots, bufs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
 >
-> The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 2 crates that successfully implement this: https://docs.rs/compact_arena/0.5.0/compact_arena/index.html (safe, pragmatic, simple but bare-bones) and https://docs.rs/indexing/0.4.1/indexing/ (safe, cumbersome, complicated).
-> The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global variable (or similar) for the next available ID: https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126
+> The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 3 crates that successfully implement this: [compact_arena](https://docs.rs/compact_arena/0.5.0/compact_arena/index.html) (safe, pragmatic, simple but bare-bones), [indexing](https://docs.rs/indexing/0.4.1/indexing/) (safe, cumbersome, complicated) and [generativity](https://crates.io/crates/generativity)/[typetoken](https://crates.io/crates/typetoken) explained in ["the generativity pattern in rust"](https://arhan.sh/blog/the-generativity-pattern-in-rust/) (general-purpose but relies on lifetimes).
+> The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global atomic variable (or similar) for the next available ID: [example](https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126)
 > (apart from security this is hardly ever worth it for regular users, considering it is also slower).
 >
 > I find it interesting that "storage" and "ownership over said storage" are decoupled. I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
@@ -720,6 +720,10 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- when completing origin name, insert the _
+
+- provide better error when type alias type construct is missing a type argument (don't (just) say the outer type is missing a parameter)
+
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
@@ -757,6 +761,12 @@ cargo install --offline --debug --path . sloe
 
 - fix comment TODOs
 
+- consider a more general API for origins to be useful outside of giving them to new Bufs.
+  To do that, allow origins to issue `Origin-use`s.
+  Questions:
+    - is there a use for this or is it only for type gymnasts?
+    - is this even properly encapsulatable = useful considering that sloe only allows constructing structural types?
+      Like, if Buf was represented as `.array ... .origin Origin ...` and Slot as `.index u32 .`
 
 # not coherently formulated thoughts
 
@@ -793,3 +803,12 @@ ty Map _slots, _in-hash-order, _item
     .slots Buf _slots, Slot _in-hash-order
     .items Buf _in-hash-order, _item
 ```
+
+## on this language's ideas not being experimental
+When I started imagining this language I naiively thought that the few core concepts were pretty unique.
+Reading more on the various aspects, it turns out I've pretty much been baking a cake that was already in the oven twice For example, using indexes that are marked to uniquely reference their origin array at compile time
+seems to have been individually already explored by many cool people.
+This left me wondering if there was any point in writing this language at all,
+seeing that many modern languages seem to converge to a similar (or even better) design (carbon, visions for rust, dada, various libraries, zig).
+
+Now I would indeed say that maybe there was never a place or future for sloe but exploring these hot topics and arriving at a similar place as many others was still nice to learn :---)

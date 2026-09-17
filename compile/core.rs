@@ -439,6 +439,7 @@ pub struct Buf<Origin, Item> {
 }
 pub struct Slot<LocalOrigin> {
     pub origin: std::marker::PhantomData<LocalOrigin>,
+    /// Invariant: < u32::MAX because a containing container can only hold <= u32::MAX items
     // consider switching to NonZeroU32 to create a niche for use with Option<Slot<>>
     index: u32,
 }
@@ -625,7 +626,12 @@ impl<LocalOrigin, Part> Origin<LocalOrigin, Part> {
     pub const unsafe fn new() -> Origin<LocalOrigin, Part> {
         Origin(std::marker::PhantomData::<(LocalOrigin, Part)>)
     }
+    /// Same as `new` but yoinking the type from a local origin value
+    pub unsafe fn of(_: &LocalOrigin) -> Origin<LocalOrigin, Part> {
+        Origin(std::marker::PhantomData::<(LocalOrigin, Part)>)
+    }
 }
+
 /// To create multiple Origins with the same unique origin type
 /// ```ignore
 /// origin_new!(some, UniqueOrigin, Record·part_a, Record·part_b)
@@ -648,18 +654,32 @@ impl<LocalOrigin, Part> Origin<LocalOrigin, Part> {
 /// I'm sorry :3
 #[macro_export]
 macro_rules! origin_new {
+    // History: Originally the implementation only relied on a local type.
+    // But it turns out, those types can freely escape their scope:
+    // https://stackoverflow.com/a/76876800 Thanks rodrigo!
+    // This means that using it in a loop or similar re-entering of the same expression
+    // using origin_new! could have lead to two origins with the same unique local type :/.
+    // One potential solution was only utilizing unique lifetimes there are many, many ugly
+    // patches needed to make it sound, read e.g. <https://arhan.sh/blog/the-generativity-pattern-in-rust/>.
+    // So in the end, I settled with a simpler hybrid approach inspired by
+    // https://codeberg.org/binarycat/typetoken/src/branch/trunk/src/lib.rs
     ($variable_name:ident, $type_name:ident) => {
-        struct $type_name;
+		let local = ();
+		let mut disable_lifetime_covariance = &local;
+        struct $type_name<'a>(#[expect(unused)] &'a mut &'a ());
         let $variable_name: $crate::core::Origin::<$type_name, $crate::core::Record> = unsafe {
-            $crate::core::Origin::new()
+            $crate::core::Origin::of(&$type_name(&mut disable_lifetime_covariance))
         };
     };
     ($type_name:ident, $part0_name:ident, $($parts:ident),+) => {
         if part_record_names_are_invalid!($($parts),+) {
             panic!("invalid part names. Each part needs a unique name and must start with Record·!");
         }
-        struct $type_name;
-        origin_new_variables!($type_name, unsafe { $crate::core::Origin::new() }, $part0_name, $($parts),+)
+		let local = ();
+		let mut disable_lifetime_covariance = &local;
+        struct $type_name<'a>(#[expect(unused)] &'a mut &'a ());
+        let local_origin = $type_name(&mut disable_lifetime_covariance);
+        origin_new_variables!($type_name, unsafe { $crate::core::Origin::of(&local_origin) }, $part0_name, $($parts),+)
     };
 }
 pub use origin_new;
@@ -2361,7 +2381,7 @@ pub fn origin_erased_rid<ValueErased>(
 ) -> Record {
     rid(erased.value_erased)
 }
-fn origin_unerase<LocalOrigin, Value, ValueErased>(
+pub fn origin_unerase<LocalOrigin, Value, ValueErased>(
     Record·erased·origin·unerase {
         erased,
         origin,

@@ -2,16 +2,15 @@ mod sloe;
 
 #[sauron::wasm_bindgen(start)]
 fn start() {
-    sloe::origin_new!(mouse_trail_origin, MouseTrailOrigin);
     sauron::Program::mount_to_body(App {
-        sloe_state: std::cell::Cell::new(Some(sloe::initial_state(mouse_trail_origin))),
+        sloe_state: std::cell::Cell::new(Some(sloe::initial_state(()))),
     });
 }
 
-struct App<MouseTrailOrigin> {
-    sloe_state: std::cell::Cell<Option<sloe::State<MouseTrailOrigin>>>,
+struct App {
+    sloe_state: std::cell::Cell<Option<sloe::State>>,
 }
-impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
+impl sauron::Application for App {
     type MSG = sloe::Event;
     fn init(&mut self) -> sauron::Cmd<Self::MSG> {
         sauron::Cmd::none()
@@ -39,13 +38,12 @@ impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
         > = sloe::Buf::new(modifiers_origin);
         let chars = sloe::Buf::new(chars_origin);
         let state = self.sloe_state.take().expect("state is initialized");
-        let sloe_dom =
-            sloe::view::<MouseTrailOrigin, View>(sloe::Record·chars·htmls·modifiers·state {
-                htmls,
-                modifiers,
-                chars,
-                state,
-            });
+        let sloe_dom = sloe::view::<View>(sloe::Record·chars·htmls·modifiers·state {
+            htmls,
+            modifiers,
+            chars,
+            state,
+        });
         self.sloe_state.set(Some(sloe_dom.state));
         sloe_dom_node_to_sauron(
             &sloe_dom.html,
@@ -56,7 +54,7 @@ impl<MouseTrailOrigin: 'static> sauron::Application for App<MouseTrailOrigin> {
     }
 }
 
-fn sloe_dom_node_to_sauron<View: 'static>(
+fn sloe_dom_node_to_sauron<View>(
     sloe_dom_node: &sloe::Html<View>,
     htmls: &sloe::Buf<sloe::Origin<View, sloe::Record·html<()>>, sloe::Html<View>>,
     modifiers: &sloe::Buf<
@@ -85,7 +83,7 @@ fn sloe_dom_node_to_sauron<View: 'static>(
         )),
     }
 }
-fn sloe_dom_modifier_to_sauron<View: 'static>(
+fn sloe_dom_modifier_to_sauron<View>(
     sloe_dom_modifier: &sloe::Modifier<sloe::Event, View>,
     chars: &sloe::Buf<sloe::Origin<View, sloe::Record·char<()>>, char>,
 ) -> sauron::Attribute<sloe::Event> {
