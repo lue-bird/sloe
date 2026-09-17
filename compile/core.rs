@@ -725,6 +725,10 @@ impl<Item> Unset_slice<Item> {
 }
 
 impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
+    /// See also `set_count` and `unset_count`
+    pub fn length_including_unset(&self) -> u32 {
+        self.items.len() as u32
+    }
     /// Especially when working with estimates or future insertions, you usually want pre_allocate_at_least
     pub fn pre_allocate(&mut self, pre_allocated_length: u32) {
         self.items.reserve_exact(pre_allocated_length as usize);
@@ -862,7 +866,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         }
     }
     pub fn remove(&mut self, mut slot: Slot<LocalOrigin>) -> Item {
-        if slot.index + 1 < self.items.len() as u32 {
+        if slot.index + 1 < self.length_including_unset() {
             let item = unsafe { self.item_option_mut(&mut slot).take().unwrap_unchecked() };
             self.first_unset_index = std::cmp::min(self.first_unset_index, slot.index);
             item
@@ -909,7 +913,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         while let std::option::Option::Some(std::option::Option::None) = self.items.last() {
             self.items.pop();
         }
-        if self.first_unset_index == self.items.len() as u32 {
+        if self.first_unset_index == self.length_including_unset() {
             self.first_unset_index = u32::MAX;
         }
     }
@@ -969,7 +973,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         &mut self,
         new_items: impl std::iter::Iterator<Item = Item>,
     ) -> Opt<Span<LocalOrigin>> {
-        let length_without_new_items = self.items.len() as u32;
+        let length_without_new_items = self.length_including_unset();
         std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
         let length_with_new_items =
             std::convert::TryInto::<u32>::try_into(self.items.len()).unwrap();
@@ -986,7 +990,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_start: Item,
         new_after: impl std::iter::Iterator<Item = Item>,
     ) -> Span<LocalOrigin> {
-        let length_without_new_items = self.items.len() as u32;
+        let length_without_new_items = self.length_including_unset();
         self.items.push(std::option::Option::Some(new_start));
         std::iter::Extend::extend(&mut self.items, new_after.map(std::option::Option::Some));
         let length_with_new_items =
@@ -1004,7 +1008,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         new_items: impl std::iter::Iterator<Item = Item>,
         new_item_count: std::num::NonZeroU32,
     ) -> Span<LocalOrigin> {
-        let length_without_new_items = self.items.len() as u32;
+        let length_without_new_items = self.length_including_unset();
         std::iter::Extend::extend(&mut self.items, new_items.map(std::option::Option::Some));
         _ = std::convert::TryInto::<u32>::try_into(self.items.len()).unwrap();
         Span {
@@ -1012,6 +1016,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             length: new_item_count,
         }
     }
+    /// assumes that the length of the iterator is <= u32::MAX
     pub fn insert_iterator(
         &mut self,
         new_items: impl std::iter::ExactSizeIterator<Item = Item>,
@@ -1060,7 +1065,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         Opt::Yes(new_span)
     }
     pub fn add_array<Record>(&mut self, new_items: Array<Item, Record>) -> Span<LocalOrigin> {
-        let length_without_new_items = self.items.len() as u32;
+        let length_without_new_items = self.length_including_unset();
         let new_last =
             (new_items.split_last_and_extend_vec_with_before)(&mut self.items, new_items.record);
         let length_with_new_items_before_last = self.add(new_last).index;
@@ -1224,7 +1229,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         }
     }
     pub fn span_is_at_the_end_of_items(&self, span: &Span<LocalOrigin>) -> bool {
-        span.start.index + span.length.get() < self.items.len() as u32
+        span.start.index + span.length.get() < self.length_including_unset()
     }
     pub fn span_move_to_unset(&mut self, span: Span<LocalOrigin>) -> Span<LocalOrigin> {
         if !self.span_is_at_the_end_of_items(&span) {
@@ -1318,16 +1323,19 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             Opt::Yes(start) => Opt::Yes(self.span_add_own_opt_span(start, end)),
         }
     }
+    pub fn unset_count(&self) -> u32 {
+        self.unset_count_usize() as u32
+    }
     pub fn unset_count_usize(&self) -> usize {
         std::iter::Iterator::count(std::iter::Iterator::filter(
             std::iter::Iterator::skip(self.items.iter(), self.first_unset_index as usize),
             |option| option.is_none(),
         ))
     }
-    pub fn unset_count_u32(&self) -> u32 {
-        self.unset_count_usize() as u32
+    pub fn set_count(&self) -> u32 {
+        self.set_count_usize() as u32
     }
-    pub fn occupied_count_usize(&self) -> usize {
+    pub fn set_count_usize(&self) -> usize {
         std::iter::Iterator::count(std::iter::Iterator::filter(self.items.iter(), |option| {
             option.is_some()
         }))

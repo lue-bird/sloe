@@ -504,11 +504,15 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         /// invariants:
         /// - .none_unset if set_bit_set() is all false within 0..items.items.len
         /// - _ points to a valid index in items
-        /// - _ points to the first false index in .unsetBitSet()
+        /// - _ points to the first true index in .unsetBitSet()
         first_unset_index: UnsetIndexOrNone,
         const origin = @"%Origin";
 
         pub const UnsetIndexOrNone = enum(u32) { none_unset = std.math.maxInt(u32), _ };
+
+        pub fn len_including_unset(@"%buf": @This()) u32 {
+            return @intCast(@"%buf".items.items.len);
+        }
 
         // Contains the set bits until .items.items.len (not its capacity).
         // modifying the resulting value does not change the given Buf's .unset_masks
@@ -539,8 +543,8 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         pub fn unsetCount(@"%buf": @This()) u32 {
             return @intCast(@"%buf".unsetBitSet().count());
         }
-        pub fn setCount(@"%buf": @This()) usize {
-            return @"%buf".items.items.len - @"%buf".unsetCount();
+        pub fn setCount(@"%buf": @This()) u32 {
+            return @"%buf".len_including_unset() - @"%buf".unsetCount();
         }
         pub fn add(
             @"%buf": *@This(),
@@ -548,7 +552,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%new_item": @"%Item",
         ) error{OutOfMemory}!Slot(@"%Origin") {
             var @"%unset_bit_set" = @"%buf".unsetBitSetUntilCapacity();
-            const @"%new_index": u32 = @intCast(@"%buf".items.items.len);
+            const @"%new_index" = @"%buf".len_including_unset();
             const @"%new_item_ptr" = try @"%buf".items.addOne(@"%allocator");
             if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
             @"%new_item_ptr".* = @"%new_item";
@@ -674,7 +678,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%buf": *@This(),
             @"%span_to_unset": Range,
         ) void {
-            if (@"%span_to_unset".start + @"%span_to_unset".length.positive < @as(u32, @intCast(@"%buf".items.items.len))) {
+            if (@"%span_to_unset".start + @"%span_to_unset".length.positive < @"%buf".len_including_unset()) {
                 var @"%unset_bit_set" = @"%buf".unsetBitSet();
                 @"%unset_bit_set".setRangeValue(
                     .{
@@ -728,7 +732,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%allocator": std.mem.Allocator,
             @"%span": Span(@"%Origin"),
         ) error{OutOfMemory}!Span(@"%Origin") {
-            if (@"%span".start + @"%span".length.positive == @as(u32, @intCast(@"%buf".items.items.len))) {
+            if (@"%span".start + @"%span".length.positive == @"%buf".len_including_unset()) {
                 return @"%span";
             }
             // span is not at the end already
@@ -739,7 +743,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             return (try @"%buf".addSlice(@"%allocator", @"%buf".spanSlice(@"%span"))).yes;
         }
         pub fn spanMoveToUnset(@"%buf": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
-            if (@"%span".start + @"%span".length.positive < @as(u32, @intCast(@"%buf".items.items.len))) {
+            if (@"%span".start + @"%span".length.positive < @"%buf".len_including_unset()) {
                 return @"%span";
             }
             // span is at the end of items
@@ -832,7 +836,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 @"%buf".items.appendSliceAssumeCapacity(@"%new_items");
                 if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
                 return .{ .yes = .{
-                    .start = @as(u32, @intCast(@"%buf".items.items.len)) - @as(u32, @intCast(@"%new_items".len)),
+                    .start = @"%buf".len_including_unset() - @as(u32, @intCast(@"%new_items".len)),
                     .length = P32.fromU32(@intCast(@"%new_items".len)).?,
                 } };
             } else return .{ .no = {} };
@@ -844,13 +848,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%new_items": anytype,
             @"%next_item": fn (*@TypeOf(@"%new_items")) ?@"%Item",
         ) error{OutOfMemory}!Opt(Span(@"%Origin")) {
-            const @"%length_before_add": u32 = @intCast(@"%buf".items.items.len);
+            const @"%length_before_add" = @"%buf".len_including_unset();
             var @"%new_items_iterator" = @"%new_items";
             while (@"%next_item"(&@"%new_items_iterator")) |@"%new_item"| {
                 _ = try @"%buf".add(@"%allocator", @"%new_item");
             }
             return if (P32.fromU32(
-                @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add",
+                @"%buf".len_including_unset() - @"%length_before_add",
             )) |@"%new_length"|
                 .{ .yes = .{ .start = @"%length_before_add", .length = @"%new_length" } }
             else
@@ -926,12 +930,12 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%next_item": fn (*@TypeOf(@"%new_items")) ?@"%Item",
         ) error{OutOfMemory}!Span(@"%Origin") {
             const @"%moved_span" = try @"%buf".spanMoveToEnd(@"%allocator", @"%span");
-            const @"%length_before_add": u32 = @intCast(@"%buf".items.items.len);
+            const @"%length_before_add" = @"%buf".len_including_unset();
             var @"%new_items_iterator" = @"%new_items";
             while (@"%next_item"(&@"%new_items_iterator")) |@"%new_item"| {
                 _ = try @"%buf".add(@"%allocator", @"%new_item");
             }
-            const @"%iterated_length" = @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_before_add";
+            const @"%iterated_length" = @"%buf".len_including_unset() - @"%length_before_add";
             return Span(@"%Origin"){
                 .start = @"%moved_span".start,
                 .length = @"%moved_span".length.addAssumeNoOverflow(@"%iterated_length"),
