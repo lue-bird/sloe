@@ -879,7 +879,15 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     /// After this, slot0 will reference the same item that slot1 did originally
     /// and slot1 will reference the same item that slot0 did originally
     fn swap(&mut self, slot0: &mut Slot<LocalOrigin>, slot1: &mut Slot<LocalOrigin>) {
+        // can probably be opimized by asserting slot0.index == slot1.index is unreachable
         self.items.swap(slot0.index as usize, slot1.index as usize);
+    }
+    /// returns the old item
+    fn replace(&mut self, slot: &mut Slot<LocalOrigin>, new_item: Item) -> Item {
+        let item_option_ref_mut = self.item_option_mut(slot);
+        let old_item = unsafe { item_option_ref_mut.take().unwrap_unchecked() };
+        _ = item_option_ref_mut.insert(new_item);
+        old_item
     }
     pub fn item_step<'a, Out>(
         &'a mut self,
@@ -2401,6 +2409,20 @@ pub fn buf_remove<Item, Origin>(
     Record·buf·item {
         buf: buf,
         item: item,
+    }
+}
+pub fn buf_replace<Item, Origin>(
+    Record·buf·new·slot {
+        mut buf,
+        mut slot,
+        new,
+    }: Record·buf·new·slot<Buf<Origin, Item>, Item, Slot<Origin>>,
+) -> Record·buf·item·slot<Buf<Origin, Item>, Item, Slot<Origin>> {
+    let old_item = buf.replace(&mut slot, new);
+    Record·buf·item·slot {
+        buf: buf,
+        slot: slot,
+        item: old_item,
     }
 }
 pub fn buf_item_step<In, Item, Origin, Out>(

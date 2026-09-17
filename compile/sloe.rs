@@ -13804,6 +13804,28 @@ then remove the last slot with the item from the original certain index.
                 ]),
             },
             CoreFnInfo {
+                name: "Buf-replace",
+                documentation: "Switch out the item from the `Buf` at a given slot and return the original item.
+A more versatile version is `Buf-item-step`.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("slot", type_slot(type_variable("origin"))),
+                    ("new", type_variable("item"))
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("slot", type_slot(type_variable("origin"))),
+                    ("item", type_variable("item")),
+                ]),
+            },
+            CoreFnInfo {
                 name: "Buf-item-step",
                 documentation: "Look at an item from the `Buf` at a given slot, change it and return something out.
 It behaves like `Buf-remove` followed by `Buf-insert` but is more performant because it always operates on the same slot.
@@ -13830,7 +13852,8 @@ fn Buf-item-dup
         )
     [.buf buf .slot slot .out item-duped]
     .buf buf .slot slot .item item-duped
-```",
+```
+To just switch out an item, use `Buf-replace`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13843,8 +13866,9 @@ fn Buf-item-dup
                         "step",
                         type_fn(
                             type_record([("in", type_variable("in")), ("item", type_variable("item"))]),
-                            type_record([("out", type_variable("out")), ("item", type_variable("item"))]))
+                            type_record([("out", type_variable("out")), ("item", type_variable("item"))])
                         )
+                    )
                 ]),
                 result_type: type_record([
                     (

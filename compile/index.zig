@@ -528,6 +528,21 @@ test "buf insert, add, take, setCount, rid" {
     try std.testing.expectEqual(0, buf.setCount());
     buf.rid(allocator);
 }
+test "buf_replace" {
+    const BufOrigin = enum {};
+    const buf_origin: core.Origin(BufOrigin, void) = .{};
+    var buf = core.buf_empty(u32, BufOrigin, void, buf_origin);
+    const slot = try buf.add(std.testing.allocator, 123);
+    const replaced = core.buf_replace(u32, @TypeOf(buf_origin), .{
+        .buf = buf,
+        .slot = slot,
+        .new = 456,
+    });
+    try std.testing.expectEqual(0, replaced.slot.index);
+    try std.testing.expectEqual(123, replaced.item);
+    try std.testing.expectEqual(456, replaced.buf.items.items[0]);
+    replaced.buf.rid(std.testing.allocator);
+}
 test "buf_item_step" {
     const BufOrigin = enum {};
     const buf_origin: core.Origin(BufOrigin, void) = .{};

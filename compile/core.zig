@@ -608,6 +608,17 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%buf".unsetSpanRid(.{ .start = @"%slot".index, .length = P32.one });
             return @"%item";
         }
+        /// returns the old item
+        pub fn replace(
+            @"%buf": @This(),
+            @"%slot": Slot(@"%Origin"),
+            @"%new": @"%Item",
+        ) @"%Item" {
+            const @"%item_ptr" = @"%buf".item_ptr(@"%slot");
+            const @"%old_item" = @"%item_ptr".*;
+            @"%item_ptr".* = @"%new";
+            return @"%old_item";
+        }
         pub fn swap(
             @"%buf": @This(),
             @"%slot_a": Slot(@"%Origin"),
@@ -1696,6 +1707,18 @@ pub fn buf_remove(
     var @"%buf" = @"%".buf;
     const @"%item" = @"%buf".remove(@"%".slot);
     return .{ .buf = @"%buf", .item = @"%item" };
+}
+pub fn buf_replace(@"%Item": type, @"%Origin": type, @"%": Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    new: @"%Item",
+    slot: Slot(@"%Origin"),
+})) Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    item: @"%Item",
+    slot: Slot(@"%Origin"),
+}) {
+    const @"%old_item" = @"%".buf.replace(@"%".slot, @"%".new);
+    return .{ .buf = @"%".buf, .slot = @"%".slot, .item = @"%old_item" };
 }
 pub fn buf_item_step(
     @"%In": type,

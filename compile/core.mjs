@@ -850,6 +850,14 @@ export function buf_remove(remove) {
     return { buf: remove.buf, item: item };
   }
 }
+/** @template $Item, $Origin
+ * @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, new: $Item, }} replace
+ * @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, item: $Item,}} */
+export function buf_replace(replace) {
+  const old_item = /** @type {$Item} */ (replace.buf[replace.slot]);
+  replace.buf[replace.slot] = replace.new;
+  return { buf: replace.buf, slot: replace.slot, item: old_item };
+}
 /** @template $In, $Item, $Origin, $Out
  * @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, in: $In, step: Fn<{in:$In, item:$Item}, {item: $Item, out:$Out}>,}} step
  * @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, out: $Out }} */
