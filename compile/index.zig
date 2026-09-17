@@ -546,6 +546,23 @@ test "buf_item_step" {
     try std.testing.expectEqual(124, buf.remove(slot));
     buf.rid(std.testing.allocator);
 }
+test "buf_swap" {
+    const BufOrigin = enum {};
+    const buf_origin: core.Origin(BufOrigin, void) = .{};
+    var buf = core.buf_empty(u32, BufOrigin, void, buf_origin);
+    const slot_a = try buf.add(std.testing.allocator, 123);
+    const slot_b = try buf.add(std.testing.allocator, 456);
+    const swapped = core.buf_swap(u32, @TypeOf(buf_origin), .{
+        .buf = buf,
+        .slot_a = slot_a,
+        .slot_b = slot_b,
+    });
+    try std.testing.expectEqual(1, swapped.slot_a.index);
+    try std.testing.expectEqual(0, swapped.slot_b.index);
+    try std.testing.expectEqual(456, swapped.buf.items.items[0]);
+    try std.testing.expectEqual(123, swapped.buf.items.items[1]);
+    swapped.buf.rid(std.testing.allocator);
+}
 test "buf add to span" {
     const allocator = std.testing.allocator;
     const BufOrigin = enum {};

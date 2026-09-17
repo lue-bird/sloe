@@ -719,6 +719,8 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
+- add `Buf-replace` as a simpler `Buf-step`
+
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
@@ -726,8 +728,6 @@ cargo install --offline --debug --path . sloe
 - (not sure) change `Buf-(opt-)span-add` to try reuse unset space (and add operations like `Buf-(opt-)span-prepend`?)
 
 - add `Buf-step`, `Buf-map`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
-
-- add `Buf-swap`
 
 - optimize core.zig Buf.markLengthPositiveAsSet
 

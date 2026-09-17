@@ -604,6 +604,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%buf".unsetSpanRid(.{ .start = @"%slot".index, .length = P32.one });
             return @"%item";
         }
+        pub fn swap(
+            @"%buf": @This(),
+            @"%slot_a": Slot(@"%Origin"),
+            @"%slot_b": Slot(@"%Origin"),
+        ) void {
+            std.mem.swap(@"%Item", @"%buf".item_ptr(@"%slot_a"), @"%buf".item_ptr(@"%slot_b"));
+        }
         pub fn spanRid(
             @"%buf": *@This(),
             @"%allocator": std.mem.Allocator,
@@ -1707,6 +1714,19 @@ pub fn buf_item_step(
     @"%item_ptr".* = @"%stepped".item;
     return @"%stepped".out;
 }
+pub fn buf_swap(@"%Item": type, @"%Origin": type, @"%": Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    slot_a: Slot(@"%Origin"),
+    slot_b: Slot(@"%Origin"),
+})) Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    slot_a: Slot(@"%Origin"),
+    slot_b: Slot(@"%Origin"),
+}) {
+    @"%".buf.swap(@"%".slot_a, @"%".slot_b);
+    return .{ .buf = @"%".buf, .slot_a = @"%".slot_b, .slot_b = @"%".slot_a };
+}
+
 pub fn buf_span_rid(
     @"%Item": type,
     @"%Origin": type,

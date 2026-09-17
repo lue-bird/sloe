@@ -208,6 +208,12 @@ pub struct Record·buf·slot<Buf, Slot> {
     pub slot: Slot,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·buf·slot_a·slot_b<Buf, Slot_a, Slot_b> {
+    pub buf: Buf,
+    pub slot_a: Slot_a,
+    pub slot_b: Slot_b,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·in_·slot·step<Buf, In, Slot, Step> {
     pub buf: Buf,
     pub in_: In,
@@ -865,6 +871,11 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             self.rid_trailing_unset();
             item
         }
+    }
+    /// After this, slot0 will reference the same item that slot1 did originally
+    /// and slot1 will reference the same item that slot0 did originally
+    fn swap(&mut self, slot0: &mut Slot<LocalOrigin>, slot1: &mut Slot<LocalOrigin>) {
+        self.items.swap(slot0.index as usize, slot1.index as usize);
     }
     pub fn item_step<'a, Out>(
         &'a mut self,
@@ -2408,6 +2419,20 @@ pub fn buf_item_step<In, Item, Origin, Out>(
         buf: buf,
         slot: slot,
         out: out,
+    }
+}
+pub fn buf_swap<Item, Origin>(
+    Record·buf·slot_a·slot_b {
+        mut buf,
+        mut slot_a,
+        mut slot_b,
+    }: Record·buf·slot_a·slot_b<Buf<Origin, Item>, Slot<Origin>, Slot<Origin>>,
+) -> Record·buf·slot_a·slot_b<Buf<Origin, Item>, Slot<Origin>, Slot<Origin>> {
+    buf.swap(&mut slot_a, &mut slot_b);
+    Record·buf·slot_a·slot_b {
+        buf: buf,
+        slot_a: slot_b,
+        slot_b: slot_a,
     }
 }
 pub fn buf_span_rid<Item, Origin>(

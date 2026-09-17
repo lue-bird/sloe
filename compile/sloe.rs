@@ -13775,6 +13775,35 @@ Convenient equivalent to `Buf-char-opt-span-add-str` with an empty span.",
                 ]),
             },
             CoreFnInfo {
+                name: "Buf-swap",
+                documentation: "Replace the item at slot-a with the item at slot-b and the other way around.
+Important: the resulting slot-a and slot-b will each refer to their original item (which is now at at different position in the Buf).
+
+This may not seem very useful considering that you could also just switch out only the Slots themselves.
+An example use case is removing a specific index in a Span
+where you don't care about order among the items:
+You can take the last slot and swap its item with the item at the specific index,
+then remove the last slot with the item from the original certain index.
+(Drectly removing the last item and replacing the item at the specific index with the last item also works)",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("slot-a", type_slot(type_variable("origin"))),
+                    ("slot-b", type_slot(type_variable("origin"))),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("slot-a", type_slot(type_variable("origin"))),
+                    ("slot-b", type_slot(type_variable("origin"))),
+                ]),
+            },
+            CoreFnInfo {
                 name: "Buf-item-step",
                 documentation: "Look at an item from the `Buf` at a given slot, change it and return something out.
 It behaves like `Buf-remove` followed by `Buf-insert` but is more performant because it always operates on the same slot.

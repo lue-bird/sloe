@@ -859,6 +859,15 @@ export function buf_item_step(step) {
   step.buf[step.slot] = stepped.item;
   return { buf: step.buf, slot: step.slot, out: stepped.out };
 }
+/** @template $Item, $Origin
+ * @param {{ buf: Buf<$Origin, $Item>, slot_a: Slot<$Origin>, slot_b: Slot<$Origin>,}} swap
+ * @returns {{ buf: Buf<$Origin, $Item>, slot_a: Slot<$Origin>, slot_b: Slot<$Origin>,}} */
+export function buf_swap(swap) {
+  const a_item = swap.buf[swap.slot_a];
+  swap.buf[swap.slot_a] = swap.buf[swap.slot_b];
+  swap.buf[swap.slot_b] = a_item;
+  return { buf: swap.buf, slot_a: swap.slot_b, slot_b: swap.slot_a };
+}
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} move @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
 export function buf_span_move_to_end(move) {
   if (move.span.start + move.span.length < move.buf.length) {
