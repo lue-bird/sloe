@@ -16,7 +16,7 @@ fn Stack-cons
     =
     ? Buf-insert .buf nodes .new tail [.buf nodes .slot tail-slot]
     .nodes nodes
-    .stack (|{Stack _origin, _item}stacked .head new-head .tail tail-slot)
+    .stack (|stacked{Stack _origin, _item} .head new-head .tail tail-slot)
 
 fn Stack-pop
     .nodes nodes Buf _origin, Stack _origin, _item
@@ -33,18 +33,17 @@ fn Stack-pop
     [|empty .] (
         .nodes nodes
         .item
-            |{
+            |no{
             Opt
             .head _item
             .tail Stack _origin, _item
             }
-            no
             .
         )
     [|stacked .head head .tail tail-slot] (
         ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .item tail]
         .nodes nodes
-        .item (Opt-yes .head head .tail tail)
+        .item (|yes{|no .} .head head .tail tail)
         )
 
 fn Stack-fold
@@ -75,7 +74,7 @@ fn Example . : u32 =
     ^example-origin
     ?
         .nodes Buf-empty{Stack (Origin example-origin, .), u32} example-origin
-        .stack |{Stack (Origin example-origin, .), u32}empty .
+        .stack |empty{Stack (Origin example-origin, .), u32} .
     [example-stack]
     ? Stack-cons .. example-stack .new 39 u32 [example-stack]
     ? Stack-cons .. example-stack .new 3 u32 [example-stack]

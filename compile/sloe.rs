@@ -2266,9 +2266,9 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
         return None;
     };
     parse_sloe_whitespace(state);
-    let type_argument = parse_braced_type_argument(state, types);
-    parse_sloe_whitespace(state);
     let name = parse_sloe_lowercase_name_with_start(state);
+    parse_sloe_whitespace(state);
+    let type_argument = parse_braced_type_argument(state, types);
     parse_sloe_whitespace(state);
     let value = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Variant {
@@ -6730,6 +6730,14 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             name,
             value,
         } => {
+            let label = match return_context {
+                ZigReturnContext::StatementsFollowedByBreak(label) => label,
+                ZigReturnContext::Expression => {
+                    let label = expression_start(expression);
+                    zig_block_start(output, label);
+                    label
+                }
+            };
             let Some(name) = name else {
                 zig_incomplete_expression(output);
                 return;
@@ -6743,44 +6751,89 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
-            let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins) else {
+            let Some(Type::Choice(provided_type_variants)) =
+                syntax_type_to_type(syntax_type, type_aliases, types, origins)
+            else {
                 zig_incomplete_expression(output);
                 return;
             };
-            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
-                zig_break_start(output, label);
+            let Some(value) = value else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            let value = expressions.item(value);
+            fn value_variable_name(output: &mut String, start: lsp_types::Position) {
+                use std::fmt::Write as _;
+                output.push_str("@\"%value:");
+                let _ = write!(output, "{}", start.line);
+                output.push_str(":");
+                let _ = write!(output, "{}", start.character);
+                output.push_str("\"");
             }
-            type_to_zig(output, &type_);
-            output.push_str(" { .");
+            let value_start = expression_start(value);
+            output.push_str("const ");
+            value_variable_name(output, value_start);
+            output.push_str(" = ");
+            syntax_expression_to_zig(
+                output,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                pattern_variables,
+                origins,
+                value,
+                function_scope_start,
+                ZigReturnContext::Expression,
+            );
+            output.push(';');
+            zig_break_start(output, label);
+            let mut variants_sorted = provided_type_variants
+                .iter()
+                .map(|TypeVariant { name, value }| (name, Some(value)))
+                .chain(
+                    if provided_type_variants
+                        .iter()
+                        .any(|variant| variant.name == name.value)
+                    {
+                        None
+                    } else {
+                        Some((&name.value, None))
+                    },
+                )
+                .collect::<Vec<_>>();
+            variants_sorted.sort_by_key(|(name, _)| *name);
+            variant_names_to_zig_choice_type_name(
+                output,
+                variants_sorted.iter().map(|(name, _)| *name),
+            );
+            output.push('(');
+            for (_, value) in variants_sorted {
+                match value {
+                    Some(value) => {
+                        type_to_zig(output, value);
+                    }
+                    None => {
+                        output.push_str("@TypeOf(");
+                        value_variable_name(output, value_start);
+                        output.push(')');
+                    }
+                }
+                output.push_str(", ");
+            }
+            output.push_str(") { .");
             output.push_str(&name_to_lowercase_zig(&name.value));
             output.push_str(" = ");
-            match value {
-                None => {
-                    zig_incomplete_expression(output);
-                }
-                Some(value) => {
-                    syntax_expression_to_zig(
-                        output,
-                        type_aliases,
-                        project_fns,
-                        expressions,
-                        patterns,
-                        types,
-                        checked_calls,
-                        checked_local_fns,
-                        checked_queries,
-                        checked_spread_records,
-                        pattern_variables,
-                        origins,
-                        expressions.item(value),
-                        function_scope_start,
-                        ZigReturnContext::Expression,
-                    );
-                }
-            }
+            value_variable_name(output, value_start);
             output.push_str(" }");
-            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
-                zig_break_end(output);
+            zig_break_end(output);
+            if let ZigReturnContext::Expression = return_context {
+                zig_block_end(output);
             }
         }
         SyntaxExpression::Fn {
@@ -6871,12 +6924,12 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Record { part0, part1_up } => {
-            fn record_spread_variable_name(output: &mut String, position: lsp_types::Position) {
+            fn record_spread_variable_name(output: &mut String, start: lsp_types::Position) {
                 use std::fmt::Write as _;
                 output.push_str("@\"%record_spread:");
-                let _ = write!(output, "{}", position.line);
+                let _ = write!(output, "{}", start.line);
                 output.push_str(":");
-                let _ = write!(output, "{}", position.character);
+                let _ = write!(output, "{}", start.character);
                 output.push_str("\"");
             }
             let any_part_is_spread =
@@ -9107,30 +9160,41 @@ Type arguments are provided each wrapped in curly braces after the fn name, like
         SyntaxExpression::Variant {
             bar_start,
             name,
-            type_,
+            type_: other_variants_type,
             value,
         } => {
-            let Some(syntax_type_argument) = type_ else {
+            let Some(name) = name else {
                 errors.push(ErrorNode {
                     range: symbol_range(*bar_start, "|"),
-                    message: Box::from("missing type in angle brackets after this variant name. An example of a valid variant is |{Opt str}yes \"hi c:\". If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
+                    message: Box::from("missing variant name after this bar |..here.. . An example of a variant is |yes{|no .} \"hi c:\""),
+                });
+                return None;
+            };
+            let Some(syntax_type_argument) = other_variants_type else {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: Box::from("missing type of the remaining variants in curly braces after this variant name. Examples of valid variants are |yes{|no .} \"hi c:\" and |yes{Opt str} \"c:\".
+If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
                 });
                 return None;
             };
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_brace_start, "{"),
-                    message: Box::from("missing type argument in curly braces. An example of a valid variant is |{Opt str}yes \"hi c:\""),
+                    message: Box::from("missing type argument in curly braces. Examples of valid variants are |yes{|no .} \"hi c:\" and |yes{Opt str} \"c:\""),
                 });
                 return None;
             };
-            let Some(name) = name else {
+            let Some(value) = value else {
                 errors.push(ErrorNode {
                     range: braced_type_argument_range(syntax_type_argument, types),
-                    message: Box::from("missing variant name after this braced variant type |{type} ..here.. . An example of a variant is |{Opt str}yes \"hi c:\""),
+                    message: Box::from(
+                        "this variant is missing an associated value after these curly braces. Every variant has a value, even if it's just . (an empy record).",
+                    ),
                 });
                 return None;
             };
+            let value = expressions.item(value);
             let Some(checked_type) = syntax_type_check(
                 syntax_type,
                 errors,
@@ -9142,46 +9206,6 @@ Type arguments are provided each wrapped in curly braces after the fn name, like
             ) else {
                 return None;
             };
-            let Type::Choice(origin_choice_type) = &checked_type else {
-                let mut error_message: String = String::from(
-                    "this variant type should be a choice (for example |a u32 |b str  or  Opt u32) but it's\n",
-                );
-                type_format(&mut error_message, 0, &checked_type);
-                errors.push(ErrorNode {
-                    range: braced_type_argument_range(syntax_type_argument, types),
-                    message: error_message.into_boxed_str(),
-                });
-                return None;
-            };
-            let Some(expected_value_type) = origin_choice_type.iter().find_map(|variant| {
-                if &variant.name == &name.value {
-                    Some(&variant.value)
-                } else {
-                    None
-                }
-            }) else {
-                let mut error_message: String = format!(
-                    "the actual variant name {} is not included in this type\n",
-                    name.value
-                );
-                type_format(&mut error_message, 0, &checked_type);
-                errors.push(ErrorNode {
-                    range: type_range(syntax_type, types),
-                    message: error_message.into_boxed_str(),
-                });
-                return None;
-            };
-            let Some(value) = value else {
-                let mut error_message: String =
-                    String::from("this variant is missing its associated value of type\n");
-                type_format(&mut error_message, 0, expected_value_type);
-                errors.push(ErrorNode {
-                    range: name_range(with_start_position_as_ref(name)),
-                    message: error_message.into_boxed_str(),
-                });
-                return None;
-            };
-            let value = expressions.item(value);
             let Some(checked_value_type) = syntax_expression_check(
                 errors,
                 type_aliases,
@@ -9202,16 +9226,48 @@ Type arguments are provided each wrapped in curly braces after the fn name, like
             ) else {
                 return None;
             };
-            if let Some(variant_value_type_diff) =
-                type_diff(expected_value_type, &checked_value_type)
-            {
+            let Type::Choice(origin_choice_type) = &checked_type else {
+                let mut error_message: String = String::from(
+                    "this variant type should be a choice (for example |a u32 |b str  or  Opt u32) but it's\n",
+                );
+                type_format(&mut error_message, 0, &checked_type);
                 errors.push(ErrorNode {
-                    range: expression_range(value, expressions, patterns, types),
-                    message: type_diff_error_message(&variant_value_type_diff).into_boxed_str(),
+                    range: braced_type_argument_range(syntax_type_argument, types),
+                    message: error_message.into_boxed_str(),
                 });
                 return None;
+            };
+            match origin_choice_type.iter().find_map(|variant| {
+                if &variant.name == &name.value {
+                    Some(&variant.value)
+                } else {
+                    None
+                }
+            }) {
+                Some(expected_value_type) => {
+                    if let Some(variant_value_type_diff) =
+                        type_diff(expected_value_type, &checked_value_type)
+                    {
+                        errors.push(ErrorNode {
+                            range: expression_range(value, expressions, patterns, types),
+                            message: type_diff_error_message(&variant_value_type_diff)
+                                .into_boxed_str(),
+                        });
+                        return None;
+                    }
+                    Some(checked_type)
+                }
+                None => Some(Type::Choice(
+                    origin_choice_type
+                        .iter()
+                        .cloned()
+                        .chain(std::iter::once(TypeVariant {
+                            name: name.value.clone(),
+                            value: checked_value_type,
+                        }))
+                        .collect(),
+                )),
             }
-            Some(checked_type)
         }
         SyntaxExpression::Fn {
             open_bracket_start,
@@ -10412,7 +10468,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             else {
                 return syn_expr_todo();
             };
-            let Type::Choice(origin_choice_type) = &compiled_type else {
+            let Type::Choice(provided_choice_type) = &compiled_type else {
                 return syn_expr_todo();
             };
             let Some(name) = name else {
@@ -10442,7 +10498,19 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     qself: None,
                     path: syn_path_reference([
                         &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
-                            origin_choice_type.iter().map(|variant| &variant.name),
+                            provided_choice_type
+                                .iter()
+                                .map(|variant| &variant.name)
+                                .chain(
+                                    if provided_choice_type
+                                        .iter()
+                                        .any(|variant| variant.name == name.value)
+                                    {
+                                        None
+                                    } else {
+                                        Some(&name.value)
+                                    },
+                                ),
                         )),
                         &name_to_uppercase_rust(&name.value),
                     ]),
@@ -12976,13 +13044,6 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 result_type: type_origin_isolated(type_variable("origin"), type_str),
             },
             CoreFnInfo {
-                name: "Opt-yes",
-                documentation: "Shorthand for |{Opt ..value type..}yes value which kind of specifies the value type twice",
-                type_parameters: vec![],
-                parameter_type: type_variable("yes"),
-                result_type: type_opt(type_variable("yes"))
-            },
-            CoreFnInfo {
                 name: "Fn-dup",
                 documentation: "Split the fn in two values with the same content",
                 type_parameters: vec![],
@@ -13457,24 +13518,6 @@ See also `Span-start-of-length-positive`, `Span-end`.",
                 result_type: type_variable("state"),
             },
             CoreFnInfo {
-                name: "Done",
-                documentation: "`Done{_going} done-value` is a shorthand for `|{|done done-type |going _going}done done-value`.
-It represents a completed state and can be interpreted as exiting a process or loop.
-An example can be found in `Opt-span-step-while`",
-                type_parameters: vec![Name::from_static("going")],
-                parameter_type: type_variable("done"),
-                result_type: type_choice([("done", type_variable("done")), ("going", type_variable("going"))]),
-            },
-            CoreFnInfo {
-                name: "Going",
-                documentation: "`Going{_done} going-value` is a shorthand for `|{|done _done |going going-type}going going-value`.
-It represents an unfinished, partial state and can be interpreted as a process or loop waiting to be resumed.
-An example can be found in `Opt-span-step-while`",
-                type_parameters: vec![Name::from_static("done")],
-                parameter_type: type_variable("going"),
-                result_type: type_choice([("done", type_variable("done")), ("going", type_variable("going"))]),
-            },
-            CoreFnInfo {
                 name: "Span-step-while",
                 documentation: "Step through all slots, updating the given initial state for each taken slot in line
 by returning `|going` or exiting early with `|done` (like calling `break` in other languages).
@@ -13522,7 +13565,7 @@ fn Next-non-space
     ? (
         Opt-span-step-while
         .span span
-        .direction |{|up . |down .}up .
+        .direction |up{|down .} .
         .state chars
         .step
         [.slot slot Slot _origin .state chars Buf _origin, char]
@@ -13531,15 +13574,15 @@ fn Next-non-space
         ? U32-order .left Char-to-u32 char-use .right Char-to-u32 ' '
         [|equal .] (
             ? Char-rid char [.]
-            Going{.chars Buf _origin, char .non-space char} chars
+            |going{|done .chars Buf _origin, char .non-space char} chars
             )
-        [|less .] Done{Buf _origin, char} .chars chars .non-space char
-        [|greater .] Done{Buf _origin, char} .chars chars .non-space char
+        [|less .] |done{|going Buf _origin, char} .chars chars .non-space char
+        [|greater .] |done{|going Buf _origin, char} .chars chars .non-space char
         )
     [|going chars]
-        .chars chars .non-space |{Opt char}no . .after |{Opt Span _origin}no .
+        .chars chars .non-space |no{Opt char} . .after |no{Opt Span _origin} .
     [|done .rest span-after .done (.chars chars .non-space non-space)]
-        .chars chars .non-space Opt-yes non-space .after span-after
+        .chars chars .non-space |yes{|no .} non-space .after span-after
 ```
 Note that `.rest` does not include any Slot given to the step function, even the Slot that resulted in `|done`.
 (This example looks convoluted. If you introduce helpers like Char-equal it gets more resonable)",
@@ -14690,7 +14733,7 @@ fn Three . : . =
                     r#"Result of a binary comparison.
 ```sloe
 U32-order .left 12 u32 .right 20 u32
-# = |{order}less
+# = |less{order} .
 
 fn U32-max .a a u32 .b b u32 : u32 =
     ? U32-order .left a .right b
@@ -15693,27 +15736,20 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             value,
         } => {
             formatted.push('|');
-            match type_ {
-                None => {
-                    formatted.push_str("{}");
-                }
-                Some(type_) => {
-                    syntax_braced_type_argument_format(formatted, indent, types, type_);
-                }
-            }
             match name {
                 Some(name) => {
-                    if range_line_span(lsp_types::Range {
-                        start: *bar_start,
-                        end: name.start,
-                    }) == LineSpan::Multiple
-                    {
-                        linebreak_indented_into(formatted, indent);
-                    }
                     formatted.push_str(&name.value);
                 }
                 None => {
                     formatted.push(' ');
+                }
+            }
+            match type_ {
+                None => {
+                    formatted.push_str("{|}");
+                }
+                Some(type_) => {
+                    syntax_braced_type_argument_format(formatted, indent, types, type_);
                 }
             }
             if let Some(value) = value {
@@ -19533,6 +19569,9 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                 *bar_start,
                 lsp_types::SemanticTokenTypes::EnumMember,
             );
+            if let Some(name) = name {
+                syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::EnumMember);
+            }
             if let Some(type_argument) = type_argument {
                 symbol_highlight(
                     state,
@@ -19546,14 +19585,11 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                 if let Some(closed_brace_start) = type_argument.closed_brace_start {
                     symbol_highlight(
                         state,
-                        "{",
+                        "}",
                         closed_brace_start,
                         lsp_types::SemanticTokenTypes::EnumMember,
                     );
                 }
-            }
-            if let Some(name) = name {
-                syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::EnumMember);
             }
             if let Some(value) = value {
                 syntax_expression_highlight(

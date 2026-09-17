@@ -156,26 +156,26 @@ export default grammar({
         $.expression_not_open_ending_in_array,
       ),
     expression_variant: ($) =>
-      seq("|", $.braced_type_argument, $.variant_name, $.expression),
+      seq("|", $.variant_name, $.braced_type_argument, $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
       seq(
         "|",
-        $.braced_type_argument,
         $.variant_name,
+        $.braced_type_argument,
         $.expression_not_open_ending_in_query,
       ),
     expression_variant_not_open_ending_in_record: ($) =>
       seq(
         "|",
-        $.braced_type_argument,
         $.variant_name,
+        $.braced_type_argument,
         $.expression_not_open_ending_in_record,
       ),
     expression_variant_not_open_ending_in_array: ($) =>
       seq(
         "|",
-        $.braced_type_argument,
         $.variant_name,
+        $.braced_type_argument,
         $.expression_not_open_ending_in_array,
       ),
     expression_variable: ($) => $.lower_name,

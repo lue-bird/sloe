@@ -163,7 +163,7 @@ fn State-to-interfaces-into
     ? (
         Buf-one
         .origin interfaces-origin
-        .item |{Interface State _expressions-origin}console-log "hello"
+        .item |console-log{Interface State _expressions-origin} "hello"
         )
     [.slot slot .buf interfaces]
     ...
@@ -281,9 +281,10 @@ ty Pair _potential, _type-parameters
 |second-option Buf _potential, u32
 |third-option Type-name-alias _potential, _type-parameters
 
-# creating a variant value. Note that the type could refer to a type alias
-# or a choice type directly <|... ...>
-|{a-choice-type}some-variant its value
+# creating a variant.
+# The type in curlies can be a type alias or a choice type directly {|... ...}.
+# The type does not have to include a variant with the currently constructed name
+|some-variant-name{a-choice-type} its value
 
 # variant pattern
 |some-variant its value
@@ -352,7 +353,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_type-variable` and `minus-dash-hyphen`
-- variant expression syntax is _really_ ugly: `|{Opt example}yes value`. Especially when the type in the braces itself contains variants. Also, the `|` is very easily confused as a letter which hinders readability
+- variant expression syntax is fairly ugly (`|yes{|no .} value`) especially when the type in the braces itself contains variants. Also, the `|` is very easily confused as a letter which hinders readability
 - the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
   Sloe is most likely not the right vehicle to explore this space,
   still it seems like a warning sign for a supposed "general-purpose language"
@@ -526,7 +527,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 # rejected ideas
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas
 
-- allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, |{}variant and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there
+- allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, |variant{} and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there
 - add special syntax `fn-once` that automatically assembles the environment from the used local variables.
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
   More info in "not coherently formulated thoughts"
@@ -725,13 +726,7 @@ cargo install --offline --debug --path . sloe
 
 - (not sure) change `Buf-(opt-)span-add` to try reuse unset space (and add operations like `Buf-(opt-)span-prepend`?)
 
-- add `Buf-step`, `Buf-map`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
-
-- optimize core.zig Buf.markLengthPositiveAsSet
-
-- give nicer error when only a field is missing or too much
-
-- (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
+- add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
@@ -739,33 +734,8 @@ cargo install --offline --debug --path . sloe
       : .buf Buf _origin, _item .slot Slot
   ```
 
-- (soft accept) again strongly consider allowing the variant choice type in `|{here}` to _not_ include the variant name. This would allow the removal of
-    - `Opt-yes v` which would be replaced by `|{|no .}yes v`
-    - `Done{g} d` which would be replaced by `|{|going g}done d`
-    - `Going{g} d` which would be replaced by `|{|going g}done d`
-    - user-defined types that follow a similar spirit, e.g. Error or Success
-  
-  Overall this makes sense in context of this language: You never _need_ to repeat yourself in explicitly provided types.
-
-  The reason I previously rejected this is that misspelling the variant name will lead to fairly confusing errors.
-  My sneaking suspicion is that moving the {type} to after the variant name (again) is going to make it more inuitive that the name is not necessarily included.
-  
-  Wondering: This may make proper unerase viable (unlikely). If it does, instant priorisation of this issue :)
-
-- consider adding `Buf-span-map-or-rid-and-allocate` (which tries to reuse the allocation).
-  Is there a use for this?
-  
-- website: in text area: prevent default on tab and insert four spaces instead
-
-- drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
-
-- fix comment TODOs
-
-- (if uneraser API is here to stay) remove Origin-erased-rid. It can't really be made useful
-
-- simplify exhaustiveness checking, possibly
-
-- consider adding
+- again try to may make proper unerase viable (unlikely).
+  If successful add
   ```sloe
   fn Origin-erased-map
       .erased Origin-erased _value-erased
@@ -773,6 +743,24 @@ cargo install --offline --debug --path . sloe
       :
       Origin-erased _value-erased-new
   ```
+  If currently uneraser API is here to stay, remove Origin-erased-rid. It can't really be made useful
+  
+- website: in text area: prevent default on tab and insert four spaces instead
+
+- fix bug where formating unrecognized range can duplicate the following declaration
+
+- drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
+
+- simplify exhaustiveness checking (probably easiest is listing all cases for the queried type and removing them one by one by going through all case patterns)
+
+- optimize core.zig Buf.markLengthPositiveAsSet
+
+- give nicer error when only a field is missing or too much
+
+- (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
+
+- fix comment TODOs
+
 
 # not coherently formulated thoughts
 

@@ -17,7 +17,7 @@ fn Initial-state
     .mouse-x 0 u32
     .mouse-y 0 u32
     .mouse-trail Buf-empty{.x u32 .y u32} mouse-trail-origin
-    .mouse-trail-span |{Opt Span Origin _mouse-trail-origin, _mouse-trail-part}no .
+    .mouse-trail-span |no{Opt Span Origin _mouse-trail-origin, _mouse-trail-part} .
 
 fn Update
     .state state State _mouse-trail-origin
@@ -44,7 +44,7 @@ fn Update
         .mouse-x new-mouse-x
         .mouse-y new-mouse-y
         .mouse-trail mouse-trail
-        .mouse-trail-span Opt-yes mouse-trail-span
+        .mouse-trail-span |yes{|no .} mouse-trail-span
         )
 
 fn View
@@ -62,7 +62,7 @@ fn View
     .chars Buf (Origin _view, .char .), char
     =
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span]
-    ? .buf chars .span |{Opt Span Origin _view, .char .}no . [text]
+    ? .buf chars .span |no{Opt Span Origin _view, .char .} . [text]
     ? Buf-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
     ? U32-dup mouse-x [.a mouse-x .b mouse-x-use]
     ? Buf-char-span-add-u32 .. text .new mouse-x-use [text]
@@ -73,25 +73,25 @@ fn View
         Buf-add-array
         .buf htmls
         .new
-            ; |{Html _view}text-dynamic Opt-yes text-span
-            ; |{Html _view}text-static "hello"
+            ; |text-dynamic{Html _view} |yes{|no .} text-span
+            ; |text-static{Html _view} "hello"
     [.buf htmls .span div-subs]
     ?
         Buf-add-array
         .buf modifiers
         .new
-            ; |{Modifier event, _view}style-static .key "height" .value "100vh"
-            ; |{Modifier event, _view}style-static .key "width" .value "100vw"
+            ; |style-static{Modifier event, _view} .key "height" .value "100vh"
+            ; |style-static{Modifier event, _view} .key "width" .value "100vw"
             ;
-                |{Modifier event, _view}on-mouse-move
-                [mouse-position .x u32 .y u32] |{event}mouse-moved mouse-position
+                |on-mouse-move{Modifier event, _view}
+                [mouse-position .x u32 .y u32] |mouse-moved{event} mouse-position
     [.buf modifiers .span main-modifiers]
     .state (.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail .mouse-trail-span mouse-trail-span)
     .html (
-        |{Html _view}element
+        |element{Html _view}
         .tag "main"
-        .modifiers Opt-yes main-modifiers
-        .subs Opt-yes div-subs
+        .modifiers |yes{|no .} main-modifiers
+        .subs |yes{|no .} div-subs
         )
     .htmls htmls
     .modifiers modifiers

@@ -584,11 +584,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "braced_type_argument"
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -605,11 +605,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "braced_type_argument"
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -626,11 +626,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "braced_type_argument"
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",
@@ -647,11 +647,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "braced_type_argument"
+          "name": "variant_name"
         },
         {
           "type": "SYMBOL",
-          "name": "variant_name"
+          "name": "braced_type_argument"
         },
         {
           "type": "SYMBOL",

@@ -911,10 +911,10 @@ ty bool
 
 fn Bool-order .a a bool .b b bool : order =
     ? .a a .b b
-    [.a |false . .b |true .] |{order}less .
-    [.a |true . .b |true .] |{order}equal .
-    [.a |false . .b |false .] |{order}equal .
-    [.a |true . .b |false .] |{order}greater .
+    [.a |false . .b |true .] |less{order} .
+    [.a |true . .b |true .] |equal{order} .
+    [.a |false . .b |false .] |equal{order} .
+    [.a |true . .b |false .] |greater{order} .
 
 ty Type-syntax _types
     |variable str
@@ -947,7 +947,7 @@ fn Type-span-rid
     .buf buf Buf _types, Type-syntax _types
     : Buf _types, Type-syntax _types =
     Span-fold
-    .direction |{|up . |down .}up .
+    .direction |up{|down .} .
     .span span
     .state buf
     .step
@@ -957,8 +957,10 @@ fn Type-span-rid
 "#,
             explainer: "Some info can come in multiple shapes (variants).
 For example there could be an error or a value, nothing or something, different state per page etc.
-To construct a variant, put a bar |, then an explicit type in braces {} then its value.
+To construct a variant, put a bar |, then its name, then a type in braces {}, then its value.
 Each variant has a value! If you have nothing to attach to a variant, just use the empty record `.`.
+The type in braces does not need to include a variant with the name youre currently constructing.
+
 In other languages, this is typically done with object hierarchies or a kind enum + union of value types.
 The most common choice type in sloe is `Opt _`, the optional type which is `|yes _ |no .`.
 In this example we also met `order` and `|up . |down .`.
@@ -991,7 +993,7 @@ fn U32s-sum
     .buf Buf _origin, u32
     =
     Span-fold
-    .direction |{|up . |down .}up .
+    .direction |up{|down .} .
     .span span
     .state (.sum 0 u32 .buf buf)
     .step
