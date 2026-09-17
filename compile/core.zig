@@ -751,7 +751,13 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 .start = @"%span".start,
                 .length = @"%span".length,
             });
-            return (try @"%buf".addSlice(@"%allocator", @"%buf".spanSlice(@"%span"))).yes;
+            try @"%buf".preAllocateAtLeast(@"%allocator", @"%span".length.positive);
+            @"%buf".items.appendSliceAssumeCapacity(@"%buf".spanSlice(@"%span"));
+            if (std.math.cast(u32, @"%buf".items.items.len) == null) return error.OutOfMemory;
+            return .{
+                .start = @"%buf".len_including_unset() - @"%span".length.positive,
+                .length = @"%span".length,
+            };
         }
         pub fn spanMoveToUnset(@"%buf": *@This(), @"%span": Span(@"%Origin")) Span(@"%Origin") {
             if (@"%span".start + @"%span".length.positive < @"%buf".len_including_unset()) {
@@ -779,14 +785,15 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             @"%start": Span(@"%Origin"),
             @"%end": Span(@"%Origin"),
         ) error{OutOfMemory}!Span(@"%Origin") {
+            const @"%combined_length" = @"%start".length.addAssumeNoOverflow(@"%end".length.positive);
             if (@"%start".start + @"%start".length.positive == @"%end".start) {
-                return Span(@"%Origin"){ .start = @"%start".start, .length = @"%start".length.addAssumeNoOverflow(@"%end".length.positive) };
+                return Span(@"%Origin"){ .start = @"%start".start, .length = @"%combined_length" };
             } else {
                 const @"%moved_start" = try @"%buf".spanMoveToEnd(@"%allocator", @"%start");
                 _ = try @"%buf".spanMoveToEnd(@"%allocator", @"%end");
                 return Span(@"%Origin"){
                     .start = @"%moved_start".start,
-                    .length = @"%start".length.addAssumeNoOverflow(@"%end".length.positive),
+                    .length = @"%combined_length",
                 };
             }
         }
