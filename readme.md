@@ -724,8 +724,6 @@ cargo install --offline --debug --path . sloe
 
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
 
-- (not sure) change `Buf-(opt-)span-add` to try reuse unset space (and add operations like `Buf-(opt-)span-prepend`?)
-
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
@@ -750,8 +748,6 @@ cargo install --offline --debug --path . sloe
 - fix bug where formating unrecognized range can duplicate the following declaration
 
 - drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
-
-- simplify exhaustiveness checking (probably easiest is listing all cases for the queried type and removing them one by one by going through all case patterns)
 
 - optimize core.zig Buf.markLengthPositiveAsSet
 

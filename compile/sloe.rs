@@ -3544,7 +3544,7 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
                 records_used,
                 choices_used,
             )
-            .map(|checked_parameter| checked_parameter.type_),
+            .map(|checked_parameter_type| checked_parameter_type),
             None => {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(project_fn.name)),
@@ -4562,477 +4562,206 @@ fn parameters_check_if_different_to_actual_type_parameters<'a>(
     actually_used_parameters
 }
 
-struct CheckedPattern {
-    type_: Type,
-    catch: PatternCatch,
-}
-#[derive(PartialEq, Eq, Debug)]
-enum PatternCatch {
-    Exhaustive,
-    /// invariant: all variants are never exhaustive
-    /// and len is >= 2
-    /// and only a single variant value is VariantCatch::Caught
-    Variant(std::collections::BTreeMap<Name, VariantCatch<PatternCatch>>),
-    /// invariant: all fields are never exhaustive
-    /// and field count is >= 2
-    Record(std::collections::BTreeMap<Name, PatternCatch>),
-}
-#[derive(PartialEq, Eq, Debug)]
-enum VariantCatch<Catch> {
-    Caught(Catch),
-    Uncaught,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-enum CasePatternsCatch {
-    Exhaustive,
-    /// invariant: all variants are never exhaustive
-    // and choice_type_variant_count is >= 2
-    Variants(std::collections::BTreeMap<Name, VariantCatch<CasePatternsCatch>>),
-    /// invariant: all fields are never exhaustive
-    // and field count is >= 2
-    Record(Vec<std::collections::BTreeMap<Name, PatternCatch>>),
-}
-fn pattern_catch_to_case_patterns_catch(pattern_catch: PatternCatch) -> CasePatternsCatch {
-    match pattern_catch {
-        PatternCatch::Exhaustive => CasePatternsCatch::Exhaustive,
-        PatternCatch::Variant(variants) => CasePatternsCatch::Variants(
-            variants
-                .into_iter()
-                .map(|(name, variant_catch)| {
-                    (
-                        name,
-                        match variant_catch {
-                            VariantCatch::Uncaught => VariantCatch::Uncaught,
-                            VariantCatch::Caught(value_catch) => VariantCatch::Caught(
-                                pattern_catch_to_case_patterns_catch(value_catch),
-                            ),
-                        },
-                    )
-                })
-                .collect(),
-        ),
-        PatternCatch::Record(fields) => CasePatternsCatch::Record(vec![fields]),
-    }
-}
-fn pattern_catch_merge_with(
-    errors: &mut Vec<ErrorNode>,
-    pattern_range: lsp_types::Range,
-    catch: &mut CasePatternsCatch,
-    new_catch: PatternCatch,
-) {
-    match catch {
-        CasePatternsCatch::Exhaustive => {
-            errors.push(ErrorNode { range: pattern_range, message: Box::from("unreachable pattern. All previous case patterns already exhaustively match any possible value") });
-        }
-        CasePatternsCatch::Variants(variants) => match new_catch {
-            PatternCatch::Exhaustive => {
-                *catch = CasePatternsCatch::Exhaustive;
-            }
-            PatternCatch::Variant(new_variants) => {
-                if let Some((new_variant_name, new_variant_caught)) = new_variants
-                    .into_iter()
-                    .find_map(
-                        |(new_variant_name, new_variant_catch)| match new_variant_catch {
-                            VariantCatch::Caught(new_variant_caught) => {
-                                Some((new_variant_name, new_variant_caught))
-                            }
-                            VariantCatch::Uncaught => None,
-                        },
-                    )
-                    && let Some(previous_catch_of_new_variant) = variants.get_mut(&new_variant_name)
-                {
-                    match previous_catch_of_new_variant {
-                        VariantCatch::Caught(CasePatternsCatch::Exhaustive) => {
-                            errors.push(ErrorNode {
-                                range: pattern_range,
-                                message: Box::from("this pattern is unreachable as it's already matched by a previous case pattern"),
-                            });
-                        }
-                        VariantCatch::Caught(previous_caught_of_new_variant) => {
-                            pattern_catch_merge_with(
-                                errors,
-                                pattern_range,
-                                previous_caught_of_new_variant,
-                                new_variant_caught,
-                            );
-                            if variants.values().all(|variant_catch| {
-                                variant_catch
-                                    == &VariantCatch::Caught(CasePatternsCatch::Exhaustive)
-                            }) {
-                                *catch = CasePatternsCatch::Exhaustive;
-                            }
-                        }
-                        VariantCatch::Uncaught => {
-                            *previous_catch_of_new_variant = VariantCatch::Caught(
-                                pattern_catch_to_case_patterns_catch(new_variant_caught),
-                            );
-                            if variants.values().all(|variant_catch| {
-                                variant_catch
-                                    == &VariantCatch::Caught(CasePatternsCatch::Exhaustive)
-                            }) {
-                                *catch = CasePatternsCatch::Exhaustive;
-                            }
-                        }
-                    }
-                }
-            }
-            PatternCatch::Record(_) => {}
-        },
-        CasePatternsCatch::Record(possibilities) => match new_catch {
-            PatternCatch::Exhaustive => {
-                *catch = CasePatternsCatch::Exhaustive;
-            }
-            PatternCatch::Record(new_possibility) => {
-                if possibilities.iter().any(|record_possibility| {
-                    record_possibility
-                        .values()
-                        .zip(new_possibility.values())
-                        .all(|(possibility_field_value, new_possibility_field_value)| {
-                            pattern_catch_catches_all_of_sloe_pattern_catch(
-                                possibility_field_value,
-                                new_possibility_field_value,
-                            )
-                        })
-                }) {
-                    errors.push(ErrorNode {
-                        range: pattern_range,
-                        message: Box::from("this pattern is unreachable as it's already matched by a previous case pattern"),
-                    });
-                } else {
-                    possibilities.push(new_possibility);
-                    if case_patterns_catch_record_is_exhaustive(possibilities) {
-                        *catch = CasePatternsCatch::Exhaustive;
-                    }
-                }
-            }
-            PatternCatch::Variant(_) => {}
-        },
-    }
-}
-fn pattern_catch_catches_all_of_sloe_pattern_catch(
-    catch: &PatternCatch,
-    to_check: &PatternCatch,
-) -> bool {
-    match catch {
-        PatternCatch::Exhaustive => true,
-        PatternCatch::Variant(variants) => {
-            if let PatternCatch::Variant(variants_to_check) = to_check {
-                variants.values().zip(variants_to_check.values()).all(
-                    |(variant_catch, variant_catch_to_check)| match (
-                        variant_catch,
-                        variant_catch_to_check,
-                    ) {
-                        (VariantCatch::Uncaught, VariantCatch::Caught(_)) => false,
-                        (VariantCatch::Uncaught, VariantCatch::Uncaught) => true,
-                        (VariantCatch::Caught(_), VariantCatch::Uncaught) => true,
-                        (
-                            VariantCatch::Caught(variant_value),
-                            VariantCatch::Caught(variant_value_to_check),
-                        ) => pattern_catch_catches_all_of_sloe_pattern_catch(
-                            variant_value,
-                            variant_value_to_check,
-                        ),
-                    },
-                )
-            } else {
-                false
-            }
-        }
-        PatternCatch::Record(fields) => {
-            if let PatternCatch::Record(fields_to_check) = to_check {
-                fields.values().zip(fields_to_check.values()).all(
-                    |(field_value, field_value_to_check)| {
-                        pattern_catch_catches_all_of_sloe_pattern_catch(
-                            field_value,
-                            field_value_to_check,
-                        )
-                    },
-                )
-            } else {
-                false
-            }
-        }
-    }
-}
-
-enum PatternCatchPossibilitiesSplit<'a> {
-    // consider adding example pattern
-    ByVariant(std::collections::BTreeMap<Name, Vec<Vec<&'a PatternCatch>>>),
-    WithAdditionalFieldValues {
-        field_count: usize,
-        possibilities: Vec<Vec<&'a PatternCatch>>,
+#[derive(PartialEq, Eq, Debug, Clone)]
+enum SpecificPatternCatch<'a> {
+    OnlyMatchableByVariable,
+    Variant {
+        name: &'a Name,
+        value: Box<SpecificPatternCatch<'a>>,
     },
-    AllExhaustive(Vec<Vec<&'a PatternCatch>>),
+    Record(Vec<(&'a Name, SpecificPatternCatch<'a>)>),
 }
-fn case_patterns_catch_record_is_exhaustive(
-    record_possibilities: &[std::collections::BTreeMap<Name, PatternCatch>],
-) -> bool {
-    possibilities_of_pattern_catches_are_exhaustive(
-        // it's unfortunate that we need to allocate here,
-        // since rust runs into an "reached the recursion limit while instantiating"
-        // error when instantiating Iterators (recursively)
-        &record_possibilities
-            .iter()
-            .map(|record_possibility| record_possibility.values().collect())
-            .collect::<Vec<_>>(),
-    )
+/// careful. This easily goes exponential
+fn type_to_possible_specific_pattern_catches<'a>(
+    type_: &'a Type,
+    possibilities: &mut Vec<SpecificPatternCatch<'a>>,
+) {
+    // possible optimizations: calculate the count of possibilities in advance and pre-allocate
+    match type_ {
+        Type::Variable(_) => {
+            possibilities.push(SpecificPatternCatch::OnlyMatchableByVariable);
+        }
+        Type::Origin(_) => {
+            possibilities.push(SpecificPatternCatch::OnlyMatchableByVariable);
+        }
+        Type::CoreConstruct { .. } => {
+            possibilities.push(SpecificPatternCatch::OnlyMatchableByVariable);
+        }
+        Type::Record(type_fields) => {
+            if type_fields.is_empty() {
+                possibilities.push(SpecificPatternCatch::Record(vec![]));
+            } else {
+                // can probably be optimized
+                let mut fields_possibilities = vec![Vec::new()];
+                for type_field in type_fields {
+                    let mut value_possibilities = Vec::new();
+                    type_to_possible_specific_pattern_catches(
+                        &type_field.value,
+                        &mut value_possibilities,
+                    );
+                    fields_possibilities = fields_possibilities
+                        .into_iter()
+                        .flat_map(|fields_possibility| {
+                            value_possibilities
+                                .iter()
+                                .cloned()
+                                .zip(std::iter::repeat_n(
+                                    fields_possibility,
+                                    value_possibilities.len(),
+                                ))
+                                .map(|(value_possibility, mut fields_possibility)| {
+                                    fields_possibility.push((&type_field.name, value_possibility));
+                                    fields_possibility
+                                })
+                        })
+                        .collect();
+                }
+                possibilities.extend(
+                    fields_possibilities
+                        .into_iter()
+                        .map(SpecificPatternCatch::Record),
+                )
+            }
+        }
+        Type::Choice(type_variants) => {
+            for type_variant in type_variants {
+                let mut value_possibilities = Vec::new();
+                type_to_possible_specific_pattern_catches(
+                    &type_variant.value,
+                    &mut value_possibilities,
+                );
+                possibilities.extend(value_possibilities.into_iter().map(|value_catch| {
+                    SpecificPatternCatch::Variant {
+                        name: &type_variant.name,
+                        value: Box::new(value_catch),
+                    }
+                }));
+            }
+        }
+    }
 }
-/// don't ask wtf this algorithm is, I'm too dumb to understand the existing literature.
-/// Here's what I've come up with:
-///
-/// Assume the case shape
-///   [  ( a0, a1, a2, a3 )
-///   or ( b0, b1, b2, b3 )
-///   or ... ]
-/// where we know the pattern at each index has the same type.
-/// We then look at each pattern at index 0:
-///
-///    when this pattern type is a choice type, categorize by
-///    variant name, and check the value + remaining indices individually for exhaustiveness
-///    for example:
-///      ( None, a1 ) or ( Some v0, b1 ) or ( None, c1 )
-///      → is_exhaustive [ ( _, a1 ) or ( _, c1 ) ] && is_exhaustive [ ( v0, b1 ) ]
-///    if we encounter a variable pattern, we copy it's possibilities
-///    to all "by variant" possibilities
-///
-///   when this pattern type is a record, spread (flatten) its field values into the original possibilities
-///   for example:
-///      ( { x ax0, y ay0 }, a1 ) or ( { x ax0, y ay0 }, b1 )
-///      → is_exhaustive [ ( ax0, ay0, a1 ) or ( ax0, ay0, b1 ) ]
-///
-/// when all patterns on index 0 are variable patterns
-/// repeat until the patterns on index 0 together aren't exhaustive (return false) or
-/// all remaining cases are exhaustive (return true)
-fn possibilities_of_pattern_catches_are_exhaustive<'a>(
-    possibilities_of_pattern_catches: &'a [Vec<&'a PatternCatch>],
+fn specific_pattern_catch_format(
+    specific_pattern_catch: &SpecificPatternCatch,
+    output: &mut String,
+) {
+    match specific_pattern_catch {
+        SpecificPatternCatch::OnlyMatchableByVariable => {
+            output.push_str("(some-variable)");
+        }
+        SpecificPatternCatch::Variant { name, value } => {
+            output.push('|');
+            output.push_str(name);
+            output.push(' ');
+            specific_pattern_catch_format(value, output);
+        }
+        SpecificPatternCatch::Record(fields) => match fields.split_first() {
+            Some(((field0_name, field0_value), field1_up)) => {
+                output.push('.');
+                output.push_str(field0_name);
+                output.push(' ');
+                specific_pattern_catch_format(field0_value, output);
+                for (name, value) in field1_up {
+                    output.push(' ');
+                    output.push('.');
+                    output.push_str(name);
+                    output.push(' ');
+                    specific_pattern_catch_format(value, output);
+                }
+            }
+            None => {
+                output.push('.');
+            }
+        },
+    }
+}
+fn pattern_matches_specific_pattern_catch<Patterns, Types>(
+    pattern: &SyntaxPattern<Patterns, Types>,
+    possibility: &SpecificPatternCatch,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
 ) -> bool {
-    let maybe_split: Option<PatternCatchPossibilitiesSplit> =
-        possibilities_of_pattern_catches.iter().fold(
-            None,
-            |mut maybe_so_far, possibility_values| {
-                match possibility_values.split_first() {
-                    None => maybe_so_far,
-                    Some((first_value_catch, remaining_value_catches)) => {
-                        match first_value_catch {
-                            PatternCatch::Exhaustive => match &mut maybe_so_far {
-                                None => Some(PatternCatchPossibilitiesSplit::AllExhaustive(vec![
-                                    remaining_value_catches.to_vec(),
-                                ])),
-                                Some(PatternCatchPossibilitiesSplit::AllExhaustive(
-                                    possibilities,
-                                )) => {
-                                    possibilities.push(remaining_value_catches.to_vec());
-                                    maybe_so_far
-                                }
-                                Some(
-                                    PatternCatchPossibilitiesSplit::WithAdditionalFieldValues {
-                                        field_count,
-                                        possibilities,
-                                    },
-                                ) => {
-                                    possibilities.push(
-                                        std::iter::repeat_n(
-                                            &PatternCatch::Exhaustive,
-                                            *field_count,
-                                        )
-                                        .chain(remaining_value_catches.iter().copied())
-                                        .collect(),
-                                    );
-                                    maybe_so_far
-                                }
-                                Some(PatternCatchPossibilitiesSplit::ByVariant(
-                                    possibilities_by_variant,
-                                )) => {
-                                    for possibilities_for_variant in
-                                        possibilities_by_variant.values_mut()
-                                    {
-                                        possibilities_for_variant.push(
-                                            std::iter::once(&PatternCatch::Exhaustive)
-                                                .chain(remaining_value_catches.iter().copied())
-                                                .collect(),
-                                        );
-                                    }
-                                    maybe_so_far
-                                }
-                            },
-                            PatternCatch::Variant(first_field_value_variants) => {
-                                let Some((
-                                    first_field_value_variant_name,
-                                    first_field_value_variant_value_catch,
-                                )) = first_field_value_variants.iter().find_map(
-                                    |(
-                                        first_field_value_variant_name,
-                                        first_field_value_variant_catch,
-                                    )| {
-                                        match first_field_value_variant_catch {
-                                            VariantCatch::Uncaught => None,
-                                            VariantCatch::Caught(value_caught) => {
-                                                Some((first_field_value_variant_name, value_caught))
-                                            }
-                                        }
-                                    },
-                                )
-                                else {
-                                    return maybe_so_far;
-                                };
-                                let new_possibility_for_variant: Vec<&PatternCatch> =
-                                    std::iter::once(first_field_value_variant_value_catch)
-                                        .chain(remaining_value_catches.iter().copied())
-                                        .collect();
-                                match &mut maybe_so_far {
-                                    None => {
-                                        let mut by_variant_empty: std::collections::BTreeMap<
-                                            Name,
-                                            Vec<Vec<&PatternCatch>>,
-                                        > = first_field_value_variants
-                                            .keys()
-                                            .map(|variant_name| (variant_name.clone(), vec![]))
-                                            .collect();
-                                        if let Some(first_field_value_variant_possibilities) =
-                                            by_variant_empty.get_mut(first_field_value_variant_name)
-                                        {
-                                            first_field_value_variant_possibilities
-                                                .push(new_possibility_for_variant);
-                                        }
-                                        Some(PatternCatchPossibilitiesSplit::ByVariant(
-                                            by_variant_empty,
-                                        ))
-                                    }
-                                    Some(PatternCatchPossibilitiesSplit::ByVariant(
-                                        so_far_by_variant,
-                                    )) => {
-                                        if let Some(variant_possibilities_so_far) =
-                                            so_far_by_variant
-                                                .get_mut(first_field_value_variant_name)
-                                        {
-                                            variant_possibilities_so_far
-                                                .push(new_possibility_for_variant);
-                                        }
-                                        maybe_so_far
-                                    }
-                                    Some(PatternCatchPossibilitiesSplit::AllExhaustive(
-                                        possibilities,
-                                    )) => {
-                                        let possibilities_for_each_variant: Vec<
-                                            Vec<&PatternCatch>,
-                                        > = possibilities
-                                            .iter()
-                                            .map(|possibility| {
-                                                std::iter::once(&PatternCatch::Exhaustive)
-                                                    .chain(possibility.iter().copied())
-                                                    .collect()
-                                            })
-                                            .collect();
-                                        let mut by_variant_empty: std::collections::BTreeMap<
-                                            Name,
-                                            Vec<Vec<&PatternCatch>>,
-                                        > = first_field_value_variants
-                                            .keys()
-                                            .map(|variant_name| {
-                                                (
-                                                    variant_name.clone(),
-                                                    possibilities_for_each_variant.clone(),
-                                                )
-                                            })
-                                            .collect();
-                                        if let Some(first_field_value_variant_possibilities) =
-                                            by_variant_empty.get_mut(first_field_value_variant_name)
-                                        {
-                                            first_field_value_variant_possibilities
-                                                .push(new_possibility_for_variant);
-                                        }
-                                        Some(PatternCatchPossibilitiesSplit::ByVariant(
-                                            by_variant_empty,
-                                        ))
-                                    }
-                                    // type error
-                                    Some(
-                                        PatternCatchPossibilitiesSplit::WithAdditionalFieldValues {
-                                            ..
-                                        },
-                                    ) => maybe_so_far,
-                                }
-                            }
-                            PatternCatch::Record(first_field_value_fields) => {
-                                let new_possibility_for_record: Vec<&PatternCatch> =
-                                    first_field_value_fields
-                                        .values()
-                                        .chain(remaining_value_catches.iter().copied())
-                                        .collect();
-                                match &mut maybe_so_far {
-                                    None => Some(
-                                        PatternCatchPossibilitiesSplit::WithAdditionalFieldValues {
-                                            field_count: first_field_value_fields.len(),
-                                            possibilities: vec![new_possibility_for_record],
-                                        },
-                                    ),
-                                    Some(
-                                        PatternCatchPossibilitiesSplit::WithAdditionalFieldValues {
-                                            possibilities:
-                                                with_record_field_values_possibilities_so_far,
-                                            field_count: _,
-                                        },
-                                    ) => {
-                                        with_record_field_values_possibilities_so_far
-                                            .push(new_possibility_for_record);
-                                        maybe_so_far
-                                    }
-                                    Some(PatternCatchPossibilitiesSplit::AllExhaustive(
-                                        possibilities,
-                                    )) => Some(
-                                        PatternCatchPossibilitiesSplit::WithAdditionalFieldValues {
-                                            field_count: first_field_value_fields.len(),
-                                            possibilities: std::iter::once(
-                                                new_possibility_for_record,
-                                            )
-                                            .chain(possibilities.iter().map(|possibility| {
-                                                std::iter::repeat_n(
-                                                    &PatternCatch::Exhaustive,
-                                                    first_field_value_fields.len(),
-                                                )
-                                                .chain(possibility.iter().copied())
-                                                .collect()
-                                            }))
-                                            .collect(),
-                                        },
-                                    ),
-                                    // type error
-                                    Some(PatternCatchPossibilitiesSplit::ByVariant(_)) => {
-                                        maybe_so_far
-                                    }
+    match pattern {
+        SyntaxPattern::Variable { .. } => true,
+        SyntaxPattern::Variant { name, value } => match possibility {
+            SpecificPatternCatch::Variant {
+                name: possibility_name,
+                value: possibility_value,
+            } if name.value.as_ref() == Some(possibility_name) => match value {
+                None => true,
+                Some(value) => pattern_matches_specific_pattern_catch(
+                    patterns.item(value),
+                    possibility_value,
+                    patterns,
+                    checked_spread_records,
+                ),
+            },
+            _ => false,
+        },
+        SyntaxPattern::RecordEmpty { .. } => true,
+        SyntaxPattern::Record { part0, part1_up } => match possibility {
+            SpecificPatternCatch::Record(possibility_fields) => std::iter::once(part0)
+                .chain(part1_up)
+                .all(|part| match part {
+                    SyntaxRecordPart::Field { name, value } => match value {
+                        None => true,
+                        Some(value) => {
+                            match possibility_fields.iter().find(|(possibility_name, _)| {
+                                Some(*possibility_name) == name.value.as_ref()
+                            }) {
+                                None => true,
+                                Some((_, value_possibility)) => {
+                                    pattern_matches_specific_pattern_catch(
+                                        patterns.item(value),
+                                        value_possibility,
+                                        patterns,
+                                        checked_spread_records,
+                                    )
                                 }
                             }
                         }
-                    }
-                }
-            },
-        );
-    match maybe_split {
-        None => {
-            // no possibilities at all. This case is hit when e.g. a variant never occurs
-            false
-        }
-        Some(split) => match split {
-            PatternCatchPossibilitiesSplit::ByVariant(possibilities_by_variant) => {
-                possibilities_by_variant
-                    .values()
-                    .all(|possibilities_for_variant| {
-                        possibilities_of_pattern_catches_are_exhaustive(possibilities_for_variant)
-                    })
-            }
-            PatternCatchPossibilitiesSplit::AllExhaustive(possibilities) => {
-                // a more performant way to check this
-                // would be setting an "input was empty" bool
-                if possibilities.iter().all(Vec::is_empty) {
-                    return true;
-                }
-                possibilities_of_pattern_catches_are_exhaustive(&possibilities)
-            }
-            PatternCatchPossibilitiesSplit::WithAdditionalFieldValues {
-                field_count: _,
-                possibilities,
-            } => possibilities_of_pattern_catches_are_exhaustive(&possibilities),
+                    },
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => match record {
+                        None => true,
+                        Some(record) => match checked_spread_records.get(dot_dot_start) {
+                            None => true,
+                            Some(checked_spread_record_fields) => {
+                                // It's probably faster to remove the spread fields from possibility_fields
+                                pattern_matches_specific_pattern_catch(
+                                    patterns.item(record),
+                                    &SpecificPatternCatch::Record(
+                                        possibility_fields
+                                            .iter()
+                                            .filter(|(possibility_field_name, _)| {
+                                                checked_spread_record_fields
+                                                    .contains(possibility_field_name)
+                                            })
+                                            .cloned()
+                                            .collect(),
+                                    ),
+                                    patterns,
+                                    checked_spread_records,
+                                )
+                            }
+                        },
+                    },
+                }),
+            _ => false,
+        },
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => true,
+            Some(inner) => pattern_matches_specific_pattern_catch(
+                patterns.item(inner),
+                possibility,
+                patterns,
+                checked_spread_records,
+            ),
         },
     }
 }
@@ -5052,7 +4781,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
-) -> Option<CheckedPattern> {
+) -> Option<Type> {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
             let maybe_checked_variable = match type_.as_ref() {
@@ -5064,10 +4793,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         });
                         None
                     }
-                    Some(expected_type) => Some(CheckedPattern {
-                        type_: expected_type.clone(),
-                        catch: PatternCatch::Exhaustive,
-                    }),
+                    Some(expected_type) => Some(expected_type.clone()),
                 },
                 Some(actual_type) => {
                     if expected_type.is_some() {
@@ -5089,18 +4815,15 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     ) else {
                         return None;
                     };
-                    Some(CheckedPattern {
-                        type_: actual_type,
-                        catch: PatternCatch::Exhaustive,
-                    })
+                    Some(actual_type)
                 }
             };
-            if let Some(checked_variable) = &maybe_checked_variable {
+            if let Some(checked_variable_type) = &maybe_checked_variable {
                 let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
                     &name.value,
                     CheckedPatternVariable {
                         origin_start: name.start,
-                        type_: Some(checked_variable.type_.clone()),
+                        type_: Some(checked_variable_type.clone()),
                     },
                 );
                 if let Some(_existing_variable_with_the_same_name) =
@@ -5151,7 +4874,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         });
                         return None;
                     };
-                    let Some(checked_value) = syntax_pattern_check(
+                    let Some(checked_value_type) = syntax_pattern_check(
                         patterns.item(value),
                         None,
                         errors,
@@ -5167,13 +4890,10 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     ) else {
                         return None;
                     };
-                    Some(CheckedPattern {
-                        type_: Type::Choice(vec![TypeVariant {
-                            name: name_value.clone(),
-                            value: checked_value.type_,
-                        }]),
-                        catch: checked_value.catch,
-                    })
+                    Some(Type::Choice(vec![TypeVariant {
+                        name: name_value.clone(),
+                        value: checked_value_type,
+                    }]))
                 }
                 Some(expected_type) => {
                     let Type::Choice(origin_choice_type_variants) = &expected_type else {
@@ -5219,7 +4939,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         return None;
                     };
                     let value = patterns.item(value);
-                    let Some(checked_value) = syntax_pattern_check(
+                    let Some(checked_value_type) = syntax_pattern_check(
                         value,
                         Some(expected_value_type),
                         errors,
@@ -5236,7 +4956,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         return None;
                     };
                     if let Some(variant_value_type_diff) =
-                        type_diff(expected_value_type, &checked_value.type_)
+                        type_diff(expected_value_type, &checked_value_type)
                     {
                         errors.push(ErrorNode {
                             range: pattern_range(value, patterns, types),
@@ -5245,24 +4965,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         });
                         return None;
                     }
-                    Some(CheckedPattern {
-                        type_: expected_type.clone(),
-                        catch: if origin_choice_type_variants.len() == 1 {
-                            checked_value.catch
-                        } else {
-                            let mut variants: std::collections::BTreeMap<
-                                Name,
-                                VariantCatch<PatternCatch>,
-                            > = origin_choice_type_variants
-                                .iter()
-                                .map(|variant| (variant.name.clone(), VariantCatch::Uncaught))
-                                .collect();
-                            if let Some(variant_catch) = variants.get_mut(name_value) {
-                                *variant_catch = VariantCatch::Caught(checked_value.catch);
-                            }
-                            PatternCatch::Variant(variants)
-                        },
-                    })
+                    Some(expected_type.clone())
                 }
             }
         }
@@ -5286,15 +4989,10 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     return None;
                 }
             }
-            Some(CheckedPattern {
-                type_: Type::Record(vec![]),
-                catch: PatternCatch::Exhaustive,
-            })
+            Some(type_record_empty)
         }
         SyntaxPattern::Record { part0, part1_up } => {
             let mut type_fields: Vec<TypeField> = Vec::with_capacity(1 + part1_up.len());
-            let mut field_catches: std::collections::BTreeMap<Name, PatternCatch> =
-                std::collections::BTreeMap::new();
             match expected_type {
                 None => {
                     for part in std::iter::once(part0).chain(part1_up) {
@@ -5334,7 +5032,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                     });
                                     return None;
                                 }
-                                let Some(checked_field_value) = syntax_pattern_check(
+                                let Some(checked_field_value_type) = syntax_pattern_check(
                                     patterns.item(value),
                                     None,
                                     errors,
@@ -5352,10 +5050,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                 };
                                 type_fields.push(TypeField {
                                     name: field_name_value.clone(),
-                                    value: checked_field_value.type_,
+                                    value: checked_field_value_type,
                                 });
-                                field_catches
-                                    .insert(field_name_value.clone(), checked_field_value.catch);
                             }
                             SyntaxRecordPart::Spread {
                                 dot_dot_start,
@@ -5368,7 +5064,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                     });
                                     return None;
                                 };
-                                let Some(checked_record) = syntax_pattern_check(
+                                let Some(checked_record_type) = syntax_pattern_check(
                                     patterns.item(record),
                                     None,
                                     errors,
@@ -5384,12 +5080,12 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                 ) else {
                                     return None;
                                 };
-                                let Type::Record(checked_record_type_fields) = checked_record.type_
+                                let Type::Record(checked_record_type_fields) = checked_record_type
                                 else {
                                     let mut error_message =
                                             "the pattern after this record spread .. is not a record but\n"
                                     .to_string();
-                                    type_format(&mut error_message, 0, &checked_record.type_);
+                                    type_format(&mut error_message, 0, &checked_record_type);
                                     errors.push(ErrorNode {
                                         range: symbol_range(*dot_dot_start, ".."),
                                         message: error_message.into_boxed_str(),
@@ -5430,19 +5126,6 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                     return None;
                                 }
                                 type_fields.extend(checked_record_type_fields);
-                                match checked_record.catch {
-                                    PatternCatch::Record(checked_record_catch_fields) => {
-                                        field_catches.extend(checked_record_catch_fields);
-                                    }
-                                    PatternCatch::Exhaustive => {
-                                        field_catches.extend(type_fields.iter().map(
-                                            |type_field| {
-                                                (type_field.name.clone(), PatternCatch::Exhaustive)
-                                            },
-                                        ));
-                                    }
-                                    PatternCatch::Variant(_) => return None,
-                                };
                             }
                         }
                     }
@@ -5513,7 +5196,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                                             return None;
                                         }
                                     };
-                                    let Some(checked_field_value) = syntax_pattern_check(
+                                    let Some(_checked_field_value) = syntax_pattern_check(
                                         patterns.item(value),
                                         Some(expected_type_field_value),
                                         errors,
@@ -5529,10 +5212,6 @@ You might have intended this pattern to belong to a different query. Use parens 
                                     ) else {
                                         return None;
                                     };
-                                    field_catches.insert(
-                                        field_name_value.clone(),
-                                        checked_field_value.catch,
-                                    );
                                 }
                                 SyntaxRecordPart::Spread {
                                     dot_dot_start,
@@ -5579,7 +5258,7 @@ Switch to matching all fields explicitly for at leas one of these spreads")
                                         .iter()
                                         .map(|field| field.name.clone())
                                         .collect();
-                                    let Some(checked_record) = syntax_pattern_check(
+                                    let Some(_checked_record_type) = syntax_pattern_check(
                                         patterns.item(record),
                                         Some(&Type::Record(spread_field_types)),
                                         errors,
@@ -5594,19 +5273,6 @@ Switch to matching all fields explicitly for at leas one of these spreads")
                                         choices_used,
                                     ) else {
                                         return None;
-                                    };
-                                    match checked_record.catch {
-                                        PatternCatch::Record(checked_record_catch_fields) => {
-                                            field_catches.extend(checked_record_catch_fields);
-                                        }
-                                        PatternCatch::Exhaustive => {
-                                            field_catches.extend(spread_field_names.iter().map(
-                                                |field_name| {
-                                                    (field_name.clone(), PatternCatch::Exhaustive)
-                                                },
-                                            ));
-                                        }
-                                        PatternCatch::Variant(_) => return None,
                                     };
                                     checked_spread_records
                                         .insert(*dot_dot_start, spread_field_names);
@@ -5629,17 +5295,7 @@ Switch to matching all fields explicitly for at leas one of these spreads")
                     }
                 },
             }
-            Some(CheckedPattern {
-                type_: Type::Record(type_fields),
-                catch: if field_catches
-                    .iter()
-                    .all(|(_, field_value_catch)| field_value_catch == &PatternCatch::Exhaustive)
-                {
-                    PatternCatch::Exhaustive
-                } else {
-                    PatternCatch::Record(field_catches)
-                },
-            })
+            Some(Type::Record(type_fields))
         }
         SyntaxPattern::Parenthesized {
             open_paren_start,
@@ -9286,7 +8942,7 @@ If there should only ever by one variant, using a record with a single field is 
                 &Name,
                 CheckedPatternVariable,
             > = std::collections::HashMap::new();
-            let Some(checked_parmeter) = syntax_pattern_check(
+            let Some(checked_parmeter_type) = syntax_pattern_check(
                 parameter,
                 None,
                 errors,
@@ -9357,11 +9013,11 @@ If there should only ever by one variant, using a record with a single field is 
             checked_local_fns.insert(
                 *open_bracket_start,
                 CheckedLocalFn {
-                    parameter_type: checked_parmeter.type_.clone(),
+                    parameter_type: checked_parmeter_type.clone(),
                     result_type: checked_result_type.clone(),
                 },
             );
-            Some(type_fn(checked_parmeter.type_, checked_result_type))
+            Some(type_fn(checked_parmeter_type, checked_result_type))
         }
         SyntaxExpression::RecordEmpty { dot_start: _ } => Some(Type::Record(vec![])),
         SyntaxExpression::Record { part0, part1_up } => {
@@ -9722,7 +9378,7 @@ If there should only ever by one variant, using a record with a single field is 
                 &Name,
                 CheckedPatternVariable,
             > = std::collections::HashMap::new();
-            let Some(checked_case0_pattern) = syntax_pattern_check(
+            let Some(_checked_case0_pattern_type) = syntax_pattern_check(
                 case0_pattern,
                 Some(&checked_queried_type),
                 errors,
@@ -9738,6 +9394,23 @@ If there should only ever by one variant, using a record with a single field is 
             ) else {
                 return None;
             };
+            let mut remaining_specific_pattern_catch_possibilities = Vec::new();
+            type_to_possible_specific_pattern_catches(
+                &checked_queried_type,
+                &mut remaining_specific_pattern_catch_possibilities,
+            );
+            // TODO replace this with a loop that swapRemoves
+            remaining_specific_pattern_catch_possibilities.retain(
+                |remaining_specific_pattern_catch_possibility| {
+                    !pattern_matches_specific_pattern_catch(
+                        case0_pattern,
+                        remaining_specific_pattern_catch_possibility,
+                        patterns,
+                        checked_spread_records,
+                    )
+                },
+            );
+
             // can be optimized: when only 1 case exists (very common), don't clone
             let mut case0_result_pattern_variables = pattern_variables.clone();
             case0_result_pattern_variables.extend(
@@ -9779,7 +9452,6 @@ If there should only ever by one variant, using a record with a single field is 
                     ));
                 }
             }
-            let mut catch = pattern_catch_to_case_patterns_catch(checked_case0_pattern.catch);
             let mut invalid_case_indexes = Vec::new();
             'checking_case1_up: for (case_index, case) in case1_up
                 .iter()
@@ -9797,7 +9469,7 @@ If there should only ever by one variant, using a record with a single field is 
                     &Name,
                     CheckedPatternVariable,
                 > = std::collections::HashMap::new();
-                let Some(checked_case_pattern) = syntax_pattern_check(
+                let Some(checked_case_pattern_type) = syntax_pattern_check(
                     case_pattern,
                     Some(&checked_queried_type),
                     errors,
@@ -9815,7 +9487,7 @@ If there should only ever by one variant, using a record with a single field is 
                     continue 'checking_case1_up;
                 };
                 if let Some(queried_pattern_type_diff) =
-                    type_diff(&checked_queried_type, &checked_case_pattern.type_)
+                    type_diff(&checked_queried_type, &checked_case_pattern_type)
                 {
                     errors.push(ErrorNode {
                         range: pattern_range(case_pattern, patterns, types),
@@ -9826,12 +9498,19 @@ If there should only ever by one variant, using a record with a single field is 
                     invalid_case_indexes.push(case_index);
                     continue 'checking_case1_up;
                 }
-                pattern_catch_merge_with(
-                    errors,
-                    pattern_range(case_pattern, patterns, types),
-                    &mut catch,
-                    checked_case_pattern.catch,
+                // TODO replace this with a loop that swapRemoves
+                remaining_specific_pattern_catch_possibilities.retain(
+                    |remaining_specific_pattern_catch_possibility| {
+                        !pattern_matches_specific_pattern_catch(
+                            case_pattern,
+                            remaining_specific_pattern_catch_possibility,
+                            patterns,
+                            checked_spread_records,
+                        )
+                    },
                 );
+                // TODO length of remaining_specific_pattern_catch_possibilities
+                // hasn't decreased, repor case as already handled by an earlier case
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
                         range: case.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
@@ -9932,28 +9611,36 @@ If you do not need to use this variable in that case, use any of the -rid functi
                     invalid_case_indexes.push(case_index);
                 }
             }
-            match catch {
-                CasePatternsCatch::Exhaustive => {}
-                _ => {
-                    if invalid_case_indexes.is_empty() {
-                        errors.push(ErrorNode {
-                            range: symbol_range(*question_mark_start, "?"),
-                            message: Box::from("inexhaustive pattern match.
-    A pattern match must cover all possible cases, otherwise the program would need to crash if such a value was matched on.
-    It might be that a case is not indented enough."),
-                        });
-                    }
+            if !remaining_specific_pattern_catch_possibilities.is_empty()
+                && invalid_case_indexes.is_empty()
+            {
+                let mut error_message = "inexhaustive query. Missing cases:".to_string();
+                for remaining_specific_pattern_catch_possibility in
+                    &remaining_specific_pattern_catch_possibilities
+                {
+                    error_message.push_str("\n    - [");
+                    specific_pattern_catch_format(
+                        remaining_specific_pattern_catch_possibility,
+                        &mut error_message,
+                    );
+                    error_message.push(']');
                 }
+                errors.push(ErrorNode {
+                    range: symbol_range(*question_mark_start, "?"),
+                    message: (error_message + "
+
+A pattern match must cover all possible cases, otherwise the program would need to crash if such a value was matched on.
+You might have forgotten to parenthesize the result of a case.
+If not, add patterns for the cases above"
+                        ).into_boxed_str(),
+                });
             }
             *pattern_variables = case0_result_pattern_variables;
             used_origin_variables.extend(case0_result_used_origin_variables);
             checked_queries.insert(
                 *question_mark_start,
                 CheckedQuery {
-                    is_exhaustive: match catch {
-                        CasePatternsCatch::Exhaustive => true,
-                        _ => false,
-                    },
+                    is_exhaustive: remaining_specific_pattern_catch_possibilities.is_empty(),
                     queried_type: checked_queried_type,
                     invalid_case_indexes: invalid_case_indexes,
                 },
