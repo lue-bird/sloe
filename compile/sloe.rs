@@ -18,7 +18,7 @@ pub struct SyntaxProject<Expressions, Patterns, Types> {
 #[derive(Debug)]
 #[allow(
     clippy::large_enum_variant,
-    reason = "::Fn is the largest but almost all variants in practice are ::Fn anyway"
+    reason = "::Fn is the largest but most variants in practice are ::Fn anyway"
 )]
 pub enum SyntaxProjectItem<Expressions, Patterns, Types> {
     TypeAlias {
@@ -11681,7 +11681,7 @@ fn type_diff_parenthesized_if_open_ended_into(
     };
     if should_parenthesize_argument {
         formatted.push('(');
-        type_diff_format(formatted, indent, type_diff);
+        type_diff_format(formatted, indent + 1, type_diff);
         if type_diff_line_span(type_diff) == LineSpan::Multiple {
             linebreak_indented_into(formatted, indent);
         }
@@ -14916,7 +14916,7 @@ fn space_or_linebreak_indented_into(formatted: &mut String, line_span: LineSpan,
     }
 }
 fn next_indent(current_indent: usize) -> usize {
-    (current_indent + 1).next_multiple_of(4)
+    current_indent + 1
 }
 
 fn syntax_comments_format(formatted: &mut String, indent: usize, comments: &SyntaxComments) {

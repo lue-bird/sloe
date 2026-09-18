@@ -28,7 +28,6 @@ struct State {
     sloe_core_declarations_html_static: sauron::Node<Event>,
 }
 enum Event {
-    Error,
     TextAreaContentChanged(String),
     ExampleSelected(Example),
 }
@@ -39,9 +38,9 @@ impl sauron::Application for State {
     }
     fn update(&mut self, event: Event) -> sauron::Cmd<Self::MSG> {
         match event {
-            Event::Error => {}
             Event::TextAreaContentChanged(new_text_area_content) => {
                 self.text_area_content = new_text_area_content;
+                sauron::Cmd::none()
             }
             Event::ExampleSelected(selected_example) => {
                 self.selected_example = selected_example;
@@ -62,9 +61,9 @@ impl sauron::Application for State {
                         )),
                     );
                 }
+                sauron::Cmd::none()
             }
         }
-        sauron::Cmd::none()
     }
 
     fn view(&self) -> sauron::Node<Self::MSG> {
@@ -87,7 +86,7 @@ and values can't be shared: sloe",
                         .into_iter()
                         .map(|(example_kind, example_info)| {
                             sauron::button(
-                                [sauron::on_mousedown(move |_| {
+                                [sauron::on_click(move |_| {
                                     Event::ExampleSelected(example_kind)
                                 })],
                                 [html_text(example_info.name)],
@@ -105,7 +104,7 @@ and values can't be shared: sloe",
 }
 fn installation_html<Event>() -> sauron::Node<Event> {
     sauron::section(
-        [],
+        [sauron::html::attributes::skip(true)],
         [
             sub_heading_html("install"),
             sauron::ol(
@@ -126,7 +125,7 @@ fn installation_html<Event>() -> sauron::Node<Event> {
 }
 fn usage_html<Event>() -> sauron::Node<Event> {
     sauron::section(
-        [],
+        [sauron::html::attributes::skip(true)],
         [
             sub_heading_html("use"),
             sauron::ul(
@@ -154,45 +153,76 @@ fn playground_html(selected_example: Example, text_area_content: &str) -> sauron
     // but this ended up an infuriating mess since height:..em was rendering at different lengths in gecko.
     // I also tried display:flex but this didn't consistently ignore the textarea space and also didn't fill its height
     let mut text_area_stack = sauron::div([html_style("display: grid;")], []);
-
-    let cursor_offset = text_area_content.find("insert your name here").unwrap_or(0);
+    let cursor_text = "world";
+    let cursor_offset = example_source(selected_example)
+        .find(cursor_text)
+        .unwrap_or(0) as u32;
     let interactive_text_area = sauron::textarea(
         [
+            sauron::id("playground_text_area"),
             sauron::attr("autocorrect", "off"),
             sauron::spellcheck("false"),
             sauron::autofocus("true"),
             sauron::name("playground"),
             html_style(
                 r#"grid-column: 1;
-        grid-row: 1;
-        height: 100%;
-        width: 100%;
-        background: none;
-        color: transparent;
-        border: none;
-        line-height: inherit;
-        resize: none;
-        overflow: hidden;
-        font-family: "Liga NovaMono", monospace, sans-serif;
-        font-size: medium;
-        resize: none;
-        caret-color: white;
-        position: relative;
-        top: 0.335em;
-        left: -0.1em"#,
+grid-row: 1;
+height: 100%;
+width: 100%;
+background: none;
+color: transparent;
+border: none;
+line-height: inherit;
+resize: none;
+overflow: hidden;
+font-family: "Liga NovaMono", monospace, sans-serif;
+font-size: medium;
+resize: none;
+caret-color: white;
+position: relative;
+top: 0.335em;
+left: -0.1em"#,
             ),
             sauron::value(text_area_content.to_string()),
             sauron::attr("selectionStart", cursor_offset),
-            sauron::attr("selectionEnd", cursor_offset),
+            sauron::attr("selectionEnd", cursor_offset + cursor_text.len() as u32),
+            sauron::on_focus({
+                let s = text_area_content.to_string();
+                move |event: sauron::FocusEvent| {
+                    web_sys::console::log_1(&"on focus".into());
+                    if let Some(event_target) = event.target() {
+                        // hacky:
+                        // We want to attach an event listener which does not repond back to sauron
+                        // because sauron otherwise eats the event returned by on_input sometimes on key press.
+                        // Best would dprobably creating a web component or something but I can' be bothered
+                        let text_area_object: web_sys::HtmlTextAreaElement =
+                            web_sys::HtmlTextAreaElement::from(
+                                web_sys::wasm_bindgen::JsValue::from(event_target),
+                            );
+                        // stop pressing tab from blurring and jumping to the next element on the page
+                        // The current implementation uses the obsolete execCommand.
+                        // A more future-proof method may be manually editing the text area
+                        // and dispatching a new InputEvent from it.
+                        // https://kubyshkin.name/posts/insert-text-into-textarea-at-cursor-position/
+                        text_area_object.set_onkeydown(Some(
+                            &sauron::js_sys::Function::new_with_args(
+                                "event",
+                                "
+if (event.key === 'Tab') {
+    event.preventDefault();
+    // ↓ is an obsolete API but it works I at least
+    window.document.execCommand('insertText', false, '    ')
+}
+                ",
+                            ),
+                        ));
+                    };
+                    Event::TextAreaContentChanged(s.clone())
+                }
+            }),
             sauron::on_input(move |event: sauron::InputEvent| {
-                let Some(event_target) = event.event.target() else {
-                    return Event::Error;
-                };
-                let text_area_object: web_sys::HtmlTextAreaElement =
-                    web_sys::HtmlTextAreaElement::from(web_sys::wasm_bindgen::JsValue::from(
-                        event_target,
-                    ));
-                Event::TextAreaContentChanged(text_area_object.value())
+                web_sys::console::log_1(&"on input".into());
+                Event::TextAreaContentChanged(event.value())
             }),
         ],
         [],
@@ -211,6 +241,17 @@ fn playground_html(selected_example: Example, text_area_content: &str) -> sauron
         &mut types,
         text_area_content,
     );
+    let mut errors = Vec::new();
+    let checked_project = sloe::syntax_project_check(
+        &mut errors,
+        &syntax_project,
+        &expressions,
+        &patterns,
+        &types,
+    );
+    errors.sort_by_key(|error| error.range.start);
+    let compiled_project =
+        sloe::checked_project_to_js(&checked_project, &expressions, &patterns, &types);
     let mut highlights = sloe::HighlightState {
         tokens: Vec::with_capacity(text_area_content.len() / 2),
         previous_token_start: lsp_types::Position {
@@ -232,24 +273,25 @@ fn playground_html(selected_example: Example, text_area_content: &str) -> sauron
                 "grid-column: 1; grid-row: 1; z-index: 1; pointer-events: none; user-select: none;",
             ),
         ],
+        [highlighted_error_ranges_to_html(
+            text_area_content,
+            errors.iter().map(|error| error.range),
+        )],
+    )]);
+    _ = text_area_stack.add_children([sauron::div(
+        [
+            sauron::attr("aria-hidden", "true"),
+            html_style(
+                "grid-column: 1; grid-row: 1; z-index: 1; pointer-events: none; user-select: none;",
+            ),
+        ],
         [highlighted_sloe_source_to_html(
             text_area_content,
             &mut highlights.tokens.into_iter(),
         )],
     )]);
     let mut full = sauron::div([], [text_area_stack]);
-
     let mut evaluated_variables_html = sauron::ul([html_style(r#"list-style-type: "↪ ""#)], []);
-    let mut errors = Vec::new();
-    let checked_project = sloe::syntax_project_check(
-        &mut errors,
-        &syntax_project,
-        &expressions,
-        &patterns,
-        &types,
-    );
-    let compiled_project =
-        sloe::checked_project_to_js(&checked_project, &expressions, &patterns, &types);
     for (project_fn_name, _project_fn) in
         checked_project
             .checked_project_fns
@@ -300,13 +342,16 @@ fn playground_html(selected_example: Example, text_area_content: &str) -> sauron
     _ = full.add_children([evaluated_variables_html]);
     let errors_html = sauron::ul(
         [html_style(r#"list-style-type: "⚠︎ ""#)],
-        errors.iter().rev().map(|error| {
+        errors.iter().map(|error| {
             sauron::li(
                 [],
-                [sauron::text(format!(
-                    "line {} char {}: {}",
-                    error.range.start.line, error.range.start.character, error.message
-                ))],
+                [sauron::p(
+                    [html_style("white-space: pre-wrap;")],
+                    [sauron::text(format!(
+                        "line {} char {}: {}",
+                        error.range.start.line, error.range.start.character, error.message
+                    ))],
+                )],
             )
         }),
     );
@@ -376,7 +421,15 @@ fn sloe_value_as_js_value_print(formatted: &mut String, js_value: &web_sys::wasm
     }
 }
 fn sloe_core_declarations_html<Event>() -> sauron::Node<Event> {
-    let mut section = sauron::section([], [sub_heading_html("core declarations")]);
+    let mut section = sauron::section(
+        [
+            // is there some "from_arc/memoize/..." primitive in sauron to prevent deep clones on every render?
+            // Not even .render_to_string().leak() + sauron::raw_html works because it would parse the html into a tree
+            sauron::html::attributes::skip(true),
+            sauron::key("sloe_core_declarations_html"),
+        ],
+        [sub_heading_html("core declarations")],
+    );
     let mut type_aliases_sorted = sloe::core_type_aliases.iter().collect::<Vec<_>>();
     type_aliases_sorted.sort_unstable_by_key(|(name, _)| *name);
     _ = section.add_children(type_aliases_sorted.into_iter().map(
@@ -481,6 +534,51 @@ fn html_link_to_self<Event>(name: &str) -> sauron::Node<Event> {
 }
 fn sub_heading_html<Event>(name: &str) -> sauron::Node<Event> {
     sauron::h3([], [html_link_to_self(name)])
+}
+/// assumes error_ranges are sorted by start
+fn highlighted_error_ranges_to_html<Event>(
+    source: &str,
+    error_ranges: impl Iterator<Item = lsp_types::Range>,
+) -> sauron::Node<Event> {
+    let mut html = sauron::pre(
+        [html_style(
+            r#"line-height: inherit; font-size: medium; font-family: "Liga NovaMono", monospace, sans-serif; margin-top: 0.5em; color: transparent;"#,
+        )],
+        [],
+    );
+    // could be optimized by not computing the offsets twice for example
+    let mut previous_end: lsp_types::Position = lsp_types::Position::default();
+    for error_range in error_ranges {
+        if error_range.start.lt(&previous_end) {
+            continue;
+        }
+        _ = html.add_children([
+            sauron::code(
+                [],
+                [sauron::text(
+                    source
+                        .get(sloe::str_lsp_range_to_utf8_range(
+                            source,
+                            lsp_types::Range {
+                                start: previous_end,
+                                end: error_range.start,
+                            },
+                        ))
+                        .unwrap_or(""),
+                )],
+            ),
+            sauron::code(
+                [html_style("background-color: rgba(255, 0, 0, 0.32)")],
+                [sauron::text(
+                    source
+                        .get(sloe::str_lsp_range_to_utf8_range(source, error_range))
+                        .unwrap_or(""),
+                )],
+            ),
+        ]);
+        previous_end = error_range.end;
+    }
+    html
 }
 fn highlighted_sloe_source_to_html<Event>(
     source: &str,
@@ -688,7 +786,7 @@ fn Hi
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? Buf-char-add-str .. string .new "Hello, " [string]
+    ? Buf-char-add-str .buf buf .new "Hello, " [string]
     ? Buf-char-span-add-str .. string .new name [string]
     Buf-char-span-add-str .. string .new "!\n"
 "#,
