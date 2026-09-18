@@ -720,8 +720,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- when completing origin name, insert the _
-
 - provide better error when type alias type construct is missing a type argument (don't (just) say the outer type is missing a parameter)
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
