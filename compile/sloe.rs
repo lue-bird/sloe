@@ -4096,7 +4096,7 @@ pub fn syntax_type_check<Types>(
                 let Some(argument0) = argument0 else {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message : Box::from("Missing first argument after this type name. Note that type names without parameters are lowercase, and only those with parmeters are uppercase.
+                        message : Box::from("first argument missing after this type name. Note that type names without parameters are lowercase, and only those with parmeters are uppercase.
 An example of a valid type with arguments is Buf _origin, u32. Here _origin is the first argument and u32 is the second.")
                     });
                     return None;
@@ -4678,6 +4678,33 @@ fn specific_pattern_catch_format(
                 output.push('.');
             }
         },
+    }
+}
+fn specific_pattern_catches_remove_those_matched_by_pattern<Patterns, Types>(
+    possibilities: &mut Vec<SpecificPatternCatch>,
+    pattern: &SyntaxPattern<Patterns, Types>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+) {
+    // we do not use ::retain because one pattern usually only covers one specific pattern catch,
+    // and calling retain for every pattern would thus be quadratic.
+
+    // dear rust, add a version of Vec::retain which swap_removes
+    let mut possibility_index = 0;
+    loop {
+        let Some(possibility) = possibilities.get(possibility_index) else {
+            return;
+        };
+        if pattern_matches_specific_pattern_catch(
+            pattern,
+            possibility,
+            patterns,
+            checked_spread_records,
+        ) {
+            possibilities.swap_remove(possibility_index);
+        } else {
+            possibility_index += 1;
+        }
     }
 }
 fn pattern_matches_specific_pattern_catch<Patterns, Types>(
@@ -9405,16 +9432,11 @@ If there should only ever by one variant, using a record with a single field is 
                 &checked_queried_type,
                 &mut remaining_specific_pattern_catch_possibilities,
             );
-            // TODO replace this with a loop that swapRemoves
-            remaining_specific_pattern_catch_possibilities.retain(
-                |remaining_specific_pattern_catch_possibility| {
-                    !pattern_matches_specific_pattern_catch(
-                        case0_pattern,
-                        remaining_specific_pattern_catch_possibility,
-                        patterns,
-                        checked_spread_records,
-                    )
-                },
+            specific_pattern_catches_remove_those_matched_by_pattern(
+                &mut remaining_specific_pattern_catch_possibilities,
+                case0_pattern,
+                patterns,
+                checked_spread_records,
             );
 
             // can be optimized: when only 1 case exists (very common), don't clone
@@ -9504,17 +9526,27 @@ If there should only ever by one variant, using a record with a single field is 
                     invalid_case_indexes.push(case_index);
                     continue 'checking_case1_up;
                 }
-                // TODO replace this with a loop that swapRemoves
-                remaining_specific_pattern_catch_possibilities.retain(
-                    |remaining_specific_pattern_catch_possibility| {
-                        !pattern_matches_specific_pattern_catch(
-                            case_pattern,
-                            remaining_specific_pattern_catch_possibility,
-                            patterns,
-                            checked_spread_records,
-                        )
-                    },
+                let remaining_specific_pattern_catch_possibilities_count_before_case =
+                    remaining_specific_pattern_catch_possibilities.len();
+                specific_pattern_catches_remove_those_matched_by_pattern(
+                    &mut remaining_specific_pattern_catch_possibilities,
+                    case_pattern,
+                    patterns,
+                    checked_spread_records,
                 );
+                if remaining_specific_pattern_catch_possibilities.len()
+                    == remaining_specific_pattern_catch_possibilities_count_before_case
+                {
+                    errors.push(ErrorNode {
+                        range: lsp_types::Range {
+                            start: case.open_bracket_start,
+                            end: case.closed_bracket_start.map(|closed_bracket_start| symbol_end(closed_bracket_start, "]")).unwrap_or_else(|| pattern_end(case_pattern, patterns, types))
+                        },
+                        message: Box::from("this query case pattern only covers possibilities that earlier case patterns will already catch. This means that any code in this case result won't ever be called. Remove this case or correct the pattern.")
+                    });
+                    invalid_case_indexes.push(case_index);
+                    continue 'checking_case1_up;
+                }
                 // TODO length of remaining_specific_pattern_catch_possibilities
                 // hasn't decreased, repor case as already handled by an earlier case
                 let Some(case_result) = &case.result else {
