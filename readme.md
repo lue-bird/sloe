@@ -720,8 +720,6 @@ cargo install --offline --debug --path . sloe
 
 # TODO
 
-- provide better error when type alias type construct is missing a type argument (don't (just) say the outer type is missing a parameter)
-
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold

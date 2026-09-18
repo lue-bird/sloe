@@ -4066,19 +4066,19 @@ pub fn syntax_type_check<Types>(
         SyntaxType::ConstructWithoutArguments(name) => {
             if origins.contains_key(&name.value) {
                 Some(Type::Origin(name.value.clone()))
-            } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
-                if !origin_type_alias.parameters.is_empty() {
+            } else if let Some(project_type_alias) = type_aliases.get(&name.value) {
+                if !project_type_alias.parameters.is_empty() {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
                         message: format!(
                             "this type alias has {} parameters but there aren't any arguments provided after this name. The expected parameters are called {}",
-                            origin_type_alias.parameters.len(),
-                            origin_type_alias.parameters.iter().map(|parameter| parameter.as_str()).collect::<Vec<_>>().join(", ")
+                            project_type_alias.parameters.len(),
+                            project_type_alias.parameters.iter().map(|parameter| parameter.as_str()).collect::<Vec<_>>().join(", ")
                         ).into_boxed_str()
                     });
                     return None;
                 }
-                origin_type_alias.type_.clone()
+                project_type_alias.type_.clone()
             } else {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
@@ -4092,16 +4092,16 @@ pub fn syntax_type_check<Types>(
             argument0,
             argument1_up,
         } => {
-            if origins.contains_key(&name.value) {
-                errors.push(ErrorNode {
-                    range: name_range(with_start_position_as_ref(name)),
-                    message : Box::from("this type refers to an origin but has type arguments. As origin types don't have type parameters, the arguments need to be removed")
-                });
-                Some(Type::Origin(name.value.clone()))
-            } else if let Some(origin_type_alias) = type_aliases.get(&name.value) {
-                let argument_types = argument0
-                    .iter()
-                    .map(|argument0| types.item(argument0))
+            if let Some(origin_type_alias) = type_aliases.get(&name.value) {
+                let Some(argument0) = argument0 else {
+                    errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name)),
+                        message : Box::from("Missing first argument after this type name. Note that type names without parameters are lowercase, and only those with parmeters are uppercase.
+An example of a valid type with arguments is Buf _origin, u32. Here _origin is the first argument and u32 is the second.")
+                    });
+                    return None;
+                };
+                let argument_types = std::iter::once(types.item(argument0))
                     .chain(
                         argument1_up
                             .iter()
@@ -4119,7 +4119,7 @@ pub fn syntax_type_check<Types>(
                         )
                     })
                     .collect::<Option<Vec<Type>>>()?;
-                let argument_count = 1 + argument1_up.len();
+                let argument_count = argument_types.len();
                 match origin_type_alias.parameters.len().cmp(&argument_count) {
                     std::cmp::Ordering::Equal => {}
                     std::cmp::Ordering::Less => {
