@@ -31,9 +31,7 @@
 
 const I32$MIN = -2147483648;
 const I32$MAX = 2147483647;
-const I32$MAX_DIGITS = 11;
 const U32$MAX = 4294967296;
-const U32$MAX_DIGITS = 11;
 const F32$MAX = 3.40282347e38;
 const F32$MIN = -F32$MAX;
 const F32$MAX_DIGITS = 55;
@@ -51,7 +49,7 @@ export function f32$to_string(n) {
     // but all environments I've tested do actually support this up to 100
     f32_string += n.toFixed(F32$MAX_DIGITS - f32_string.length + 1).slice(1); // drop the 0 in 0.
     while (f32_string.endsWith("0")) {
-      f32_string = f32_string[-1];
+      f32_string = f32_string.slice(0, -1);
     }
   }
   return f32_string;
@@ -1118,7 +1116,7 @@ export function buf_char_span_add_u32(add) {
   return buf_char_span_add_str({
     buf: add.buf,
     span: add.span,
-    newø: add.newø.toPrecision(U32$MAX_DIGITS),
+    newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Opt<Span<$Origin>>, newø: U32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
@@ -1126,7 +1124,7 @@ export function buf_char_opt_span_add_u32(add) {
   return buf_char_opt_span_add_str({
     buf: add.buf,
     span: add.span,
-    newø: add.newø.toPrecision(U32$MAX_DIGITS),
+    newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, newø: I32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
@@ -1134,7 +1132,7 @@ export function buf_char_span_add_i32(add) {
   return buf_char_span_add_str({
     buf: add.buf,
     span: add.span,
-    newø: add.newø.toPrecision(I32$MAX_DIGITS),
+    newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Opt<Span<$Origin>>, newø: I32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
@@ -1142,7 +1140,7 @@ export function buf_char_opt_span_add_i32(add) {
   return buf_char_opt_span_add_str({
     buf: add.buf,
     span: add.span,
-    newø: add.newø.toPrecision(I32$MAX_DIGITS),
+    newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, newø: F32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
