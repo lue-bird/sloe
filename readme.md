@@ -13,7 +13,7 @@ fn Greet
 ```
 A `Greet` function taking a name and a buffer to append the greeting to.
 It appends the name and other strings to the chars to form and return a message span.
-[explore examples in an online editor](https://lue-bird.github.io/sloe/) [skip to more examples](#examples) [skip to syntax overview](#syntax)
+[explore examples in an online editor](https://lue-bird.github.io/sloe/) [skip to more examples](#examples) [skip to syntax overview](#syntax) or look into the `example-/` directories in this repo.
 
 Install with (requires having [rust installed](https://rust-lang.org/tools/install/))
 ```bash
@@ -88,15 +88,19 @@ fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
 
 # examples
 ## creating new origins, slots and spans
-`origin some-name` creates a new variable of type `origin` and a unique local type.
+`^some-origin-name` creates a new variable of type `Origin` and a unique local type that's only valid in the current scope.
 Like every other sloe value, an origin type can only be used once, so only for one collection.
 ```sloe
 # use a temporary collection contained within a scope
 fn Use-buf . : u32 =
     ^buf-origin
+    # create a buffer that can hold u32 items and give it the name buf
   	? Buf-empty{u32} buf-origin [buf]
+    # insert 123, destructure the resulting record
   	? Buf-add .buf buf .new 123 u32 [.buf buf .slot first-slot]
+    # withour new slot, the referenced item is ours to modify or pop
   	? Buf-remove .buf buf .slot first-slot [.buf buf .item first]
+    # Consecutive slots connect into a span
   	? Buf-add-array .buf buf .new ; 456 u32 ; 789 u32 [.buf buf .span after-first]
     ...
   	first # = 123 u32
@@ -169,24 +173,28 @@ fn State-to-interfaces-into
     ...
     interfaces
 ```
+(No need to understand the details at the end, it's just a small showcase to get a vague feel)
 
 ## pass in origins or collections from the outside
-
+In case a function cannot scrap values like buffers at the end of its scope,
+we can pass origins or values referencing origins in:
 ```sloe
 fn Buf-empty{_item} Origin _origin, _part : Buf (Origin _origin, _part), _item
+fn Buf-add .buf Buf _origin, _item .new _item : ...
 ```
-Used by most initializer functions which return new collections from nothing, e.g. for the initial persistent application state.
-For most other functions, it's more common to pass in an existing collection that you want to edit.
+Most initializer functions will return new collections from nothing, e.g. for persistent application state.
+For most other functions, it's more common to pass in an existing collection that you want to edit (often also including a specific span).
 (If you're wondering what `_part` is here: It enables creating an origin inside the function and still passing collections etc using that origin out of the function via `Origin-erased`. Look it up if you think the existing origin stuff is too restrictive)
 
+[explore examples in an online editor](https://lue-bird.github.io/sloe/) or look into the `example-/` directories in this repo.
+
 # syntax
-Goal: coherent, practical and compact, avoiding parens and indentation especially for trailing syntax.
-Sloe is a very explicit language, so any extra verbosity is not tolerable.
 ```sloe
 # line comment
 
-# number type, so for example
-3.2 f32 # number types are p32, u32, i32, f32
+# number (available types: p32, u32, i32, f32).
+# Specifying a type is required
+3.2 f32
 
 # text of type str
 "hello"
@@ -197,17 +205,18 @@ Sloe is a very explicit language, so any extra verbosity is not tolerable.
 # most identifiers
 variable-or-field-or-variant-or-type-without-parameters-2012
 
-# constructor name
-Function-name-or-type-with-parameters
+# name of a function or type with parameters
+Constructor-name
 
-# function call of type Fn in, out. always 1 argument, no parens needed
+# function call. always 1 argument; no parens needed
 Some-function argument
 
-# very rarely functions may require type arguments: <...>.
-# Which types are needed is shown in the function declaration in <...>s (see later)
+# very rarely functions may require type arguments {in braces}.
+# Function declarations will explicitly list those {_parameters} (see later)
 Some-function{type}{arguments} Inner-call-as-the-argument inner-call-argument
 
-# record. if values are open-ended they need to be parenthesized.
+# record. You may know it as "struct".
+# If field values themselves end in records they need to be parenthesized.
 # The last field value can end in a record without needing to be parenthesized
 .first-field first-value .second-field second-value
 
@@ -218,10 +227,9 @@ Some-function{type}{arguments} Inner-call-as-the-argument inner-call-argument
 .
 
 # ..spread a record into other fields
-# Can be placed anywhere and multiple are allowed
 .field-1st value-1st .. one-existing-record .. another .field-2nd value-2nd
 
-# temporary array
+# temporary array. Rarely used
 ; first-item ; second-item ; third-item
 
 # local function of type fn.
@@ -289,6 +297,8 @@ ty Pair _potential, _type-parameters
 # variant pattern
 |some-variant its value
 ```
+Goal: coherent, practical and compact, avoiding parens and indentation especially for trailing syntax.
+Sloe is a very explicit language, so any extra verbosity is not tolerable.
 
 ## editor setups
 
@@ -329,6 +339,12 @@ auto-format = true
 For other editors, there's usually a way to specify `sloe` as the language server and or point to the directory `tree-sitter/` in this repository. 
 
 > As a user of sloe you can stop reading here. The rest is for developers and those interested in language design
+
+# dev setup
+to re-compile
+```bash
+cargo install --offline --debug --path . sloe
+```
 
 # known limitations & design weaknesses
 What I'm unhappy with in the current design.
@@ -433,6 +449,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Ascii-is-lower ascii : Opt ascii # maybe |yes.|no. instead
   fn Ascii-is-upper ascii : Opt ascii # maybe |yes.|no. instead
   ```
+- add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
+- add `Range-step .start u32 .length p32`, `Opt-range-step`, `(Opt-)Range-dup`, `(Opt-)Range-rid`, probably also `(Opt-)Range-elongate`, `(Opt-)Span-range`
 - combine scc stuff into the parser state to avoid walking the whole AST for info we could already have collected. Comes at the cost of a thicker ParseState, probably still worth.
   For extra convenience, it may be reasonable to implement some ByteDecode and ByteEncode traits in rust directly, so that in the common case that the state type is fully known you can hot reload with close to no glue code
 - add byte-level APIs, like `Buf-opt-span-take-i32 enianness` and `Buf-opt-span-take-f32 enianness`. Ultimately, these sould allow got reloading or simple byte protocols in general
@@ -483,6 +501,12 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   If we find a problem, creating a new `origin` should be disallowed in (mutually) recursive calls.
   This is a bit restrictive but alright I believe.
   If feeling motived, look into proof languages and make sure this is rock solid
+- consider a more general API for origins to be useful outside of giving them to new Bufs.
+  To do that, allow origins to issue `Origin-use`s.
+  Questions:
+    - is there a use for this or is it only for type gymnasts?
+    - is this even properly encapsulatable = useful considering that sloe only allows constructing structural types?
+      Like, if Buf was represented as `.array ... .origin Origin ...` and Slot as `.index u32 .`
 - improve memory efficiency of string operations (currently buf of char).
   This is probably inefficient because:
     - more work on program boundaries. E.g. instead of validating data, then reusing the bytes, we need to re-allocate them and then finally un-convert them into utf-8 anyway
@@ -605,7 +629,7 @@ rusts immutable references `&` have some similar trade-offs but seem kind of una
 I'm strangely really convinced that this is the obvious, correct design decision (for most programming languages at that!).
 Note that the current design does not natively have a `dyn Fn`; it needs to be manually emulated via an explicit `|` choice type.
 
-## why no traits / type classes / (duck) (static) dispatch 
+## why no traits / type classes / (duck) (static) dispatch
 - traits introduce a crazy amount of complexity
 - If really necessary, traits can be represented using arguments. I have yet to hit any complexities with this.
 - attaching a set of functions to one "subject" seems super strange to me. Operations usually take different objects and create something new
@@ -620,35 +644,34 @@ Because traits cover a vast theoretical area of use, they tend to be used a bunc
 ## why no (mathematical) operators
 - operators introduce a good amount of complexity: infix (and prefix) notation, associativity, precedence, most likely a way to overload based on context
 - edge-case behavior (e.g. saturating vs overflowing vs checked vs carry vs ...) should be easier to control
-- in general, operators are concise but as a result quite ambiguous. For example, changing a boolean to an integer may silently not generate a compiler error when `!` is binary not, or when changing a list to a string with `++`
+- in general, operators are concise but as a result quite ambiguous. For example, changing a boolean to an integer may silently not generate a compiler error when `!` is binary not, or when changing an int to a string with `+`
 - while numbers, bool and bit operations are not that uncommon, there are features that would deserve these symbols more, even in typical imparative languages (think `return`, `switch { case }`, `structure`, `import`, `public`, `static`, `void`, `null`, ...)
 - allowing infix `-` and prefix `-` leads can lead to very confusing situations like `call-1` but more importantly using `-` as an operator pretty much prevents languages from using the superior (easier to type) kebab-style for identifiers
 
-Somehow despite it's issues (math syntax kind of sucks, even the tiny subset), operators are one of the most prevalent features in programming languages, even hobby and experimental ones (0th class citizen). I do not quite understand this (well I guess not adding operators adds to the weirdness budget) .
-
-## why no single-field access
-a.k.a `record.field`. Quick and easy answer: Because this makes it embarassingly easy to forget handling a field (now or in the future). I've identified this as the second most common source of bugs in my own code. And in sloe, not handling a field could mean leaking some memory, so it would be even worse potentially!
+Somehow despite it's issues (math syntax kind of sucks, even the tiny subset), operators are one of the most prevalent features in programming languages, even hobby and experimental ones (0th class citizen).
 
 ## why no positional function arguments
-- with positional arguments it isn't really possible to make the last argument open ended (at least with keeping the current syntax)
-- it's tough (usually) to annotate a function whose arguments and argument types are unknown. E.g. what would `fn-dup`'s type be?
+Sloe had positional arguments once.
+It's the more pracical and convenient choice, and makes interfacing with rust/zig/js simpler.
+
+The decision to remove them is largely personal. I get lost easily in long argument lists and I have have no others users to please ^^. My (bad) more objective arguments are:
+- it's tough (usually) to annotate a function whose arguments and argument types are unknown. E.g. what would `Fn-dup`'s type be?
 - positional arguments (usually) means no passing in bulk
   ```sloe
   fn U32-square-clamp natural u32 : u32 =
       U32-add-clamp U32-dup natural
   ```
 
-"Positionality" in general is pretty much absent in sloe. E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
-Sloe had positional arguments once, largely because the rust-sloe interface is simpler in rust with positional arguments.
+Today "positionality" in general is pretty much absent in sloe (except for type parameters). E.g. positional arguments are super convenient, so they tend to be used for everything, even arguments that would benefit from a clear description.
 
 ## unnecessary features in sloe
-Features I've added which are fully replacible by other existing features.
-If you're looking to learn from sloe, maybe do not learn from these:
+Features I've added which are formally fully replacible by other existing features.
+If you're looking to learn from sloe's central ideas, maybe do not learn from these:
 
-- record spread. It provides an alternative syntax sugar for something that could already be expressed. I originally introduced it to make builders like string builers less jarring
-  but I'm not so sure this worked.
-  Especially for query case patterns where only one spread cn exist per pattern, I took a very long time before changing my mind to add it. 
-  It enables the "use the defaults except" pattern which would be inpossible annoying otherwise:
+- record spread. It provides an alternative syntax sugar for something that could already be expressed. I originally introduced it to make builders like string builders less jarring
+  but I'm not fully convinced this direction worked (e.g. maybe adding extra syntax for field punning would have been more explicit and just as concise?).
+  Especially for query case patterns where only one spread can exist per pattern, I took a very long time before changing my mind to add it. 
+  It enables the "use the defaults except" pattern which would be inpossibly annoying otherwise:
   ```sloe
   Some-fn
   ? Some-fn-defaults [.. all .except except]
@@ -656,10 +679,10 @@ If you're looking to learn from sloe, maybe do not learn from these:
   .. all .except new-value
   ```
   I've changed my mind on this being okay because you need to handle all fields anyway.
-  It's one of those "only need it in 5% of cases but then its unreplaceable" features, the nightmare of a language designer
+  It's one of those "only need it in 5% of cases but then its unreplaceable" features - the nightmare of a language designer
 
 - nested pattern matching.
-  It's existence makes compilation, exhaustiveness-checking, error messages and flow-typing-like matching (e.g. matching |a in <|a|b|c> leaving |b|c) harder.
+  It's existence makes compilation, exhaustiveness-checking, error messages and the possibility of flow-typing-like matching (e.g. matching |a in |a|b|c leaving |b|c) a bit harder.
   It also creates a "two modes of matching" problem: You e.g. can't match on numbers, chars, strings, span start and lengths etc. And so you sometimes need an extra step, leading to nested matches anyway (does not feel consistent).
   It also "takes control from the user into the magic hands of the compiler" and thus it may run checks etc. in a different order than you have.
   I originally introduced it to make e.g. matching on multiple `Opt`s easier.
@@ -703,28 +726,21 @@ Don't be afraid to program in a language sloe compiles to for tasks sloe feels a
 E.g. I imagine writing a recursive file watcher in sloe is not fun, so just "outsource" it :)
 
 ## why put work into transpiling to existing languages
-The best user experience interfacing with sloe code from existing system-level languages
+The best user experience interfacing with sloe code from existing (system-level) languages
 is directly generating code in that language. Just sharing type names, structs, tagged unions, function signatures etc without any work by you is tasty enough.
-And if you end up outgrowing sloe, you have all the code right there (that's the hope anyway but output readability is likely wose than as if it was hand-written).
+And if/once you outgrow sloe, you have all the code right there (that's the hope anyway but output readability is likely way wose than as if it was hand-written).
 Being easy to transpile is an explicit goal of sloe, enabled by its very limited set of features.
 
 ## why write the compiler and tooling in rust?
 It did that before and it does it's job.
-I imagine the current style leaves some performance on the table but I'd be surprised if it was too slow for its only potential user, the human reading this (<3). 
-
-# dev setup
-to re-compile
-```bash
-cargo install --offline --debug --path . sloe
-```
+I imagine the current style leaves some performance on the table but I'd be surprised if it was too slow for its temporary only potential user, the human reading this (<3).
 
 # TODO
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
-- add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
-
-- add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
+- add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful.
+  ""
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
@@ -742,8 +758,6 @@ cargo install --offline --debug --path . sloe
       Origin-erased _value-erased-new
   ```
   If currently uneraser API is here to stay, remove Origin-erased-rid. It can't really be made useful
-  
-- website: in text area: prevent default on tab and insert four spaces instead
 
 - fix bug where formating unrecognized range can duplicate the following declaration
 
@@ -753,16 +767,9 @@ cargo install --offline --debug --path . sloe
 
 - give nicer error when only a field is missing or too much
 
-- (qol) try to report more precise error locations on type diff. For example skip comments and if possible enter records when reporting specific field value differences
+- (qol) try to report more precise error locations on type diff. For example skip comments, single-case query starts and if possible enter records when reporting specific field value differences
 
 - fix comment TODOs
-
-- consider a more general API for origins to be useful outside of giving them to new Bufs.
-  To do that, allow origins to issue `Origin-use`s.
-  Questions:
-    - is there a use for this or is it only for type gymnasts?
-    - is this even properly encapsulatable = useful considering that sloe only allows constructing structural types?
-      Like, if Buf was represented as `.array ... .origin Origin ...` and Slot as `.index u32 .`
 
 # not coherently formulated thoughts
 
