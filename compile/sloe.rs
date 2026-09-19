@@ -15860,6 +15860,9 @@ fn syntax_expression_query_case_format<Expressions, Patterns, Types>(
     formatted.push_str("[");
     if let Some(pattern) = &case.pattern {
         let pattern_line_span = range_line_span(pattern_range(pattern, patterns, types));
+        if pattern_line_span == LineSpan::Multiple {
+            linebreak_indented_into(formatted, next_indent(indent));
+        }
         syntax_pattern_unparenthesized_format(
             formatted,
             next_indent(indent),
