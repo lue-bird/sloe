@@ -4326,8 +4326,7 @@ fn type_replace_variables(
 ) {
     match type_ {
         Type::Variable(variable) => {
-            if let Some(replacement_type_node) = type_parameter_replacements.get(variable.as_str())
-            {
+            if let Some(replacement_type_node) = type_parameter_replacements.get(variable) {
                 *type_ = replacement_type_node.clone();
             }
         }
@@ -8764,31 +8763,28 @@ Type arguments are provided each wrapped in curly braces after the fn name, like
                 };
                 type_arguments.push(type_argument);
             }
-            let type_parameter_replacements = project_fn_info
+            let mut expected_argument_type = project_fn_parameter_type.clone();
+            let mut result_type = project_fn_result_type.clone();
+            let mut type_variable_replacements = project_fn_info
                 .type_parameters
                 .iter()
                 .zip(type_arguments)
                 .map(|(type_parameter, type_argument)| (type_parameter.clone(), type_argument))
                 .collect();
-            let mut fn_parameter_type = project_fn_parameter_type.clone();
-            let mut fn_result_type = project_fn_result_type.clone();
-            type_replace_variables(&type_parameter_replacements, &mut fn_parameter_type);
-            type_replace_variables(&type_parameter_replacements, &mut fn_result_type);
-            let mut argument_type_variable_replacements = std::collections::BTreeMap::new();
+            type_replace_variables(&type_variable_replacements, &mut expected_argument_type);
             type_collect_variables_that_are_concrete_into(
-                &mut argument_type_variable_replacements,
-                &fn_parameter_type,
+                &mut type_variable_replacements,
+                &expected_argument_type,
                 &checked_argument_type,
             );
-            let mut expected_argument_type = fn_parameter_type.clone();
+            let mut expected_concrete_argument_type = project_fn_parameter_type.clone();
             type_replace_variables(
-                &argument_type_variable_replacements,
-                &mut expected_argument_type,
+                &type_variable_replacements,
+                &mut expected_concrete_argument_type,
             );
-            let mut result_type = fn_result_type.clone();
-            type_replace_variables(&argument_type_variable_replacements, &mut result_type);
+            type_replace_variables(&type_variable_replacements, &mut result_type);
             if let Some(argument_variable_input_type_diff) =
-                type_diff(&expected_argument_type, &checked_argument_type)
+                type_diff(&expected_concrete_argument_type, &checked_argument_type)
             {
                 errors.push(ErrorNode {
                     range: expression_range(syntax_argument, expressions, patterns, types),
@@ -8800,7 +8796,7 @@ Type arguments are provided each wrapped in curly braces after the fn name, like
             checked_calls.insert(
                 name.start,
                 CheckedCall {
-                    argument_type_variable_replacements: argument_type_variable_replacements,
+                    argument_type_variable_replacements: type_variable_replacements,
                 },
             );
             Some(result_type)
@@ -8879,6 +8875,7 @@ If there should only ever by one variant, using a record with a single field is 
                     "this variant type should be a choice (for example 'a u32 'b str  or  Opt u32) but it's\n",
                 );
                 type_format(&mut error_message, 0, &checked_type);
+                error_message.push_str("\nMaybe you forgot to wrap it in a type like Opt?");
                 errors.push(ErrorNode {
                     range: braced_type_argument_range(syntax_type_argument, types),
                     message: error_message.into_boxed_str(),
@@ -11281,10 +11278,10 @@ struct TypeDiffVariant {
     value: TypeDiff,
 }
 
-fn type_collect_variables_that_are_concrete_into<'a>(
+fn type_collect_variables_that_are_concrete_into(
     type_parameter_replacements: &mut std::collections::BTreeMap<Name, Type>,
-    type_with_variables: &'a Type,
-    concrete_type: &'a Type,
+    type_with_variables: &Type,
+    concrete_type: &Type,
 ) {
     match type_with_variables {
         Type::Origin(_) => {}
