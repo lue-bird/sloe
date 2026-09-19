@@ -3,8 +3,8 @@ ty Stack _origin, _item
     # a singly-linked list. Since it is backed by a buf,
     # adjacent nodes are likely close together in memory. Who doesn't love that.
     # (note that it's still noticeably worse than a simple buf most of the time)
-    |empty .
-    |stacked .head _item .tail Slot _origin
+    'empty .
+    'stacked .head _item .tail Slot _origin
 
 fn Stack-cons
     .nodes nodes Buf _origin, Stack _origin, _item
@@ -16,7 +16,7 @@ fn Stack-cons
     =
     ? Buf-insert .buf nodes .new tail [.buf nodes .slot tail-slot]
     .nodes nodes
-    .stack (|stacked{Stack _origin, _item} .head new-head .tail tail-slot)
+    .stack ('stacked{Stack _origin, _item} .head new-head .tail tail-slot)
 
 fn Stack-pop
     .nodes nodes Buf _origin, Stack _origin, _item
@@ -30,20 +30,20 @@ fn Stack-pop
         )
     =
     ? stack
-    [|empty .] (
+    ['empty .] (
         .nodes nodes
         .item
-            |no{
+            'no{
             Opt
             .head _item
             .tail Stack _origin, _item
             }
             .
         )
-    [|stacked .head head .tail tail-slot] (
+    ['stacked .head head .tail tail-slot] (
         ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .item tail]
         .nodes nodes
-        .item (|yes{|no .} .head head .tail tail)
+        .item ('yes{'no .} .head head .tail tail)
         )
 
 fn Stack-fold
@@ -56,11 +56,11 @@ fn Stack-fold
     .state _state
     =
     ? stack
-    [|empty .] (
+    ['empty .] (
         ? Fn-rid reduce [.]
         .nodes nodes .state state
         )
-    [|stacked .head head .tail tail-slot]
+    ['stacked .head head .tail tail-slot]
     ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .item tail]
     ? Fn-dup reduce [.a reduce-a .b reduce-b]
     ? Call .fn reduce-a .in (.state state .item head) [items-nodes]
@@ -74,7 +74,7 @@ fn Example . : u32 =
     ^example-origin
     ?
         .nodes Buf-empty{Stack (Origin example-origin, .), u32} example-origin
-        .stack |empty{Stack (Origin example-origin, .), u32} .
+        .stack 'empty{Stack (Origin example-origin, .), u32} .
     [example-stack]
     ? Stack-cons .. example-stack .new 39 u32 [example-stack]
     ? Stack-cons .. example-stack .new 3 u32 [example-stack]

@@ -936,8 +936,8 @@ fn With-intermediate-local-variable . : f32 =
 
 fn Opt-p32-to-u32 maybe Opt p32 : u32 =
     ? maybe
-    [|no .] 0 u32
-    [|yes p32] P32-to-u32 p32
+    ['no .] 0 u32
+    ['yes p32] P32-to-u32 p32
 "#,
             explainer: "To decide what to do based on the shape of some value, put a ? before the value, then one or more cases.
 A case consists of an untyped pattern in brackets [] followed by the result.
@@ -1003,37 +1003,37 @@ It's just an empty record! You may be used to seeing this as `()` or `void` in o
             name: "choice",
             source: r#"
 ty bool
-    |true .
-    |false .
+    'true .
+    'false .
 
-fn Bool-order .a a bool .b b bool : order =
-    ? .a a .b b
-    [.a |false . .b |true .] |less{order} .
-    [.a |true . .b |true .] |equal{order} .
-    [.a |false . .b |false .] |equal{order} .
-    [.a |true . .b |false .] |greater{order} .
+fn Bool-order bools .a bool .b bool : order =
+    ? bools
+    [.a 'false . .b 'true .] 'less{order} .
+    [.a 'true . .b 'true .] 'equal{order} .
+    [.a 'false . .b 'false .] 'equal{order} .
+    [.a 'true . .b 'false .] 'greater{order} .
 
 ty Type-syntax _types
-    |variable str
-    |construct .name str .arguments Span _types
-    |tuple Span _types
-    |function .inputs Span _types .output Slot _types
+    'variable str
+    'construct .name str .arguments Span _types
+    'tuple Span _types
+    'function .inputs Span _types .output Slot _types
 
 fn Type-rid
     .type type Type-syntax _types
     .buf buf Buf _types, Type-syntax _types
     : Buf _types, Type-syntax _types =
     ? type
-    [|variable variable] (
+    ['variable variable] (
         ? Str-rid variable [.]
         buf
         )
-    [|tuple parts] Type-span-rid .buf buf .span parts
-    [|construct .name name .arguments arguments] (
+    ['tuple parts] Type-span-rid .buf buf .span parts
+    ['construct .name name .arguments arguments] (
         ? Str-rid name [.]
         Type-span-rid .buf buf .span arguments
         )
-    [|function .inputs inputs .output output] (
+    ['function .inputs inputs .output output] (
         ? Buf-remove .buf buf .slot output [.buf buf .item output]
         ? Type-rid .buf buf .type output [buf]
         Type-span-rid .buf buf .span inputs
@@ -1044,7 +1044,7 @@ fn Type-span-rid
     .buf buf Buf _types, Type-syntax _types
     : Buf _types, Type-syntax _types =
     Span-fold
-    .direction |up{|down .} .
+    .direction 'up{'down .} .
     .span span
     .state buf
     .step
@@ -1054,13 +1054,13 @@ fn Type-span-rid
 "#,
             explainer: "Some info can come in multiple shapes (variants).
 For example there could be an error or a value, nothing or something, different state per page etc.
-To construct a variant, put a bar |, then its name, then a type in braces {}, then its value.
+To construct a variant, put a bar ', then its name, then a type in braces {}, then its value.
 Each variant has a value! If you have nothing to attach to a variant, just use the empty record `.`.
 The type in braces does not need to include a variant with the name youre currently constructing.
 
 In other languages, this is typically done with object hierarchies or a kind enum + union of value types.
-The most common choice type in sloe is `Opt _`, the optional type which is `|yes _ |no .`.
-In this example we also met `order` and `|up . |down .`.
+The most common choice type in sloe is `Opt _`, the optional type which is `'yes _ 'no .`.
+In this example we also met `order` and `'up . 'down .`.
 
 To learn about empty choice types, go to `Choice-empty-to`",
         },
@@ -1090,7 +1090,7 @@ fn U32s-sum
     .buf Buf _origin, u32
     =
     Span-fold
-    .direction |up{|down .} .
+    .direction 'up{'down .} .
     .span span
     .state (.sum 0 u32 .buf buf)
     .step

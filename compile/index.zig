@@ -367,7 +367,7 @@ test "span_step_while up, never |done" {
             pub fn step(
                 _: std.mem.Allocator,
                 current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 }),
-            ) error{OutOfMemory}!core.@"|done|going"(core.Choice, u32) {
+            ) error{OutOfMemory}!core.@"'done'going"(core.Choice, u32) {
                 return .{ .going = current.state +| current.slot.index };
             }
         }.step,
@@ -385,7 +385,7 @@ test "span_step_while up, ending in |done" {
             pub fn step(
                 _: std.mem.Allocator,
                 current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 }),
-            ) error{OutOfMemory}!core.@"|done|going"(void, u32) {
+            ) error{OutOfMemory}!core.@"'done'going"(void, u32) {
                 return if (current.slot.index >= 10) .{ .done = {} } else .{ .going = current.state +| current.slot.index };
             }
         }.step,
@@ -406,7 +406,7 @@ test "span_step_while down, ending in |done" {
             pub fn step(
                 _: std.mem.Allocator,
                 current: core.Record(struct { slot: core.Slot(ExampleOrigin), state: u32 }),
-            ) error{OutOfMemory}!core.@"|done|going"(void, u32) {
+            ) error{OutOfMemory}!core.@"'done'going"(void, u32) {
                 return if (current.slot.index <= 10) .{ .done = {} } else .{ .going = current.state +| current.slot.index };
             }
         }.step,
@@ -1190,9 +1190,9 @@ test "anonymous union(enum)" {
     // const one = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "a" });
     // const two = @as(union(enum) { no: void, yes: core.Str }, .{ .yes = "a" });
     // rid_both(union(enum) { no: void, yes: core.Str }, one, two);
-    const one = @as(core.@"|no|yes"(void, core.Str), .{ .yes = core.Str.fromComptime("a") });
-    const two = @as(core.@"|no|yes"(void, core.Str), .{ .yes = core.Str.fromComptime("a") });
-    rid_both(core.@"|no|yes"(void, core.Str), one, two);
+    const one = @as(core.@"'no'yes"(void, core.Str), .{ .yes = core.Str.fromComptime("a") });
+    const two = @as(core.@"'no'yes"(void, core.Str), .{ .yes = core.Str.fromComptime("a") });
+    rid_both(core.@"'no'yes"(void, core.Str), one, two);
     try std.testing.expectEqualDeep(one, two);
 }
 fn rid_both(value: type, _: value, _: value) void {}

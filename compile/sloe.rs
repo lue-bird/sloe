@@ -95,7 +95,7 @@ pub enum SyntaxType<Types> {
         field1_up: Vec<SyntaxTrailingField<SyntaxType<Types>>>,
     },
     ChoiceEmpty {
-        bar_start: lsp_types::Position,
+        tick_start: lsp_types::Position,
     },
     Choice {
         variant0_name: WithStartPosition<Name>,
@@ -168,7 +168,7 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         argument: Option<core::Slot<Expressions>>,
     },
     Variant {
-        bar_start: lsp_types::Position,
+        tick_start: lsp_types::Position,
         type_: Option<SyntaxBracedTypeArgument<Types>>,
         name: Option<WithStartPosition<Name>>,
         value: Option<core::Slot<Expressions>>,
@@ -492,7 +492,7 @@ pub fn type_start<Types>(type_: &SyntaxType<Types>) -> lsp_types::Position {
             field0_value: _,
             field1_up: _,
         } => field0_name.start,
-        SyntaxType::ChoiceEmpty { bar_start } => *bar_start,
+        SyntaxType::ChoiceEmpty { tick_start } => *tick_start,
         SyntaxType::Choice {
             variant0_name,
             variant0_value: _,
@@ -555,7 +555,7 @@ pub fn type_end<Types>(
                     .map(|field0_value| type_end(types.item(field0_value), types))
             })
             .unwrap_or_else(|| field_name_end(with_start_position_as_ref(field0_name))),
-        SyntaxType::ChoiceEmpty { bar_start } => symbol_end(*bar_start, "|"),
+        SyntaxType::ChoiceEmpty { tick_start } => symbol_end(*tick_start, "'"),
         SyntaxType::Choice {
             variant0_name,
             variant0_value,
@@ -733,11 +733,11 @@ pub fn expression_start<Expressions, Patterns, Types>(
             argument: _,
         } => name.start,
         SyntaxExpression::Variant {
-            bar_start,
+            tick_start,
             type_: _,
             name: _,
             value: _,
-        } => *bar_start,
+        } => *tick_start,
         SyntaxExpression::Fn {
             open_bracket_start,
             parameter: _,
@@ -828,7 +828,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
             })
             .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
         SyntaxExpression::Variant {
-            bar_start,
+            tick_start,
             type_,
             name,
             value,
@@ -844,7 +844,7 @@ pub fn expression_end<Expressions, Patterns, Types>(
                     .as_ref()
                     .map(|type_| braced_type_argument_end(type_, types))
             })
-            .unwrap_or_else(|| *bar_start),
+            .unwrap_or_else(|| *tick_start),
         SyntaxExpression::Fn {
             open_bracket_start,
             parameter,
@@ -1214,7 +1214,7 @@ fn parse_sloe_uppercase_name_with_start(state: &mut ParseState) -> Option<WithSt
 }
 
 fn parse_variant_name(state: &mut ParseState) -> Option<WithStartPosition<Option<Name>>> {
-    let Some(start_position) = parse_symbol_as_start(state, "|") else {
+    let Some(start_position) = parse_symbol_as_start(state, "'") else {
         return None;
     };
     let name = parse_sloe_lowercase_name(state);
@@ -1812,8 +1812,11 @@ fn parse_type_field<Types>(
     })
 }
 fn parse_type_choice_empty<Types>(state: &mut ParseState) -> Option<SyntaxType<Types>> {
-    parse_sloe_keyword_as_start(state, "|").map(|bar_start| SyntaxType::ChoiceEmpty {
-        bar_start: bar_start,
+    let Some(tick_start) = parse_sloe_keyword_as_start(state, "'") else {
+        return None;
+    };
+    Some(SyntaxType::ChoiceEmpty {
+        tick_start: tick_start,
     })
 }
 fn parse_type_choice<Types>(
@@ -1826,7 +1829,7 @@ fn parse_type_choice<Types>(
     parse_sloe_whitespace(state);
     let Some(variant0_name_value) = variant0_name.value else {
         return Some(SyntaxType::ChoiceEmpty {
-            bar_start: variant0_name.start,
+            tick_start: variant0_name.start,
         });
     };
     let variant0_value = parse_type(state, types);
@@ -2214,7 +2217,7 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
     patterns: &mut core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    let Some(bar_start) = parse_symbol_as_start(state, "|") else {
+    let Some(tick_start) = parse_symbol_as_start(state, "'") else {
         return None;
     };
     parse_sloe_whitespace(state);
@@ -2224,7 +2227,7 @@ fn parse_expression_variant<Expressions, Patterns, Types>(
     parse_sloe_whitespace(state);
     let value = parse_expression(state, expressions, patterns, types);
     Some(SyntaxExpression::Variant {
-        bar_start: bar_start,
+        tick_start: tick_start,
         type_: type_argument,
         name: name,
         value: value.map(|argument| expressions.insert(argument)),
@@ -2430,9 +2433,9 @@ If you were trying to start a type variable, no type was expected here. Maybe yo
                     {
                         "Record.field access is not a feature in sloe. Instead, use pattern matching, like value ? your-value [.field variable ..other fields..] result. Otherwise, is everything indented correctly?"
                     } else if unknown_source
-                        .starts_with(['+', '*', '/', '!', '&'])
+                        .starts_with(['+', '*', '/', '!', '&', '|'])
                     {
-                        "Operator application is not a feature in sloe. Instead, use regular function calls like F32-add-clamp, I32-negate or U32-mul-clamp. Otherwise, is everything indented correctly?"
+                        "Operator application is not a feature in sloe. Instead, use regular function calls like F32-add-clamp, I32-negate or U32-mul-clamp."
                     } else if unknown_source
                         .starts_with(')') {
                         "One too many closing paren ). Try removing it."
@@ -2832,7 +2835,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                 }
             }
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::ChoiceEmpty { tick_start: _ } => {}
         SyntaxType::Choice {
             variant0_name: _,
             variant0_value,
@@ -2900,7 +2903,7 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_: _,
             name: _,
             value,
@@ -3933,7 +3936,7 @@ pub fn syntax_type_to_type<Types, OriginInfo>(
             }
             Some(Type::Record(field_types))
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => Some(Type::Choice(vec![])),
+        SyntaxType::ChoiceEmpty { tick_start: _ } => Some(Type::Choice(vec![])),
         SyntaxType::Choice {
             variant0_name,
             variant0_value,
@@ -4202,7 +4205,7 @@ An example of a valid type with arguments is Buf _origin, u32. Here _origin is t
             }
             Some(Type::Record(field_types))
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => Some(Type::Choice(vec![])),
+        SyntaxType::ChoiceEmpty { tick_start: _ } => Some(Type::Choice(vec![])),
         SyntaxType::Choice {
             variant0_name,
             variant0_value,
@@ -4241,8 +4244,8 @@ An example of a valid type with arguments is Buf _origin, u32. Here _origin is t
             for syntax_variant in variant1_up {
                 let Some(variant_name) = &syntax_variant.name.value else {
                     errors.push(ErrorNode {
-                        range: symbol_range(syntax_variant.name.start, "|"),
-                        message: Box::from("missing variant name after this bar |"),
+                        range: symbol_range(syntax_variant.name.start, "'"),
+                        message: Box::from("missing variant name after this single quote '"),
                     });
                     return None;
                 };
@@ -4606,7 +4609,7 @@ fn specific_pattern_catch_format(
             output.push_str("(some-variable)");
         }
         SpecificPatternCatch::Variant { name, value } => {
-            output.push('|');
+            output.push('\'');
             output.push_str(name);
             output.push(' ');
             specific_pattern_catch_format(value, output);
@@ -4844,8 +4847,8 @@ fn syntax_pattern_check<'a, Patterns, Types>(
         SyntaxPattern::Variant { name, value } => {
             let Some(name_value) = &name.value else {
                 errors.push(ErrorNode {
-                    range: symbol_range(name.start, "|"),
-                    message: Box::from("missing variant name after this bar |. An example of a variant pattern is |yes your-variable")
+                    range: symbol_range(name.start, "'"),
+                    message: Box::from("missing variant name after this single quote '. An example of a variant pattern is 'yes your-variable")
                 });
                 return None;
             };
@@ -4854,7 +4857,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     let Some(value) = value else {
                         errors.push(ErrorNode {
                             range: optional_variant_name_range(name),
-                            message: Box::from("missing variant value after this variant name. Each variants has a value, even if just ., an example of a variant pattern is |yes your-variable")
+                            message: Box::from("missing variant value after this variant name. Each variants has a value, even if just ., an example of a variant pattern is 'yes your-variable")
                         });
                         return None;
                     };
@@ -5781,7 +5784,7 @@ fn variant_names_to_zig_choice_type_name<'a>(
 ) {
     output.push_str("@\"");
     for variant_name in variant_names {
-        output.push_str("|");
+        output.push_str("'");
         // no need to respect keywords etc
         output.push_str(&variant_name.replace("-", "_"));
     }
@@ -6360,7 +6363,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_,
             name,
             value,
@@ -7809,7 +7812,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
             output.push_str(");\n");
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_: _,
             name,
             value,
@@ -8803,22 +8806,22 @@ Type arguments are provided each wrapped in curly braces after the fn name, like
             Some(result_type)
         }
         SyntaxExpression::Variant {
-            bar_start,
+            tick_start,
             name,
             type_: other_variants_type,
             value,
         } => {
             let Some(name) = name else {
                 errors.push(ErrorNode {
-                    range: symbol_range(*bar_start, "|"),
-                    message: Box::from("missing variant name after this bar |..here.. . An example of a variant is |yes{|no .} \"hi c:\""),
+                    range: symbol_range(*tick_start, "'"),
+                    message: Box::from("missing variant name after this single quote '..here.. . An example of a variant is 'yes{'no .} \"hi c:\" str"),
                 });
                 return None;
             };
             let Some(syntax_type_argument) = other_variants_type else {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(name)),
-                    message: Box::from("missing type of the remaining variants in curly braces after this variant name. Examples of valid variants are |yes{|no .} \"hi c:\" and |yes{Opt str} \"c:\".
+                    message: Box::from("missing type of the remaining variants in curly braces after this variant name. Examples of valid variants are 'yes{'no .} \"hi c:\" str and 'yes{Opt str} \"c:\" str.
 If there should only ever by one variant, using a record with a single field is recommended over a single variant choice."),
                 });
                 return None;
@@ -8826,7 +8829,7 @@ If there should only ever by one variant, using a record with a single field is 
             let Some(syntax_type) = &syntax_type_argument.type_ else {
                 errors.push(ErrorNode {
                     range: symbol_range(syntax_type_argument.open_brace_start, "{"),
-                    message: Box::from("missing type argument in curly braces. Examples of valid variants are |yes{|no .} \"hi c:\" and |yes{Opt str} \"c:\""),
+                    message: Box::from("missing type argument in curly braces. Examples of valid variants are 'yes{'no .} \"hi c:\" str and 'yes{Opt str} \"c:\" str"),
                 });
                 return None;
             };
@@ -8873,7 +8876,7 @@ If there should only ever by one variant, using a record with a single field is 
             };
             let Type::Choice(origin_choice_type) = &checked_type else {
                 let mut error_message: String = String::from(
-                    "this variant type should be a choice (for example |a u32 |b str  or  Opt u32) but it's\n",
+                    "this variant type should be a choice (for example 'a u32 'b str  or  Opt u32) but it's\n",
                 );
                 type_format(&mut error_message, 0, &checked_type);
                 errors.push(ErrorNode {
@@ -9319,7 +9322,7 @@ If there should only ever by one variant, using a record with a single field is 
             let Some(queried) = queried else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing queried expression after this colon. An example of a query is ? option [|yes n] n [|no .] 0 u32")
+                    message: Box::from("missing queried expression after this colon. An example of a query is ? option ['yes n] n ['no .] 0 u32")
                 });
                 return None;
             };
@@ -9327,7 +9330,7 @@ If there should only ever by one variant, using a record with a single field is 
             let Some((case0, case1_up)) = cases.split_first() else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing case(s) after the queried expression. Cases look like [pattern] result-expression. An example of a query is ? option [|yes n] n [|no .] 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
+                    message: Box::from("missing case(s) after the queried expression. Cases look like [pattern] result-expression. An example of a query is ? option ['yes n] n ['no .] 0 u32. If everything looks good on your end, try to parenthesize the expression after the ?, as the queried expression cannot already be an unpqrenthesized query")
                 });
                 return None;
             };
@@ -9354,14 +9357,14 @@ If there should only ever by one variant, using a record with a single field is 
             let Some(case0_pattern) = &case0.pattern else {
                 errors.push(ErrorNode {
                     range:  symbol_range(case0.open_bracket_start, "["),
-                    message: Box::from("missing query case pattern after this open bracket [. Cases consist of [pattern] result-expression. An example of a query is ? option [|yes n] n [|no] 0 u32")
+                    message: Box::from("missing query case pattern after this open bracket [. Cases consist of [pattern] result-expression. An example of a query is ? option ['yes n] n ['no] 0 u32")
                 });
                 return None;
             };
             let Some(case0_result) = &case0.result else {
                 errors.push(ErrorNode {
                     range: case0.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(|| pattern_range(case0_pattern, patterns, types)),
-                    message: Box::from("missing result expression after this query case pattern. Cases look like [pattern] result-expression. An example of a query is ? option [|yes n] n [|no] 0 u32")
+                    message: Box::from("missing result expression after this query case pattern. Cases look like [pattern] result-expression. An example of a query is ? option ['yes n] n ['no] 0 u32")
                 });
                 return None;
             };
@@ -9447,7 +9450,7 @@ If there should only ever by one variant, using a record with a single field is 
                 let Some(case_pattern) = &case.pattern else {
                     errors.push(ErrorNode {
                         range:  symbol_range(case.open_bracket_start, "["),
-                        message: Box::from("missing query case pattern after this open bracket [. Cases are written as [pattern] result-expression. A full query could look like ? option [|yes n] n [|no] 0 u32")
+                        message: Box::from("missing query case pattern after this open bracket [. Cases are written as [pattern] result-expression. A full query could look like ? option ['yes n] n ['no] 0 u32")
                     });
                     continue 'checking_case1_up;
                 };
@@ -9508,7 +9511,7 @@ If there should only ever by one variant, using a record with a single field is 
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
                         range: case.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
-                        message: Box::from("missing result expression after this query case pattern. Cases are written as [pattern] result-expression. An example of a query is ? option [|yes n] n [|no .] 0 u32")
+                        message: Box::from("missing result expression after this query case pattern. Cases are written as [pattern] result-expression. An example of a query is ? option ['yes n] n ['no .] 0 u32")
                     });
                     continue 'checking_case1_up;
                 };
@@ -10102,7 +10105,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_,
             name,
             value,
@@ -11165,7 +11168,7 @@ pub fn syntax_type_variables_into<'a, Types>(
                 }
             }
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::ChoiceEmpty { tick_start: _ } => {}
         SyntaxType::Choice {
             variant0_name: _,
             variant0_value,
@@ -11608,7 +11611,7 @@ fn type_diff_format(formatted: &mut String, indent: usize, type_diff: &TypeDiff)
         },
         TypeDiff::Choice(variants) => match variants.split_first() {
             None => {
-                formatted.push('|');
+                formatted.push('\'');
             }
             Some((variant0, variant1_up)) => {
                 type_diff_variant_format(formatted, indent, variant0);
@@ -11667,7 +11670,7 @@ fn type_diff_variant_format(
     indent: usize,
     type_diff_variant: &TypeDiffVariant,
 ) {
-    formatted.push('|');
+    formatted.push('\'');
     formatted.push_str(&type_diff_variant.name);
     space_or_linebreak_indented_into(
         formatted,
@@ -12193,7 +12196,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
             },
             CoreFnInfo {
                 name: "P32-order",
-                documentation: "Compare left to right. For example |less means left < right",
+                documentation: "Compare left to right. For example 'less means left < right",
                 type_parameters: vec![],
                 parameter_type: type_record([("left", type_p32), ("right", type_p32)]),
                 result_type: type_order(),
@@ -12221,7 +12224,7 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
             },
             CoreFnInfo {
                 name: "U32-to-p32",
-                documentation: "Convert to a p32. If 0, returns |no .",
+                documentation: "Convert to a p32. If 0, returns 'no .",
                 type_parameters: vec![],
                 parameter_type: type_u32,
                 result_type: type_opt(type_p32),
@@ -12278,7 +12281,7 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
             },
             CoreFnInfo {
                 name: "U32-order",
-                documentation: "Compare left to right. For example |less means left < right",
+                documentation: "Compare left to right. For example 'less means left < right",
                 type_parameters: vec![],
                 parameter_type: type_record([("left", type_u32), ("right", type_u32)]),
                 result_type: type_order(),
@@ -12306,7 +12309,7 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
             },
             CoreFnInfo {
                 name: "I32-to-u32",
-                documentation: "Convert to an u32. If negative, returns |no .",
+                documentation: "Convert to an u32. If negative, returns 'no .",
                 type_parameters: vec![],
                 parameter_type: type_i32,
                 result_type: type_opt(type_u32),
@@ -12356,7 +12359,7 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
             },
             CoreFnInfo {
                 name: "I32-order",
-                documentation: "Compare left to right. For example |less means left < right",
+                documentation: "Compare left to right. For example 'less means left < right",
                 type_parameters: vec![],
                 parameter_type: type_record([("left", type_i32), ("right", type_i32)]),
                 result_type: type_order(),
@@ -12407,7 +12410,7 @@ This is usually done to scrap some function byproduct or to decompose some tempo
             CoreFnInfo {
                 name: "F32-ln",
                 documentation: "Its natural logarithm.
-If the result is too negative or the input is not positive, returns |no .
+If the result is too negative or the input is not positive, returns 'no .
 
 Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
@@ -12483,14 +12486,14 @@ Try not to divide by 0.0, as 0.0 will be returned which is not mathematically co
             },
             CoreFnInfo {
                 name: "F32-square-root",
-                documentation: "n ^ 0.5, returning |no . when n < 0.0",
+                documentation: "n ^ 0.5, returning 'no . when n < 0.0",
                 type_parameters: vec![],
                 parameter_type:  type_i32,
                 result_type: type_opt(type_f32),
             },
             CoreFnInfo {
                 name: "F32-pow-i32",
-                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined.
+                documentation: "a ^ b, returning 'no . when the result is too large, too negative or undefined.
 
 Warning: Precision is unspecified and as such this function should never be used when determinism is desired.",
                 type_parameters: vec![],
@@ -12499,7 +12502,7 @@ Warning: Precision is unspecified and as such this function should never be used
             },
             CoreFnInfo {
                 name: "F32-pow",
-                documentation: "a ^ b, returning |no . when the result is too large, too negative or undefined.
+                documentation: "a ^ b, returning 'no . when the result is too large, too negative or undefined.
 
 Warning: Precision is unspecified and as such this function should never be used when determinism is desired.
 As such, prefer F32-square-root if you can",
@@ -12619,7 +12622,7 @@ fn Age . : f32 =
             },
             CoreFnInfo {
                 name: "F32-order",
-                documentation: "Compare left to right. For example |less means left < right",
+                documentation: "Compare left to right. For example 'less means left < right",
                 type_parameters: vec![],
                 parameter_type: type_record([("left", type_f32), ("right", type_f32)]),
                 result_type: type_order(),
@@ -12753,7 +12756,7 @@ fn Three . : . =
             },
             CoreFnInfo {
                 name: "Choice-empty-to",
-                documentation: r#"The empty choice type (`|`) is a weird one.
+                documentation: r#"The empty choice type (`'`) is a weird one.
 No value of this type can ever exist and it's only use is some type trickery.
 You may already know it under one of these names:
 - never
@@ -12761,36 +12764,36 @@ You may already know it under one of these names:
 - unreachable
 - uninhabited
 - bottom (⊥) or initial object
-- impossible,  or more rarely (and incorrectly) infallible
+- impossible or more rarely (and incorrectly) infallible
 
-For example, values of type `|success u32 |failure |` can be passed to any function expecting
+For example, values of type `'success u32 'failure '` can be passed to any function expecting
 a success and failure variant to be possible.
 But the interesting thing about having a value of this type is that since the type knows
 the failure variant could never have been created, we can safely unwrap it!
 ```sloe
-fn Tried-unwrap tried |success _ok |failure | : _ok =
+fn Tried-unwrap tried 'success _ok 'failure ' : _ok =
     ? tried
-    [|success ok] ok
-    [|failure impossible] Choice-empty-to{_ok} impossible
+    ['success ok] ok
+    ['failure impossible] Choice-empty-to{_ok} impossible
 ```
 You really can ask for any type of data, like emulating a dup or rid operation
 ```sloe
-fn Choice-empty-rid choice-empty | : . =
+fn Choice-empty-rid choice-empty ' : . =
     Choice-empty-to{.} choice-empty
-fn Choice-empty-dup choice-empty | : .a | .b | =
-    Choice-empty-to{.a | .b |} choice-empty
+fn Choice-empty-dup choice-empty ' : .a ' .b ' =
+    Choice-empty-to{.a ' .b '} choice-empty
 ```
 Another nice example: Creating a value whose only purpose is transporting type info:
 ```sloe
 ty Type-only _type
     # enables what is often called "phantom types"
-    |a .
-    |unconstructable .type _type .impossible |
+    'a .
+    'unconstructable .type _type .impossible '
 
 fn Type-only-rid type-only Type-only _type : . =
     ? type-only
-    [|a .] .
-    [|unconstructable .type type .impossible imp]
+    ['a .] .
+    ['unconstructable .type type .impossible imp]
         # quite funny: To get rid of the type value
         # which can never exist here, we use the imp value
         # to pull us a generic _type rid function from the ether
@@ -12807,7 +12810,7 @@ ty Weak-slot _origin
     .index u32
 
 fn Index-to-weak-slot{_origin} index u32 : Weak-slot _origin =
-    .index index .origin |of{Type-only _origin} .
+    .index index .origin 'of{Type-only _origin} .
 
 fn Span-start-weak
     span Span _origin
@@ -12849,11 +12852,11 @@ To convert an `Origin-erased` value into a normal value with an origin again, us
                 documentation: "Isolate a value that can be created from nothing.
 ```sloe
 ty direction
-    |down . |up .
+    'down . 'up .
 
 ? color
-[|up .] Origin-isolate-constant [.] |up{direction} .
-[|down .] Origin-isolate-constant [.] |down{direction} .
+['up .] Origin-isolate-constant [.] 'up{direction} .
+['down .] Origin-isolate-constant [.] 'down{direction} .
 ```
 
 See also `Origin-isolated-map` on how to convert actual variant values",
@@ -12906,24 +12909,24 @@ Check out `Origin-isolated-map` and `Origin-isolate-constant` for how to convert
                 documentation: "Do something inside the `Origin-isolated` value.
 
 `Origin-isolated-map` is often used to give more descriptive names to values created with `Origin-isolated-merge`.
-It's also necessary to convert a choice (for example `|parsed u32 |error str`) to an `Origin-isolated` value.
+It's also necessary to convert a choice (for example `'parsed u32 'error str`) to an `Origin-isolated` value.
 ```sloe
 ty Color _origin
-    |red Slot _origin |green Slot _origin |blue _origin
+    'red Slot _origin 'green Slot _origin 'blue _origin
 
 ? color
-[|red red]
+['red red]
     Origin-isolated-map
     .isolated Slot-origin-isolate red
-    .change [red Slot Origin erased, .] |red{Color Origin erased, .} red
-[|green green]
+    .change [red Slot Origin erased, .] 'red{Color Origin erased, .} red
+['green green]
     Origin-isolated-map
     .isolated Slot-origin-isolate green
-    .change [green Slot Origin erased, .] |green{Color Origin erased, .} green
-[|blue blue]
+    .change [green Slot Origin erased, .] 'green{Color Origin erased, .} green
+['blue blue]
     Origin-isolated-map
     .isolated Slot-origin-isolate blue
-    .change [blue Slot Origin erased, .] |blue{Color Origin erased, .} blue
+    .change [blue Slot Origin erased, .] 'blue{Color Origin erased, .} blue
 ```
 Isn't that nice.",
                 type_parameters: vec![],
@@ -13187,7 +13190,7 @@ See also `Span-start-of-length-positive`, `Span-end`.",
             CoreFnInfo {
                 name: "Span-step-while",
                 documentation: "Step through all slots, updating the given initial state for each taken slot in line
-by returning `|going` or exiting early with `|done` (like calling `break` in other languages).
+by returning `'going` or exiting early with `'done` (like calling `break` in other languages).
 An example can be found in `Opt-span-step-while`",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13219,7 +13222,7 @@ An example can be found in `Opt-span-step-while`",
             CoreFnInfo {
                 name: "Opt-span-step-while",
                 documentation: "Step through all slots, updating the given initial state for each taken slot in line
-by returning `|going` or exiting early with `|done` (like calling `break` in other languages).
+by returning `'going` or exiting early with `'done` (like calling `break` in other languages).
 ```sloe
 fn Next-non-space
     .chars chars Buf _origin, char
@@ -13232,26 +13235,26 @@ fn Next-non-space
     ? (
         Opt-span-step-while
         .span span
-        .direction |up{|down .} .
+        .direction 'up{'down .} .
         .state chars
         .step
         [.slot slot Slot _origin .state chars Buf _origin, char]
         ? Buf-remove .buf chars .slot slot [.buf chars .item char]
         ? Char-dup char [.a char-use .b char]
-        ? U32-order .left Char-to-u32 char-use .right Char-to-u32 ' '
-        [|equal .] (
+        ? U32-order .left Char-to-u32 char-use .right Char-to-u32 \" \" char
+        ['equal .] (
             ? Char-rid char [.]
-            |going{|done .chars Buf _origin, char .non-space char} chars
+            'going{'done .chars Buf _origin, char .non-space char} chars
             )
-        [|less .] |done{|going Buf _origin, char} .chars chars .non-space char
-        [|greater .] |done{|going Buf _origin, char} .chars chars .non-space char
+        ['less .] 'done{'going Buf _origin, char} .chars chars .non-space char
+        ['greater .] 'done{'going Buf _origin, char} .chars chars .non-space char
         )
-    [|going chars]
-        .chars chars .non-space |no{Opt char} . .after |no{Opt Span _origin} .
-    [|done .rest span-after .done (.chars chars .non-space non-space)]
-        .chars chars .non-space |yes{|no .} non-space .after span-after
+    ['going chars]
+        .chars chars .non-space 'no{Opt char} . .after 'no{Opt Span _origin} .
+    ['done .rest span-after .done (.chars chars .non-space non-space)]
+        .chars chars .non-space 'yes{'no .} non-space .after span-after
 ```
-Note that `.rest` does not include any Slot given to the step function, even the Slot that resulted in `|done`.
+Note that `.rest` does not include any Slot given to the step function, even the Slot that resulted in `'done`.
 (This example looks convoluted. If you introduce helpers like Char-equal it gets more resonable)",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -14347,7 +14350,7 @@ fn Answer . : f32 =
 Keep in mind that a human-readable visual symbol can be composed of multiple such unicode scalars (forming a grapheme cluster), For example:
 ```sloe
 Str-start "🇺🇸" str
-# = |yes .start "\(1F1FA)" char .after "\(1F1F8)" str
+# = .start "\(1F1FA)" char .after 'yes "\(1F1F8)" str
 # Indicator U followed by Indicator S
 ```
 Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters)"#,
@@ -14405,13 +14408,13 @@ fn Three . : . =
                     r#"Result of a binary comparison.
 ```sloe
 U32-order .left 12 u32 .right 20 u32
-# = |less{order} .
+# = 'less{order} .
 
 fn U32-max .a a u32 .b b u32 : u32 =
     ? U32-order .left a .right b
-    [|less] (? U32-rid a [.] b)
-    [|equal] (? U32-rid a [.] b)
-    [|greater] (? U32-rid b [.] a)
+    ['less] (? U32-rid a [.] b)
+    ['equal] (? U32-rid a [.] b)
+    ['greater] (? U32-rid b [.] a)
 ```"#,
                 )),
                 parameters: vec![],
@@ -15174,7 +15177,7 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             None => no_open_end_kinds,
         },
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_: _,
             name: _,
             value,
@@ -15293,13 +15296,13 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
     }
 }
 fn optional_variant_name_format(formatted: &mut String, variant_name: Option<&Name>) {
-    formatted.push('|');
+    formatted.push('\'');
     if let Some(variant_name) = variant_name {
         formatted.push_str(variant_name);
     }
 }
 fn variant_name_format(formatted: &mut String, variant_name: &Name) {
-    formatted.push('|');
+    formatted.push('\'');
     formatted.push_str(variant_name);
 }
 fn optional_field_name_format(formatted: &mut String, field_name: Option<&Name>) {
@@ -15382,12 +15385,12 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start,
+            tick_start,
             type_,
             name,
             value,
         } => {
-            formatted.push('|');
+            formatted.push('\'');
             match name {
                 Some(name) => {
                     formatted.push_str(&name.value);
@@ -15398,7 +15401,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             }
             match type_ {
                 None => {
-                    formatted.push_str("{|}");
+                    formatted.push_str("{'}");
                 }
                 Some(type_) => {
                     syntax_braced_type_argument_format(formatted, indent, types, type_);
@@ -15409,7 +15412,7 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 space_or_linebreak_indented_into(
                     formatted,
                     range_line_span(lsp_types::Range {
-                        start: *bar_start,
+                        start: *tick_start,
                         end: expression_end(value, expressions, patterns, types),
                     }),
                     indent,
@@ -16208,7 +16211,7 @@ fn syntax_type_open_end<Types>(
                 ..last_field_open_end
             }
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => no_open_end_kinds,
+        SyntaxType::ChoiceEmpty { tick_start: _ } => no_open_end_kinds,
         SyntaxType::Choice {
             variant0_name: _,
             variant0_value,
@@ -16400,8 +16403,8 @@ fn syntax_type_unparenthesized_format<Types>(
                 }
             }
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => {
-            formatted.push('|');
+        SyntaxType::ChoiceEmpty { tick_start: _ } => {
+            formatted.push('\'');
         }
         SyntaxType::Choice {
             variant0_name,
@@ -16860,7 +16863,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 })
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_,
             name,
             value,
@@ -17665,7 +17668,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             field1_up,
             |_, value| type_symbol_at_position(value, position, types, scope, origins),
         ),
-        SyntaxType::ChoiceEmpty { bar_start: _ } => None,
+        SyntaxType::ChoiceEmpty { tick_start: _ } => None,
         SyntaxType::Choice {
             variant0_name: _,
             variant0_value,
@@ -18145,7 +18148,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
                 syntax_type_symbol_uses_into(uses, field_value, symbol, types, origins);
             }
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::ChoiceEmpty { tick_start: _ } => {}
         SyntaxType::Choice {
             variant0_name: _,
             variant0_value,
@@ -18390,7 +18393,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_: type_argument,
             name,
             value,
@@ -19111,7 +19114,7 @@ pub fn syntax_type_highlight<Types>(
                 });
             }
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::ChoiceEmpty { tick_start: _ } => {}
         SyntaxType::Choice {
             variant0_name,
             variant0_value,
@@ -19211,15 +19214,15 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start,
+            tick_start,
             name,
             type_: type_argument,
             value,
         } => {
             symbol_highlight(
                 state,
-                "|",
-                *bar_start,
+                "'",
+                *tick_start,
                 lsp_types::SemanticTokenTypes::EnumMember,
             );
             if let Some(name) = name {
@@ -19546,7 +19549,7 @@ pub fn type_format(formatted: &mut String, indent: usize, type_: &Type) {
         Type::Record(fields) => type_record_format(formatted, indent, fields),
         Type::Choice(variants) => match variants.split_first() {
             None => {
-                formatted.push('|');
+                formatted.push('\'');
             }
             Some((variant0, variant1_up)) => {
                 type_variant_format(formatted, indent, variant0);
@@ -19601,7 +19604,7 @@ fn type_field_format(formatted: &mut String, indent: usize, type_field: &TypeFie
     type_parenthesized_if_open_ended_format(formatted, next_indent(indent), &type_field.value);
 }
 fn type_variant_format(formatted: &mut String, indent: usize, type_variant: &TypeVariant) {
-    formatted.push('|');
+    formatted.push('\'');
     formatted.push_str(&type_variant.name);
     let line_span = type_line_span(&type_variant.value);
     space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
@@ -19744,7 +19747,7 @@ fn syntax_type_rid<Types>(
                 }
             }
         }
-        SyntaxType::ChoiceEmpty { bar_start: _ } => {}
+        SyntaxType::ChoiceEmpty { tick_start: _ } => {}
         SyntaxType::Choice {
             variant0_name: _,
             variant0_value,
@@ -19852,7 +19855,7 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variant {
-            bar_start: _,
+            tick_start: _,
             type_,
             name: _,
             value,

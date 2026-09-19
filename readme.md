@@ -110,10 +110,10 @@ fn Use-opt opt Opt u32 : ... =
     # this won't compile as their origins come from different branches
     ? (
         ? opt
-        [|no .]
+        ['no .]
             ^buf-origin
             Buf-empty{u32} buf-origin
-        [|yes number] (
+        ['yes number] (
             ^buf-origin
             ? Buf-one .origin buf-origin .item number [.buf buf .slot slot]
             ...
@@ -125,9 +125,9 @@ fn Use-opt opt Opt u32 : ... =
     ^buf-origin
     ? (
         :opt
-        [|no .]
+        ['no .]
             Buf-empty{u32} buf-origin
-        [|yes number] (
+        ['yes number] (
             ? Buf-one .origin buf-origin .item number [.buf buf .slot slot]
             ...
             buf
@@ -139,13 +139,13 @@ fn Use-opt opt Opt u32 : ... =
 # tree structure. every slot and span exclusively belongs to that expression.
 # If passing so many origins seems annoying to you, check the documentation of Origin
 ty Expression _expressions-origin, _patterns-origin, _chars-origin
-    |int i32
-    |string Opt Span _chars-origin
-    |buf Opt Span _expressions-origin
-    |call
+    'int i32
+    'string Opt Span _chars-origin
+    'buf Opt Span _expressions-origin
+    'call
         .function Slot _expressions-origin
         .arguments Span _expressions-origin
-    |lambda
+    'lambda
         .parameters Span _patterns-origin
         .result Slot _expressions-origin
 
@@ -167,7 +167,7 @@ fn State-to-interfaces-into
     ? (
         Buf-one
         .origin interfaces-origin
-        .item |console-log{Interface State _expressions-origin} "hello" str
+        .item 'console-log{Interface State _expressions-origin} "hello" str
         )
     [.slot slot .buf interfaces]
     ...
@@ -261,7 +261,7 @@ some-variable some-type
 
 # project function declaration.
 # For type variables in the result that aren't used in the input,
-# functions require appended type parameters: <...>
+# functions require appended type parameters: {...}
 fn Function-name{_potential}{_type-arguments}{_only-used-in-the-result}
     parameter-pattern-with-types
     : result-type =
@@ -278,24 +278,24 @@ Span origin
 My-function-type-alias env, input, output
 
 # declare a shorthand for an existing type
-ty point .x i32 .y i32
+ty point  .x i32 .y i32
 
 # can also accept parameters
-ty Pair _potential, _type-parameters
+ty Pair _potential, _type-parameters  .some type ...
 
 # a "choice type" that can come in different shapes ("variants")
 # which each have a unique name and one associated value.
-|first-option .
-|second-option Buf _potential, u32
-|third-option Type-name-alias _potential, _type-parameters
+'first-option .
+'second-option Buf _potential, u32
+'third-option Type-name-alias _potential, _type-parameters
 
 # creating a variant.
-# The type in curlies can be a type alias or a choice type directly {|... ...}.
+# The type in curlies can be a type alias or a choice type directly {'... ...}.
 # The type does not have to include a variant with the currently constructed name
-|some-variant-name{a-choice-type} its value
+'some-variant-name{a-choice-type} its value
 
 # variant pattern
-|some-variant its value
+'some-variant its value
 ```
 Goal: coherent, practical and compact, avoiding parens and indentation especially for trailing syntax.
 Sloe is a very explicit language, so any extra verbosity is not tolerable.
@@ -369,7 +369,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_type-variable` and `minus-dash-hyphen`
-- variant expression syntax is fairly ugly (`|yes{|no .} value`) especially when the type in the braces itself contains variants. Also, the `|` is very easily confused as a letter which hinders readability
 - the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
   Sloe is most likely not the right vehicle to explore this space,
   still it seems like a warning sign for a supposed "general-purpose language"
@@ -449,8 +448,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Ascii-order
   fn Ascii-to-lower ascii : ascii
   fn Ascii-to-upper ascii : ascii
-  fn Ascii-is-lower ascii : Opt ascii # maybe |yes.|no. instead
-  fn Ascii-is-upper ascii : Opt ascii # maybe |yes.|no. instead
+  fn Ascii-is-lower ascii : Opt ascii # maybe 'yes.'no. instead
+  fn Ascii-is-upper ascii : Opt ascii # maybe 'yes.'no. instead
   ```
 - add `Buf-opt-span-add-repeat`, `Buf-span-add-repeat`, `Buf-opt-span-add-repeat-length-positive`, maybe even unfold
 - add `Range-step .start u32 .length p32`, `Opt-range-step`, `(Opt-)Range-dup`, `(Opt-)Range-rid`, probably also `(Opt-)Range-elongate`, `(Opt-)Span-range`
@@ -458,7 +457,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   For extra convenience, it may be reasonable to implement some ByteDecode and ByteEncode traits in rust directly, so that in the common case that the state type is fully known you can hot reload with close to no glue code
 - add byte-level APIs, like `Buf-opt-span-take-i32 enianness` and `Buf-opt-span-take-f32 enianness`. Ultimately, these sould allow got reloading or simple byte protocols in general
 - (probably not that good of an idea) to the above effect, it could be nicer to add ultra-basic macro support, so e.g.
-  `!u32 "3"` where `u32` is of type `_fn str, |success u32 |failure str` (instead of `3 u32`) which would evaluate the given function (which should return `|error str (?) |ok Value`).
+  `!u32 "3"` where `u32` is of type `_fn str, 'success u32 'failure str` (instead of `3 u32`) which would evaluate the given function (which should return `'error str (?) 'ok Value`).
   This would allow userland to create e.g. hex parsing functions, arabic number systems, string raw bytes stuff etc.
 - (probably not that good of an idea) consider not counting function calls as using up a function variable.
   The disadvantage is that "overplacing" a variable step-wise doesn't work anymore
@@ -475,7 +474,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - (not fully sure) Add explicit field punning syntax:
   Add pattern syntax `_` (untyped) / `_ value-type` (typed) (and maybe expression syntax `_`) where `_` behaves like a variable with the name of the parent.
   So e.g. `.field (_ value-type)` would introduce a variable named `field`.
-  and pattern `|variant _` would introduce a variable named `variant`.
+  and pattern `'variant _` would introduce a variable named `variant`.
   Likewise, `linked-list-cons .nodes _ .linked-list numbers .new 3 u32`
   would work if a variable named `nodes` exists.
   If no parent name exists, an error is thrown.
@@ -483,7 +482,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   I would normally not consider this as a feature, but since sloe is so painfully
   explicit, I feel users deserve some sugar for their effort.
 - add field spread syntax for types where overlapping field names is okay as long as their value types are equal
-- add variant spread syntax `||existing-choice-type |other-variants-before-and-or-after` (only in types) analogue to the field spread syntax
+- add variant spread syntax `''existing-choice-type 'other-variants-before-and-or-after ...` (only in types) analogue to the field spread syntax
 - when checking, avoid shortcutting early when possible, still traversing sub-items even when a clear error has been found
 - add c# or swift or erlang compilation as well if there is demand
 - add source maps for mjs
@@ -535,15 +534,15 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       .a Buf _a-origin, A
       .b Buf _b-origin, B
       ```
-    - `Buf _origin, |a A |b B` to 
+    - `Buf _origin, 'a A 'b B` to 
       ```sloe
-      .slots Buf _slots-origin, |a Slot a-origin |b Slot b-origin
+      .slots Buf _slots-origin, 'a Slot a-origin 'b Slot b-origin
       .a Buf _a-origin, A
       .b Buf _b-origin, B
       ```
       or 
       ```sloe
-      .tags Buf _tags-origin, |a . |b .
+      .tags Buf _tags-origin, 'a . 'b .
       .slots Buf _slots-origin, Slot ??-origin
       .a Buf _a-origin, A
       .b Buf _b-origin, B
@@ -554,7 +553,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 # rejected ideas
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas
 
-- allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, |variant{} and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there
+- allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, 'variant{} and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there
 - add special syntax `fn-once` that automatically assembles the environment from the used local variables.
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
   More info in "not coherently formulated thoughts"
@@ -573,8 +572,8 @@ It also makes initial_state much easier to call from the rust side (though we ne
   This would also enable below representation of tagged unions (this representation is not very flexible and otherwise also contradicts other basics of sloe):
   ```sloe
   ty Expression-slot _origin
-      |int Slot _origin, i32
-      |plus Slot _origin, .left Expression-slot _origin .right Expression-slot _origin
+      'int Slot _origin, i32
+      'plus Slot _origin, .left Expression-slot _origin .right Expression-slot _origin
       ...
   ```
   This also means slices etc need to be stored separately in the origin buf.
@@ -589,13 +588,13 @@ It also makes initial_state much easier to call from the rust side (though we ne
   ...
   ```
   This is probably doable in zig but hardly in rust without significant macro magic. Any ideas welcome!
-- allowing `.. (|variant ...)` with a single variant and untyped variant expressions. No, should consistently use single-field record
+- allowing `.. ('variant ...)` with a single variant and untyped variant expressions. No, should consistently use single-field record
 - field and variants are changed so field names and variant names are uppercase
-  and `.` is spread (same for `|`), e.g.
+  and `.` is spread (same for `'`), e.g.
   ```sloe
   ty event
-      |Counter-clicked
-      |Mouse-moved .X u32 .Y u32
+      'Counter-clicked .
+      'Mouse-moved .X u32 .Y u32
   ```
   The benefit is that the question above is answered (single field = single variant).
   Overall this is "more correct" than the current solution.
@@ -603,7 +602,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
 - (rejection not final for all eternity. If you have a good use case, I'll support it) allow field and variant names to start with digit, upper-case and -, like `fn Char-dup char char : .0 char .1 char`.
   One nice thing is that this matches what most language use as field names for tuples.
   This is also a little bit confusing but you don't have to use it.
-  Use cases are e.g. `ty bit |0 . |1 .`, `type board-pin |0 . |1 . |3 . |10 .` and nicer array records.
+  Use cases are e.g. `ty bit '0 . '1 .`, `type board-pin '0 . '1 . '3 . '10 .` and nicer array records.
   Not included currently for consistency and simplicity.
 - switch from error{OutOfMemory}! to anyerror! for ease of use with external functions.
   Rejected because zig errors should be explicitly handled by sloe
@@ -615,7 +614,7 @@ While seemingly convenient and magnitudes better than regular mutable pointers,
 - there's no way to "reconstruct" a different out value. Especially for non-trivial edits the &mut approach can get messy or it's straight up impossible and parts will need to get cloned unnecessarily
 - there's no way to change the type (e.g. from `Opt Span` to `Span`)
 - there's two ways to specify most conversions, with usually no clear method of converting one to the other
-- it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn .context context ... : |exit found |go-on context` where found contains some parts of the context). This isn't modelled well with `&mut`
+- it's surprisingly common that one path consumes an argument, the other path keeps it in tact (e.g. when searching a tree with intermediate information. Either we find something, consuming the context or we come up empty-handed with the original context, like `fn .context context ... : 'done found 'going context` where found contains some parts of the context). This isn't modelled well with `&mut`
 - `&mut` means the resulting changed collection is not returned, making use as the input to another function impossible. This almost necessarily results in the classic procedural-style statement form as opposed to the functional-style expression form. Minor gripe: especially in languages that don't allow local scopes with local returns (far, far too many) this basically makes it impossible to locally introduce a value, change it and implant it somewhere; instead you have to move the variable up to the top level.
 - returning `.` (like returning `Unit` in gleam) feels super awkward to my brain. Most often, languages then automatically return void/... in the absence of a return and introduce all kinds of constructs like re-assignable variables, additional constructs for looping and branching that all can only return void/... . To my brain, this just confuses matters; it loves simple to follow flow of state!
 - &mut usually comes with the need to check for non-overlapping references to the same parts of data. This isn't possible with owned data passing in the first place
@@ -630,7 +629,7 @@ rusts immutable references `&` have some similar trade-offs but seem kind of una
 - I personally never had a need for this. Usually you can just make the environment a type variable and you're golden
 
 I'm strangely really convinced that this is the obvious, correct design decision (for most programming languages at that!).
-Note that the current design does not natively have a `dyn Fn`; it needs to be manually emulated via an explicit `|` choice type.
+Note that the current design does not natively have a `dyn Fn`; it needs to be manually emulated via an explicit choice type.
 
 ## why no traits / type classes / (duck) (static) dispatch
 - traits introduce a crazy amount of complexity
@@ -685,7 +684,7 @@ If you're looking to learn from sloe's central ideas, maybe do not learn from th
   It's one of those "only need it in 5% of cases but then its unreplaceable" features - the nightmare of a language designer
 
 - nested pattern matching.
-  It's existence makes compilation, exhaustiveness-checking, error messages and the possibility of flow-typing-like matching (e.g. matching |a in |a|b|c leaving |b|c) a bit harder.
+  It's existence makes compilation, exhaustiveness-checking, error messages and the possibility of flow-typing-like matching (e.g. matching 'a in 'a'b'c leaving 'b'c) a bit harder.
   It also creates a "two modes of matching" problem: You e.g. can't match on numbers, chars, strings, span start and lengths etc. And so you sometimes need an extra step, leading to nested matches anyway (does not feel consistent).
   It also "takes control from the user into the magic hands of the compiler" and thus it may run checks etc. in a different order than you have.
   I originally introduced it to make e.g. matching on multiple `Opt`s easier.
@@ -740,12 +739,11 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
+- rename `Buf-char-*` functions to `Buf-*-*chars`
+
 - fix bug where formating unrecognized range can multiply declarations around it
 
-- strongly consider changing variant symbol from | to ' or \`.
-  It's less intrusive, improves readability and frees up `|` to be used as an or pattern prefix.
-  
-  - do indent type arguments and local function pattern
+- do indent type arguments and local function pattern
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 

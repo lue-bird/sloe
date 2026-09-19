@@ -14,8 +14,8 @@ ty Mouse-trail-origin-erased _part
     .span Opt Span Origin erased, _part
 
 ty event
-    |counter-clicked .
-    |mouse-moved .x u32 .y u32
+    'counter-clicked .
+    'mouse-moved .x u32 .y u32
 
 fn Initial-state . : state =
     ^mouse-trail-origin
@@ -26,7 +26,7 @@ fn Initial-state . : state =
         Origin-erase
         Mouse-trail-origin-isolate
         .buf Buf-empty{.x u32 .y u32} mouse-trail-origin
-        .span |no{Opt Span Origin mouse-trail-origin, .} .
+        .span 'no{Opt Span Origin mouse-trail-origin, .} .
         )
 
 fn Mouse-trail-origin-isolate
@@ -73,14 +73,14 @@ fn Update
     .event event event
     : state =
     ? event
-    [|counter-clicked .] (
+    ['counter-clicked .] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail]
         .count (U32-add-clamp .a count .b 1 u32)
         .mouse-x old-mouse-x
         .mouse-y old-mouse-y
         .mouse-trail mouse-trail
         )
-    [|mouse-moved .x new-mouse-x .y new-mouse-y] (
+    ['mouse-moved .x new-mouse-x .y new-mouse-y] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail]
         ^mouse-trail-origin
         ?
@@ -104,7 +104,7 @@ fn Update
         .mouse-trail (
             Origin-erase
             Mouse-trail-origin-isolate
-            .buf mouse-trail .span |yes{|no .} mouse-trail-span
+            .buf mouse-trail .span 'yes{'no .} mouse-trail-span
             )
         )
 
@@ -123,7 +123,7 @@ fn View
     .chars Buf (Origin _view, .char .), char
     =
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail]
-    ? .buf chars .span |no{Opt Span Origin _view, .char .} . [text]
+    ? .buf chars .span 'no{Opt Span Origin _view, .char .} . [text]
     ? Buf-char-opt-span-add-str .. text .new "your mouse is at .x " str [text]
     ? U32-dup mouse-x [.a mouse-x .b mouse-x-use]
     ? Buf-char-span-add-u32 .. text .new mouse-x-use [text]
@@ -134,25 +134,25 @@ fn View
         Buf-add-array
         .buf htmls
         .new
-            ; |text-dynamic{Html _view} |yes{|no .} text-span
-            ; |text-static{Html _view} "hello" str
+            ; 'text-dynamic{Html _view} 'yes{'no .} text-span
+            ; 'text-static{Html _view} "hello" str
     [.buf htmls .span div-subs]
     ?
         Buf-add-array
         .buf modifiers
         .new
-            ; |style-static{Modifier event, _view} .key "height" str .value "100vh" str
-            ; |style-static{Modifier event, _view} .key "width" str .value "100vw" str
+            ; 'style-static{Modifier event, _view} .key "height" str .value "100vh" str
+            ; 'style-static{Modifier event, _view} .key "width" str .value "100vw" str
             ;
-                |on-mouse-move{Modifier event, _view}
-                [mouse-position .x u32 .y u32] |mouse-moved{event} mouse-position
+                'on-mouse-move{Modifier event, _view}
+                [mouse-position .x u32 .y u32] 'mouse-moved{event} mouse-position
     [.buf modifiers .span main-modifiers]
     .state (.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail)
     .html (
-        |element{Html _view}
+        'element{Html _view}
         .tag "main" str
-        .modifiers |yes{|no .} main-modifiers
-        .subs |yes{|no .} div-subs
+        .modifiers 'yes{'no .} main-modifiers
+        .subs 'yes{'no .} div-subs
         )
     .htmls htmls
     .modifiers modifiers
@@ -160,23 +160,23 @@ fn View
 
 ty Html _view
     # for namespace, use xmlns attribute
-    |element
+    'element
         .tag str
         .modifiers (Opt Span Origin _view, .modifier .)
         .subs (Opt Span Origin _view, .html .)
-    |text-dynamic Opt Span Origin _view, .char .
-    |text-static str
+    'text-dynamic Opt Span Origin _view, .char .
+    'text-static str
 
 ty Modifier _event, _view
-    |style-static .key str .value str
-    |style-dynamic .key str .value (Opt Span Origin _view, .char .)
-    |attribute-static .key str .value str
-    |attribute-dynamic .key str .value (Opt Span Origin _view, .char .)
-    |property .key str .value (Modifier-property-value Origin _view, .char .)
-    |on-mouse-move Fn .x u32 .y u32, _event
+    'style-static .key str .value str
+    'style-dynamic .key str .value (Opt Span Origin _view, .char .)
+    'attribute-static .key str .value str
+    'attribute-dynamic .key str .value (Opt Span Origin _view, .char .)
+    'property .key str .value (Modifier-property-value Origin _view, .char .)
+    'on-mouse-move Fn .x u32 .y u32, _event
 
 ty Modifier-property-value _chars
-    |true .
-    |false .
-    |int i32
-    |string Opt Span _chars
+    'true .
+    'false .
+    'int i32
+    'string Opt Span _chars

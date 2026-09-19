@@ -155,25 +155,22 @@ export default grammar({
         $.expression_not_open_ending_in_array,
       ),
     expression_variant: ($) =>
-      seq("|", $.variant_name, $.braced_type_argument, $.expression),
+      seq($.variant_name_including_bar, $.braced_type_argument, $.expression),
     expression_variant_not_open_ending_in_query: ($) =>
       seq(
-        "|",
-        $.variant_name,
+        $.variant_name_including_bar,
         $.braced_type_argument,
         $.expression_not_open_ending_in_query,
       ),
     expression_variant_not_open_ending_in_record: ($) =>
       seq(
-        "|",
-        $.variant_name,
+        $.variant_name_including_bar,
         $.braced_type_argument,
         $.expression_not_open_ending_in_record,
       ),
     expression_variant_not_open_ending_in_array: ($) =>
       seq(
-        "|",
-        $.variant_name,
+        $.variant_name_including_bar,
         $.braced_type_argument,
         $.expression_not_open_ending_in_array,
       ),
@@ -461,8 +458,7 @@ export default grammar({
     string: ($) => $.string_quoted,
     string_quoted: ($) => seq('"', repeat(choice("\\\\", '\\"', /[^"]/)), '"'),
     number: ($) => /-?\+?\d+\.?\d*/,
-    variant_name_including_bar: ($) => /\|[a-z][a-zA-Z0-9-]*/,
-    variant_name: ($) => $.lower_name,
+    variant_name_including_bar: ($) => /\'[a-z][a-zA-Z0-9-]*/,
     field_name: ($) => /\.[a-z][a-zA-Z0-9-]*/,
     upper_name: ($) => /[A-Z][a-zA-Z0-9-]*/,
     lower_name: ($) => /[a-z][a-zA-Z0-9-]*/,

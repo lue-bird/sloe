@@ -38,7 +38,7 @@ pub fn record(@"%struct_value": anytype) Record(@TypeOf(@"%struct_value")) {
 }
 
 // If you're wondering about the strange names:
-// - @"|variant_a|variant_b": since zig removed
+// - @"'variant_a'variant_b": since zig removed
 //   support for proper anonymous union(enum)s,
 //   this workaround is necessary to make zig believe they all belong to the same type
 // - @"%Type" for type variables to not overlap with existing type names
@@ -50,21 +50,19 @@ pub fn record(@"%struct_value": anytype) Record(@TypeOf(@"%struct_value")) {
 // When writing core declarations, this is a little error prone. It is what it is
 
 // TODO do the same for structural tagged unions as for records
-pub fn @"|contained|overflowed"(@"%Contained": type, @"%Overflowed": type) type {
-    return union(enum) { contained: @"%Contained", overflowed: @"%Overflowed" };
-}
-pub fn @"|no|yes"(@"%No": type, @"%Yes": type) type {
+pub fn @"'no'yes"(@"%No": type, @"%Yes": type) type {
     return union(enum) { no: @"%No", yes: @"%Yes" };
 }
-pub fn @"|down|up"(@"%Down": type, @"%Up": type) type {
+pub fn @"'down'up"(@"%Down": type, @"%Up": type) type {
     return union(enum) { down: @"%Down", up: @"%Up" };
 }
-pub fn @"|equal|greater|less"(@"%Equal": type, @"%Greater": type, @"%Less": type) type {
+pub fn @"'equal'greater'less"(@"%Equal": type, @"%Greater": type, @"%Less": type) type {
     return union(enum) { equal: @"%Equal", greater: @"%Greater", less: @"%Less" };
 }
-pub fn @"|done|going"(@"%Done": type, @"%Going": type) type {
+pub fn @"'done'going"(@"%Done": type, @"%Going": type) type {
     return union(enum) { done: @"%Done", going: @"%Going" };
 }
+/// Equivalent to ' in sloe.
 /// would preferably be noreturn but it isn't allowed in parameters for some reason
 pub const Choice = enum {};
 
@@ -169,9 +167,9 @@ pub fn Fn(@"%In": type, @"%Out": type) type {
     return *const fn (@"%allocator": std.mem.Allocator, @"%In") error{OutOfMemory}!@"%Out";
 }
 pub const Order =
-    @"|equal|greater|less"(void, void, void);
+    @"'equal'greater'less"(void, void, void);
 pub fn Opt(@"%Yes": type) type {
-    return @"|no|yes"(void, @"%Yes");
+    return @"'no'yes"(void, @"%Yes");
 }
 
 fn strideOf(@"%Item": type) comptime_int {
@@ -333,7 +331,7 @@ pub fn Span(@"%Origin": type) type {
         pub fn step(
             @"%span": Span(@"%Origin"),
             @"%allocator": std.mem.Allocator,
-            @"%direction": @"|down|up"(void, void),
+            @"%direction": @"'down'up"(void, void),
             @"%initial_state": anytype,
             @"%step": Fn(Record(struct { slot: Slot(@"%Origin"), state: @TypeOf(@"%initial_state") }), @TypeOf(@"%initial_state")),
         ) error{OutOfMemory}!@TypeOf(@"%initial_state") {
@@ -365,13 +363,13 @@ pub fn Span(@"%Origin": type) type {
             @"%span": Span(@"%Origin"),
             @"%Done": type,
             @"%allocator": std.mem.Allocator,
-            @"%direction": @"|down|up"(void, void),
+            @"%direction": @"'down'up"(void, void),
             @"%initial_state": anytype,
             @"%step": Fn(
                 Record(struct { slot: Slot(@"%Origin"), state: @TypeOf(@"%initial_state") }),
-                @"|done|going"(@"%Done", @TypeOf(@"%initial_state")),
+                @"'done'going"(@"%Done", @TypeOf(@"%initial_state")),
             ),
-        ) error{OutOfMemory}!@"|done|going"(
+        ) error{OutOfMemory}!@"'done'going"(
             Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
             @TypeOf(@"%initial_state"),
         ) {
@@ -1474,7 +1472,7 @@ pub fn opt_span_step(
     @"%State": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
-        direction: @"|down|up"(void, void),
+        direction: @"'down'up"(void, void),
         span: Opt(Span(@"%Origin")),
         state: @"%State",
         step: Fn(Record(struct { slot: Slot(@"%Origin"), state: @"%State" }), @"%State"),
@@ -1490,7 +1488,7 @@ pub fn span_step(
     @"%State": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
-        direction: @"|down|up"(void, void),
+        direction: @"'down'up"(void, void),
         span: Span(@"%Origin"),
         state: @"%State",
         step: Fn(Record(struct { slot: Slot(@"%Origin"), state: @"%State" }), @"%State"),
@@ -1498,10 +1496,10 @@ pub fn span_step(
 ) error{OutOfMemory}!@"%State" {
     return @"%".span.step(@"%allocator", @"%".direction, @"%".state, @"%".step);
 }
-pub fn done(@"%Done": type, @"%Going": type, @"%done": @"%Done") @"|done|going"(@"%Done", @"%Going") {
+pub fn done(@"%Done": type, @"%Going": type, @"%done": @"%Done") @"'done'going"(@"%Done", @"%Going") {
     return .{ .done = @"%done" };
 }
-pub fn going(@"%Done": type, @"%Going": type, @"%going": @"%Going") @"|done|going"(@"%Done", @"%Going") {
+pub fn going(@"%Done": type, @"%Going": type, @"%going": @"%Going") @"'done'going"(@"%Done", @"%Going") {
     return .{ .going = @"%going" };
 }
 pub fn opt_span_step_while(
@@ -1510,15 +1508,15 @@ pub fn opt_span_step_while(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
-        direction: @"|down|up"(void, void),
+        direction: @"'down'up"(void, void),
         span: Opt(Span(@"%Origin")),
         state: @"%Going",
         step: Fn(
             Record(struct { slot: Slot(@"%Origin"), state: @"%Going" }),
-            @"|done|going"(@"%Done", @"%Going"),
+            @"'done'going"(@"%Done", @"%Going"),
         ),
     }),
-) error{OutOfMemory}!@"|done|going"(
+) error{OutOfMemory}!@"'done'going"(
     Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
     @"%Going",
 ) {
@@ -1533,15 +1531,15 @@ pub fn span_step_while(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
-        direction: @"|down|up"(void, void),
+        direction: @"'down'up"(void, void),
         span: Span(@"%Origin"),
         state: @"%Going",
         step: Fn(
             Record(struct { slot: Slot(@"%Origin"), state: @"%Going" }),
-            @"|done|going"(@"%Done", @"%Going"),
+            @"'done'going"(@"%Done", @"%Going"),
         ),
     }),
-) error{OutOfMemory}!@"|done|going"(
+) error{OutOfMemory}!@"'done'going"(
     Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
     @"%Going",
 ) {
