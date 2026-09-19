@@ -15061,12 +15061,10 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                         );
                     }
                 }
-
-                formatted.push('=');
                 if let Some(documentation) = documentation {
-                    linebreak_indented_into(&mut formatted, next_indent(0));
                     syntax_comments_format(&mut formatted, next_indent(0), documentation);
                 }
+                formatted.push('=');
                 linebreak_indented_into(&mut formatted, next_indent(0));
                 if let Some(result) = result {
                     syntax_expression_unparenthesized_format(
