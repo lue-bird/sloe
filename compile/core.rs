@@ -451,42 +451,44 @@ pub struct Span<LocalOrigin> {
 
 pub struct Array<Item, Record> {
     pub record: Record,
-    // It would be great if we could find a _safe_ way to as directly as possible iterate the array.
-    // Various helpers like getting the size and dup-ing would aso be nice
-    // but are to be avoided if they come at a memory cost.
-    // The problem is that
-    // - providing fold is impossible because for<State> fn is not allowed
-    // - providing for_each is impossible because fn(impl FnMut) is not allowed
-    // - there is no such thing as an "owned stack-allocated dynamic-size slice" in rust
-    //
-    // A solution would be using
-    // pub as_slice: fn(&mut Record) -> &mut [Item]
-    // but this relies (!) on both
-    //   - callers to use unsafe to extract owned items
-    //   - array creation to use unsafe (and rely on field order despite not using repr(C))
-    //
-    // Another "solution" would be to just give up and use `Box<[Item]>`
-    // or add a fn that returns Box<dyn Iterator> or similar
-    // and hope the optimizer converts heap into stack alloction. (naw man, that ain't it)
-    //
-    // We could even use somthing like SmallVec as e.g.
-    // `size: P32, on_stack: [Item;8], remaining: Option<Box<[Item]>>`
-    // quite thick, and probably no faster than full-on heap :(
-    // (using this when we actually know the exact size also feels bad)
-    //
-    // So for now, use-cases are "embarassingly hardcoded".
-    // This solution is restrictive and thus very unsatisfying but at least it works.
-    // Maybe there are nicer hardcoded primitives, though
-    // (e.g. writing into a given &mut [MaybeUninit]?,
-    // or fn at(index: u32, &mut Record) -> Option<&mut Item>
-    // which requires unsafe at call-site for ownership and is probably slower?)
-    // Help!
-    //
-    // Why this weird function signature?
-    // To enable operations like Vec::add_array to return a Span instead of an Opt<Span>.
-    // We could panic or uncheck that case but then buggy Array instances could blow everything up.
-    // Originally I split .record into .before and .last but it felt confusing
-    // in sloe code that the specified record had 1 field less than actual items
+    /// Warning: API might be changed in the future; do not rely on it if you can.
+    ///
+    /// It would be great if we could find a _safe_ way to as directly as possible iterate the array.
+    /// Various helpers like getting the size and dup-ing would aso be nice
+    /// but are to be avoided if they come at a memory cost.
+    /// The problem is that
+    /// - providing fold is impossible because for<State> fn is not allowed
+    /// - providing for_each is impossible because fn(impl FnMut) is not allowed
+    /// - there is no such thing as an "owned stack-allocated dynamic-size slice" in rust
+    ///
+    /// A solution would be using
+    /// pub as_slice: fn(&mut Record) -> &mut [Item]
+    /// but this relies (!) on both
+    ///   - callers to use unsafe to extract owned items
+    ///   - array creation to use unsafe (and rely on field order despite not using repr(C))
+    ///
+    /// Another "solution" would be to just give up and use `Box<[Item]>`
+    /// or add a fn that returns Box<dyn Iterator> or similar
+    /// and hope the optimizer converts heap into stack alloction. (naw man, that ain't it)
+    ///
+    /// We could even use somthing like SmallVec as e.g.
+    /// `size: P32, on_stack: [Item;8], remaining: Option<Box<[Item]>>`
+    /// quite thick, and probably no faster than full-on heap :(
+    /// (using this when we actually know the exact size also feels bad)
+    ///
+    /// So for now, use-cases are "embarassingly hardcoded".
+    /// This solution is restrictive and thus very unsatisfying but at least it works.
+    /// Maybe there are nicer hardcoded primitives, though
+    /// (e.g. writing into a given &mut [MaybeUninit]?,
+    /// or fn at(index: u32, &mut Record) -> Option<&mut Item>
+    /// which requires unsafe at call-site for ownership and is probably slower?)
+    /// Help!
+    ///
+    /// Why this weird function signature?
+    /// To enable operations like Vec::add_array to return a Span instead of an Opt<Span>.
+    /// We could panic or uncheck that case but then buggy Array instances could blow everything up.
+    /// Originally I split .record into .before and .last but it felt confusing
+    /// in sloe code that the specified record had 1 field less than actual items
     pub split_last_and_extend_vec_with_before:
         fn(&mut std::vec::Vec<std::option::Option<Item>>, Record) -> Item,
 }

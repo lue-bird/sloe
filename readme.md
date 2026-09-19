@@ -7,9 +7,9 @@ Hello, world!
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? Buf-char-add-str .buf buf .new "Hello, " [string]
+    ? Buf-char-add-str .buf buf .new "Hello, " str [string]
     ? Buf-char-span-add-str .. string .new name [string]
-    Buf-span-add .. string .new '!'
+    Buf-span-add .. string .new "!" char
 ```
 A `Greet` function taking a name and a buffer to append the greeting to.
 It appends the name and other strings to the chars to form and return a message span.
@@ -167,7 +167,7 @@ fn State-to-interfaces-into
     ? (
         Buf-one
         .origin interfaces-origin
-        .item |console-log{Interface State _expressions-origin} "hello"
+        .item |console-log{Interface State _expressions-origin} "hello" str
         )
     [.slot slot .buf interfaces]
     ...
@@ -197,10 +197,10 @@ For most other functions, it's more common to pass in an existing collection tha
 3.2 f32
 
 # text of type str
-"hello"
+"hello" str
 
 # unicode scalar of type char
-'a'
+"a" char
 
 # most identifiers
 variable-or-field-or-variant-or-type-without-parameters-2012
@@ -376,6 +376,10 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - number types, vector/array types etc. are very underbaked in sloe.
   I need more real-world experience for their uses.
   Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
+- even simple things often require a slog of things to type. That sucks the fun out of programming and slows you down for no apparent reason.
+  Having a bunch of same-looking code also makes it harder to spot actually interesting or bugged parts, cancelling out many of the supposed benefits of linear types :(
+  
+  I'm not blind to this feeling! Do you have ideas of how this could be fixed in parts?
 
 # potential improvements in the future
 - IDE type and type diff error displays suck ass, mostly due to indentation being stripped. But markdown support seems to still be ways off for most editors for some reason. Anyone know a solution?
@@ -432,8 +436,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   ```
   This is likely the better option anyway (even though it "hops twice")
   as it makes searching for the right span possible (and reasonably fast)
-- introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`.
-  remove `'c'` syntax in favor of `"c" char/ascii`
+- introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`
 - add ascii operations like
   ```sloe
   fn Char-if-ascii-to-lower char : char
@@ -737,10 +740,16 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
+- fix bug where formating unrecognized range can multiply declarations around it
+
+- strongly consider changing variant symbol from | to ' or \`.
+  It's less intrusive, improves readability and frees up `|` to be used as an or pattern prefix.
+  
+  - do indent type arguments and local function pattern
+
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful.
-  ""
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
@@ -758,8 +767,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
       Origin-erased _value-erased-new
   ```
   If currently uneraser API is here to stay, remove Origin-erased-rid. It can't really be made useful
-
-- fix bug where formating unrecognized range can duplicate the following declaration
 
 - drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
 

@@ -58,8 +58,7 @@ export default grammar({
         $.expression_parenthesized,
         $.expression_commented,
         $.expression_number,
-        $.string,
-        $.char,
+        $.expression_text,
         $.expression_variable,
         $.expression_record_empty,
         $.expression_call,
@@ -73,8 +72,7 @@ export default grammar({
     expression_not_open_ending_in_query: ($) =>
       choice(
         $.expression_parenthesized,
-        $.string,
-        $.char,
+        $.expression_text,
         $.expression_variable,
         $.expression_record_empty,
         $.expression_call_not_open_ending_in_query,
@@ -89,8 +87,7 @@ export default grammar({
     expression_not_open_ending_in_record: ($) =>
       choice(
         $.expression_parenthesized,
-        $.string,
-        $.char,
+        $.expression_text_not_open_ending_in_record,
         $.expression_variable,
         $.expression_record_empty,
         $.expression_call_not_open_ending_in_record,
@@ -104,8 +101,7 @@ export default grammar({
     expression_not_open_ending_in_array: ($) =>
       choice(
         $.expression_parenthesized,
-        $.string,
-        $.char,
+        $.expression_text,
         $.expression_variable,
         $.expression_record_empty,
         $.expression_call_not_open_ending_in_array,
@@ -132,6 +128,9 @@ export default grammar({
     expression_number: ($) => seq($.number, $.type),
     expression_number_not_open_ending_in_record: ($) =>
       seq($.number, $.type_not_open_ending_in_record),
+    expression_text: ($) => seq($.string, $.type),
+    expression_text_not_open_ending_in_record: ($) =>
+      seq($.string, $.type_not_open_ending_in_record),
     expression_origin: ($) =>
       seq($.key_symbol_origin, repeat($.field_name), $.expression_variable, $.expression),
     expression_origin_not_open_ending_in_query: ($) =>
@@ -459,7 +458,6 @@ export default grammar({
     type_without_arguments: ($) => $.lower_name,
     type_with_arguments_name: ($) => $.upper_name,
 
-    char: ($) => seq("'", choice("\\\\", "\\'", /[^']/), "'"),
     string: ($) => $.string_quoted,
     string_quoted: ($) => seq('"', repeat(choice("\\\\", '\\"', /[^"]/)), '"'),
     number: ($) => /-?\+?\d+\.?\d*/,

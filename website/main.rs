@@ -781,14 +781,14 @@ fn Hi
     .buf Buf (Origin _origin, _part), char
     .span Span Origin _origin, _part
     =
-    Greet .name "world" .buf Buf-empty{char} origin
+    Greet .name "world" str .buf Buf-empty{char} origin
 
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? Buf-char-add-str .buf buf .new "Hello, " [string]
+    ? Buf-char-add-str .buf buf .new "Hello, " str [string]
     ? Buf-char-span-add-str .. string .new name [string]
-    Buf-char-span-add-str .. string .new "!\n"
+    Buf-span-add .. string .new "!" char
 "#,
             explainer: "What a mouthful!
 We declare a Greet function which takes a name string and a buffer to add the message to.
@@ -799,10 +799,10 @@ For more details, click through the examples above and try changing things.",
             name: "declare a function",
             source: r#"
 fn Your-project-function-name . : str =
-    "Yahallo there, cutie"
+    "Yahallo there, cutie" str
 "#,
             explainer: "Add a new function to your project by choosing an uppercase name consisting of a-z, A-Z, 0-9 or - after `fn` at the start of a line,
-followed by its typed parameter pattern, a :, the result type, an =, the resulting expression (for example \":)\").
+followed by its typed parameter pattern, a :, the result type, an =, the resulting expression (for example \":)\" str).
 sloe also has \"core\" functions like I32-add-clamp that any project can reference.
 To see the full list, scroll down or search the site for #some-name-to-search-for.",
         },
@@ -831,18 +831,17 @@ fn Positive-integer . : p32 = 2 p32
         Example::Text => ExampleInfo {
             name: "text",
             source: r#"
-fn Single-character . : char = 'a'
-fn Escaped-quote . : char = '\''
-fn Escaped-backslash . : char = '\\'
-fn Escaped-tab . : char = '\t'
-fn Escaped-linebreak . : char = '\n'
-fn Escaped-carriage-return . : char = '\r'
-fn By-code-point-hex . : char = '\u{1F648}'
+fn Single-character . : char = "a" char
+fn Escaped-quote . : char = "\'" char'
+fn Escaped-backslash . : char = "\\" char
+fn Escaped-tab . : char = "\t" char
+fn Escaped-linebreak . : char = "\n" char
+fn By-code-point-hex . : char = "\(1F648)" char
 
-fn Cat . : str = "₍^. .^₎⟆"
-fn Escaped-double-quote . : str = "\"hello\""
+fn Cat . : str = "₍^. .^₎⟆" str
+fn Escaped-double-quote . : str = "\"hello\"" str
 fn Strings-have-at-least-1-char . : .start char .after Opt str =
-    Str-start "Hello"
+    Str-start "Hello" str
 "#,
             explainer: "single characters (of type char) are wrapped in '...', non-empty strings (of type str) are wrapped in \"...\".
 String builders and string slices use entirely different types, str refers to static memory",
@@ -966,8 +965,8 @@ ty color .r u32 .g u32 .b u32
 ty position .x f32 .y f32
 
 fn Default-config . : config =
-    .line-separator "\r\n"
-    .item-separator ";"
+    .line-separator "\r\n" str
+    .item-separator ";" str
     .version 2 p32
 
 ty config

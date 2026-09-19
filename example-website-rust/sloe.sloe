@@ -124,10 +124,10 @@ fn View
     =
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail]
     ? .buf chars .span |no{Opt Span Origin _view, .char .} . [text]
-    ? Buf-char-opt-span-add-str .. text .new "your mouse is at .x " [text]
+    ? Buf-char-opt-span-add-str .. text .new "your mouse is at .x " str [text]
     ? U32-dup mouse-x [.a mouse-x .b mouse-x-use]
     ? Buf-char-span-add-u32 .. text .new mouse-x-use [text]
-    ? Buf-char-span-add-str .. text .new " .y " [text]
+    ? Buf-char-span-add-str .. text .new " .y " str [text]
     ? U32-dup mouse-y [.a mouse-y .b mouse-y-use]
     ? Buf-char-span-add-u32 .. text .new mouse-y-use [.buf chars .span text-span]
     ?
@@ -135,14 +135,14 @@ fn View
         .buf htmls
         .new
             ; |text-dynamic{Html _view} |yes{|no .} text-span
-            ; |text-static{Html _view} "hello"
+            ; |text-static{Html _view} "hello" str
     [.buf htmls .span div-subs]
     ?
         Buf-add-array
         .buf modifiers
         .new
-            ; |style-static{Modifier event, _view} .key "height" .value "100vh"
-            ; |style-static{Modifier event, _view} .key "width" .value "100vw"
+            ; |style-static{Modifier event, _view} .key "height" str .value "100vh" str
+            ; |style-static{Modifier event, _view} .key "width" str .value "100vw" str
             ;
                 |on-mouse-move{Modifier event, _view}
                 [mouse-position .x u32 .y u32] |mouse-moved{event} mouse-position
@@ -150,7 +150,7 @@ fn View
     .state (.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail)
     .html (
         |element{Html _view}
-        .tag "main"
+        .tag "main" str
         .modifiers |yes{|no .} main-modifiers
         .subs |yes{|no .} div-subs
         )

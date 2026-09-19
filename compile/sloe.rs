@@ -154,17 +154,12 @@ pub enum SyntaxExpression<Expressions, Patterns, Types> {
         value: WithStartPosition<Box<str>>,
         type_: Option<SyntaxType<Types>>,
     },
-    Char {
-        open_quote_start: lsp_types::Position,
-        content: Option<char>,
-        content_end: lsp_types::Position, // consider storing the content length
-        closed_quote_exists: bool,
-    },
-    Str {
+    Text {
         open_quote_start: lsp_types::Position,
         content: Box<str>,
         content_end: lsp_types::Position, // consider storing the content length
         closed_quote_exists: bool,
+        type_: Option<SyntaxType<Types>>,
     },
     Variable(WithStartPosition<Name>),
     Call {
@@ -724,17 +719,12 @@ pub fn expression_start<Expressions, Patterns, Types>(
 ) -> lsp_types::Position {
     match expression {
         SyntaxExpression::Number { value, type_: _ } => value.start,
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start,
             content: _,
             content_end: _,
             closed_quote_exists: _,
-        } => *open_quote_start,
-        SyntaxExpression::Str {
-            open_quote_start,
-            content: _,
-            content_end: _,
-            closed_quote_exists: _,
+            type_: _,
         } => *open_quote_start,
         SyntaxExpression::Variable(name) => name.start,
         SyntaxExpression::Call {
@@ -805,30 +795,22 @@ pub fn expression_end<Expressions, Patterns, Types>(
             .as_ref()
             .map(|type_| type_end(type_, types))
             .unwrap_or_else(|| position_add_characters(value.start, value.value.len() as u32)),
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start: _,
             content: _,
             content_end,
             closed_quote_exists,
-        } => {
-            if *closed_quote_exists {
-                symbol_end(*content_end, "'")
-            } else {
-                *content_end
-            }
-        }
-        SyntaxExpression::Str {
-            open_quote_start: _,
-            content: _,
-            content_end,
-            closed_quote_exists,
-        } => {
-            if *closed_quote_exists {
-                symbol_end(*content_end, "\"")
-            } else {
-                *content_end
-            }
-        }
+            type_,
+        } => type_
+            .as_ref()
+            .map(|type_| type_end(type_, types))
+            .unwrap_or_else(|| {
+                if *closed_quote_exists {
+                    symbol_end(*content_end, "\"")
+                } else {
+                    *content_end
+                }
+            }),
         SyntaxExpression::Variable(name) => name_end(with_start_position_as_ref(name)),
         SyntaxExpression::Call {
             name,
@@ -1918,8 +1900,7 @@ pub fn parse_expression<Expressions, Patterns, Types>(
     types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
     parse_expression_number(state, types)
-        .or_else(|| parse_expression_char(state))
-        .or_else(|| parse_expression_str(state))
+        .or_else(|| parse_expression_str(state, types))
         .or_else(|| parse_expression_fn(state, expressions, patterns, types))
         .or_else(|| parse_expression_origin(state, expressions, patterns, types))
         .or_else(|| parse_expression_variable(state))
@@ -2046,24 +2027,21 @@ fn parse_expression_number<Expressions, Patterns, Types>(
         type_: type_,
     })
 }
-fn parse_expression_char<Expressions, Patterns, Types>(
-    state: &mut ParseState,
-) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    parse_char(state).map(|str| SyntaxExpression::Char {
-        open_quote_start: str.open_quote_start,
-        content: str.content,
-        content_end: str.content_end,
-        closed_quote_exists: str.closed_quote_exists,
-    })
-}
 fn parse_expression_str<Expressions, Patterns, Types>(
     state: &mut ParseState,
+    types: &mut core::Buf<Types, SyntaxType<Types>>,
 ) -> Option<SyntaxExpression<Expressions, Patterns, Types>> {
-    parse_str(state).map(|str| SyntaxExpression::Str {
+    let Some(str) = parse_str(state) else {
+        return None;
+    };
+    parse_sloe_whitespace(state);
+    let type_ = parse_type(state, types);
+    Some(SyntaxExpression::Text {
         open_quote_start: str.open_quote_start,
         content: str.content.into_boxed_str(),
         content_end: str.content_end,
         closed_quote_exists: str.closed_quote_exists,
+        type_: type_,
     })
 }
 fn parse_number<'a>(state: &mut ParseState<'a>) -> Option<&'a str> {
@@ -2081,32 +2059,6 @@ fn parse_number<'a>(state: &mut ParseState<'a>) -> Option<&'a str> {
         parse_same_line_while(state, |c| c.is_ascii_digit());
     }
     Some(&state.source[start_offset_utf8..state.offset_utf8])
-}
-struct SyntaxChar {
-    open_quote_start: lsp_types::Position,
-    content: Option<char>,
-    content_end: lsp_types::Position,
-    closed_quote_exists: bool,
-}
-fn parse_char(state: &mut ParseState) -> Option<SyntaxChar> {
-    let Some(open_quote_start) = parse_symbol_as_start(state, "'") else {
-        return None;
-    };
-    let content = parse_text_content_char(state);
-    match parse_symbol_as_start(state, "'") {
-        Some(closed_quote_start) => Some(SyntaxChar {
-            open_quote_start: open_quote_start,
-            content: content,
-            content_end: closed_quote_start,
-            closed_quote_exists: true,
-        }),
-        None => Some(SyntaxChar {
-            open_quote_start: open_quote_start,
-            content: content,
-            content_end: state.position,
-            closed_quote_exists: false,
-        }),
-    }
 }
 struct SyntaxStr {
     open_quote_start: lsp_types::Position,
@@ -2923,8 +2875,7 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
 ) {
     match expression {
         SyntaxExpression::Number { .. } => {}
-        SyntaxExpression::Char { .. } => {}
-        SyntaxExpression::Str { .. } => {}
+        SyntaxExpression::Text { .. } => {}
         SyntaxExpression::Variable(_) => {}
         SyntaxExpression::Call {
             name,
@@ -6279,42 +6230,39 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 _ => zig_incomplete_expression(output),
             }
         }
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start: _,
             content,
             content_end: _,
             closed_quote_exists: _,
+            type_,
         } => {
             if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
                 zig_break_start(output, label);
             }
-            let Some(content) = content else {
-                zig_incomplete_expression(output);
-                return;
-            };
-            output.push_str("@as(Char, '");
-            output.extend(content.escape_debug());
-            output.push_str("\')");
-            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
-                zig_break_end(output);
+            if let Some(type_) = type_
+                && let Some(type_) = syntax_type_to_type(type_, type_aliases, types, origins)
+                && let Type::CoreConstruct { name, arguments: _ } = type_
+                && name == "char"
+            {
+                let Some(content) = content.chars().next() else {
+                    zig_incomplete_expression(output);
+                    return;
+                };
+                output.push_str("@as(Char, '");
+                output.extend(content.escape_debug());
+                output.push_str("\')");
+            } else {
+                if content.is_empty() {
+                    zig_incomplete_expression(output);
+                    return;
+                };
+                // improvement possibility: use direct construction instead
+                // to avoid needless compile-time checks in zig
+                output.push_str("Str.fromComptime(\"");
+                output.extend(content.escape_debug());
+                output.push_str("\")");
             }
-        }
-        SyntaxExpression::Str {
-            open_quote_start: _,
-            content,
-            content_end: _,
-            closed_quote_exists: _,
-        } => {
-            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
-                zig_break_start(output, label);
-            }
-            if content.is_empty() {
-                zig_incomplete_expression(output);
-                return;
-            };
-            output.push_str("Str.fromComptime(\"");
-            output.extend(content.escape_debug());
-            output.push_str("\")");
             if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
                 zig_break_end(output);
             }
@@ -7793,26 +7741,12 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 _ => js_incomplete_statement(),
             }
         }
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start: _,
             content,
             content_end: _,
             closed_quote_exists: _,
-        } => {
-            let Some(content) = content else {
-                js_incomplete_statement();
-                return;
-            };
-            js_scope_result_variable(output, scope_start);
-            output.push_str(" = \"");
-            output.extend(content.escape_debug());
-            output.push_str("\";\n");
-        }
-        SyntaxExpression::Str {
-            open_quote_start: _,
-            content,
-            content_end: _,
-            closed_quote_exists: _,
+            type_: _,
         } => {
             if content.is_empty() {
                 js_incomplete_statement();
@@ -8598,12 +8532,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                         },
                         _ => {
                             errors.push(ErrorNode {
-                            range: lsp_types::Range {
-                                start: value.start,
-                                end: position_add_characters(value.start, value.value.len() as u32),
-                            },
-                            message: Box::from("the type after this number is not a number type. The possible types are: p32 u32 i32 f32"),
-                        });
+                                range: lsp_types::Range {
+                                    start: value.start,
+                                    end: position_add_characters(value.start, value.value.len() as u32),
+                                },
+                                message: Box::from("the type after this number is not a number type. The possible types are: p32 u32 i32 f32"),
+                            });
                             None
                         }
                     },
@@ -8620,33 +8554,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                 }
             }
         },
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start,
             content,
             content_end,
             closed_quote_exists,
-        } => match *content {
-            None => {
-                errors.push(ErrorNode {
-                    range: lsp_types::Range {
-                        start: *open_quote_start,
-                        end: if *closed_quote_exists {
-                            symbol_end(*content_end, "'")
-                        } else {
-                            *content_end
-                        },
-                    },
-                    message: Box::from("missing character between single quotes 'here'"),
-                });
-                None
-            }
-            Some(_) => Some(type_char),
-        },
-        SyntaxExpression::Str {
-            open_quote_start,
-            content,
-            content_end,
-            closed_quote_exists,
+            type_,
         } => {
             if content.is_empty() {
                 errors.push(ErrorNode {
@@ -8658,10 +8571,11 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                             *content_end
                         },
                     },
-                    message: Box::from("missing characters between the double quotes \"here\". A `str` always needs at least one char, otherwise switch to an `Opt str`"),
+                    message: Box::from("missing characters between the double quotes \"here\". There always needs to be at least one char, otherwise wrap it in an `Opt`"),
                 });
-                None
-            } else if let Err(_) = u32::try_from(content.len()) {
+                return None;
+            }
+            if let Err(_) = u32::try_from(content.len()) {
                 errors.push(ErrorNode {
                     range: lsp_types::Range {
                         start: *open_quote_start,
@@ -8673,9 +8587,53 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     },
                     message: Box::from("too many characters between the double quotes \"here\". A `str` in sloe can only hold up to 2^32 bytes just like `Buf` for example. Sorry! Open an issue if this limitation is blocking you"),
                 });
-                None
-            } else {
-                Some(type_str)
+                return None;
+            }
+            let Some(syntax_type) = type_ else {
+                errors.push(ErrorNode {
+                    range: lsp_types::Range {
+                        start: *open_quote_start,
+                        end: if *closed_quote_exists {
+                            symbol_end(*content_end, "\"")
+                        } else {
+                            *content_end
+                        },
+                    },
+                    message: Box::from("missing type after this quoted text. To represent a single unicode scalar, add type char. To represent a string of characters, add type str. An example of a valid string is \"Diego Schissi\" str"),
+                });
+                return None;
+            };
+            let Some(type_) = syntax_type_to_type(syntax_type, type_aliases, types, origins) else {
+                return None;
+            };
+            match &type_ {
+                Type::CoreConstruct { name, arguments: _ } if name.as_str() == "str" => {
+                    Some(type_str)
+                }
+                Type::CoreConstruct { name, arguments: _ } if name.as_str() == "char" => {
+                    let mut chars = content.chars();
+                    if chars.nth(1).is_some() {
+                        errors.push(ErrorNode {
+                            range: lsp_types::Range {
+                                start: *open_quote_start,
+                                end: if *closed_quote_exists {
+                                    symbol_end(*content_end, "\"")
+                                } else {
+                                    *content_end
+                                },
+                            },
+                            message: Box::from("There are multiple unicode scalars in this quoted text which means they don't fit into one char. Note that visual units like 🦸🏽‍♂️ are actually composed of multiple (5!) unicode scalars and what you're looking for may instead be a grapheme cluster, best represented as a simple str"),
+                        });
+                    }
+                    Some(type_char)
+                }
+                _ => {
+                    errors.push(ErrorNode {
+                        range: type_range(syntax_type, types),
+                        message: Box::from("unexpected type after quoted text. The possible types are: str (for multiple characters) or char (for a single unicode scalar). Every quoted text needs to be followed by one of these"),
+                    });
+                    Some(type_str)
+                }
             }
         }
         SyntaxExpression::Variable(name) => {
@@ -9547,8 +9505,6 @@ If there should only ever by one variant, using a record with a single field is 
                     invalid_case_indexes.push(case_index);
                     continue 'checking_case1_up;
                 }
-                // TODO length of remaining_specific_pattern_catch_possibilities
-                // hasn't decreased, repor case as already handled by an earlier case
                 let Some(case_result) = &case.result else {
                     errors.push(ErrorNode {
                         range: case.closed_bracket_start.map(|closed_bracket_start| symbol_range(closed_bracket_start, "]")).unwrap_or_else(||pattern_range(case_pattern, patterns, types)),
@@ -10017,27 +9973,29 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 _ => syn_expr_todo(),
             }
         }
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start: _,
             content,
             content_end: _,
             closed_quote_exists: _,
-        } => match *content {
-            None => syn_expr_todo(),
-            Some(char) => syn::Expr::Lit(syn::ExprLit {
-                attrs: vec![],
-                lit: syn::Lit::Char(syn::LitChar::new(char, syn_span())),
-            }),
-        },
-        SyntaxExpression::Str {
-            open_quote_start: _,
-            content,
-            content_end: _,
-            closed_quote_exists: _,
+            type_,
         } => {
-            if content.is_empty() {
-                syn_expr_todo()
+            if let Some(type_) = type_
+                && let Some(type_) = syntax_type_to_type(type_, type_aliases, types, origins)
+                && let Type::CoreConstruct { name, arguments: _ } = type_
+                && name == "char"
+            {
+                let Some(char) = content.chars().next() else {
+                    return syn_expr_todo();
+                };
+                syn::Expr::Lit(syn::ExprLit {
+                    attrs: vec![],
+                    lit: syn::Lit::Char(syn::LitChar::new(char, syn_span())),
+                })
             } else {
+                if content.is_empty() {
+                    return syn_expr_todo();
+                }
                 syn::Expr::Struct(syn::ExprStruct {
                     attrs: vec![],
                     qself: None,
@@ -14385,12 +14343,12 @@ fn Answer . : f32 =
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    r#"A unicode scalar like `'a'` or `'👀'` or `'\(2665)'` (hex code for ♥).
+                    r#"A unicode scalar like `"a" char` or `"👀" char` or `"\(2665)" char` (hex code for ♥).
 Keep in mind that a human-readable visual symbol can be composed of multiple such unicode scalars (forming a grapheme cluster), For example:
 ```sloe
-Str-start "🇺🇸"
-# = |yes .start '\(1F1FA)' .after "\(1F1F8)"
-#                   Indicator U        Indicator S
+Str-start "🇺🇸" str
+# = |yes .start "\(1F1FA)" char .after "\(1F1F8)" str
+# Indicator U followed by Indicator S
 ```
 Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters)"#,
                 )),
@@ -14403,9 +14361,14 @@ Read if interested: [swift's grapheme cluster docs](https://docs.swift.org/swift
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    r#"A positive-length piece of a known text which is valid for the entire program,
-like `"abc"` or `"\"hello 👀 \\\r\n world \(2665)\""`
-(`\(2665)` represents the hex code for ♥, `\"` represents ", `\\` represents \\, `\n` represents line break, `\r` represents carriage return).
+                    r#"A positive-length slice of known text which is valid for the entire program,
+like `"abc" str` or `"\"hello 👀 \\\r\n world \(2665)\"" str`
+- `\(2665)` represents the hex code for special characters, here ♥
+- `\"` represents a double quote "
+- `\\` represents one backslash \
+- `\n` represents line break
+- `\r` represents carriage return
+
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
 When building new strings at runtime, use functions like `Buf-char-opt-span-add-str`."#,
                 )),
@@ -14916,7 +14879,7 @@ fn space_or_linebreak_indented_into(formatted: &mut String, line_span: LineSpan,
     }
 }
 fn next_indent(current_indent: usize) -> usize {
-    current_indent + 1
+    (current_indent + 1).next_multiple_of(4)
 }
 
 fn syntax_comments_format(formatted: &mut String, indent: usize, comments: &SyntaxComments) {
@@ -15136,31 +15099,6 @@ fn syntax_braced_type_parameter_format(
     formatted.push_str(&braced_type_parameter.name);
     formatted.push('}');
 }
-fn syntax_char_format(formatted: &mut String, maybe_char: Option<char>) {
-    match maybe_char {
-        None => {
-            formatted.push_str("''");
-        }
-        Some(char) => {
-            formatted.push('\'');
-            match char {
-                '\'' => formatted.push_str("\\'"),
-                '\\' => formatted.push_str("\\\\"),
-                '\t' => formatted.push_str("\\t"),
-                '\n' => formatted.push_str("\\n"),
-                '\r' => formatted.push_str("\\(000D)"),
-                other_character => {
-                    if char_needs_unicode_escaping(other_character) {
-                        unicode_char_escape_into(formatted, other_character);
-                    } else {
-                        formatted.push(other_character);
-                    }
-                }
-            }
-            formatted.push('\'');
-        }
-    }
-}
 fn char_needs_unicode_escaping(char: char) -> bool {
     char.is_control()
 }
@@ -15214,8 +15152,16 @@ fn syntax_expression_open_end<Expressions, Patterns, Types>(
             Some(type_) => syntax_type_open_end(type_, types),
             None => no_open_end_kinds,
         },
-        SyntaxExpression::Char { .. } => no_open_end_kinds,
-        SyntaxExpression::Str { .. } => no_open_end_kinds,
+        SyntaxExpression::Text {
+            open_quote_start: _,
+            content: _,
+            content_end: _,
+            closed_quote_exists: _,
+            type_,
+        } => match type_ {
+            Some(type_) => syntax_type_open_end(type_, types),
+            None => no_open_end_kinds,
+        },
         SyntaxExpression::Variable(_) => no_open_end_kinds,
         SyntaxExpression::Call {
             name: _,
@@ -15394,21 +15340,18 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 syntax_type_unparenthesized_format(formatted, next_indent(indent), types, type_);
             }
         }
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start: _,
             content,
             content_end: _,
             closed_quote_exists: _,
-        } => {
-            syntax_char_format(formatted, *content);
-        }
-        SyntaxExpression::Str {
-            open_quote_start: _,
-            content,
-            content_end: _,
-            closed_quote_exists: _,
+            type_,
         } => {
             syntax_string_format(formatted, content);
+            formatted.push(' ');
+            if let Some(type_) = type_ {
+                syntax_type_unparenthesized_format(formatted, next_indent(indent), types, type_);
+            }
         }
         SyntaxExpression::Variable(name) => {
             formatted.push_str(&name.value);
@@ -16824,8 +16767,15 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Number { value: _, type_ } => type_
             .as_ref()
             .and_then(|value| type_symbol_at_position(value, position, types, scope, origins)),
-        SyntaxExpression::Char { .. } => None,
-        SyntaxExpression::Str { .. } => None,
+        SyntaxExpression::Text {
+            open_quote_start: _,
+            content: _,
+            content_end: _,
+            closed_quote_exists: _,
+            type_,
+        } => type_
+            .as_ref()
+            .and_then(|value| type_symbol_at_position(value, position, types, scope, origins)),
         SyntaxExpression::Variable(name) => Some(match pattern_variables.remove(&name.value) {
             Some(pattern_variable) => SyntaxSymbol::PatternVariable {
                 name: &name.value,
@@ -18354,13 +18304,27 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
     origins: &std::collections::HashSet<&Name>,
 ) {
     match expression {
-        SyntaxExpression::Number { .. } => {}
-        SyntaxExpression::Char { .. } => {}
-        SyntaxExpression::Str { .. } => {}
+        SyntaxExpression::Number { value: _, type_ } => {
+            if let Some(type_) = type_ {
+                syntax_type_symbol_uses_into(uses, type_, symbol, types, origins);
+            }
+        }
+        SyntaxExpression::Text {
+            open_quote_start: _,
+            content: _,
+            content_end: _,
+            closed_quote_exists: _,
+            type_,
+        } => {
+            if let Some(type_) = type_ {
+                syntax_type_symbol_uses_into(uses, type_, symbol, types, origins);
+            }
+        }
         SyntaxExpression::Variable(name) => match symbol {
             SyntaxSymbol::TypeVariable { .. }
             | SyntaxSymbol::ProjectTypeOrUnknown { .. }
-            | SyntaxSymbol::VariantOrUnknown(_) => {}
+            | SyntaxSymbol::VariantOrUnknown(_)
+            | SyntaxSymbol::ProjectFnOrUnknown { .. } => {}
             SyntaxSymbol::Origin {
                 name: symbol_name,
                 use_start: _,
@@ -18371,16 +18335,6 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 name: symbol_name,
                 use_start: _,
                 origin: _,
-            }
-            | SyntaxSymbol::ProjectFnOrUnknown {
-                name:
-                    WithStartPosition {
-                        start: _,
-                        value: symbol_name,
-                    },
-                construct_info: _,
-                pattern_variables: _,
-                origins: _,
             } => {
                 if *symbol_name == &name.value
                     && !pattern_variables.contains(&name.value)
@@ -19195,11 +19149,12 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                 syntax_type_highlight(state, types, type_);
             }
         }
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start,
             content: _,
             content_end,
             closed_quote_exists,
+            type_,
         } => {
             highlight_state_add_token_with_start_and_length(
                 state,
@@ -19208,20 +19163,9 @@ fn syntax_expression_highlight<Expressions, Patterns, Types>(
                 (content_end.character - open_quote_start.character
                     + (if *closed_quote_exists { 1 } else { 0 })) as usize,
             );
-        }
-        SyntaxExpression::Str {
-            open_quote_start,
-            content: _,
-            content_end,
-            closed_quote_exists,
-        } => {
-            highlight_state_add_token_with_start_and_length(
-                state,
-                lsp_types::SemanticTokenTypes::String,
-                *open_quote_start,
-                (content_end.character - open_quote_start.character
-                    + (if *closed_quote_exists { 1 } else { 0 })) as usize,
-            );
+            if let Some(type_) = type_ {
+                syntax_type_highlight(state, types, type_);
+            }
         }
         SyntaxExpression::Variable(name) => {
             syntax_name_highlight(state, name, lsp_types::SemanticTokenTypes::Variable);
@@ -19876,18 +19820,17 @@ fn syntax_expression_rid<Expressions, Patterns, Types>(
                 syntax_type_rid(type_, types);
             }
         }
-        SyntaxExpression::Char {
+        SyntaxExpression::Text {
             open_quote_start: _,
             content: _,
             content_end: _,
             closed_quote_exists: _,
-        } => {}
-        SyntaxExpression::Str {
-            open_quote_start: _,
-            content: _,
-            content_end: _,
-            closed_quote_exists: _,
-        } => {}
+            type_,
+        } => {
+            if let Some(type_) = type_ {
+                syntax_type_rid(type_, types);
+            }
+        }
         SyntaxExpression::Variable(_) => {}
         SyntaxExpression::Call {
             name: _,

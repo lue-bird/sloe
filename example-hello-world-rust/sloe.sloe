@@ -2,6 +2,6 @@
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? Buf-char-add-str .buf buf .new "Hello, " [string]
+    ? Buf-char-add-str .buf buf .new "Hello, " str [string]
     ? Buf-char-span-add-str .. string .new name [string]
-    Buf-char-span-add-str .. string .new "!\n"
+    Buf-char-span-add-str .. string .new "!\n" str
