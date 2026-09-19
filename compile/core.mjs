@@ -1,7 +1,3 @@
-// - void is assumed to not be null
-// - null is assumed to not be undefined
-// as per https://www.typescriptlang.org/tsconfig/#strictNullChecks
-
 /** @typedef {number} P32 */
 /** @typedef {number} U32 */
 /** @typedef {number} I32 */
@@ -10,7 +6,7 @@
  * Assumed to contain exactly one codepoint
  */
 /** @typedef {string} Str
- * Assumed to contain at least one codepoint and at most U32$MAX bytes
+ * Assumed to contain at least one codepoint and at most 2^32-1 bytes
  */
 /** @template $In, $Out @typedef {(_: $In) => $Out} Fn */
 /** @template $Yes @typedef {{ yes: $Yes } | { no: void }} Opt */
@@ -20,9 +16,14 @@
 /** @template $Origin, $ValueErased @typedef {$ValueErased & { readonly origin_isolated?: $Origin }} Origin_isolated */
 /** @template $ValueErased @typedef {$ValueErased & { readonly origin_erased?: void }} Origin_erased */
 /** @template $Origin @typedef {{} & { readonly uneraser_origin?: $Origin }} Origin_uneraser */
-/** @template $Origin, $Item @typedef {($Item | null)[] & { readonly origin?: $Origin }} Buf */
+/** @type{Symbol}
+ * Originally this was simply set to null but this prevented values
+ * passed in from js (which can be null) to be handled correctly.
+ */
+const SYMBOL$UNSET = Symbol();
+/** @template $Origin, $Item @typedef {(SYMBOL$UNSET | $Item)[] & { readonly origin?: $Origin }} Buf */
 /** @template $Part, $Item @typedef {Buf<Origin<Erased, $Part>, $Item> & { readonly origin_erased?: void }} Buf_origin_erased */
-/** @template $Item @typedef {($Item | null)[]} Unset_slice
+/** @template $Item @typedef {(SYMBOL$UNSET | $Item)[]} Unset_slice
  * Assumed to contain an empty array (with spare capacity)
  */
 /** @template $Origin @typedef {U32 & { readonly origin?: $Origin }} Slot */
@@ -681,7 +682,9 @@ export function buf_pre_allocation_rid(buf) {
 }
 /** @template $Item, $Item_erased, $Origin, $Part @param {{ buf: Buf<Origin<$Origin, $Part>, $Item>, item_isolate: Fn<$Item, Origin_isolated<$Origin, $Item_erased>>, }} erase @returns {Buf_origin_erased<$Part, $Item_erased>} */
 export function buf_origin_isolate(erase) {
-  return erase.buf.map((item) => (item === null ? null : erase.item_isolate(item)));
+  return erase.buf.map((item) =>
+    item === SYMBOL$UNSET ? SYMBOL$UNSET : erase.item_isolate(/** @type $Item */ (item)),
+  );
 }
 /** @template $Item, $Origin, $Part @param {{ buf: Buf_origin_erased<$Part, $Item>, uneraser: Origin_uneraser<$Origin>, }} unerase @returns {{ buf: Buf<Origin<$Origin, $Part>, $Item>, uneraser: Origin_uneraser<$Origin>, }} */
 export function buf_origin_unerase_keep_items(unerase) {
@@ -694,10 +697,10 @@ export function buf_origin_unerase_keep_items(unerase) {
 export function buf_origin_unerase(unerase) {
   return {
     buf: unerase.buf.map((item) =>
-      item === null
-        ? null
+      item === SYMBOL$UNSET
+        ? SYMBOL$UNSET
         : unerase.item_unerase({
-            item: item,
+            item: /** @type $Item_erased */ (item),
             uneraser: unerase.uneraser,
           }).item,
     ),
@@ -711,13 +714,13 @@ export function buf_span_rid(unset) {
       unset.item_rid(/** @type $Item */ (unset.buf[i]));
     }
     unset.buf.length -= unset.span.length;
-    while (unset.buf[unset.buf.length - 1] === null) {
+    while (unset.buf[unset.buf.length - 1] === SYMBOL$UNSET) {
       unset.buf.length -= 1;
     }
   } else {
     for (let i = unset.span.start; i < unset.span.start + unset.span.length; i++) {
       unset.item_rid(/** @type $Item */ (unset.buf[i]));
-      unset.buf[i] = null;
+      unset.buf[i] = SYMBOL$UNSET;
     }
   }
   return unset.buf;
@@ -731,7 +734,7 @@ export function buf_opt_span_rid(unset) {
       i++
     ) {
       unset.item_rid(/** @type $Item */ (unset.buf[i]));
-      unset.buf[i] = null;
+      unset.buf[i] = SYMBOL$UNSET;
     }
   }
   return unset.buf;
@@ -752,7 +755,7 @@ export function buf_add(add) {
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, newø: $Item, }} insert @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} */
 export function buf_insert(insert) {
-  const existing_unset_index = insert.buf.findIndex((el) => el === null);
+  const existing_unset_index = insert.buf.findIndex((item) => item === SYMBOL$UNSET);
   if (existing_unset_index >= 0) {
     insert.buf[existing_unset_index] = insert.newø;
     return { buf: insert.buf, slot: existing_unset_index };
@@ -776,7 +779,7 @@ export function buf_span_add(add) {
     // move span to end
     for (let i = add.span.start; i < add.span.start + add.span.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = null;
+      add.buf[i] = SYMBOL$UNSET;
     }
   }
   add.buf.push(add.newø);
@@ -804,7 +807,7 @@ export function buf_span_add_array(add) {
     // move span to end
     for (let i = add.span.start; i < add.span.start + add.span.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = null;
+      add.buf[i] = SYMBOL$UNSET;
     }
   }
   add.buf.push(...add.newø);
@@ -838,11 +841,11 @@ export function buf_opt_span_add_array(add) {
 export function buf_remove(remove) {
   if (remove.slot + 1 < remove.buf.length) {
     const item = /** @type {$Item} */ (remove.buf[remove.slot]);
-    remove.buf[remove.slot] = null;
+    remove.buf[remove.slot] = SYMBOL$UNSET;
     return { buf: remove.buf, item: item };
   } else {
     const item = /** @type {$Item} */ (remove.buf.pop());
-    while (remove.buf[remove.buf.length - 1] === null) {
+    while (remove.buf[remove.buf.length - 1] === SYMBOL$UNSET) {
       remove.buf.length -= 1;
     }
     return { buf: remove.buf, item: item };
@@ -880,7 +883,7 @@ export function buf_span_move_to_end(move) {
     // move span to end
     for (let i = move.span.start; i < move.span.start + move.span.length; i++) {
       move.buf.push(move.buf[i]);
-      move.buf[i] = null;
+      move.buf[i] = SYMBOL$UNSET;
     }
     if (move.buf.length > U32$MAX)
       throw Error("Array length " + move.buf.length + " not representable as a u32");
@@ -898,7 +901,7 @@ export function buf_opt_span_move_to_end(move) {
     // move span to end
     for (let i = span.start; i < span.start + span.length; i++) {
       move.buf.push(move.buf[i]);
-      move.buf[i] = null;
+      move.buf[i] = SYMBOL$UNSET;
     }
     if (move.buf.length > U32$MAX)
       throw Error("Array length " + move.buf.length + " not representable as a u32");
@@ -913,7 +916,7 @@ export function buf_span_move_to_unset(move) {
   if (move.span.start + move.span.length < move.buf.length) return move;
   let unset_length = 0;
   for (let i = 0; i < move.buf.length; i++) {
-    if (move.buf[i] === null) {
+    if (move.buf[i] === SYMBOL$UNSET) {
       unset_length++;
       if (unset_length === move.span.length) {
         const unset_start = i - move.span.length + 1;
@@ -921,7 +924,7 @@ export function buf_span_move_to_unset(move) {
           move.buf[unset_start + unset_i] = move.buf[move.span.start + unset_i];
         }
         move.buf.length -= move.span.length;
-        while (move.buf[move.buf.length - 1] === null) {
+        while (move.buf[move.buf.length - 1] === SYMBOL$UNSET) {
           move.buf.length -= 1;
         }
         return { buf: move.buf, span: { start: unset_start, length: move.span.length } };
@@ -939,7 +942,7 @@ export function buf_opt_span_move_to_unset(move) {
   if (span.start + span.length < move.buf.length) return move;
   let unset_length = 0;
   for (let i = 0; i < move.buf.length; i++) {
-    if (move.buf[i] === null) {
+    if (move.buf[i] === SYMBOL$UNSET) {
       unset_length++;
       if (unset_length === span.length) {
         const unset_start = i - span.length + 1;
@@ -947,7 +950,7 @@ export function buf_opt_span_move_to_unset(move) {
           move.buf[unset_start + unset_i] = move.buf[span.start + unset_i];
         }
         move.buf.length -= span.length;
-        while (move.buf[move.buf.length - 1] === null) {
+        while (move.buf[move.buf.length - 1] === SYMBOL$UNSET) {
           move.buf.length -= 1;
         }
         return {
@@ -992,13 +995,13 @@ export function buf_span_add_own_span(add) {
     // move start span to end
     for (let i = add.start.start; i < add.start.start + add.start.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = null;
+      add.buf[i] = SYMBOL$UNSET;
     }
   }
   // move end span to end after the start items
   for (let i = add.end.start; i < add.end.start + add.end.length; i++) {
     add.buf.push(add.buf[i]);
-    add.buf[i] = null;
+    add.buf[i] = SYMBOL$UNSET;
   }
   return {
     buf: add.buf,
@@ -1048,12 +1051,12 @@ export function buf_opt_span_add_own_opt_span(add) {
       i++
     ) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = null;
+      add.buf[i] = SYMBOL$UNSET;
     }
   }
   for (let i = add.end.yes.start; i < add.end.yes.start + add.end.yes.length; i++) {
     add.buf.push(add.buf[i]);
-    add.buf[i] = null;
+    add.buf[i] = SYMBOL$UNSET;
   }
   return {
     buf: add.buf,
@@ -1087,7 +1090,7 @@ export function buf_char_span_add_str(add) {
     // move span to end
     for (let i = add.span.start; i < add.span.start + add.span.length; i++) {
       add.buf.push(add.buf[i]);
-      add.buf[i] = null;
+      add.buf[i] = SYMBOL$UNSET;
     }
   }
   const new_start = add.buf.length;
@@ -1180,5 +1183,5 @@ export function unset_slice_allocate_length(length) {
 /** @template $Item, $New_item @param {Unset_slice<$Item>} unset_slice @returns {Unset_slice<$New_item>} */
 export function unset_slice_cast_or_rid_and_allocate(unset_slice) {
   // for once equal type sizes come in clutch
-  return /** @type ($New_item | null)[] */ (unset_slice);
+  return /** @type ($New_item | SYMBOL$UNSET)[] */ (unset_slice);
 }
