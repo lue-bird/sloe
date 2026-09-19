@@ -7,8 +7,8 @@ Hello, world!
 fn Greet
     .name name str .buf buf Buf _origin, char
     : .buf Buf _origin, char .span Span _origin =
-    ? Buf-char-add-str .buf buf .new "Hello, " str [string]
-    ? Buf-char-span-add-str .. string .new name [string]
+    ? Buf-add-str-chars .buf buf .new "Hello, " str [string]
+    ? Buf-span-add-str-chars .. string .new name [string]
     Buf-span-add .. string .new "!" char
 ```
 A `Greet` function taking a name and a buffer to append the greeting to.
@@ -466,8 +466,8 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - consider replacing kebab-case with camelCase/PascalCase.
   while I do much prefer the typing experience of kebab-case,
   camelCase is shorter (!!), think
-  `BufCharOptSpanAddStr` compared to
-  `Buf-char-opt-span-add-str` (5 chars less, 20%!)
+  `BufOptSpanAddStrChars` compared to
+  `Buf-opt-span-add-str-chars` (5 chars less, 20%!)
   and potentially more readable (?) due to clearer distinction to _ and 
   (this won't matter as much if call and construct syntax does not involve _).
   Take a bigger example, convert the case and see how it feels
@@ -550,7 +550,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - look into `soa_derive` for rust, maybe this already does most of the useful work
 - (very out of scope but thinking never hurts) imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
 
-# rejected ideas
+# rejected ideas (some may be outdated)
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas
 
 - allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, 'variant{} and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there

@@ -13449,9 +13449,9 @@ Convenient equivalent to `Buf-opt-span-add-array` with an empty span.",
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-add-str",
+                name: "Buf-add-str-chars",
                 documentation: "Attach the chars in a given `str` to the end of the `Buf` and keep a span to it without trying to reuse unset slots.
-Convenient equivalent to `Buf-char-opt-span-add-str` with an empty span.",
+Convenient equivalent to `Buf-opt-span-add-str-chars` with an empty span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
@@ -13737,7 +13737,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-opt-span-add-str",
+                name: "Buf-opt-span-add-str-chars",
                 documentation: "Attach a given `str` at the end of the span",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13757,7 +13757,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-span-add-str",
+                name: "Buf-span-add-str-chars",
                 documentation: "Attach a given `str` to the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13777,7 +13777,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-span-add-u32",
+                name: "Buf-span-add-u32-chars",
                 documentation: "Print a given `u32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13797,7 +13797,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-opt-span-add-u32",
+                name: "Buf-opt-span-add-u32-chars",
                 documentation: "Print a given `u32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13817,7 +13817,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-span-add-i32",
+                name: "Buf-span-add-i32-chars",
                 documentation: "Print a given `i32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13837,7 +13837,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-opt-span-add-i32",
+                name: "Buf-opt-span-add-i32-chars",
                 documentation: "Print a given `i32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13857,7 +13857,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-span-add-f32",
+                name: "Buf-span-add-f32-chars",
                 documentation: "Print a given `f32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13877,7 +13877,7 @@ This can remove a bunch of noise compared to chaining `Buf-span-add` operations"
                 ]),
             },
             CoreFnInfo {
-                name: "Buf-char-opt-span-add-f32",
+                name: "Buf-opt-span-add-f32-chars",
                 documentation: "Print a given `f32` after the end of the span.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -14373,7 +14373,7 @@ like `"abc" str` or `"\"hello 👀 \\\r\n world \(2665)\"" str`
 - `\r` represents carriage return
 
 Internally, a string is compactly represented as UTF-8 bytes and can be accessed as such.
-When building new strings at runtime, use functions like `Buf-char-opt-span-add-str`."#,
+When building new strings at runtime, use functions like `Buf-opt-span-add-str-chars`."#,
                 )),
                 parameters: vec![],
                 type_: Some(type_str),
@@ -14810,18 +14810,18 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Buf-span-add-buf-opt-span"
         | "Buf-opt-span-add-array"
         | "Buf-span-add-array"
-        | "Buf-char-opt-span-add-f32"
-        | "Buf-char-span-add-f32"
-        | "Buf-char-opt-span-add-i32"
-        | "Buf-char-span-add-i32"
-        | "Buf-char-opt-span-add-u32"
-        | "Buf-char-span-add-u32"
-        | "Buf-char-span-add-str"
-        | "Buf-char-opt-span-add-str"
+        | "Buf-opt-span-add-f32-chars"
+        | "Buf-span-add-f32-chars"
+        | "Buf-opt-span-add-i32-chars"
+        | "Buf-span-add-i32-chars"
+        | "Buf-opt-span-add-u32-chars"
+        | "Buf-span-add-u32-chars"
+        | "Buf-span-add-str-chars"
+        | "Buf-opt-span-add-str-chars"
         | "Buf-span-add"
         | "Buf-opt-span-add"
         | "Buf-add-array"
-        | "Buf-char-add-str"
+        | "Buf-add-str-chars"
         | "Buf-add"
         | "Buf-insert"
         | "Buf-pre-allocation-rid"

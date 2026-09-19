@@ -599,18 +599,18 @@ test "buf add strs" {
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
-    const with_digits = try core.buf_char_add_str(
+    const with_digits = try core.buf_add_str_chars(
         @TypeOf(origin),
         allocator,
         .{ .buf = buf, .new = core.Str.fromComptime("2468") },
     );
-    const with_abcd = try core.buf_char_opt_span_add_str(
+    const with_abcd = try core.buf_opt_span_add_str_chars(
         @TypeOf(origin),
         allocator,
         .{ .buf = with_digits.buf, .span = .{ .no = {} }, .new = core.Str.fromComptime("abcd") },
     );
     try std.testing.expectEqual(4, with_abcd.span.length.positive);
-    const with_wrenches = try core.buf_char_opt_span_add_str(
+    const with_wrenches = try core.buf_opt_span_add_str_chars(
         @TypeOf(origin),
         allocator,
         .{ .buf = with_abcd.buf, .span = .{ .yes = with_abcd.span }, .new = core.Str.fromComptime("🔧🔧🔧") },
@@ -628,19 +628,19 @@ test "buf char add numbers" {
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
-    const with_u32 = try core.buf_char_opt_span_add_u32(
+    const with_u32 = try core.buf_opt_span_add_u32_chars(
         @TypeOf(origin),
         allocator,
         .{ .buf = buf, .span = .{ .no = {} }, .new = 1234 },
     );
     try std.testing.expectEqual(4, with_u32.span.length.positive);
-    const with_i32 = try core.buf_char_span_add_i32(
+    const with_i32 = try core.buf_span_add_i32_chars(
         @TypeOf(origin),
         allocator,
         .{ .buf = with_u32.buf, .span = with_u32.span, .new = -2 },
     );
     try std.testing.expectEqual(6, with_i32.span.length.positive);
-    const with_f32 = try core.buf_char_span_add_f32(
+    const with_f32 = try core.buf_span_add_f32_chars(
         @TypeOf(origin),
         allocator,
         .{ .buf = with_i32.buf, .span = with_i32.span, .new = -0.1 },

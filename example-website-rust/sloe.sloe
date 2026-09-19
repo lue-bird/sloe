@@ -124,12 +124,12 @@ fn View
     =
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail]
     ? .buf chars .span 'no{Opt Span Origin _view, .char .} . [text]
-    ? Buf-char-opt-span-add-str .. text .new "your mouse is at .x " str [text]
+    ? Buf-opt-span-add-str-chars .. text .new "your mouse is at .x " str [text]
     ? U32-dup mouse-x [.a mouse-x .b mouse-x-use]
-    ? Buf-char-span-add-u32 .. text .new mouse-x-use [text]
-    ? Buf-char-span-add-str .. text .new " .y " str [text]
+    ? Buf-span-add-u32-chars .. text .new mouse-x-use [text]
+    ? Buf-span-add-str-chars .. text .new " .y " str [text]
     ? U32-dup mouse-y [.a mouse-y .b mouse-y-use]
-    ? Buf-char-span-add-u32 .. text .new mouse-y-use [.buf chars .span text-span]
+    ? Buf-span-add-u32-chars .. text .new mouse-y-use [.buf chars .span text-span]
     ?
         Buf-add-array
         .buf htmls

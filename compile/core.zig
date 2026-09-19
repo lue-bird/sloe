@@ -1685,7 +1685,7 @@ pub fn buf_add_array(
         .buf = @"%buf",
     };
 }
-pub fn buf_char_add_str(
+pub fn buf_add_str_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
@@ -1815,7 +1815,7 @@ pub fn buf_span_add(
     const @"%combined_span" = try @"%buf".spanAdd(@"%allocator", @"%".span, @"%".new);
     return .{ .span = @"%combined_span", .buf = @"%buf" };
 }
-pub fn buf_char_opt_span_add_str(
+pub fn buf_opt_span_add_str_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: Str, span: Opt(Span(@"%Origin")) }),
@@ -1829,7 +1829,7 @@ pub fn buf_char_opt_span_add_str(
     );
     return .{ .span = @"%combined_span".yes, .buf = @"%buf" };
 }
-pub fn buf_char_span_add_str(
+pub fn buf_span_add_str_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: Str, span: Span(@"%Origin") }),
@@ -1845,27 +1845,27 @@ pub fn buf_char_span_add_str(
 }
 // is there a more correct way?
 const u32_max_print_len = std.fmt.count("{}", .{std.math.maxInt(U32)});
-pub fn buf_char_span_add_u32(
+pub fn buf_span_add_u32_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: U32, span: Span(@"%Origin") }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", Char), span: Span(@"%Origin") }) {
     var @"%buffer": [u32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    return buf_char_span_add_str(@"%Origin", @"%allocator", .{
+    return buf_span_add_str_chars(@"%Origin", @"%allocator", .{
         .buf = @"%".buf,
         .span = @"%".span,
         .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
     });
 }
-pub fn buf_char_opt_span_add_u32(
+pub fn buf_opt_span_add_u32_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: U32, span: Opt(Span(@"%Origin")) }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", Char), span: Span(@"%Origin") }) {
     var @"%buffer": [u32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    const @"%combined" = try buf_char_opt_span_add_str(@"%Origin", @"%allocator", .{
+    const @"%combined" = try buf_opt_span_add_str_chars(@"%Origin", @"%allocator", .{
         .buf = @"%".buf,
         .span = @"%".span,
         .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
@@ -1877,27 +1877,27 @@ const i32_max_print_len = @max(
     std.fmt.count("{}", .{std.math.minInt(I32)}),
     std.fmt.count("{}", .{std.math.maxInt(I32)}),
 );
-pub fn buf_char_span_add_i32(
+pub fn buf_span_add_i32_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: I32, span: Span(@"%Origin") }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", Char), span: Span(@"%Origin") }) {
     var @"%buffer": [i32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    return buf_char_span_add_str(@"%Origin", @"%allocator", .{
+    return buf_span_add_str_chars(@"%Origin", @"%allocator", .{
         .buf = @"%".buf,
         .span = @"%".span,
         .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
     });
 }
-pub fn buf_char_opt_span_add_i32(
+pub fn buf_opt_span_add_i32_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: I32, span: Opt(Span(@"%Origin")) }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", Char), span: Span(@"%Origin") }) {
     var @"%buffer": [i32_max_print_len]u8 = undefined;
     const @"%buffer_exclusive_end" = std.fmt.printInt(&@"%buffer", @"%".new, 10, std.fmt.Case.lower, .{});
-    const @"%combined" = try buf_char_opt_span_add_str(Char, @"%Origin", @"%allocator", .{
+    const @"%combined" = try buf_opt_span_add_str_chars(Char, @"%Origin", @"%allocator", .{
         .buf = @"%".buf,
         .span = @"%".span,
         .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%buffer"[0..@"%buffer_exclusive_end"])).?,
@@ -1906,7 +1906,7 @@ pub fn buf_char_opt_span_add_i32(
 }
 const f32_max_decimal_print_len =
     std.fmt.float.bufferSize(std.fmt.float.Mode.decimal, F32);
-pub fn buf_char_span_add_f32(
+pub fn buf_span_add_f32_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: F32, span: Span(@"%Origin") }),
@@ -1917,13 +1917,13 @@ pub fn buf_char_span_add_f32(
         @"%".new,
         .{ .mode = .decimal, .precision = null },
     ) catch unreachable;
-    return buf_char_span_add_str(@"%Origin", @"%allocator", .{
+    return buf_span_add_str_chars(@"%Origin", @"%allocator", .{
         .buf = @"%".buf,
         .span = @"%".span,
         .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%used_buffer_slice")).?,
     });
 }
-pub fn buf_char_opt_span_add_f32(
+pub fn buf_opt_span_add_f32_chars(
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct { buf: Buf(@"%Origin", Char), new: F32, span: Opt(Span(@"%Origin")) }),
@@ -1934,7 +1934,7 @@ pub fn buf_char_opt_span_add_f32(
         @"%".new,
         .{ .mode = .decimal, .precision = null },
     ) catch unreachable;
-    const @"%combined" = try buf_char_opt_span_add_str(@"%Origin", @"%allocator", .{
+    const @"%combined" = try buf_opt_span_add_str_chars(@"%Origin", @"%allocator", .{
         .buf = @"%".buf,
         .span = @"%".span,
         .new = Str.fromUtf8View(std.unicode.Utf8View.initUnchecked(@"%used_buffer_slice")).?,

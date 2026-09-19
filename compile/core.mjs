@@ -1069,7 +1069,7 @@ export function buf_opt_span_add_own_opt_span(add) {
   };
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, newø: Str, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_add_str(add) {
+export function buf_add_str_chars(add) {
   const new_start = add.buf.length;
   for (const new_char of add.newø) {
     add.buf.push(new_char);
@@ -1085,7 +1085,7 @@ export function buf_char_add_str(add) {
   };
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, newø: Str, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_span_add_str(add) {
+export function buf_span_add_str_chars(add) {
   if (add.span.start + add.span.length < add.buf.length) {
     // move span to end
     for (let i = add.span.start; i < add.span.start + add.span.length; i++) {
@@ -1108,55 +1108,55 @@ export function buf_char_span_add_str(add) {
   };
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Opt<Span<$Origin>>, newø: Str, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_opt_span_add_str(add) {
+export function buf_opt_span_add_str_chars(add) {
   if ("no" in add.span) {
-    return buf_char_add_str(add);
+    return buf_add_str_chars(add);
   }
-  return buf_char_span_add_str({ buf: add.buf, span: add.span.yes, newø: add.newø });
+  return buf_span_add_str_chars({ buf: add.buf, span: add.span.yes, newø: add.newø });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, newø: U32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_span_add_u32(add) {
-  return buf_char_span_add_str({
+export function buf_span_add_u32_chars(add) {
+  return buf_span_add_str_chars({
     buf: add.buf,
     span: add.span,
     newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Opt<Span<$Origin>>, newø: U32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_opt_span_add_u32(add) {
-  return buf_char_opt_span_add_str({
+export function buf_opt_span_add_u32_chars(add) {
+  return buf_opt_span_add_str_chars({
     buf: add.buf,
     span: add.span,
     newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, newø: I32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_span_add_i32(add) {
-  return buf_char_span_add_str({
+export function buf_span_add_i32_chars(add) {
+  return buf_span_add_str_chars({
     buf: add.buf,
     span: add.span,
     newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Opt<Span<$Origin>>, newø: I32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_opt_span_add_i32(add) {
-  return buf_char_opt_span_add_str({
+export function buf_opt_span_add_i32_chars(add) {
+  return buf_opt_span_add_str_chars({
     buf: add.buf,
     span: add.span,
     newø: add.newø.toString(),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, newø: F32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_span_add_f32(add) {
-  return buf_char_span_add_str({
+export function buf_span_add_f32_chars(add) {
+  return buf_span_add_str_chars({
     buf: add.buf,
     span: add.span,
     newø: f32$to_string(add.newø),
   });
 }
 /** @template $Origin @param {{ buf: Buf<$Origin, Char>, span: Opt<Span<$Origin>>, newø: F32, }} add @returns {{ buf: Buf<$Origin, Char>, span: Span<$Origin>, }} */
-export function buf_char_opt_span_add_f32(add) {
-  return buf_char_opt_span_add_str({
+export function buf_opt_span_add_f32_chars(add) {
+  return buf_opt_span_add_str_chars({
     buf: add.buf,
     span: add.span,
     newø: f32$to_string(add.newø),

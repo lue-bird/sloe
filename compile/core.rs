@@ -2541,7 +2541,7 @@ pub fn buf_add_array<Item, Origin, Record>(
         span: span,
     }
 }
-pub fn buf_char_add_str<Origin>(
+pub fn buf_add_str_chars<Origin>(
     Record·buf·new {
         mut buf,
         new: new_str,
@@ -2633,7 +2633,7 @@ pub fn buf_opt_span_add_array<Item, Origin, Record>(
         span: combined_span,
     }
 }
-pub fn buf_char_opt_span_add_str<Origin>(
+pub fn buf_opt_span_add_str_chars<Origin>(
     Record·buf·new·span {
         mut buf,
         span,
@@ -2646,7 +2646,7 @@ pub fn buf_char_opt_span_add_str<Origin>(
         span: combined_span,
     }
 }
-pub fn buf_char_span_add_str<Origin>(
+pub fn buf_span_add_str_chars<Origin>(
     Record·buf·new·span {
         mut buf,
         span,
@@ -2659,7 +2659,7 @@ pub fn buf_char_span_add_str<Origin>(
         span: combined_span,
     }
 }
-pub fn buf_char_span_add_u32<Origin>(
+pub fn buf_span_add_u32_chars<Origin>(
     Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
         Buf<Origin, Char>,
         U32,
@@ -2675,7 +2675,7 @@ pub fn buf_char_span_add_u32<Origin>(
         span: combined_span,
     }
 }
-pub fn buf_char_opt_span_add_u32<Origin>(
+pub fn buf_opt_span_add_u32_chars<Origin>(
     Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
         Buf<Origin, Char>,
         U32,
@@ -2694,7 +2694,7 @@ pub fn buf_char_opt_span_add_u32<Origin>(
         },
     }
 }
-pub fn buf_char_span_add_i32<Origin>(
+pub fn buf_span_add_i32_chars<Origin>(
     Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
         Buf<Origin, Char>,
         U32,
@@ -2710,7 +2710,7 @@ pub fn buf_char_span_add_i32<Origin>(
         span: combined_span,
     }
 }
-pub fn buf_char_opt_span_add_i32<Origin>(
+pub fn buf_opt_span_add_i32_chars<Origin>(
     Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
         Buf<Origin, Char>,
         I32,
@@ -2729,7 +2729,7 @@ pub fn buf_char_opt_span_add_i32<Origin>(
         },
     }
 }
-pub fn buf_char_span_add_f32<Origin>(
+pub fn buf_span_add_f32_chars<Origin>(
     Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
         Buf<Origin, Char>,
         F32,
@@ -2744,7 +2744,7 @@ pub fn buf_char_span_add_f32<Origin>(
         span: combined_span,
     }
 }
-pub fn buf_char_opt_span_add_f32<Origin>(
+pub fn buf_opt_span_add_f32_chars<Origin>(
     Record·buf·new·span { mut buf, span, new }: Record·buf·new·span<
         Buf<Origin, Char>,
         F32,
