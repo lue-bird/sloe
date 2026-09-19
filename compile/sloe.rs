@@ -9840,7 +9840,7 @@ If not, add patterns for the cases above"
                                 value: part_name,
                             }),
                             message: Box::from(
-                                "this origin variable is neer used. Use it or remove it",
+                                "this origin variable is never used. Use it or remove it",
                             ),
                         });
                     }
@@ -14883,12 +14883,14 @@ fn next_indent(current_indent: usize) -> usize {
 }
 
 fn syntax_comments_format(formatted: &mut String, indent: usize, comments: &SyntaxComments) {
-    formatted.push_str("# ");
-    formatted.push_str(comments.line0.value.trim());
-    linebreak_indented_into(formatted, indent);
-    for line in &comments.line1_up {
+    for line in std::iter::once(&comments.line0).chain(&comments.line1_up) {
         formatted.push_str("# ");
-        formatted.push_str(line.value.trim());
+        formatted.push_str(
+            line.value
+                .strip_prefix(' ')
+                .unwrap_or_else(|| &line.value)
+                .trim_end(),
+        );
         linebreak_indented_into(formatted, indent);
     }
 }
