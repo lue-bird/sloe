@@ -16501,14 +16501,6 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     ProjectFnOrUnknown {
         name: WithStartPosition<&'a Name>,
         construct_info: ConstructInfo,
-        pattern_variables: std::collections::HashMap<
-            &'a Name,
-            PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
-        >,
-        origins: std::collections::HashMap<
-            &'a Name,
-            OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
-        >,
     },
     PatternVariable {
         name: &'a Name,
@@ -16516,7 +16508,6 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
         origin: PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     },
     VariableUnknown {
-        name: &'a Name,
         pattern_variables: std::collections::HashMap<
             &'a Name,
             PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
@@ -16661,8 +16652,6 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                 return Some(SyntaxSymbol::ProjectFnOrUnknown {
                     name: with_start_position_as_ref(name),
                     construct_info: ConstructInfo::Declaration,
-                    pattern_variables: std::collections::HashMap::new(),
-                    origins: std::collections::HashMap::new(),
                 });
             }
             type_parameters
@@ -16834,7 +16823,6 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         })
                 })
                 .unwrap_or_else(|| SyntaxSymbol::VariableUnknown {
-                    name: &name.value,
                     pattern_variables: std::mem::take(pattern_variables),
                     origins: std::mem::take(origins),
                 }),
@@ -16858,8 +16846,6 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         } else {
                             ConstructInfo::ArgumentMissing
                         },
-                        pattern_variables: std::mem::take(pattern_variables),
-                        origins: std::mem::take(origins),
                     },
                 });
             }
@@ -17855,8 +17841,6 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
         SyntaxSymbol::ProjectFnOrUnknown {
             name: symbol_name,
             construct_info: _,
-            pattern_variables: _,
-            origins: _,
         } => project.items.iter().find_map(|item| match item {
             SyntaxProjectItem::Fn {
                 fn_keyword_start: _,
@@ -18394,8 +18378,6 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                             value: symbol_name,
                         },
                     construct_info: _,
-                    pattern_variables: _,
-                    origins: _,
                 } => {
                     if *symbol_name == &name.value {
                         uses.push(name_range(with_start_position_as_ref(name)));

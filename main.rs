@@ -1126,8 +1126,6 @@ fn respond_to_hover<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name: symbol_name,
             construct_info: _,
-            pattern_variables: _,
-            origins: _,
         } => project_state.fns.iter().find_map(|(fn_name, fn_info)| {
             if fn_name == symbol_name.value {
                 let formatted = present_project_fn_with_complete_type_markdown(fn_name, fn_info);
@@ -1255,8 +1253,6 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name,
             construct_info: _,
-            pattern_variables: _,
-            origins: _,
         } => Some(sloe::name_range(name)),
         sloe::SyntaxSymbol::PatternVariable {
             name,
@@ -1660,8 +1656,6 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name: _,
             construct_info,
-            pattern_variables,
-            origins,
         } => match construct_info {
             sloe_compile::ConstructInfo::Declaration => None,
             sloe_compile::ConstructInfo::NotExpectingArgument => {
@@ -1791,7 +1785,6 @@ fn respond_to_completion<Expressions, Patterns, Types>(
             }
         },
         sloe::SyntaxSymbol::VariableUnknown {
-            name,
             pattern_variables,
             origins,
         } => Some(lsp_types::CompletionResponse::CompletionItemList(
