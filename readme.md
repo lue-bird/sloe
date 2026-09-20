@@ -751,6 +751,15 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
+- change semantics of origin creation, say `^ .sub0 .sub1 origin`,
+  to introduce `origin` as (both a type and) a variable of type `.sub0 Origin origin, .sub0 . .sub1 Origin origin, .sub1`.
+  In full it would be something like
+  ```sloe
+  ^ .sub0 .sub1 origin
+  ? origin [.sub0 sub0-origin .sub1 sub1-origin]
+  ```
+  This feels so much more in line with oher sloe intuition
+
 - consider format in fn moving : and = to indent 0
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
@@ -765,8 +774,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - add `Buf-opt-)span-sort` (issue: how to implement in rust and js?)
 
-- consider adding `Buf-(opt-)span-binary-search` (maybe interpolation search)
-
 - again try to may make proper unerase viable (unlikely).
   If successful add
   ```sloe
@@ -780,16 +787,24 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - optimize core.zig Buf.markLengthPositiveAsSet
 
-- consider dropping the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
-
-- consider introducing nested origins where the unique origin type can itself be an origin.
-  This could make nested parts viable. (for example `Origin (Origin unique-origin, .outer .), .inner .`, constructed via `^ .outer.inner unique-origin`)
+- consider adding `Buf-(opt-)span-binary-search` (maybe interpolation search)
 
 - give nicer error when only a field is missing or too much
 
 - (qol) try to report more precise error locations on type diff. For example skip comments, single-case query starts and if possible enter records when reporting specific field value differences
 
+- enable nested origins where the unique origin type can itself be an origin.
+  This could make nested parts viable.
+  For example to create a variable `inner-origin` of type `Origin (Origin unique-origin, .outer .), .inner .`,
+  ```sloe
+  ^ unique-origin {.outer .inner .}
+  ? unique-origin [.outer .inner inner-origin]
+  ```
+
 - fix comment TODOs
+
+- consider dropping the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
+
 
 # not coherently formulated thoughts
 
