@@ -12880,7 +12880,7 @@ Origin-isolated-map
     Origin-isolated-merge
     .a Slot-origin-isolate blue-slot
     .b Slot-origin-isolate green-slot
-    )
+)
 .change
 [
     .a red Slot Origin erased, .
@@ -13247,10 +13247,10 @@ fn Next-non-space
         ['equal .] (
             ? Char-rid char [.]
             'going{'done .chars Buf _origin, char .non-space char} chars
-            )
+        )
         ['less .] 'done{'going Buf _origin, char} .chars chars .non-space char
         ['greater .] 'done{'going Buf _origin, char} .chars chars .non-space char
-        )
+    )
     ['going chars]
         .chars chars .non-space 'no{Opt char} . .after 'no{Opt Span _origin} .
     ['done .rest span-after .done (.chars chars .non-space non-space)]
@@ -13564,7 +13564,7 @@ fn Buf-item-dup
         [.in (dup Fn _item, .a _item .b _item) .item item _item]
         ? Call .fn dup .in item [.a item .b item-duped]
         .item item .out item-duped
-        )
+    )
     [.buf buf .slot slot .out item-duped]
     .buf buf .slot slot .item item-duped
 ```
@@ -14158,8 +14158,8 @@ fn Example-unerase
     .uneraser uneraser
     .item-unerase
     [
-    .item item Opt Span Origin erased, .
-    .uneraser uneraser Origin-uneraser Origin _inner, .
+        .item item Opt Span Origin erased, .
+        .uneraser uneraser Origin-uneraser Origin _inner, .
     ]
     ? Opt-span-origin-unerase .span item .uneraser uneraser
     [.span item-unerased .uneraser uneraser]
@@ -14508,11 +14508,11 @@ If none of this sounded useful to you, you don't need this (yet).
     .change
     # mapping them to descriptive names is optional but nicer
     [
-    .a buf Buf-origin-isolated ., u32
-    .b slot Slot Origin erased, .
+        .a buf Buf-origin-isolated ., u32
+        .b slot Slot Origin erased, .
     ]
     .buf buf .slot slot
-    )
+)
 [erased-inner0]
 
 ? (
@@ -14520,7 +14520,7 @@ If none of this sounded useful to you, you don't need this (yet).
     ? Buf-empty{u32} inner1 [buf-inner1]
     ? Buf-add .buf buf-inner1 .new 0 u32 [.buf buf-inner1 .slot slot-inner1]
     ? ..do the same as in Origin-erase for slot0..
-    )
+)
 [erased-inner1]
 
 # now both erased-inner0 erased-inner1 have the same type :)
@@ -14533,8 +14533,8 @@ Origin-unerase
 .origin inner
 .unerase
 [
-.erased (.buf buf-erased Buf-origin-erased ., u32 .slot slot-erased Slot (Origin erased, .))
-.uneraser uneraser Origin-uneraser inner
+    .erased (.buf buf-erased Buf-origin-erased ., u32 .slot slot-erased Slot (Origin erased, .))
+    .uneraser uneraser Origin-uneraser inner
 ]
 ? Slot-origin-unerase .slot slot-erased .uneraser uneraser
 [.slot slot-inner0 .uneraser uneraser]
@@ -15440,10 +15440,14 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
                 let parameter_line_span =
                     range_line_span(pattern_range(parameter, patterns, types));
                 if parameter_line_span == LineSpan::Multiple {
-                    linebreak_indented_into(formatted, indent);
+                    linebreak_indented_into(formatted, next_indent(indent));
                 }
                 syntax_pattern_unparenthesized_format(
-                    formatted, indent, patterns, types, parameter,
+                    formatted,
+                    next_indent(indent),
+                    patterns,
+                    types,
+                    parameter,
                 );
                 if parameter_line_span == LineSpan::Multiple {
                     linebreak_indented_into(formatted, indent);
@@ -15755,9 +15759,9 @@ fn syntax_braced_type_argument_format<Types>(
                 end: type_end(type_, types),
             });
             if line_span == LineSpan::Multiple {
-                linebreak_indented_into(formatted, indent);
+                linebreak_indented_into(formatted, next_indent(indent));
             }
-            syntax_type_unparenthesized_format(formatted, indent, types, type_);
+            syntax_type_unparenthesized_format(formatted, next_indent(indent), types, type_);
             if line_span == LineSpan::Multiple {
                 linebreak_indented_into(formatted, indent);
             }
@@ -15994,11 +15998,7 @@ fn parenthesize_if_open_ended_whitespace_then_item_format(
         }
         item_unparenthesized_format(formatted, next_indent(indent));
         if line_span == LineSpan::Multiple {
-            // this one is an explicit decision. Most languages e.g. align the field name with the value close paren.
-            // However, I find
-            // - having the close on the same line as the value is more legible
-            // - having the closing paren on the same level as is confusing and not consistent
-            linebreak_indented_into(formatted, next_indent(indent));
+            linebreak_indented_into(formatted, indent);
         }
         formatted.push(')');
     } else {

@@ -86,8 +86,8 @@ fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
 > I really like this idea but understand that it cannot be implemented in e.g. rust which needs to store its allocator in it's value body to guarantee its content isn't splattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
 > In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
 
-# examples
-## creating new origins, slots and spans
+## examples
+### creating new origins, slots and spans
 `^some-origin-name` creates a new variable of type `Origin` and a unique local type that's only valid in the current scope.
 Like every other sloe value, an origin type can only be used once, so only for one collection.
 ```sloe
@@ -118,8 +118,8 @@ fn Use-opt opt Opt u32 : ... =
             ? Buf-one .origin buf-origin .item number [.buf buf .slot slot]
             ...
             buf
-            )
         )
+    )
     [buf]
     # this will compile:
     ^buf-origin
@@ -131,8 +131,8 @@ fn Use-opt opt Opt u32 : ... =
             ? Buf-one .origin buf-origin .item number [.buf buf .slot slot]
             ...
             buf
-            )
         )
+    )
     [buf]
     ...
 
@@ -168,14 +168,14 @@ fn State-to-interfaces-into
         Buf-one
         .origin interfaces-origin
         .item 'console-log{Interface State _expressions-origin} "hello" str
-        )
+    )
     [.slot slot .buf interfaces]
     ...
     interfaces
 ```
 (No need to understand the details at the end, it's just a small showcase to get a vague feel)
 
-## pass in origins or collections from the outside
+### pass in origins or collections from the outside
 In case a function cannot scrap values like buffers at the end of its scope,
 we can pass origins or values referencing origins in:
 ```sloe
@@ -186,9 +186,9 @@ Most initializer functions will return new collections from nothing, e.g. for pe
 For most other functions, it's more common to pass in an existing collection that you want to edit (often also including a specific span).
 (If you're wondering what `_part` is here: It enables creating an origin inside the function and still passing collections etc using that origin out of the function via `Origin-erased`. Look it up if you think the existing origin stuff is too restrictive)
 
-[explore examples in an online editor](https://lue-bird.github.io/sloe/) or look into the `example-/` directories in this repo.
+[explore more examples in an online editor](https://lue-bird.github.io/sloe/) or look into the `example-/` directories in this repo for more real-world-like usage.
 
-# syntax
+## syntax
 ```sloe
 # line comment
 
@@ -257,7 +257,7 @@ some-variable some-type
 #   - char of type Origin view-origin, .char .
 # Not only can this reduce the amount of type variables floating about,
 # it's also important for wrapping values into an `Origin-erased`
-^ .json .html .char view-origin
+^ .json .html .char view-origin  expression-that uses them
 
 # project function declaration.
 # For type variables in the result that aren't used in the input,
@@ -273,15 +273,16 @@ fn Function-name{_potential}{_type-arguments}{_only-used-in-the-result}
 u32
 
 # type with multiple arguments. Uppercase name.
-# Arguments before the last must be parenthesized if they end in a type with arguments
-Span origin
-My-function-type-alias env, input, output
+Buf origin, item
+
+# arguments before the last must be parenthesized if they end in a type with arguments
+My-function-type (Inner env), input, output
 
 # declare a shorthand for an existing type
 ty point  .x i32 .y i32
 
 # can also accept parameters
-ty Pair _potential, _type-parameters  .some type ...
+ty Pair _first, _second-parameter  ..type using the type variables..
 
 # a "choice type" that can come in different shapes ("variants")
 # which each have a unique name and one associated value.
@@ -298,7 +299,7 @@ ty Pair _potential, _type-parameters  .some type ...
 'some-variant its value
 ```
 Goal: coherent, practical and compact, avoiding parens and indentation especially for trailing syntax.
-Sloe is a very explicit language, so any extra verbosity is not tolerable.
+Sloe is a wordy and explicit language, so any extra verbosity is not tolerable.
 
 ## editor setups
 
@@ -365,7 +366,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   The sad thing is that this is positional and individual span slots then do not have an associated name.
   Also, how would this work with existing buf APIs? Something like `Buf2-opt-span-add`
 - minor: sometimes, you really own all the items of a buf in one place (especially when the buf items can be trivially copied).
-  Splitting it into `opt span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0)
+  Splitting it into `Opt Span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0)
 - by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 6 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_type-variable` and `minus-dash-hyphen`
@@ -375,10 +376,12 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - number types, vector/array types etc. are very underbaked in sloe.
   I need more real-world experience for their uses.
   Granted, sloe support for them is only realistic if rust (and zig) improve their support as well
-- even simple things often require a slog of things to type. That sucks the fun out of programming and slows you down for no apparent reason.
+- even simple things often require a slog of things to type. Also, values, especially nested ones are "sticky" and getting rid of them is annoying. That sucks the fun out of programming, it's exhausting and slows you down for no apparent reason.
   Having a bunch of same-looking code also makes it harder to spot actually interesting or bugged parts, cancelling out many of the supposed benefits of linear types :(
   
-  I'm not blind to this feeling! Do you have ideas of how this could be fixed in parts?
+  I'm not blind to this feeling!
+  It's _the_ reason you might call sloe "great on paper, died to the real world".
+  Do you have ideas of how this could be fixed in parts?
 
 # potential improvements in the future
 - IDE type and type diff error displays suck ass, mostly due to indentation being stripped. But markdown support seems to still be ways off for most editors for some reason. Anyone know a solution?
@@ -739,11 +742,15 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- rename `Buf-char-*` functions to `Buf-*-*chars`
+- correct info when hovering type in ^ .part type
+
+- when reporing unrecognized syntax, only mark the first unrecognized character in the range
+
+- suggest origin variables when completing variables (if not already)
 
 - fix bug where formating unrecognized range can multiply declarations around it
 
-- do indent type arguments and local function pattern
+- consider format in fn moving : and = to indent 0
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 

@@ -955,8 +955,8 @@ To avoid increasing levels of indentation, you can keep the last case result uni
 ty empty-record
     .
 
-fn Multiple-shapes-of-data-bundled-together
-    . : .weight f32 .color color .position position =
+fn Multiple-shapes-of-data-bundled-together .
+    : .weight f32 .color color .position position =
     .weight 1.0 f32
     .color (.r 255 u32 .g 100 u32 .b 40 u32)
     .position (.x 0.0 f32 .y 0.0 f32)
@@ -1027,17 +1027,17 @@ fn Type-rid
     ['variable variable] (
         ? Str-rid variable [.]
         buf
-        )
+    )
     ['tuple parts] Type-span-rid .buf buf .span parts
     ['construct .name name .arguments arguments] (
         ? Str-rid name [.]
         Type-span-rid .buf buf .span arguments
-        )
+    )
     ['function .inputs inputs .output output] (
         ? Buf-remove .buf buf .slot output [.buf buf .item output]
         ? Type-rid .buf buf .type output [buf]
         Type-span-rid .buf buf .span inputs
-        )
+    )
 
 fn Type-span-rid
     .span span Span _types

@@ -27,24 +27,24 @@ fn Stack-pop
         Opt
         .head _item
         .tail Stack _origin, _item
-        )
+    )
     =
     ? stack
     ['empty .] (
         .nodes nodes
         .item
             'no{
-            Opt
-            .head _item
-            .tail Stack _origin, _item
+                Opt
+                .head _item
+                .tail Stack _origin, _item
             }
             .
-        )
+    )
     ['stacked .head head .tail tail-slot] (
         ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .item tail]
         .nodes nodes
         .item ('yes{'no .} .head head .tail tail)
-        )
+    )
 
 fn Stack-fold
     .nodes nodes Buf _origin, Stack _origin, _item
@@ -59,7 +59,7 @@ fn Stack-fold
     ['empty .] (
         ? Fn-rid reduce [.]
         .nodes nodes .state state
-        )
+    )
     ['stacked .head head .tail tail-slot]
     ? Buf-remove .buf nodes .slot tail-slot [.buf nodes .item tail]
     ? Fn-dup reduce [.a reduce-a .b reduce-b]
@@ -85,7 +85,7 @@ fn Example . : u32 =
         .reduce (
             [.state state u32 .item item u32]
             U32-add-clamp .a state .b item
-            )
+        )
     [.nodes example-stack-nodes .state result]
     ? Buf-rid example-stack-nodes [.]
     result

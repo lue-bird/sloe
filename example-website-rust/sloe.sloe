@@ -27,7 +27,7 @@ fn Initial-state . : state =
         Mouse-trail-origin-isolate
         .buf Buf-empty{.x u32 .y u32} mouse-trail-origin
         .span 'no{Opt Span Origin mouse-trail-origin, .} .
-        )
+    )
 
 fn Mouse-trail-origin-isolate
     mouse-trail Mouse-trail Origin _origin, _part
@@ -37,7 +37,7 @@ fn Mouse-trail-origin-isolate
     .change (
         [.a (buf Buf-origin-erased _part, .x u32 .y u32) .b span Opt Span Origin erased, _part]
         .buf buf .span span
-        )
+    )
     .isolated
     Origin-isolated-merge
     .a (
@@ -51,7 +51,7 @@ fn Mouse-trail-origin-isolate
         Origin-isolated-merge
         .a U32-origin-isolate{_origin} x
         .b U32-origin-isolate{_origin} y
-        )
+    )
     .b Opt-span-origin-isolate span
 
 fn Mouse-trail-origin-unerase
@@ -79,7 +79,7 @@ fn Update
         .mouse-x old-mouse-x
         .mouse-y old-mouse-y
         .mouse-trail mouse-trail
-        )
+    )
     ['mouse-moved .x new-mouse-x .y new-mouse-y] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail]
         ^mouse-trail-origin
@@ -89,8 +89,8 @@ fn Update
             .origin mouse-trail-origin
             .unerase
             [
-            .erased mouse-trail Mouse-trail-origin-erased .
-            .uneraser uneraser Origin-uneraser mouse-trail-origin
+                .erased mouse-trail Mouse-trail-origin-erased .
+                .uneraser uneraser Origin-uneraser mouse-trail-origin
             ]
             Mouse-trail-origin-unerase .erased mouse-trail .uneraser uneraser
         [mouse-trail]
@@ -105,8 +105,8 @@ fn Update
             Origin-erase
             Mouse-trail-origin-isolate
             .buf mouse-trail .span 'yes{'no .} mouse-trail-span
-            )
         )
+    )
 
 fn View
     .state state state
@@ -153,7 +153,7 @@ fn View
         .tag "main" str
         .modifiers 'yes{'no .} main-modifiers
         .subs 'yes{'no .} div-subs
-        )
+    )
     .htmls htmls
     .modifiers modifiers
     .chars chars
