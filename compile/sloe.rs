@@ -6618,7 +6618,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                     function_scope_start,
                                     ZigReturnContext::Expression,
                                 );
-                                output.push_str(";\n")
+                                output.push_str(";\n_ = @TypeOf(");
+                                record_spread_variable_name(output, *dot_dot_start);
+                                output.push_str(");\n");
                             }
                         }
                     }
