@@ -1097,6 +1097,8 @@ fn respond_to_hover<Expressions, Patterns, Types>(
                 kind: lsp_types::MarkupKind::Markdown,
                 value: if origin.parts.is_empty() {
                     present_full_origin_markdown(name)
+                } else if name == origin_unique_name {
+                    "unique local origin type".to_string()
                 } else {
                     present_part_origin_variable_markdown(name, origin_unique_name)
                 },

@@ -742,8 +742,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- correct info when hovering type in ^ .part type
-
 - when reporing unrecognized syntax, only mark the first unrecognized character in the range
 
 - suggest origin variables when completing variables (if not already)
