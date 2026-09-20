@@ -754,8 +754,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- test in real code that zig compilation of arrays works in statement form
-
 - add `Buf-(opt-)span-step(-while)` for non--Span-destructive `Span-step`
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.

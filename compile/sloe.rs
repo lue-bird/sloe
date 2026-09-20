@@ -5902,9 +5902,9 @@ fn syntax_project_fn_to_zig<Expressions, Patterns, Types>(
 fn zig_allocator_variable(output: &mut String, scope_start: lsp_types::Position) {
     use std::fmt::Write as _;
     output.push_str("@\"%allocator:");
-    let _ = write!(output, "{}", scope_start.line);
+    _ = write!(output, "{}", scope_start.line);
     output.push_str(":");
-    let _ = write!(output, "{}", scope_start.character);
+    _ = write!(output, "{}", scope_start.character);
     output.push_str("\"");
 }
 fn zig_incomplete_expression(output: &mut String) {
@@ -6068,9 +6068,9 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
                             let mut unspread_record_variable_name = String::new();
                             use std::fmt::Write as _;
                             unspread_record_variable_name.push_str("@\"%unspread_record:");
-                            let _ = write!(unspread_record_variable_name, "{}", dot_dot_start.line);
+                            _ = write!(unspread_record_variable_name, "{}", dot_dot_start.line);
                             unspread_record_variable_name.push_str(":");
-                            let _ = write!(
+                            _ = write!(
                                 unspread_record_variable_name,
                                 "{}",
                                 dot_dot_start.character
@@ -6170,7 +6170,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 zig_break_start(output, label);
                             }
                             output.push_str("P32 { .positive = ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push_str(" }");
                             if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
                                 zig_break_end(output);
@@ -6186,7 +6186,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 zig_break_start(output, label);
                             }
                             output.push_str("@as(u32, ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push(')');
                             if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
                                 zig_break_end(output);
@@ -6202,7 +6202,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 zig_break_start(output, label);
                             }
                             output.push_str("@as(i32, ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push(')');
                             if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
                                 zig_break_end(output);
@@ -6218,7 +6218,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 zig_break_start(output, label);
                             }
                             output.push_str("@as(f32, ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push(')');
                             if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
                                 zig_break_end(output);
@@ -6366,14 +6366,6 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             name,
             value,
         } => {
-            let label = match return_context {
-                ZigReturnContext::StatementsFollowedByBreak(label) => label,
-                ZigReturnContext::Expression => {
-                    let label = expression_start(expression);
-                    zig_block_start(output, label);
-                    label
-                }
-            };
             let Some(name) = name else {
                 zig_incomplete_expression(output);
                 return;
@@ -6397,13 +6389,21 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
+            let label = match return_context {
+                ZigReturnContext::StatementsFollowedByBreak(label) => label,
+                ZigReturnContext::Expression => {
+                    let label = expression_start(expression);
+                    zig_block_start(output, label);
+                    label
+                }
+            };
             let value = expressions.item(value);
             fn value_variable_name(output: &mut String, start: lsp_types::Position) {
                 use std::fmt::Write as _;
                 output.push_str("@\"%value:");
-                let _ = write!(output, "{}", start.line);
+                _ = write!(output, "{}", start.line);
                 output.push_str(":");
-                let _ = write!(output, "{}", start.character);
+                _ = write!(output, "{}", start.character);
                 output.push_str("\"");
             }
             let value_start = expression_start(value);
@@ -6563,9 +6563,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             fn record_spread_variable_name(output: &mut String, start: lsp_types::Position) {
                 use std::fmt::Write as _;
                 output.push_str("@\"%record_spread:");
-                let _ = write!(output, "{}", start.line);
+                _ = write!(output, "{}", start.line);
                 output.push_str(":");
-                let _ = write!(output, "{}", start.character);
+                _ = write!(output, "{}", start.character);
                 output.push_str("\"");
             }
             let any_part_is_spread =
@@ -6725,14 +6725,52 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 zig_incomplete_expression(output);
                 return;
             };
-            if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
-                zig_break_start(output, label);
+            let label = match return_context {
+                ZigReturnContext::StatementsFollowedByBreak(label) => label,
+                ZigReturnContext::Expression => {
+                    let label = expression_start(expression);
+                    zig_block_start(output, label);
+                    label
+                }
+            };
+            let item0 = expressions.item(item0);
+            fn item0_variable_name(output: &mut String, start: lsp_types::Position) {
+                use std::fmt::Write as _;
+                output.push_str("@\"%item0:");
+                _ = write!(output, "{}", start.line);
+                output.push_str(":");
+                _ = write!(output, "{}", start.character);
+                output.push_str("\"");
             }
-            // does this tuple always coerce?
-            output.push_str(".{");
-            for item in std::iter::once(expressions.item(item0))
-                .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
-            {
+            let item0_start = expression_start(item0);
+            output.push_str("const ");
+            item0_variable_name(output, item0_start);
+            output.push_str(" = ");
+            syntax_expression_to_zig(
+                output,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                local_variables,
+                origins,
+                item0,
+                function_scope_start,
+                ZigReturnContext::Expression,
+            );
+            output.push(';');
+            zig_break_start(output, label);
+            output.push_str("[_]@TypeOf(");
+            item0_variable_name(output, item0_start);
+            output.push_str("){");
+            item0_variable_name(output, item0_start);
+            output.push_str(", ");
+            for item in item1_up.iter().filter_map(|item| item.item.as_ref()) {
                 syntax_expression_to_zig(
                     output,
                     type_aliases,
@@ -6753,8 +6791,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 output.push_str(", ");
             }
             output.push('}');
-            if let ZigReturnContext::StatementsFollowedByBreak(_) = return_context {
-                zig_break_end(output);
+            zig_break_end(output);
+            if let ZigReturnContext::Expression = return_context {
+                zig_block_end(output);
             }
         }
         SyntaxExpression::Parenthesized {
@@ -6829,9 +6868,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 let mut queried_variable_name = String::new();
                 use std::fmt::Write as _;
                 queried_variable_name.push_str("@\"%queried:");
-                let _ = write!(queried_variable_name, "{}", question_mark_start.line);
+                _ = write!(queried_variable_name, "{}", question_mark_start.line);
                 queried_variable_name.push_str(":");
-                let _ = write!(queried_variable_name, "{}", question_mark_start.character);
+                _ = write!(queried_variable_name, "{}", question_mark_start.character);
                 queried_variable_name.push_str("\"");
                 queried_variable_name
             };
@@ -7031,9 +7070,9 @@ fn zig_break_end(output: &mut String) {
 fn zig_block_label_for_start_position(output: &mut String, position: lsp_types::Position) {
     use std::fmt::Write as _;
     output.push_str("@\"%block:");
-    let _ = write!(output, "{}", position.line);
+    _ = write!(output, "{}", position.line);
     output.push_str(":");
-    let _ = write!(output, "{}", position.character);
+    _ = write!(output, "{}", position.character);
     output.push_str("\"");
 }
 fn type_to_zig(output: &mut String, type_: &Type) {
@@ -7153,9 +7192,9 @@ fn name_to_lowercase_local_zig_introduced_at(
     output.push_str("@\"%");
     output.push_str(&sanitized);
     output.push_str(":");
-    let _ = write!(output, "{}", introduced_start.line);
+    _ = write!(output, "{}", introduced_start.line);
     output.push_str(":");
-    let _ = write!(output, "{}", introduced_start.character);
+    _ = write!(output, "{}", introduced_start.character);
     output.push('"');
 }
 const zig_unrelated_top_level_lowercase_names: [&str; 9] = [
@@ -7608,9 +7647,9 @@ fn syntax_pattern_to_js_destructuring<'a, Patterns, Types>(
                             let mut unspread_record_variable_name = String::new();
                             use std::fmt::Write as _;
                             unspread_record_variable_name.push_str("$unspread_record$");
-                            let _ = write!(unspread_record_variable_name, "{}", dot_dot_start.line);
+                            _ = write!(unspread_record_variable_name, "{}", dot_dot_start.line);
                             unspread_record_variable_name.push_str("_");
-                            let _ = write!(
+                            _ = write!(
                                 unspread_record_variable_name,
                                 "{}",
                                 dot_dot_start.character
@@ -7696,7 +7735,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         Ok(number) => {
                             js_scope_result_variable(output, scope_start);
                             output.push_str(" = ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push_str(";\n");
                         }
                         Err(_) => js_incomplete_statement(),
@@ -7705,7 +7744,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         Ok(number) => {
                             js_scope_result_variable(output, scope_start);
                             output.push_str(" = ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push_str(";\n");
                         }
                         Err(_) => js_incomplete_statement(),
@@ -7714,7 +7753,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         Ok(number) => {
                             js_scope_result_variable(output, scope_start);
                             output.push_str(" = ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push_str(";\n");
                         }
                         Err(_) => js_incomplete_statement(),
@@ -7723,7 +7762,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         Ok(number) => {
                             js_scope_result_variable(output, scope_start);
                             output.push_str(" = ");
-                            let _ = write!(output, "{}", number);
+                            _ = write!(output, "{}", number);
                             output.push_str(";\n");
                         }
                         Err(_) => js_incomplete_statement(),
@@ -8293,9 +8332,9 @@ fn name_to_lowercase_local_js(output: &mut String, name: &str) {
 fn js_scope_result_variable(output: &mut String, scope_start: lsp_types::Position) {
     use std::fmt::Write as _;
     output.push_str("$result$");
-    let _ = write!(output, "{}", scope_start.line);
+    _ = write!(output, "{}", scope_start.line);
     output.push_str("_");
-    let _ = write!(output, "{}", scope_start.character);
+    _ = write!(output, "{}", scope_start.character);
 }
 fn name_to_lowercase_local_js_introduced_at(
     output: &mut String,
@@ -8309,9 +8348,9 @@ fn name_to_lowercase_local_js_introduced_at(
     }
     output.push_str(&sanitized);
     output.push_str("$");
-    let _ = write!(output, "{}", introduced_start.line);
+    _ = write!(output, "{}", introduced_start.line);
     output.push_str("_");
-    let _ = write!(output, "{}", introduced_start.character);
+    _ = write!(output, "{}", introduced_start.character);
 }
 fn origin_name_to_uppercase_js(output: &mut String, name: &str) {
     let mut sanitized: String = name.replace("-", "_");
@@ -15026,7 +15065,7 @@ fn char_needs_unicode_escaping(char: char) -> bool {
 fn unicode_char_escape_into(so_far: &mut String, char: char) {
     let code: u32 = char.into();
     use std::fmt::Write as _;
-    let _ = write!(so_far, "\\({:X})", code);
+    _ = write!(so_far, "\\({:X})", code);
 }
 fn syntax_string_format(formatted: &mut String, content: &str) {
     formatted.push('"');
