@@ -385,6 +385,15 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 
 # potential improvements in the future
 - IDE type and type diff error displays suck ass, mostly due to indentation being stripped. But markdown support seems to still be ways off for most editors for some reason. Anyone know a solution?
+- add `b8` type to represent a byte. Add `I32-2s-complement/U32/F32-to-b8s-decreasing/increasing-significance` and the other way around. Add `B8-xor`, `B8-complement`, `B8-and`, `B8-or`, `B8-reinterpret-as-U32`
+- add hashing primitives (or provide the means for users to implement them).
+  Would for example be nice if index maps could in some way make use of Bufs,
+  for example if it's like
+  ```sloe
+  ty Map _slots, _in-hash-order, _item
+      .slots Buf _slots, Slot _in-hash-order
+      .items Buf _in-hash-order, _item
+  ```
 - when in query case pattern record, suggest field name in completion
 - add field and variant rename and references
 - add code action for spreading a pattern variable
@@ -752,7 +761,11 @@ I imagine the current style leaves some performance on the table but I'd be surp
       : .buf Buf _origin, _item .slot Slot
   ```
 
-- add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful.
+- add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
+
+- add `Buf-opt-)span-sort` (issue: how to implement in rust and js?)
+
+- consider adding `Buf-(opt-)span-binary-search` (maybe interpolation search)
 
 - again try to may make proper unerase viable (unlikely).
   If successful add
@@ -765,9 +778,14 @@ I imagine the current style leaves some performance on the table but I'd be surp
   ```
   If currently uneraser API is here to stay, remove Origin-erased-rid. It can't really be made useful
 
-- drop the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
-
 - optimize core.zig Buf.markLengthPositiveAsSet
+
+- add `U32-mul-wrap` but discourage general use outside of performance-critical cases
+
+- consider dropping the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
+
+- consider introducing nested origins where the unique origin type can itself be an origin.
+  This could make nested parts viable. (for example `Origin (Origin unique-origin, .outer .), .inner .`, constructed via `^ .outer.inner unique-origin`)
 
 - give nicer error when only a field is missing or too much
 
@@ -793,29 +811,12 @@ since each variable can be used at most once, most introduced names that would t
 
 ## on defer
 I love how linear types somewhat mirror the functionality of `defer ...getRidOfIt();` but without the yucky control flow. All operations happen in the specified order in sloe!
-This also simplified code generation
-
-## sorting?
-`sorted-span` etc. could be nice (only in userland most likely!)
-That in combination with binary/interpolation search could be a nice alternative to set and map collections.
-Needs `Buf-span-sort` (issue: how to implement in rust and js?).
-Not really possible with that approach: `Buf-span-sorted-insert`. It takes O(n) time.
-
-Also take another look at index maps.
-It's probably a good idea anyway to add hashing helpers to sloe.
-Would be nice if index maps could in some way make use of Bufs,
-for example if it's like
-```sloe
-ty Map _slots, _in-hash-order, _item
-    .slots Buf _slots, Slot _in-hash-order
-    .items Buf _in-hash-order, _item
-```
+This also simplifies code generation
 
 ## on this language's ideas not being experimental
-When I started imagining this language I naiively thought that the few core concepts were pretty unique.
-Reading more on the various aspects, it turns out I've pretty much been baking a cake that was already in the oven twice For example, using indexes that are marked to uniquely reference their origin array at compile time
+When I started imagining this language I believed the few core concepts to be pretty unique.
+Reading more on the various aspects, it turns out this cake was already in the oven twice. For example, using indexes that are marked to uniquely reference their origin array at compile time
 seems to have been individually already explored by many cool people.
-This left me wondering if there was any point in writing this language at all,
-seeing that many modern languages seem to converge to a similar (or even better) design (carbon, visions for rust, dada, various libraries, zig).
+Many modern languages seem to converge to a similar (or even better) design (carbon, visions for rust, valen, dada, various libraries, zig).
 
 Now I would indeed say that maybe there was never a place or future for sloe but exploring these hot topics and arriving at a similar place as many others was still nice to learn :---)

@@ -1078,7 +1078,7 @@ fn Number-buffer-sum . : u32 =
     ? Buf-rid buf [.]
     sum
 
-fn Example-array . : Array u32, .el0 u32 .el1 u32 .el2 u32 =
+fn Example-array . : Array u32, .i0 u32 .i1 u32 .i2 u32 =
     # arrays are not supposed to be stored, just an example
     ; 3 u32 ; 2 u32 ; 1 u32
 

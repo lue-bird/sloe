@@ -11881,10 +11881,9 @@ fn variant_names_to_rust_enum_name<'a>(field_names: impl Iterator<Item = &'a Nam
             so_far + "·" + &variant_name
         })
 }
-const array_record_field_name_for_index0: Name = Name::from_static("el0");
+const array_record_field_name_for_index0: Name = Name::from_static("i0");
 fn array_record_field_name_for_index(item_index: usize) -> Name {
-    // there must be something faster
-    Name::from_string(format!("el{}", item_index))
+    Name::from_string(format!("i{}", item_index))
 }
 fn syn_span() -> proc_macro2::Span {
     proc_macro2::Span::call_site()
@@ -14688,7 +14687,7 @@ This is a very bare-bones feature because of sloe's simple type system.
 How does Array work then? The second record argument is set to an equivalent record
 that the runtime knows how to interpret as an actual array.
 ```sloe
-fn Example-array . : Array u32, .el0 u32 .el1 u32 =
+fn Example-array . : Array u32, .i0 u32 .i1 u32 =
     ; 6 u32 ; 9 u32
 ```
 This is quite cursed!
