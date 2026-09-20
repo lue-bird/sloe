@@ -6447,7 +6447,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     },
                 )
                 .collect::<Vec<_>>();
-            variants_sorted.sort_by_key(|(name, _)| *name);
+            variants_sorted.sort_unstable_by_key(|(name, _)| *name);
             variant_names_to_zig_choice_type_name(
                 output,
                 variants_sorted.iter().map(|(name, _)| *name),
@@ -7055,7 +7055,7 @@ fn type_to_zig(output: &mut String, type_: &Type) {
                 output.push_str(record_empty_zig_type_name);
             } else {
                 let mut fields_sorted = fields.iter().collect::<Vec<_>>();
-                fields_sorted.sort_by_key(|variant| &variant.name);
+                fields_sorted.sort_unstable_by_key(|field| &field.name);
                 output.push_str("Record(struct { ");
                 for TypeField { name, value } in fields_sorted {
                     output.push_str(&name_to_lowercase_zig(name));
@@ -7071,7 +7071,7 @@ fn type_to_zig(output: &mut String, type_: &Type) {
                 output.push_str(choice_empty_zig_type_name);
             } else {
                 let mut variants_sorted = variants.iter().collect::<Vec<_>>();
-                variants_sorted.sort_by_key(|variant| &variant.name);
+                variants_sorted.sort_unstable_by_key(|variant| &variant.name);
                 variant_names_to_zig_choice_type_name(
                     output,
                     variants_sorted.iter().map(|variant| &variant.name),
