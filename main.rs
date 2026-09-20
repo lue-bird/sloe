@@ -1142,6 +1142,7 @@ fn respond_to_hover<Expressions, Patterns, Types>(
                 None
             }
         }),
+        sloe::SyntaxSymbol::VariableUnknown { .. } => None,
         sloe::SyntaxSymbol::PatternVariable {
             name,
             use_start,
@@ -1185,93 +1186,20 @@ fn respond_to_goto_definition<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    // TODO use sloe::syntax_project_symbol_origin_range instead
-    let origin_name_range = match symbol {
-        sloe::SyntaxSymbol::VariantOrUnknown(_) => None,
-        sloe::SyntaxSymbol::ProjectFnOrUnknown {
-            name: symbol_name,
-            construct_info: _,
-            pattern_variables: _,
-            origins: _,
-        } => project_state
-            .syntax
-            .items
-            .iter()
-            .find_map(|item| match item {
-                sloe::SyntaxProjectItem::Fn {
-                    name: Some(fn_name),
-                    ..
-                } if &fn_name.value == symbol_name.value => {
-                    Some(sloe::name_range(sloe::with_start_position_as_ref(fn_name)))
-                }
-                _ => None,
-            }),
-        sloe::SyntaxSymbol::ProjectTypeOrUnknown {
-            name: symbol_name,
-            construct_info: _,
-            origins: _,
-        } => project_state
-            .syntax
-            .items
-            .iter()
-            .find_map(|item| match item {
-                sloe::SyntaxProjectItem::TypeAlias {
-                    name: Some(type_alias_name),
-                    ..
-                } if &type_alias_name.value == symbol_name.value => Some(sloe::name_range(
-                    sloe::with_start_position_as_ref(type_alias_name),
-                )),
-                _ => None,
-            }),
-        sloe::SyntaxSymbol::Origin {
-            name,
-            use_start: _,
-            origin_unique_name: _,
-            origin,
-        } => {
-            if origin.parts.is_empty() {
-                Some(sloe::name_range(sloe::WithStartPosition {
-                    value: name,
-                    start: origin.start,
-                }))
-            } else {
-                origin
-                    .parts
-                    .iter()
-                    .find(|part| {
-                        part.value
-                            .as_ref()
-                            .is_some_and(|part_name| part_name == name)
-                    })
-                    .map(|part| {
-                        sloe::name_range(sloe::WithStartPosition {
-                            value: name,
-                            start: lsp_position_add_characters(part.start, 1),
-                        })
-                    })
-            }
-        }
-        sloe::SyntaxSymbol::TypeVariable { .. } => None,
-        sloe::SyntaxSymbol::PatternVariable {
-            name,
-            use_start: _,
-            origin,
-        } => Some(sloe::name_range(sloe::WithStartPosition {
-            value: name,
-            start: origin.start,
-        })),
+    let Some(origin_name_range) =
+        sloe::syntax_project_symbol_origin_range(&project_state.syntax, &symbol)
+    else {
+        return None;
     };
-    origin_name_range.map(|origin_name_range| {
-        lsp_types::DefinitionResponse::Definition(lsp_types::Definition::Location(
-            lsp_types::Location {
-                uri: goto_definition_arguments
-                    .text_document_position_params
-                    .text_document
-                    .uri,
-                range: origin_name_range,
-            },
-        ))
-    })
+    Some(lsp_types::DefinitionResponse::Definition(
+        lsp_types::Definition::Location(lsp_types::Location {
+            uri: goto_definition_arguments
+                .text_document_position_params
+                .text_document
+                .uri,
+            range: origin_name_range,
+        }),
+    ))
 }
 
 fn respond_to_prepare_rename<Expressions, Patterns, Types>(
@@ -1300,44 +1228,47 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
     ) else {
         return None;
     };
-    let symbol_range = match symbol {
+    let Some(symbol_range) = (match symbol {
         sloe::SyntaxSymbol::ProjectTypeOrUnknown {
             name,
             construct_info: _,
             origins: _,
-        } => sloe::name_range(name),
+        } => Some(sloe::name_range(name)),
         sloe::SyntaxSymbol::Origin {
             name,
             use_start,
             origin_unique_name: _,
             origin: _,
-        } => sloe::name_range(sloe::WithStartPosition {
+        } => Some(sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: use_start,
-        }),
+        })),
         sloe::SyntaxSymbol::TypeVariable {
             name,
             use_start,
             scope: _,
-        } => sloe::name_range(sloe::WithStartPosition {
+        } => Some(sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: use_start,
-        }),
-        sloe::SyntaxSymbol::VariantOrUnknown(name) => sloe::name_range(name),
+        })),
+        sloe::SyntaxSymbol::VariantOrUnknown(name) => Some(sloe::name_range(name)),
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name,
             construct_info: _,
             pattern_variables: _,
             origins: _,
-        } => sloe::name_range(name),
+        } => Some(sloe::name_range(name)),
         sloe::SyntaxSymbol::PatternVariable {
             name,
             use_start,
             origin: _,
-        } => sloe::name_range(sloe::WithStartPosition {
+        } => Some(sloe::name_range(sloe::WithStartPosition {
             value: name,
             start: use_start,
-        }),
+        })),
+        sloe::SyntaxSymbol::VariableUnknown { .. } => None,
+    }) else {
+        return None;
     };
     Some(lsp_types::PrepareRenameResult::Range(symbol_range))
 }
@@ -1636,7 +1567,6 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 ))
             }
         },
-        sloe::SyntaxSymbol::Origin { .. } => None,
         sloe::SyntaxSymbol::TypeVariable {
             name: _,
             use_start,
@@ -1755,57 +1685,6 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                 None
                             }
                         })
-                        .chain(pattern_variables.into_iter().map(
-                            |(pattern_variable, pattern_variable_origin)| {
-                                lsp_types::CompletionItem {
-                                    label: pattern_variable.to_string(),
-                                    kind: Some(lsp_types::CompletionItemKind::Variable),
-                                    documentation: Some(lsp_documentation_markdown(
-                                        present_pattern_variable_markdown(
-                                            pattern_variable_origin.type_.as_ref(),
-                                        ),
-                                    )),
-                                    ..lsp_types::CompletionItem::default()
-                                }
-                            },
-                        ))
-                        .chain(
-                            origins
-                                .iter()
-                                .filter(|(_, info)| info.parts.is_empty())
-                                .map(|(origin_name, _)| lsp_types::CompletionItem {
-                                    label: origin_name.to_string(),
-                                    kind: Some(lsp_types::CompletionItemKind::Variable),
-                                    documentation: Some(lsp_documentation_markdown(
-                                        present_full_origin_variable_markdown(origin_name),
-                                    )),
-                                    ..lsp_types::CompletionItem::default()
-                                }),
-                        )
-                        .chain(
-                            origins
-                                .iter()
-                                .flat_map(|(&origin_unique_name, info)| {
-                                    info.parts.iter().filter_map(move |part| {
-                                        part.value
-                                            .as_ref()
-                                            .map(|part_name| (origin_unique_name, part_name))
-                                    })
-                                })
-                                .map(
-                                    |(origin_unique_name, part_name)| lsp_types::CompletionItem {
-                                        label: origin_unique_name.to_string(),
-                                        kind: Some(lsp_types::CompletionItemKind::Variable),
-                                        documentation: Some(lsp_documentation_markdown(
-                                            present_part_origin_variable_markdown(
-                                                origin_unique_name,
-                                                part_name,
-                                            ),
-                                        )),
-                                        ..lsp_types::CompletionItem::default()
-                                    },
-                                ),
-                        )
                         .collect(),
                 ))
             }
@@ -1911,6 +1790,65 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 ))
             }
         },
+        sloe::SyntaxSymbol::VariableUnknown {
+            name,
+            pattern_variables,
+            origins,
+        } => Some(lsp_types::CompletionResponse::CompletionItemList(
+            pattern_variables
+                .into_iter()
+                .map(
+                    |(pattern_variable, pattern_variable_origin)| lsp_types::CompletionItem {
+                        label: pattern_variable.to_string(),
+                        kind: Some(lsp_types::CompletionItemKind::Variable),
+                        documentation: Some(lsp_documentation_markdown(
+                            present_pattern_variable_markdown(
+                                pattern_variable_origin.type_.as_ref(),
+                            ),
+                        )),
+                        ..lsp_types::CompletionItem::default()
+                    },
+                )
+                .chain(
+                    origins
+                        .iter()
+                        .filter(|(_, info)| info.parts.is_empty())
+                        .map(|(origin_name, _)| lsp_types::CompletionItem {
+                            label: origin_name.to_string(),
+                            kind: Some(lsp_types::CompletionItemKind::Variable),
+                            documentation: Some(lsp_documentation_markdown(
+                                present_full_origin_variable_markdown(origin_name),
+                            )),
+                            ..lsp_types::CompletionItem::default()
+                        }),
+                )
+                .chain(
+                    origins
+                        .iter()
+                        .flat_map(|(&origin_unique_name, info)| {
+                            info.parts.iter().filter_map(move |part| {
+                                part.value
+                                    .as_ref()
+                                    .map(|part_name| (origin_unique_name, part_name))
+                            })
+                        })
+                        .map(
+                            |(origin_unique_name, part_name)| lsp_types::CompletionItem {
+                                label: origin_unique_name.to_string(),
+                                kind: Some(lsp_types::CompletionItemKind::Variable),
+                                documentation: Some(lsp_documentation_markdown(
+                                    present_part_origin_variable_markdown(
+                                        origin_unique_name,
+                                        part_name,
+                                    ),
+                                )),
+                                ..lsp_types::CompletionItem::default()
+                            },
+                        ),
+                )
+                .collect(),
+        )),
+        sloe::SyntaxSymbol::Origin { .. } => None,
         sloe::SyntaxSymbol::PatternVariable {
             name: _,
             use_start: _,

@@ -16515,6 +16515,17 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
         use_start: lsp_types::Position,
         origin: PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     },
+    VariableUnknown {
+        name: &'a Name,
+        pattern_variables: std::collections::HashMap<
+            &'a Name,
+            PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
+        >,
+        origins: std::collections::HashMap<
+            &'a Name,
+            OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
+        >,
+    },
 }
 pub enum ConstructInfo {
     NotExpectingArgument,
@@ -16791,41 +16802,43 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
         } => type_
             .as_ref()
             .and_then(|value| type_symbol_at_position(value, position, types, scope, origins)),
-        SyntaxExpression::Variable(name) => Some(match pattern_variables.remove(&name.value) {
-            Some(pattern_variable) => SyntaxSymbol::PatternVariable {
-                name: &name.value,
-                use_start: name.start,
-                origin: pattern_variable,
-            },
-            None => match origins
-                .get(&name.value)
-                .map(|origin_info| (&name.value, origin_info))
-                .or_else(|| {
-                    origins
-                        .iter()
-                        .find(|(_, origin)| {
-                            origin.parts.iter().any(|part| {
-                                part.value
-                                    .as_ref()
-                                    .is_some_and(|part_name| part_name == &name.value)
-                            })
-                        })
-                        .map(|(&name, origin)| (name, origin))
-                }) {
-                Some((origin_unique_name, &origin_info)) => SyntaxSymbol::Origin {
+        SyntaxExpression::Variable(name) => Some(
+            pattern_variables
+                .remove(&name.value)
+                .map(|pattern_variable| SyntaxSymbol::PatternVariable {
                     name: &name.value,
                     use_start: name.start,
-                    origin_unique_name: origin_unique_name,
-                    origin: origin_info,
-                },
-                None => SyntaxSymbol::ProjectFnOrUnknown {
-                    name: with_start_position_as_ref(name),
-                    construct_info: ConstructInfo::NotExpectingArgument,
+                    origin: pattern_variable,
+                })
+                .or_else(|| {
+                    origins
+                        .get(&name.value)
+                        .map(|origin_info| (&name.value, origin_info))
+                        .or_else(|| {
+                            origins
+                                .iter()
+                                .find(|(_, origin)| {
+                                    origin.parts.iter().any(|part| {
+                                        part.value
+                                            .as_ref()
+                                            .is_some_and(|part_name| part_name == &name.value)
+                                    })
+                                })
+                                .map(|(&name, origin)| (name, origin))
+                        })
+                        .map(|(origin_unique_name, &origin_info)| SyntaxSymbol::Origin {
+                            name: &name.value,
+                            use_start: name.start,
+                            origin_unique_name: origin_unique_name,
+                            origin: origin_info,
+                        })
+                })
+                .unwrap_or_else(|| SyntaxSymbol::VariableUnknown {
+                    name: &name.value,
                     pattern_variables: std::mem::take(pattern_variables),
                     origins: std::mem::take(origins),
-                },
-            },
-        }),
+                }),
+        ),
         SyntaxExpression::Call {
             name,
             type_arguments,
@@ -17868,6 +17881,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
             value: name,
             start: origin.start,
         })),
+        SyntaxSymbol::VariableUnknown { .. } => None,
     }
 }
 /// resulting uses do not include the origin. For that, use syntax_project_symbol_origin_range
@@ -18118,6 +18132,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
                 }
             }
         }
+        SyntaxSymbol::VariableUnknown { .. } => {}
     }
     uses
 }
@@ -18339,7 +18354,8 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             SyntaxSymbol::TypeVariable { .. }
             | SyntaxSymbol::ProjectTypeOrUnknown { .. }
             | SyntaxSymbol::VariantOrUnknown(_)
-            | SyntaxSymbol::ProjectFnOrUnknown { .. } => {}
+            | SyntaxSymbol::ProjectFnOrUnknown { .. }
+            | SyntaxSymbol::VariableUnknown { .. } => {}
             SyntaxSymbol::Origin {
                 name: symbol_name,
                 use_start: _,
@@ -18368,8 +18384,9 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 SyntaxSymbol::TypeVariable { .. }
                 | SyntaxSymbol::Origin { .. }
                 | SyntaxSymbol::ProjectTypeOrUnknown { .. }
-                | SyntaxSymbol::VariantOrUnknown(_) => {}
-                SyntaxSymbol::PatternVariable { .. } => {}
+                | SyntaxSymbol::VariantOrUnknown(_)
+                | SyntaxSymbol::PatternVariable { .. }
+                | SyntaxSymbol::VariableUnknown { .. } => {}
                 SyntaxSymbol::ProjectFnOrUnknown {
                     name:
                         WithStartPosition {
@@ -18446,7 +18463,8 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 | SyntaxSymbol::Origin { .. }
                 | SyntaxSymbol::TypeVariable { .. }
                 | SyntaxSymbol::VariantOrUnknown(_)
-                | SyntaxSymbol::ProjectFnOrUnknown { .. } => {}
+                | SyntaxSymbol::ProjectFnOrUnknown { .. }
+                | SyntaxSymbol::VariableUnknown { .. } => {}
             }
             if let Some(parameter) = parameter {
                 syntax_pattern_symbol_uses_into(uses, parameter, symbol, patterns, types, origins);

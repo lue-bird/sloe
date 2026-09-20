@@ -2,7 +2,7 @@
 ty Stack _origin, _item
     # a singly-linked list. Since it is backed by a buf,
     # adjacent nodes are likely close together in memory. Who doesn't love that.
-    # (note that it's still noticeably worse than a simple buf most of the time)
+    # (note that it's still noticeably worse than a simple buf span most of the time)
     'empty .
     'stacked .head _item .tail Slot _origin
 
