@@ -122,8 +122,13 @@ export function u32_add_i32_clamp(add) {
 }
 /** @param {{ a: U32, b: U32, }} mul @returns {U32} */
 export function u32_mul_clamp(mul) {
-  // Math.imul would overflow
   return Math.min(U32$MAX, mul.a * mul.b);
+}
+/** @param {{ a: U32, b: U32, }} mul @returns {U32} */
+export function u32_mul_wrap(mul) {
+  /// >>> 0 undoes the conversion from unsigned to signed
+  // (step 4 in https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-math.imul)
+  return Math.imul(mul.a, mul.b) >>> 0;
 }
 /** @param {{ base: U32, exponent: P32, }} pow @returns {U32} */
 export function u32_pow_clamp(pow) {

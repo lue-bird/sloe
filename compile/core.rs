@@ -1772,6 +1772,9 @@ pub fn u32_add_i32_clamp(Record·i·u { i, u }: Record·i·u<I32, U32>) -> U32 {
 pub fn u32_mul_clamp(Record·a·b { a, b }: Record·a·b<U32, U32>) -> U32 {
     a.saturating_mul(b)
 }
+pub fn u32_mul_wrap(Record·a·b { a, b }: Record·a·b<U32, U32>) -> U32 {
+    a.wrapping_mul(b)
+}
 pub fn u32_pow_clamp(
     Record·base·exponent { base, exponent }: Record·base·exponent<U32, P32>,
 ) -> U32 {

@@ -780,8 +780,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - optimize core.zig Buf.markLengthPositiveAsSet
 
-- add `U32-mul-wrap` but discourage general use outside of performance-critical cases
-
 - consider dropping the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
 
 - consider introducing nested origins where the unique origin type can itself be an origin.

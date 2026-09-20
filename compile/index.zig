@@ -101,6 +101,10 @@ test "various trivial" {
     try std.testing.expectEqual(-2, core.f32_add_clamp(.{ .a = -1.6, .b = -0.4 }));
     try std.testing.expectEqual(core.P32{ .positive = 99 }, core.p32_mul_clamp(.{ .a = core.P32{ .positive = 11 }, .b = core.P32{ .positive = 9 } }));
     try std.testing.expectEqual(99, core.u32_mul_clamp(.{ .a = 11, .b = 9 }));
+    try std.testing.expectEqual(std.math.maxInt(u32), core.u32_mul_clamp(.{ .a = std.math.maxInt(u32), .b = 9 }));
+    try std.testing.expectEqual(99, core.u32_mul_wrap(.{ .a = 11, .b = 9 }));
+    try std.testing.expectEqual(std.math.maxInt(u32) / 3 - 1, core.u32_mul_wrap(.{ .a = std.math.maxInt(u32) / 3, .b = 4 }));
+    try std.testing.expectEqual(std.math.maxInt(u32) / 3 - 2, core.u32_mul_wrap(.{ .a = std.math.maxInt(u32) / 3, .b = 7 }));
     try std.testing.expectEqual(-99, core.i32_mul_clamp(.{ .a = -11, .b = 9 }));
     try std.testing.expectEqual(0.6, core.f32_mul_clamp(.{ .a = -1.5, .b = -0.4 }));
     try std.testing.expectEqual(121, core.u32_pow_clamp(.{ .base = 11, .exponent = core.P32{ .positive = 2 } }));

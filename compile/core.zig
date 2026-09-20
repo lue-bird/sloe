@@ -1048,6 +1048,9 @@ pub fn u32_add_i32_clamp(@"%": Record(struct { i: I32, u: U32 })) U32 {
 pub fn u32_mul_clamp(@"%": Record(struct { a: U32, b: U32 })) U32 {
     return @"%".a *| @"%".b;
 }
+pub fn u32_mul_wrap(@"%": Record(struct { a: U32, b: U32 })) U32 {
+    return @"%".a *% @"%".b;
+}
 pub fn u32_pow_clamp(@"%": Record(struct { base: U32, exponent: P32 })) U32 {
     return std.math.powi(u32, @"%".base, @"%".exponent.positive) catch std.math.maxInt(u32);
 }

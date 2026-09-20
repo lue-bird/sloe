@@ -12277,6 +12277,15 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
                 result_type: type_u32,
             },
             CoreFnInfo {
+                name: "U32-mul-wrap",
+                documentation: "a * b, wrapping around from 0 on overflow (like the remainder of (a * b) / 2^32).
+Prefer over U32-mul-clamp if you explicitly want this overflow behavior
+or performance is critical.",
+                type_parameters: vec![],
+                parameter_type: type_record([("a", type_u32), ("b", type_u32)]),
+                result_type: type_u32,
+            },
+            CoreFnInfo {
                 name: "U32-pow-clamp",
                 documentation: "Saturating base ^ exponent",
                 type_parameters: vec![],
