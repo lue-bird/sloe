@@ -6085,6 +6085,9 @@ fn syntax_pattern_to_zig_destructuring<'a, Patterns, Types>(
                         output.push_str("const ");
                         output.push_str(&unspread_record_variable_name);
                         output.push_str(" = record(.{ ");
+                        let mut record_spread_field_names =
+                            record_spread_field_names.iter().collect::<Vec<_>>();
+                        record_spread_field_names.sort_unstable();
                         for record_spread_field_name in record_spread_field_names {
                             output.push('.');
                             output.push_str(&name_to_lowercase_zig(record_spread_field_name));
