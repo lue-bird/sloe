@@ -16161,14 +16161,18 @@ fn syntax_pattern_record_part_unparenthesized_format<Types, Patterns>(
         SyntaxRecordPart::Spread {
             dot_dot_start,
             record,
-        } => {
-            formatted.push_str("..");
-            match record {
-                None => {
-                    formatted.push(' ');
-                }
-                Some(record) => {
-                    let record = patterns.item(record);
+        } => match record {
+            None => {
+                formatted.push_str(".. ");
+            }
+            Some(record) => {
+                let record = patterns.item(record);
+                if part_count == 1 {
+                    syntax_pattern_unparenthesized_format(
+                        formatted, indent, patterns, types, record,
+                    );
+                } else {
+                    formatted.push_str("..");
                     maybe_open_end_whitespace_then_item_format(
                         formatted,
                         indent,
@@ -16186,7 +16190,7 @@ fn syntax_pattern_record_part_unparenthesized_format<Types, Patterns>(
                     );
                 }
             }
-        }
+        },
     }
 }
 fn syntax_type_open_end<Types>(
