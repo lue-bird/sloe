@@ -1733,18 +1733,22 @@ pub fn buf_item_step(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
         buf: Buf(@"%Origin", @"%Item"),
-        slot: Slot(@"%Origin"),
         in: @"%In",
+        slot: Slot(@"%Origin"),
         step: Fn(
             Record(struct { in: @"%In", item: @"%Item" }),
             Record(struct { item: @"%Item", out: @"%Out" }),
         ),
     }),
-) error{OutOfMemory}!@"%Out" {
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    out: @"%Out",
+    slot: Slot(@"%Origin"),
+}) {
     const @"%item_ptr" = @"%".buf.item_ptr(@"%".slot);
     const @"%stepped" = try @"%".step(@"%allocator", .{ .in = @"%".in, .item = @"%item_ptr".* });
     @"%item_ptr".* = @"%stepped".item;
-    return @"%stepped".out;
+    return .{ .buf = @"%".buf, .out = @"%stepped".out, .slot = @"%".slot };
 }
 pub fn buf_swap(@"%Item": type, @"%Origin": type, @"%": Record(struct {
     buf: Buf(@"%Origin", @"%Item"),
@@ -2104,8 +2108,8 @@ pub fn buf_opt_span_add_own_span(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
         buf: Buf(@"%Origin", @"%Item"),
-        end: Opt(Span(@"%Origin")),
-        start: Span(@"%Origin"),
+        end: Span(@"%Origin"),
+        start: Opt(Span(@"%Origin")),
     }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Span(@"%Origin") }) {
     switch (@"%".start) {
@@ -2148,7 +2152,7 @@ pub fn buf_opt_span_add_own_opt_span(
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
         buf: Buf(@"%Origin", @"%Item"),
-        end: Span(@"%Origin"),
+        end: Opt(Span(@"%Origin")),
         start: Opt(Span(@"%Origin")),
     }),
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), span: Span(@"%Origin") }) {
