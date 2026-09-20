@@ -742,8 +742,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- when reporing unrecognized syntax, only mark the first unrecognized character in the range
-
 - suggest origin variables when completing variables (if not already)
 
 - fix bug where formating unrecognized range can multiply declarations around it

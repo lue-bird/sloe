@@ -2401,7 +2401,10 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
                 source: unknown_source,
             } => {
                 errors.push(ErrorNode {
-                    range: *unknown_range,
+                    range: lsp_types::Range {
+                        start: unknown_range.start,
+                        end: position_add_characters(unknown_range.start, 1)
+                    },
                     message: format!("unrecognized syntax. {}
 If this section of code is in a declaration, there might be another error for that declaration that can give more helpful hints.
 
