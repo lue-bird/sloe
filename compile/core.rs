@@ -233,6 +233,12 @@ pub struct Record·buf·item_rid·span<Buf, Item_rid, Span> {
     pub span: Span,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·buf·item_alter·span<Buf, Item_alter, Span> {
+    pub buf: Buf,
+    pub item_alter: Item_alter,
+    pub span: Span,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·new<Buf, New> {
     pub buf: Buf,
     pub new: New,
@@ -935,6 +941,25 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                 item_rid(item)
             }
         });
+    }
+    pub fn opt_span_alter(
+        &mut self,
+        span: &mut Opt<Span<LocalOrigin>>,
+        item_alter: impl std::ops::Fn(Item) -> Item,
+    ) {
+        if let Opt::Yes(span) = span {
+            self.span_alter(span, item_alter)
+        }
+    }
+    pub fn span_alter(
+        &mut self,
+        span: &mut Span<LocalOrigin>,
+        item_alter: impl std::ops::Fn(Item) -> Item,
+    ) {
+        for option_item_mut in self.span_slice_option_mut(span) {
+            let item = unsafe { option_item_mut.take().unwrap_unchecked() };
+            _ = option_item_mut.insert(item_alter(item));
+        }
     }
     fn rid_trailing_unset(&mut self) {
         // this feels unoptimal somehow
@@ -2499,14 +2524,40 @@ pub fn buf_span_rid<Item, Origin>(
     buf
 }
 pub fn buf_opt_span_rid<Item, Origin>(
+    Record·buf·item_alter·span {
+        mut buf,
+        item_alter,
+        span,
+    }: Record·buf·item_alter·span<Buf<Origin, Item>, Fn<Item, Record>, Opt<Span<Origin>>>,
+) -> Buf<Origin, Item> {
+    buf.opt_span_rid(span, item_alter);
+    buf
+}
+pub fn buf_span_alter<Item, Origin>(
+    Record·buf·item_alter·span {
+        mut buf,
+        item_alter,
+        mut span,
+    }: Record·buf·item_alter·span<Buf<Origin, Item>, Fn<Item, Item>, Span<Origin>>,
+) -> Record·buf·span<Buf<Origin, Item>, Span<Origin>> {
+    buf.span_alter(&mut span, item_alter);
+    Record·buf·span {
+        buf: buf,
+        span: span,
+    }
+}
+pub fn buf_opt_span_alter<Item, Origin>(
     Record·buf·item_rid·span {
         mut buf,
         item_rid,
-        span,
-    }: Record·buf·item_rid·span<Buf<Origin, Item>, Fn<Item, Record>, Opt<Span<Origin>>>,
-) -> Buf<Origin, Item> {
-    buf.opt_span_rid(span, item_rid);
-    buf
+        mut span,
+    }: Record·buf·item_rid·span<Buf<Origin, Item>, Fn<Item, Item>, Opt<Span<Origin>>>,
+) -> Record·buf·span<Buf<Origin, Item>, Opt<Span<Origin>>> {
+    buf.opt_span_alter(&mut span, item_rid);
+    Record·buf·span {
+        buf: buf,
+        span: span,
+    }
 }
 pub fn buf_rid<Item, Origin>(_: Buf<Origin, Item>) -> Record {}
 pub fn buf_insert<Item, Origin>(

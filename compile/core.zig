@@ -197,18 +197,6 @@ pub fn Array(@"%Item": type, @"%Record": type) type {
         }
     ]@"%Item";
 }
-pub fn recordToArray(@"%record": anytype) Array(
-    @typeInfo(@TypeOf(@"%record")).@"struct".field_types[0],
-    @TypeOf(@"%record"),
-) {
-    // yeah this is all crazy
-    const @"%record_struct_type_info" = @typeInfo(@TypeOf(@"%record")).@"struct";
-    var @"%actual_array": [@"%record_struct_type_info".field_names.len]@typeInfo(@TypeOf(@"%record")).@"struct".field_types[0] = undefined;
-    inline for (0..@"%record_struct_type_info".field_names.len) |@"%actual_array_index"| {
-        @"%actual_array"[@"%actual_array_index"] = @field(@"%record", std.fmt.comptimePrint("e{}", .{@"%actual_array_index"}));
-    }
-    return @"%actual_array";
-}
 pub fn Origin(@"%Origin": type, @"%Part": type) type {
     return struct {
         pub const origin = @"%Origin";
@@ -648,6 +636,29 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 .no => {},
                 .yes => |@"%span"| {
                     return @"%buf".spanRid(@"%allocator", @"%span", @"%item_rid");
+                },
+            }
+        }
+        pub fn spanAlter(
+            @"%buf": @This(),
+            @"%allocator": std.mem.Allocator,
+            @"%span": Span(@"%Origin"),
+            @"%item_alter": Fn(@"%Item", @"%Item"),
+        ) error{OutOfMemory}!void {
+            for (@"%buf".spanSlice(@"%span")) |*@"%item"| {
+                @"%item".* = try @"%item_alter"(@"%allocator", @"%item".*);
+            }
+        }
+        pub fn optSpanAlter(
+            @"%buf": @This(),
+            @"%allocator": std.mem.Allocator,
+            @"%opt_span": Opt(Span(@"%Origin")),
+            @"%item_alter": Fn(@"%Item", @"%Item"),
+        ) error{OutOfMemory}!void {
+            switch (@"%opt_span") {
+                .no => {},
+                .yes => |@"%span"| {
+                    return @"%buf".spanAlter(@"%allocator", @"%span", @"%item_alter");
                 },
             }
         }
@@ -1793,6 +1804,40 @@ pub fn buf_opt_span_rid(
     var @"%buf" = @"%".buf;
     try @"%buf".optSpanRid(@"%allocator", @"%".span, @"%".item_rid);
     return @"%buf";
+}
+pub fn buf_span_alter(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        item_alter: Fn(@"%Item", @"%Item"),
+        span: Span(@"%Origin"),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Span(@"%Origin"),
+}) {
+    var @"%buf" = @"%".buf;
+    try @"%buf".spanAlter(@"%allocator", @"%".span, @"%".item_alter);
+    return .{ .buf = @"%buf", .span = @"%".span };
+}
+pub fn buf_opt_span_alter(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        item_alter: Fn(@"%Item", @"%Item"),
+        span: Opt(Span(@"%Origin")),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Opt(Span(@"%Origin")),
+}) {
+    var @"%buf" = @"%".buf;
+    try @"%buf".optSpanAlter(@"%allocator", @"%".span, @"%".item_aler);
+    return .{ .buf = @"%buf", .span = @"%".span };
 }
 pub fn buf_opt_span_add(
     @"%Item": type,

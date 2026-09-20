@@ -401,6 +401,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - add code action for spreading a pattern variable
 - similarly, add "add remaining query cases" code action
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions Buf _expressions, Expression _expressions _patterns _types` doesn't exactly roll easily over one's keyboard
+- move collecting records and choice types to codegen phase, so that e.g. they are not unnecessarily collected for js or zig backend. Counter-argument: Most languages do not have a concept of structural composite types and repeating the job of collecting records for each one individually is error-prone and more work
 - add `Set _origin, _item` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _item` where key is derived from item) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
   Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `Buf` is fast enough
 - consider adding `Buf-counting` and `slot` which can reference a slot that is already in use:
@@ -753,9 +754,9 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- move collecting records and choice types to codegen phase, so that e.g. they are not unnecessarily collected for js or zig backend
+- test in real code that zig compilation of arrays works in statement form
 
-- add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
+- add `Buf-(opt-)span-step(-while)` for non--Span-destructive `Span-step`
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
@@ -765,7 +766,7 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
-- add `Buf-opt-)span-sort` (issue: how to implement in rust and js?)
+- add `Buf-(opt-)span-sort` (issue: how to implement in rust and js?)
 
 - again try to may make proper unerase viable (unlikely).
   If successful add

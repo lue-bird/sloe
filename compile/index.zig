@@ -421,26 +421,18 @@ test "span_step_while down, ending in |done" {
     }, index_sum.done.rest.yes);
 }
 test "array create" {
-    const ExampleArrayRecord = struct { e0: u32, e1: u32 };
-    const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const example_array0: core.Array(u32, struct { u32, u32 }) = .{ @as(u32, 0), @as(u32, 2) };
     try std.testing.expectEqualSlices(u32, &[_]u32{ 0, 2 }, &example_array0);
-    // we can just specify them as arrays directly
     const example_array1 = [_]u32{ @as(u32, 0), @as(u32, 2) };
     try std.testing.expectEqualSlices(u32, &example_array1, &example_array0);
     try std.testing.expectEqual(@TypeOf(example_array1), @TypeOf(example_array0));
-    // or as anonymus structs (unrelated record type, but nobody can care)
-    // Which means sloe doesn't even need to collect and generate record types etc.
-    // I do not think this is possible in rust but happy to be proven wrong
-    const example_array2 = core.recordToArray(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) });
-    try std.testing.expectEqualSlices(u32, &example_array2, &example_array0);
-    try std.testing.expectEqual(@TypeOf(example_array2), @TypeOf(example_array0));
 }
 test "buf_add_array" {
     const ExampleOrigin = enum { origin };
     const example_origin: core.Origin(ExampleOrigin, void) = .{};
     const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
-    const ExampleArrayRecord = struct { e0: u32, e1: u32 };
-    const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const ExampleArrayRecord = struct { u32, u32 };
+    const example_array0: ExampleArrayRecord = .{ 0, 2 };
     const with_array = try core.buf_add_array(u32, @TypeOf(example_origin), ExampleArrayRecord, std.testing.allocator, .{
         .buf = example_buf,
         .new = example_array0,
@@ -453,8 +445,8 @@ test "buf_opt_span_add_array" {
     const ExampleOrigin = enum { origin };
     const example_origin: core.Origin(ExampleOrigin, void) = .{};
     const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
-    const ExampleArrayRecord = struct { e0: u32, e1: u32 };
-    const example_array0 = core.recordToArray(ExampleArrayRecord{ .e0 = 0, .e1 = 2 });
+    const ExampleArrayRecord = struct { u32, u32 };
+    const example_array0: ExampleArrayRecord = .{ 0, 2 };
     const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), ExampleArrayRecord, std.testing.allocator, .{
         .buf = example_buf,
         .span = .{ .no = {} },
@@ -469,7 +461,7 @@ test "buf_span_rid" {
     const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
         .buf = example_buf,
         .span = .{ .no = {} },
-        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
+        .new = .{ @as(u32, 0), @as(u32, 2) },
     });
     const cleared = try core.buf_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, .{
         .buf = with_array.buf,
@@ -488,7 +480,7 @@ test "buf_opt_span_rid" {
     const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
         .buf = example_buf,
         .span = .{ .no = {} },
-        .new = core.recordToArray(core.record(.{ .e0 = @as(u32, 0), .e1 = @as(u32, 2) })),
+        .new = .{ @as(u32, 0), @as(u32, 2) },
     });
     const cleared = try core.buf_opt_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, .{
         .buf = with_array.buf,
@@ -499,6 +491,30 @@ test "buf_opt_span_rid" {
     });
     try std.testing.expectEqual(0, cleared.items.items.len);
     core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, cleared);
+}
+test "buf_span_alter" {
+    const ExampleOrigin = enum {};
+    const example_origin: core.Origin(ExampleOrigin, void) = .{};
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
+        .buf = example_buf,
+        .span = .{ .no = {} },
+        .new = .{ @as(u32, 0), @as(u32, 2) },
+    });
+    const altered = try core.buf_span_alter(u32, @TypeOf(example_origin), std.testing.allocator, .{
+        .buf = with_array.buf,
+        .span = with_array.span,
+        .item_alter = struct {
+            pub fn f(_: std.mem.Allocator, n: u32) error{OutOfMemory}!u32 {
+                return n + 1;
+            }
+        }.f,
+    });
+    try std.testing.expectEqual(altered.span, with_array.span);
+    try std.testing.expectEqual(2, altered.buf.items.items.len);
+    try std.testing.expectEqual(1, altered.buf.items.items[0]);
+    try std.testing.expectEqual(3, altered.buf.items.items[1]);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, altered.buf);
 }
 test "unset_slice castOrRidAndAllocate working" {
     const allocator = std.testing.allocator;

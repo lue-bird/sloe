@@ -13526,6 +13526,48 @@ and return their `Opt Span` back to the `Buf` for potential future reuse by func
                 ]),
             },
             CoreFnInfo {
+                name: "Buf-span-alter",
+                documentation: "Change every item referenced by the given Span with a given function to a new item of the same type.
+If your change function needs extra context from the outside, use `Buf-span-step` instead",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                    ("item-alter", type_fn(type_variable("item"), type_variable("item"))),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-opt-span-alter",
+                documentation: "Change every item referenced by the given Span with a given function to a new item of the same type.
+If your change function needs extra context from the outside, use `Buf-opt-span-step` instead",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                    ("item-alter", type_fn(type_variable("item"), type_variable("item"))),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                ]),
+            },
+            CoreFnInfo {
                 name: "Buf-opt-span-add",
                 documentation: "Attach a given item at the end of the span.",
                 type_parameters: vec![],
@@ -14673,6 +14715,8 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Buf-origin-unerase"
         | "Buf-opt-span-rid"
         | "Buf-span-rid"
+        | "Buf-opt-span-alter"
+        | "Buf-span-alter"
         | "Buf-opt-span-move-to-end"
         | "Buf-span-move-to-end"
         | "Buf-opt-span-add-own-opt-span"

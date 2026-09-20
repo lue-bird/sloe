@@ -744,6 +744,30 @@ export function buf_opt_span_rid(unset) {
   }
   return unset.buf;
 }
+/** @template $Item, $Origin
+ * @param {{ buf: Buf<$Origin, $Item>, item_alter: Fn<$Item, $Item>, span: Span<$Origin>, }} unset
+ * @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin> }} */
+export function buf_span_alter(unset) {
+  for (let i = unset.span.start; i < unset.span.start + unset.span.length; i++) {
+    unset.buf[i] = unset.item_alter(/** @type $Item */ (unset.buf[i]));
+  }
+  return { buf: unset.buf, span: unset.span };
+}
+/** @template $Item, $Origin
+ * @param {{ buf: Buf<$Origin, $Item>, item_alter: Fn<$Item, $Item>, span: Opt<Span<$Origin>>, }} unset
+ * @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>> }} */
+export function buf_opt_span_alter(unset) {
+  if ("yes" in unset.span) {
+    for (
+      let i = unset.span.yes.start;
+      i < unset.span.yes.start + unset.span.yes.length;
+      i++
+    ) {
+      unset.buf[i] = unset.item_alter(/** @type $Item */ (unset.buf[i]));
+    }
+  }
+  return { buf: unset.buf, span: unset.span };
+}
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, length: U32, }} pre_allocate @returns {Buf<$Origin, $Item>} */
 export function buf_pre_allocate_at_least(pre_allocate) {
   pre_allocate.buf.length += pre_allocate.length;
