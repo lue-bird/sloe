@@ -742,21 +742,17 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- suggest origin variables when completing variables (if not already)
-
-- fix bug where formating unrecognized range can multiply declarations around it
-
 - consider format in fn moving : and = to indent 0
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
-
-- add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful.
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
   fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item
       : .buf Buf _origin, _item .slot Slot
   ```
+
+- add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful.
 
 - again try to may make proper unerase viable (unlikely).
   If successful add

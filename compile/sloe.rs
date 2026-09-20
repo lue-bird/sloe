@@ -14916,18 +14916,21 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
             range: unrecognized_range,
             source: _,
         }) = items_iterator.peek()
-            && let Some(unformatted_source) = source.get(str_lsp_range_to_utf8_range(
+        {
+            // we handle the unrecognized range now so we skip it in the iterator
+            let item_after_unrecognized = items_iterator.nth(1);
+            formatted.push('\n');
+            if let Some(unformatted_source) = source.get(str_lsp_range_to_utf8_range(
                 source,
                 lsp_types::Range {
                     start: project_item_start(item),
-                    end: unrecognized_range.end,
+                    end: item_after_unrecognized
+                        .map(|item| project_item_end(item, expressions, patterns, types))
+                        .unwrap_or(unrecognized_range.end),
                 },
-            ))
-        {
-            // we handle the unrecognized range now so we skip it in the iterator
-            _ = items_iterator.next();
-            formatted.push('\n');
-            formatted.push_str(unformatted_source);
+            )) {
+                formatted.push_str(unformatted_source);
+            }
             formatted.push('\n');
             continue 'formatting_items;
         }
