@@ -636,20 +636,18 @@ impl<LocalOrigin, Part> Origin<LocalOrigin, Part> {
 
 /// To create multiple Origins with the same unique origin type
 /// ```ignore
-/// origin_new!(some, UniqueOrigin, Record·part_a, Record·part_b)
+/// origin_new!(some, UniqueOrigin, a_variable, Record·part_a, b_variable, Record·part_b)
 /// ```
-/// (only works if there is actually such a record in the generated code)
+/// (only works if there is actually such a record in the generated code.
+/// Also note that this is different from sloe's ^ .a .b unique which only creates one variable)
 ///
 /// If you don't, use the simpler
 /// ```ignore
 /// origin_new!(variable_name, LocalOriginName)
 /// ```
 ///
-/// Careful!
-/// ```ignore
-/// origin_new!(some, Origin, Record·not_origin)
-/// ```
-/// wil crash **at runtime** when some field names overlap.
+/// Careful! The multi-origin form of `origin_new!`
+/// wil crash **at runtime** if some field names overlap.
 /// This is to prevent multiple origins with the same name type being created.
 /// In theory, it should be possible to report a compile-error in that case,
 /// however, there seems to neither exist const == on &str, nor const panic, nor ident concat etc.

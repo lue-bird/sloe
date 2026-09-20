@@ -799,7 +799,7 @@ I imagine the current style leaves some performance on the table but I'd be surp
   where `In` is a new core type that has no values and just exists to make types prettier.
   
   Question: Should simple origin creation also produce `Origin unique, In . .` instead of `Origin unique, .`?
-  Currently I don't see a reason for it to do so.
+  The only reason I could see is that it would allow `Origin-unerase` to preserve the outer part of the given origin as the outer part of the unerased values. How would this work for sub-origins when isolating then?
 
 - fix comment TODOs
 
