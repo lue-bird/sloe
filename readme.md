@@ -251,10 +251,11 @@ some-variable some-type
 ^new-origin-name  expression-that uses new-origin-name
 
 # introduce multiple new origins with the same unique local type but different part names.
-# Below will create
-#   - json of type Origin view-origin, .json .
-#   - html of type Origin view-origin, .html .
-#   - char of type Origin view-origin, .char .
+# Below will create a variable view-origin of type
+#     .json Origin view-origin, .json .
+#     .html Origin view-origin, .html .
+#     .char Origin view-origin, .char .
+# which you can then query with ? to get origin variables for the different fields.
 # Not only can this reduce the amount of type variables floating about,
 # it's also important for wrapping values into an `Origin-erased`
 ^ .json .html .char view-origin  expression-that uses them
@@ -751,14 +752,9 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- change semantics of origin creation, say `^ .sub0 .sub1 origin`,
-  to introduce `origin` as (both a type and) a variable of type `.sub0 Origin origin, .sub0 . .sub1 Origin origin, .sub1`.
-  In full it would be something like
-  ```sloe
-  ^ .sub0 .sub1 origin
-  ? origin [.sub0 sub0-origin .sub1 sub1-origin]
-  ```
-  This feels so much more in line with oher sloe intuition
+- new origin sema: fix codegen, fix origin_new!
+
+- move collecting records and choice types to codegen phase, so that e.g. they are not unnecessarily collected for js or zig backend
 
 - consider format in fn moving : and = to indent 0
 
@@ -795,11 +791,15 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - enable nested origins where the unique origin type can itself be an origin.
   This could make nested parts viable.
-  For example to create a variable `inner-origin` of type `Origin (Origin unique-origin, .outer .), .inner .`,
+  For example to create a variable `inner-origin` of type `Origin unique-origin, In (In ., .outer), .inner .`,
   ```sloe
   ^ unique-origin {.outer .inner .}
   ? unique-origin [.outer .inner inner-origin]
   ```
+  where `In` is a new core type that has no values and just exists to make types prettier.
+  
+  Question: Should simple origin creation also produce `Origin unique, In . .` instead of `Origin unique, .`?
+  Currently I don't see a reason for it to do so.
 
 - fix comment TODOs
 

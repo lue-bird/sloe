@@ -3662,7 +3662,7 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
             &mut |(), name, type_| {
                 parameter_introduced_variables.insert(
                     name.value,
-                    CheckedPatternVariable {
+                    CheckedLocalVariable {
                         origin_start: name.start,
                         type_: type_.and_then(|type_| {
                             syntax_type_to_type(
@@ -3686,7 +3686,6 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
         patterns,
         types,
         &mut parameter_introduced_variables,
-        &mut std::collections::HashMap::new(),
         &mut std::collections::HashMap::new(),
         syntax_result,
         checked_calls,
@@ -4761,12 +4760,12 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     expected_type: Option<&Type>,
     errors: &mut Vec<ErrorNode>,
-    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
-    existing_pattern_variables: &std::collections::HashMap<&Name, CheckedPatternVariable>,
+    existing_local_variables: &std::collections::HashMap<&Name, CheckedLocalVariable>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
@@ -4789,7 +4788,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         errors.push(ErrorNode {
                             range: type_range(actual_type, types),
                             message: Box::from(
-                                "query pattern variables cannot spacify an explicit type. Remove it",
+                                "query pattern variables cannot specify an explicit type. Remove it",
                             ),
                         });
                     }
@@ -4810,7 +4809,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
             if let Some(checked_variable_type) = &maybe_checked_variable {
                 let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
                     &name.value,
-                    CheckedPatternVariable {
+                    CheckedLocalVariable {
                         origin_start: name.start,
                         type_: Some(checked_variable_type.clone()),
                     },
@@ -4821,25 +4820,19 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
                         message: Box::from(
-                            "a pattern variable with this name already exists in the surrounding pattern. Rename it",
+                            "a pattern variable with this name already exists in the surrounding pattern. Rename either variable",
                         ),
                     });
                     return None;
-                } else if origins
-                    .get(&name.value)
-                    .is_some_and(|origin_info| origin_info.parts.is_empty())
-                    || origins.values().any(|origin_info| {
-                        origin_info
-                            .parts
-                            .iter()
-                            .any(|part_name| name.value == part_name.value)
-                    })
+                } else if let Some(existing_variable_with_the_same_name) =
+                    existing_local_variables.get(&name.value)
                 {
                     errors.push(ErrorNode {
                         range: name_range(with_start_position_as_ref(name)),
-                        message: Box::from(
-                            "an origin variable with this name already exists. Rename it",
-                        ),
+                        message: format!(
+                            "a local variable with this name already exists (intruduced at {}). Rename either variable",
+                            position_to_string(existing_variable_with_the_same_name.origin_start)
+                        ).into_boxed_str(),
                     });
                     return None;
                 }
@@ -4872,7 +4865,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
-                        existing_pattern_variables,
+                        existing_local_variables,
                         checked_spread_records,
                         records_used,
                         choices_used,
@@ -4937,7 +4930,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                         patterns,
                         types,
                         origins,
-                        existing_pattern_variables,
+                        existing_local_variables,
                         checked_spread_records,
                         records_used,
                         choices_used,
@@ -5030,7 +5023,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                     patterns,
                                     types,
                                     origins,
-                                    existing_pattern_variables,
+                                    existing_local_variables,
                                     checked_spread_records,
                                     records_used,
                                     choices_used,
@@ -5062,7 +5055,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                     patterns,
                                     types,
                                     origins,
-                                    existing_pattern_variables,
+                                    existing_local_variables,
                                     checked_spread_records,
                                     records_used,
                                     choices_used,
@@ -5194,7 +5187,7 @@ You might have intended this pattern to belong to a different query. Use parens 
                                         patterns,
                                         types,
                                         origins,
-                                        existing_pattern_variables,
+                                        existing_local_variables,
                                         checked_spread_records,
                                         records_used,
                                         choices_used,
@@ -5256,7 +5249,7 @@ Switch to matching all fields explicitly for at leas one of these spreads")
                                         patterns,
                                         types,
                                         origins,
-                                        existing_pattern_variables,
+                                        existing_local_variables,
                                         checked_spread_records,
                                         records_used,
                                         choices_used,
@@ -5312,7 +5305,7 @@ Switch to matching all fields explicitly for at leas one of these spreads")
                 patterns,
                 types,
                 origins,
-                existing_pattern_variables,
+                existing_local_variables,
                 checked_spread_records,
                 records_used,
                 choices_used,
@@ -5323,7 +5316,7 @@ Switch to matching all fields explicitly for at leas one of these spreads")
 fn syntax_pattern_to_rust<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     expected_type: Option<&Type>,
-    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -5384,7 +5377,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
             };
             let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
                 &name.value,
-                CheckedPatternVariable {
+                CheckedLocalVariable {
                     origin_start: name.start,
                     type_: Some(variable_type),
                 },
@@ -6150,7 +6143,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    pattern_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
+    local_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
     function_scope_start: lsp_types::Position,
@@ -6279,11 +6272,11 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             if let ZigReturnContext::StatementsFollowedByBreak(label) = return_context {
                 zig_break_start(output, label);
             }
-            if let Some(pattern_variable_introduced_start) = pattern_variables.remove(&name.value) {
+            if let Some(local_variable_introduced_start) = local_variables.remove(&name.value) {
                 name_to_lowercase_local_zig_introduced_at(
                     output,
                     &name.value,
-                    pattern_variable_introduced_start,
+                    local_variable_introduced_start,
                 );
             } else {
                 name_to_lowercase_local_zig(output, &name.value);
@@ -6354,7 +6347,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
-                        pattern_variables,
+                        local_variables,
                         origins,
                         expressions.item(argument),
                         function_scope_start,
@@ -6428,7 +6421,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 value,
                 function_scope_start,
@@ -6615,7 +6608,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                     checked_local_fns,
                                     checked_queries,
                                     checked_spread_records,
-                                    pattern_variables,
+                                    local_variables,
                                     origins,
                                     expressions.item(record),
                                     function_scope_start,
@@ -6688,7 +6681,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                     checked_local_fns,
                                     checked_queries,
                                     checked_spread_records,
-                                    pattern_variables,
+                                    local_variables,
                                     origins,
                                     expressions.item(value),
                                     function_scope_start,
@@ -6751,7 +6744,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
-                    pattern_variables,
+                    local_variables,
                     origins,
                     item,
                     function_scope_start,
@@ -6784,7 +6777,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
-                    pattern_variables,
+                    local_variables,
                     origins,
                     expressions.item(inner),
                     function_scope_start,
@@ -6801,30 +6794,27 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                 output.push_str(&comment_line.value);
                 output.push('\n')
             }
-            match expression {
-                None => {
-                    zig_incomplete_expression(output);
-                }
-                Some(expression) => {
-                    syntax_expression_to_zig(
-                        output,
-                        type_aliases,
-                        project_fns,
-                        expressions,
-                        patterns,
-                        types,
-                        checked_calls,
-                        checked_local_fns,
-                        checked_queries,
-                        checked_spread_records,
-                        pattern_variables,
-                        origins,
-                        expressions.item(expression),
-                        function_scope_start,
-                        return_context,
-                    );
-                }
-            }
+            let Some(expression) = expression else {
+                zig_incomplete_expression(output);
+                return;
+            };
+            syntax_expression_to_zig(
+                output,
+                type_aliases,
+                project_fns,
+                expressions,
+                patterns,
+                types,
+                checked_calls,
+                checked_local_fns,
+                checked_queries,
+                checked_spread_records,
+                local_variables,
+                origins,
+                expressions.item(expression),
+                function_scope_start,
+                return_context,
+            );
         }
         SyntaxExpression::Query {
             question_mark_start,
@@ -6871,7 +6861,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
-                        pattern_variables,
+                        local_variables,
                         origins,
                         expressions.item(queried),
                         function_scope_start,
@@ -6895,12 +6885,12 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         output.push_str(") {\n");
                     }
                     // can be optimized by not cloning if there is only one case
-                    let mut case_pattern_variables = pattern_variables.clone();
+                    let mut case_local_variables = local_variables.clone();
                     syntax_pattern_to_zig_destructuring(
                         output,
                         case_pattern,
                         &queried_variable_name,
-                        &mut case_pattern_variables,
+                        &mut case_local_variables,
                         type_aliases,
                         checked_spread_records,
                         patterns,
@@ -6922,7 +6912,7 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                &mut case_pattern_variables,
+                                &mut case_local_variables,
                                 origins,
                                 case_result,
                                 function_scope_start,
@@ -6965,22 +6955,24 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
             output.push_str("const ");
             origin_name_to_uppercase_local_zig(output, &name.value);
             output.push_str(" = enum {};\n");
+            output.push_str("const ");
+            name_to_lowercase_local_zig_introduced_at(output, &name.value, *caret_key_symbol_start);
             if parts.is_empty() {
-                output.push_str("const ");
-                name_to_lowercase_local_zig(output, &name.value);
                 output.push_str(" : Origin(");
                 origin_name_to_uppercase_local_zig(output, &name.value);
                 output.push_str(", void) = .{};\n");
             } else {
+                output.push_str(" = record(.{ ");
                 for part in parts.iter().filter_map(|part| part.value.as_ref()) {
-                    output.push_str("const ");
-                    name_to_lowercase_local_zig(output, part);
-                    output.push_str(" : Origin(");
+                    output.push('.');
+                    output.push_str(&name_to_lowercase_zig(part));
+                    output.push_str(" = Origin(");
                     origin_name_to_uppercase_local_zig(output, &name.value);
                     output.push_str(", Record(struct { ");
                     output.push_str(&name_to_lowercase_zig(part));
-                    output.push_str(" : void })) = .{};\n");
+                    output.push_str(" : void })){},");
                 }
+                output.push_str(" };\n");
             }
             match result {
                 None => {
@@ -6991,17 +6983,9 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         &name.value,
                         CheckedOrigin {
                             origin_start: *caret_key_symbol_start,
-                            parts: parts
-                                .iter()
-                                .filter_map(|part| {
-                                    part.value.clone().map(|name| WithStartPosition {
-                                        start: position_add_characters(part.start, 1),
-                                        value: name,
-                                    })
-                                })
-                                .collect(),
                         },
                     );
+                    local_variables.insert(&name.value, *caret_key_symbol_start);
                     syntax_expression_to_zig(
                         output,
                         type_aliases,
@@ -7013,12 +6997,13 @@ fn syntax_expression_to_zig<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
-                        pattern_variables,
+                        local_variables,
                         origins,
                         expressions.item(result),
                         function_scope_start,
                         ZigReturnContext::StatementsFollowedByBreak(label),
                     );
+                    local_variables.remove(&name.value);
                     origins.remove(&name.value);
                 }
             }
@@ -7688,11 +7673,8 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
     checked_calls: &std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     checked_queries: &std::collections::HashMap<lsp_types::Position, CheckedQuery>,
-    checked_spread_records: &std::collections::HashMap<
-        /* .. start */ lsp_types::Position,
-        Vec<Name>,
-    >,
-    pattern_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    local_variables: &mut std::collections::HashMap<&'a Name, lsp_types::Position>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
     scope_start: lsp_types::Position,
@@ -7770,11 +7752,11 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
         SyntaxExpression::Variable(name) => {
             js_scope_result_variable(output, scope_start);
             output.push_str(" = ");
-            if let Some(pattern_variable_introduced_start) = pattern_variables.remove(&name.value) {
+            if let Some(local_variable_introduced_start) = local_variables.remove(&name.value) {
                 name_to_lowercase_local_js_introduced_at(
                     output,
                     &name.value,
-                    pattern_variable_introduced_start,
+                    local_variable_introduced_start,
                 );
             } else {
                 name_to_lowercase_local_js(output, &name.value);
@@ -7806,7 +7788,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 argument,
                 argument_scope_start,
@@ -7848,7 +7830,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 value,
                 value_scope_start,
@@ -7940,7 +7922,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                pattern_variables,
+                                local_variables,
                                 origins,
                                 value,
                                 expression_start(value),
@@ -7967,7 +7949,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                pattern_variables,
+                                local_variables,
                                 origins,
                                 record,
                                 expression_start(record),
@@ -8042,7 +8024,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
-                    pattern_variables,
+                    local_variables,
                     origins,
                     item,
                     expression_start(item),
@@ -8078,7 +8060,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
-                    pattern_variables,
+                    local_variables,
                     origins,
                     expressions.item(inner),
                     scope_start,
@@ -8110,7 +8092,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
-                        pattern_variables,
+                        local_variables,
                         origins,
                         expressions.item(expression),
                         scope_start,
@@ -8152,7 +8134,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 queried,
                 queried_scope_start,
@@ -8173,12 +8155,12 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         output.push_str(") {\n");
                     }
                     // can be optimized by not cloning if only one case exists
-                    let mut case_pattern_variables = pattern_variables.clone();
+                    let mut case_local_variables = local_variables.clone();
                     syntax_pattern_to_js_destructuring(
                         output,
                         case_pattern,
                         &queried_variable_name,
-                        &mut case_pattern_variables,
+                        &mut case_local_variables,
                         type_aliases,
                         checked_spread_records,
                         patterns,
@@ -8200,7 +8182,7 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                &mut case_pattern_variables,
+                                &mut case_local_variables,
                                 origins,
                                 case_result,
                                 scope_start,
@@ -8220,23 +8202,25 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Origin {
-            caret_key_symbol_start: _,
+            caret_key_symbol_start,
             name,
             parts,
             result,
         } => {
             if let Some(name) = name {
-                if parts.is_empty() {
-                    output.push_str("const ");
-                    name_to_lowercase_local_js(output, &name.value);
-                    output.push_str(" = {};\n");
-                } else {
-                    for part in parts.iter().filter_map(|part| part.value.as_ref()) {
-                        output.push_str("const ");
-                        name_to_lowercase_local_js(output, part);
-                        output.push_str(" = {};\n");
-                    }
+                local_variables.insert(&name.value, *caret_key_symbol_start);
+                output.push_str("const ");
+                name_to_lowercase_local_js_introduced_at(
+                    output,
+                    &name.value,
+                    *caret_key_symbol_start,
+                );
+                output.push_str(" = { ");
+                for part in parts.iter().filter_map(|part| part.value.as_ref()) {
+                    name_to_lowercase_local_js(output, part);
+                    output.push_str(": {}, ");
                 }
+                output.push_str("};\n");
             }
             match result {
                 None => {
@@ -8254,12 +8238,15 @@ fn syntax_expression_to_js<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
-                        pattern_variables,
+                        local_variables,
                         origins,
                         expressions.item(result),
                         scope_start,
                     );
                 }
+            }
+            if let Some(name) = name {
+                local_variables.remove(&name.value);
             }
         }
     }
@@ -8409,14 +8396,13 @@ const js_lowercase_keywords: [&str; 70] = [
 ];
 
 #[derive(Clone, Debug)]
-struct CheckedPatternVariable {
+struct CheckedLocalVariable {
     origin_start: lsp_types::Position,
     type_: Option<Type>,
 }
 #[derive(Clone, Debug)]
 pub struct CheckedOrigin {
     origin_start: lsp_types::Position,
-    parts: Vec<WithStartPosition<Name>>,
 }
 fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     errors: &mut Vec<ErrorNode>,
@@ -8425,12 +8411,8 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
     expressions: &'a core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
-    pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
+    local_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
-    used_origin_variables: &mut std::collections::HashMap<
-        &'a Name,
-        /* start */ lsp_types::Position,
-    >,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
     checked_calls: &mut std::collections::HashMap<lsp_types::Position, CheckedCall>,
     checked_local_fns: &mut std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
@@ -8647,29 +8629,7 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variable(name) => {
-            if origins
-                .get(&name.value)
-                .is_some_and(|origin| origin.parts.is_empty())
-                || origins
-                    .values()
-                    .any(|origin| origin.parts.iter().any(|part| &part.value == &name.value))
-            {
-                let maybe_existing_origin_variable_use_start =
-                    used_origin_variables.insert(&name.value, name.start);
-                if let Some(existing_origin_variable_use_start) =
-                    maybe_existing_origin_variable_use_start
-                {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!("this origin variable is already used earlier starting at {}. Each value can only be used once, that includes origins. Each collection needs its own origin", position_to_string(existing_origin_variable_use_start)).into_boxed_str(),
-                    });
-                    return None;
-                }
-                Some(type_origin(
-                    Type::Origin(name.value.clone()),
-                    type_record_empty,
-                ))
-            } else if let Some(variable_info) = pattern_variables.remove(&name.value) {
+            if let Some(variable_info) = local_variables.remove(&name.value) {
                 let Some(variable_type) = variable_info.type_.clone() else {
                     return None;
                 };
@@ -8679,12 +8639,12 @@ fn syntax_expression_check<'a, Expressions, Patterns, Types>(
                     range: name_range(with_start_position_as_ref(name)),
                     message: format!(
                         "No local variable in scope has this name. Hints:
-- each variable can only be used once, even simple numbers etc. To duplicate the value, use the helpers like U32-dup, Char-dup or create your own dup helpers
+- each variable can only be used once, even simple numbers etc.. To duplicate the value, use the helpers like U32-dup, Char-dup or create your own dup helpers
 - a function name always starts uppercase
 - a local function result can not refer to any variable from the outside. Otherwise check for typos.
 
 Available variable names are {}",
-                        pattern_variables.keys().map(|var| var.as_str()).collect::<Vec<_>>().join(", ")
+                        local_variables.keys().map(|var| var.as_str()).collect::<Vec<_>>().join(", ")
                     ).into_boxed_str()
                 });
                 None
@@ -8710,9 +8670,8 @@ Available variable names are {}",
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                local_variables,
                 origins,
-                used_origin_variables,
                 syntax_argument,
                 checked_calls,
                 checked_local_fns,
@@ -8865,9 +8824,8 @@ If there should only ever by one variant, using a record with a single field is 
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                local_variables,
                 origins,
-                used_origin_variables,
                 value,
                 checked_calls,
                 checked_local_fns,
@@ -8937,7 +8895,7 @@ If there should only ever by one variant, using a record with a single field is 
             };
             let mut parameter_introduced_variables: std::collections::HashMap<
                 &Name,
-                CheckedPatternVariable,
+                CheckedLocalVariable,
             > = std::collections::HashMap::new();
             let Some(checked_parmeter_type) = syntax_pattern_check(
                 parameter,
@@ -8955,7 +8913,6 @@ If there should only ever by one variant, using a record with a single field is 
             ) else {
                 return None;
             };
-            let mut result_used_origin_variables = std::collections::HashMap::new();
             let Some(result) = result else {
                 errors.push(ErrorNode {
                     range: closed_bracket_start
@@ -8974,7 +8931,6 @@ If there should only ever by one variant, using a record with a single field is 
                 types,
                 &mut parameter_introduced_variables,
                 origins,
-                &mut result_used_origin_variables,
                 expressions.item(result),
                 checked_calls,
                 checked_local_fns,
@@ -8985,22 +8941,6 @@ If there should only ever by one variant, using a record with a single field is 
             ) else {
                 return None;
             };
-            if let Some((use_of_outside_origin_name, use_of_outside_origin_start)) =
-                result_used_origin_variables
-                    .into_iter()
-                    .find(|(result_used_origin_variable, _)| {
-                        origins.contains_key(result_used_origin_variable)
-                    })
-            {
-                errors.push(ErrorNode {
-                    range: name_range(WithStartPosition {
-                        value: use_of_outside_origin_name,
-                        start: use_of_outside_origin_start,
-                    }),
-                    message: Box::from("use of an origin variable that is created outside of a local fn. Local fns do not capture variables, so pass them in via arguments explicitly"),
-                });
-                return None;
-            }
             for (parameter_introduced_variable_name, parameter_introduced_variable_origin) in
                 parameter_introduced_variables
             {
@@ -9050,9 +8990,8 @@ If there should only ever by one variant, using a record with a single field is 
                                 expressions,
                                 patterns,
                                 types,
-                                pattern_variables,
+                                local_variables,
                                 origins,
-                                used_origin_variables,
                                 expressions.item(field_value),
                                 checked_calls,
                                 checked_local_fns,
@@ -9096,9 +9035,8 @@ If there should only ever by one variant, using a record with a single field is 
                             expressions,
                             patterns,
                             types,
-                            pattern_variables,
+                            local_variables,
                             origins,
-                            used_origin_variables,
                             expressions.item(record),
                             checked_calls,
                             checked_local_fns,
@@ -9186,9 +9124,8 @@ If there should only ever by one variant, using a record with a single field is 
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                local_variables,
                 origins,
-                used_origin_variables,
                 expressions.item(item0),
                 checked_calls,
                 checked_local_fns,
@@ -9218,9 +9155,8 @@ If there should only ever by one variant, using a record with a single field is 
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
-                    used_origin_variables,
                     item,
                     checked_calls,
                     checked_local_fns,
@@ -9275,9 +9211,8 @@ If there should only ever by one variant, using a record with a single field is 
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                local_variables,
                 origins,
-                used_origin_variables,
                 expressions.item(inner),
                 checked_calls,
                 checked_local_fns,
@@ -9307,9 +9242,8 @@ If there should only ever by one variant, using a record with a single field is 
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                local_variables,
                 origins,
-                used_origin_variables,
                 expressions.item(expression),
                 checked_calls,
                 checked_local_fns,
@@ -9346,9 +9280,8 @@ If there should only ever by one variant, using a record with a single field is 
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                local_variables,
                 origins,
-                used_origin_variables,
                 queried,
                 checked_calls,
                 checked_local_fns,
@@ -9375,7 +9308,7 @@ If there should only ever by one variant, using a record with a single field is 
             };
             let mut case0_pattern_introduced_variables: std::collections::HashMap<
                 &Name,
-                CheckedPatternVariable,
+                CheckedLocalVariable,
             > = std::collections::HashMap::new();
             let Some(_checked_case0_pattern_type) = syntax_pattern_check(
                 case0_pattern,
@@ -9386,7 +9319,7 @@ If there should only ever by one variant, using a record with a single field is 
                 patterns,
                 types,
                 origins,
-                pattern_variables,
+                local_variables,
                 checked_spread_records,
                 records_used,
                 choices_used,
@@ -9406,13 +9339,12 @@ If there should only ever by one variant, using a record with a single field is 
             );
 
             // can be optimized: when only 1 case exists (very common), don't clone
-            let mut case0_result_pattern_variables = pattern_variables.clone();
-            case0_result_pattern_variables.extend(
+            let mut case0_result_local_variables = local_variables.clone();
+            case0_result_local_variables.extend(
                 case0_pattern_introduced_variables
                     .iter()
                     .map(|(binding, info)| (*binding, info.clone())),
             );
-            let mut case0_result_used_origin_variables = std::collections::HashMap::new();
             let Some(checked_query_result_type) = syntax_expression_check(
                 errors,
                 type_aliases,
@@ -9420,9 +9352,8 @@ If there should only ever by one variant, using a record with a single field is 
                 expressions,
                 patterns,
                 types,
-                &mut case0_result_pattern_variables,
+                &mut case0_result_local_variables,
                 origins,
-                &mut case0_result_used_origin_variables,
                 case0_result,
                 checked_calls,
                 checked_local_fns,
@@ -9436,7 +9367,7 @@ If there should only ever by one variant, using a record with a single field is 
             for (case0_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
                 case0_pattern_introduced_variables
             {
-                if case0_result_pattern_variables
+                if case0_result_local_variables
                     .remove(case0_pattern_introduced_variable)
                     .is_some()
                 {
@@ -9461,7 +9392,7 @@ If there should only ever by one variant, using a record with a single field is 
                 };
                 let mut case_pattern_introduced_variables: std::collections::HashMap<
                     &Name,
-                    CheckedPatternVariable,
+                    CheckedLocalVariable,
                 > = std::collections::HashMap::new();
                 let Some(checked_case_pattern_type) = syntax_pattern_check(
                     case_pattern,
@@ -9472,7 +9403,7 @@ If there should only ever by one variant, using a record with a single field is 
                     patterns,
                     types,
                     origins,
-                    pattern_variables,
+                    local_variables,
                     checked_spread_records,
                     records_used,
                     choices_used,
@@ -9520,13 +9451,12 @@ If there should only ever by one variant, using a record with a single field is 
                     });
                     continue 'checking_case1_up;
                 };
-                let mut case_pattern_variables = pattern_variables.clone();
-                case_pattern_variables.extend(
+                let mut case_local_variables = local_variables.clone();
+                case_local_variables.extend(
                     case_pattern_introduced_variables
                         .iter()
                         .map(|(binding, info)| (*binding, info.clone())),
                 );
-                let mut case_result_used_origin_variables = std::collections::HashMap::new();
                 let Some(checked_case_result_type) = syntax_expression_check(
                     errors,
                     type_aliases,
@@ -9534,9 +9464,8 @@ If there should only ever by one variant, using a record with a single field is 
                     expressions,
                     patterns,
                     types,
-                    &mut case_pattern_variables,
+                    &mut case_local_variables,
                     origins,
-                    &mut case_result_used_origin_variables,
                     case_result,
                     checked_calls,
                     checked_local_fns,
@@ -9551,7 +9480,7 @@ If there should only ever by one variant, using a record with a single field is 
                 for (case_pattern_introduced_variable, case0_pattern_introduced_variable_origin) in
                     case_pattern_introduced_variables
                 {
-                    if case_pattern_variables
+                    if case_local_variables
                         .remove(case_pattern_introduced_variable)
                         .is_some()
                     {
@@ -9561,10 +9490,10 @@ If there should only ever by one variant, using a record with a single field is 
                         ));
                     }
                 }
-                for (pattern_variable, pattern_variable_origin) in pattern_variables.iter() {
+                for (pattern_variable, pattern_variable_origin) in local_variables.iter() {
                     match (
-                        case0_result_pattern_variables.contains_key(pattern_variable),
-                        case_pattern_variables.contains_key(pattern_variable),
+                        case0_result_local_variables.contains_key(pattern_variable),
+                        case_local_variables.contains_key(pattern_variable),
                     ) {
                         (false, false) => {
                             // both cases use this pattern variable
@@ -9584,7 +9513,7 @@ If you do not need to use this variable in that case, use any of the -rid functi
                             });
                             // pretend the first case does use this pattern variable
                             // so that this variable is not reported as unused twice
-                            case0_result_pattern_variables.remove(pattern_variable);
+                            case0_result_local_variables.remove(pattern_variable);
                         }
                         (false, true) => {
                             // only the first case uses this pattern variable, not this case
@@ -9637,8 +9566,7 @@ If not, add patterns for the cases above"
                         ).into_boxed_str(),
                 });
             }
-            *pattern_variables = case0_result_pattern_variables;
-            used_origin_variables.extend(case0_result_used_origin_variables);
+            *local_variables = case0_result_local_variables;
             checked_queries.insert(
                 *question_mark_start,
                 CheckedQuery {
@@ -9683,79 +9611,20 @@ If not, add patterns for the cases above"
                     )
                     .into_boxed_str(),
                 });
-            } else if let Some(existing_origin_with_same_name) =
-                origins.values().find_map(|origin_info| {
-                    origin_info
-                        .parts
-                        .iter()
-                        .find(|part_name| origin_name.value == part_name.value)
-                })
-            {
-                errors.push(ErrorNode {
-                    range: name_range(with_start_position_as_ref(origin_name)),
-                    message: format!(
-                        "an origin part variable with this name already exists at {}",
-                        position_to_string(position_add_characters(
-                            existing_origin_with_same_name.start,
-                            1
-                        ))
-                    )
-                    .into_boxed_str(),
-                });
             } else if core_type_aliases.contains_key(&origin_name.value) {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(origin_name)),
                     message: Box::from(
-                        "a core choice type with this name already exists. Rename this origin",
+                        "a core type with this name already exists. Rename this origin",
                     ),
                 });
             } else if type_aliases.contains_key(&origin_name.value) {
                 errors.push(ErrorNode {
                     range: name_range(with_start_position_as_ref(origin_name)),
                     message: Box::from(
-                        "a type alias with this name already exists. Rename this origin",
+                        "a project type alias with this name already exists. Rename this origin",
                     ),
                 });
-            }
-            // quadratic but should be fine since nested multi-part origins are uncommon
-            for part in parts {
-                if let Some(part_name) = &part.value
-                    && let Some(existing_origin_with_same_name_start) = origins
-                        .get(part_name)
-                        .and_then(|existing_origin_with_same_name| {
-                            if existing_origin_with_same_name.parts.is_empty() {
-                                Some(existing_origin_with_same_name.origin_start)
-                            } else {
-                                None
-                            }
-                        })
-                        .or_else(|| {
-                            origins.values().find_map(|origin_info| {
-                                origin_info
-                                    .parts
-                                    .iter()
-                                    .find(|existing_part_name| {
-                                        part_name == &existing_part_name.value
-                                    })
-                                    .map(|existing_part_name| existing_part_name.start)
-                            })
-                        })
-                {
-                    errors.push(ErrorNode {
-                        range: name_range(WithStartPosition {
-                            start: position_add_characters(part.start, 1),
-                            value: part_name,
-                        }),
-                        message: format!(
-                            "an origin variable with this name already exists at {}",
-                            position_to_string(position_add_characters(
-                                existing_origin_with_same_name_start,
-                                1
-                            ))
-                        )
-                        .into_boxed_str(),
-                    });
-                }
             }
             let Some(result) = result else {
                 errors.push(ErrorNode {
@@ -9767,35 +9636,53 @@ If not, add patterns for the cases above"
                 });
                 return None;
             };
-            let part_names = parts
-                .iter()
-                .filter_map(|part| match &part.value {
+            let mut part_names = Vec::new();
+            for part in parts {
+                match &part.value {
                     None => {
                         errors.push(ErrorNode {
-                            range: lsp_types::Range {
-                                start: *caret_key_symbol_start,
-                                end: symbol_end(*caret_key_symbol_start, "^"),
-                            },
-                            message: Box::from("missing origin name after ^..here.."),
+                            range: symbol_range(part.start, "."),
+                            message: Box::from("missing part name after the dot ."),
                         });
-                        None
                     }
                     Some(part_name) => {
-                        records_used.insert(vec![part_name.clone()]);
-                        Some(WithStartPosition {
-                            start: position_add_characters(part.start, 1),
-                            value: part_name.clone(),
-                        })
+                        if part_names.contains(part_name) {
+                            let name_start = symbol_end(part.start, ".");
+                            errors.push(ErrorNode {
+                                range: lsp_types::Range {
+                                    start: name_start,
+                                    end: position_add_characters(
+                                        name_start,
+                                        part_name.len() as u32,
+                                    ),
+                                },
+                                message: Box::from(
+                                    "this part name already exists earlier. Remove it",
+                                ),
+                            });
+                        } else {
+                            records_used.insert(vec![part_name.clone()]);
+                            part_names.push(part_name.clone())
+                        }
                     }
-                })
-                .collect::<Vec<_>>();
+                }
+            }
             origins.insert(
                 &origin_name.value,
                 CheckedOrigin {
                     origin_start: origin_name.start,
-                    parts: part_names,
                 },
             );
+            local_variables.insert(
+                &origin_name.value,
+                CheckedLocalVariable {
+                    origin_start: origin_name.start,
+                    type_: Some(origin_type_from_part_names(&origin_name.value, &part_names)),
+                },
+            );
+            if !part_names.is_empty() {
+                records_used.insert(part_names);
+            }
             let checked_result_type = syntax_expression_check(
                 errors,
                 type_aliases,
@@ -9803,9 +9690,8 @@ If not, add patterns for the cases above"
                 expressions,
                 patterns,
                 types,
-                pattern_variables,
+                local_variables,
                 origins,
-                used_origin_variables,
                 expressions.item(result),
                 checked_calls,
                 checked_local_fns,
@@ -9828,35 +9714,42 @@ If not, add patterns for the cases above"
                 });
                 return None;
             }
-            if parts.is_empty() {
-                if used_origin_variables.remove(&origin_name.value).is_none() {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(origin_name)),
-                        message: Box::from(
-                            "this origin is never used as a variable. Use it or remove it",
-                        ),
-                    });
-                }
-            } else {
-                for part in parts {
-                    if let Some(part_name) = &part.value
-                        && used_origin_variables.remove(part_name).is_none()
-                    {
-                        errors.push(ErrorNode {
-                            range: name_range(WithStartPosition {
-                                start: position_add_characters(part.start, 1),
-                                value: part_name,
-                            }),
-                            message: Box::from(
-                                "this origin variable is never used. Use it or remove it",
-                            ),
-                        });
-                    }
-                }
+            if local_variables.remove(&origin_name.value).is_some() {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(origin_name)),
+                    message: Box::from("this origin variable is never used. Use it or remove it"),
+                });
             }
             origins.remove(&origin_name.value);
             checked_result_type
         }
+    }
+}
+fn origin_type_from_part_names<'a>(
+    unique_local_origin_name: &Name,
+    part_names: impl IntoIterator<Item = &'a Name>,
+) -> Type {
+    let mut part_names = part_names.into_iter();
+    match part_names.next() {
+        None => type_origin(
+            Type::Origin(unique_local_origin_name.clone()),
+            type_record_empty,
+        ),
+        Some(part0) => Type::Record(
+            std::iter::once(part0)
+                .chain(part_names)
+                .map(|part_name| TypeField {
+                    name: part_name.clone(),
+                    value: type_origin(
+                        Type::Origin(unique_local_origin_name.clone()),
+                        Type::Record(vec![TypeField {
+                            name: part_name.clone(),
+                            value: type_record_empty,
+                        }]),
+                    ),
+                })
+                .collect(),
+        ),
     }
 }
 fn error_introduced_pattern_variable_is_unused(
@@ -9869,7 +9762,7 @@ fn error_introduced_pattern_variable_is_unused(
             start: origin_start,
         }),
         message: Box::from(
-            "this pattern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
+            "this patern variable is not used in the resulting expression. Use it or use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
         ),
     }
 }
@@ -9898,7 +9791,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         /* .. start */ lsp_types::Position,
         Vec<Name>,
     >,
-    pattern_variables: &mut std::collections::HashMap<&'a Name, CheckedPatternVariable>,
+    // TODO I don't think the type or anything needs to be stored for variables?
+    local_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
 ) -> syn::Expr {
@@ -10025,9 +9919,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variable(name) => {
-            if let Some(_origin_info) = origins.get(&name.value) {
-                syn_expr_reference([&name_to_lowercase_rust(&name.value)])
-            } else if let Some(variable_info) = pattern_variables.remove(&name.value) {
+            if let Some(variable_info) = local_variables.remove(&name.value) {
                 let Some(_) = variable_info.type_ else {
                     return syn_expr_todo();
                 };
@@ -10066,7 +9958,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                         checked_local_fns,
                         checked_queries,
                         checked_spread_records,
-                        pattern_variables,
+                        local_variables,
                         origins,
                         syntax_argument,
                     );
@@ -10146,7 +10038,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 value,
             );
@@ -10195,7 +10087,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             };
             let mut parameter_introduced_variables: std::collections::HashMap<
                 &Name,
-                CheckedPatternVariable,
+                CheckedLocalVariable,
             > = std::collections::HashMap::new();
             let mut fn_result_statements: Vec<syn::Stmt> = Vec::new();
             let Some(compiled_parameter) = syntax_pattern_to_rust(
@@ -10349,7 +10241,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                pattern_variables,
+                                local_variables,
                                 origins,
                                 expressions.item(field_value),
                             ),
@@ -10384,7 +10276,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                             checked_local_fns,
                             checked_queries,
                             checked_spread_records,
-                            pattern_variables,
+                            local_variables,
                             origins,
                             expressions.item(record),
                         );
@@ -10491,7 +10383,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                                 checked_local_fns,
                                 checked_queries,
                                 checked_spread_records,
-                                pattern_variables,
+                                local_variables,
                                 origins,
                                 item,
                             ),
@@ -10713,7 +10605,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 expressions.item(inner),
             ),
@@ -10733,7 +10625,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 expressions.item(expression),
             ),
@@ -10763,7 +10655,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 queried,
             );
@@ -10792,15 +10684,15 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     continue 'compiling_cases;
                 };
                 // can be optimized by not cloning if only one case exists
-                let mut case_pattern_variables: std::collections::HashMap<
+                let mut case_local_variables: std::collections::HashMap<
                     &Name,
-                    CheckedPatternVariable,
-                > = pattern_variables.clone();
+                    CheckedLocalVariable,
+                > = local_variables.clone();
                 let mut case_statements: Vec<syn::Stmt> = Vec::new();
                 let Some(case_pattern_compiled) = syntax_pattern_to_rust(
                     case_pattern,
                     Some(&checked_query.queried_type),
-                    &mut case_pattern_variables,
+                    &mut case_local_variables,
                     type_aliases,
                     checked_spread_records,
                     patterns,
@@ -10827,7 +10719,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     checked_local_fns,
                     checked_queries,
                     checked_spread_records,
-                    &mut case_pattern_variables,
+                    &mut case_local_variables,
                     origins,
                     case_result,
                 );
@@ -10907,20 +10799,20 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(result) = result else {
                 return syn_expr_todo();
             };
-            let part_names = parts
-                .iter()
-                .filter_map(|part| {
-                    part.value.clone().map(|name| WithStartPosition {
-                        start: position_add_characters(part.start, 1),
-                        value: name,
-                    })
-                })
-                .collect::<Vec<_>>();
             origins.insert(
                 &origin_name.value,
                 CheckedOrigin {
                     origin_start: origin_name.start,
-                    parts: part_names,
+                },
+            );
+            local_variables.insert(
+                &origin_name.value,
+                CheckedLocalVariable {
+                    origin_start: origin_name.start,
+                    type_: Some(origin_type_from_part_names(
+                        &origin_name.value,
+                        parts.iter().filter_map(|part| part.value.as_ref()),
+                    )),
                 },
             );
             let result_compiled = syntax_expression_to_rust(
@@ -10933,7 +10825,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 checked_local_fns,
                 checked_queries,
                 checked_spread_records,
-                pattern_variables,
+                local_variables,
                 origins,
                 expressions.item(result),
             );
@@ -10948,150 +10840,115 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                 fields: syn::Fields::Unit,
                 semi_token: Some(syn::token::Semi(syn_span())),
             })));
-            if parts.is_empty() {
-                rust_statements.push(syn::Stmt::Local(syn::Local {
+            let mut part_names = parts
+                .iter()
+                .filter_map(|part| part.value.as_ref())
+                .collect::<Vec<_>>();
+            part_names.sort_unstable();
+            let rust_origin_value = if parts.is_empty() {
+                syn::Expr::Call(syn::ExprCall {
                     attrs: vec![],
-                    let_token: syn::token::Let(syn_span()),
-                    modifiers: syn::LocalModifiers::default(),
-                    pat: syn::Pat::Ident(syn::PatIdent {
+                    func: Box::new(syn_expr_reference(["Origin"])),
+                    paren_token: syn::token::Paren(syn_span()),
+                    args: std::iter::once(syn::Expr::Path(syn::ExprPath {
                         attrs: vec![],
-                        by_ref: None,
-                        mutability: None,
-                        ident: syn_ident(&name_to_lowercase_rust(origin_name.value.as_str())),
-                        subpat: None,
-                    }),
-                    init: Some(syn::LocalInit {
-                        eq_token: syn::token::Eq(syn_span()),
-                        expr: Box::new(syn::Expr::Call(syn::ExprCall {
-                            attrs: vec![],
-                            func: Box::new(syn::Expr::Path(syn::ExprPath {
+                        qself: None,
+                        path: syn_path_construct(
+                            ["std", "marker"],
+                            "PhantomData",
+                            std::iter::once(syn::Type::Tuple(syn::TypeTuple {
                                 attrs: vec![],
-                                qself: None,
-                                path: syn_path_reference(["Origin"]),
+                                paren_token: syn::token::Paren(syn_span()),
+                                elems: [
+                                    syn::Type::Path(syn::TypePath {
+                                        attrs: vec![],
+                                        qself: None,
+                                        path: syn_path_reference([&local_origin_rust_name]),
+                                    }),
+                                    syn::Type::Tuple(syn::TypeTuple {
+                                        attrs: vec![],
+                                        paren_token: syn::token::Paren(syn_span()),
+                                        elems: syn::punctuated::Punctuated::new(),
+                                    }),
+                                ]
+                                .into_iter()
+                                .collect(),
                             })),
-                            paren_token: syn::token::Paren(syn_span()),
-                            args: std::iter::once(syn::Expr::Path(syn::ExprPath {
-                                attrs: vec![],
-                                qself: None,
-                                path: syn::Path {
-                                    leading_colon: None,
-                                    segments: [
-                                        syn_path_segment_ident("std"),
-                                        syn_path_segment_ident("marker"),
-                                        syn::PathSegment {
-                                            ident: syn_ident("PhantomData"),
-                                            arguments: syn::PathArguments::AngleBracketed(
-                                                syn::AngleBracketedGenericArguments {
-                                                    colon2_token: Some(syn::token::PathSep(syn_span())),
-                                                    lt_token: syn::token::Lt(syn_span()),
-                                                    args: std::iter::once(syn::GenericArgument::Type(
-                                                        syn::Type::Tuple(syn::TypeTuple {
-                                                            attrs: vec!(),
-                                                            paren_token: syn::token::Paren(syn_span()),
-                                                            elems: [
-                                                                syn::Type::Path(syn::TypePath {
-                                                                    attrs: vec![],
-                                                                    qself: None,
-                                                                    path: syn_path_reference([
-                                                                        &local_origin_rust_name,
-                                                                    ]),
-                                                                }),
-                                                                syn::Type::Tuple(syn::TypeTuple { attrs: vec!(), paren_token: syn::token::Paren(syn_span()), elems: syn::punctuated::Punctuated::new() }),
-                                                            ].into_iter().collect(),
-                                                        }),
-                                                    ))
-                                                    .collect(),
-                                                    gt_token: syn::token::Gt(syn_span()),
-                                                },
-                                            ),
-                                        },
-                                    ]
-                                    .into_iter()
-                                    .collect(),
-                                },
-                            }))
-                            .collect(),
-                        })),
-                        diverge: None,
-                    }),
-                    semi_token: syn::token::Semi(syn_span()),
-                }));
+                        ),
+                    }))
+                    .collect(),
+                })
             } else {
-                for part_name in parts.iter().filter_map(|part| part.value.as_ref()) {
-                    rust_statements.push(syn::Stmt::Local(syn::Local {
-                        attrs: vec![],
-                        let_token: syn::token::Let(syn_span()),
-                        modifiers: syn::LocalModifiers::default(),
-                        pat: syn::Pat::Ident(syn::PatIdent {
+                syn::Expr::Struct(syn::ExprStruct {
+                    attrs: vec![],
+                    qself: None,
+                    path: syn_path_reference([&field_names_to_rust_record_struct_name(
+                        part_names.iter().copied(),
+                    )]),
+                    brace_token: syn::token::Brace(syn_span()),
+                    fields: part_names
+                        .iter()
+                        .map(|&part_name| syn::FieldValue {
                             attrs: vec![],
-                            by_ref: None,
-                            mutability: None,
-                            ident: syn_ident(&name_to_lowercase_rust(part_name.as_str())),
-                            subpat: None,
-                        }),
-                        init: Some(syn::LocalInit {
-                            eq_token: syn::token::Eq(syn_span()),
-                            expr: Box::new(syn::Expr::Call(syn::ExprCall {
+                            member: syn::Member::Named(syn_ident(part_name)),
+                            colon_token: Some(syn::token::Colon(syn_span())),
+                            expr: syn::Expr::Call(syn::ExprCall {
                                 attrs: vec![],
-                                func: Box::new(syn::Expr::Path(syn::ExprPath {
-                                    attrs: vec![],
-                                    qself: None,
-                                    path: syn_path_reference(["Origin"]),
-                                })),
+                                func: Box::new(syn_expr_reference(["Origin"])),
                                 paren_token: syn::token::Paren(syn_span()),
                                 args: std::iter::once(syn::Expr::Path(syn::ExprPath {
                                     attrs: vec![],
                                     qself: None,
-                                    path: syn::Path {
-                                        leading_colon: None,
-                                        segments: [
-                                            syn_path_segment_ident("std"),
-                                            syn_path_segment_ident("marker"),
-                                            syn::PathSegment {
-                                                ident: syn_ident("PhantomData"),
-                                                arguments: syn::PathArguments::AngleBracketed(
-                                                    syn::AngleBracketedGenericArguments {
-                                                        colon2_token: Some(syn::token::PathSep(syn_span())),
-                                                        lt_token: syn::token::Lt(syn_span()),
-                                                        args: std::iter::once(syn::GenericArgument::Type(
-                                                            syn::Type::Tuple(syn::TypeTuple {
-                                                                attrs: vec!(),
-                                                                paren_token: syn::token::Paren(syn_span()),
-                                                                elems: [
-                                                                    syn::Type::Path(syn::TypePath {
-                                                                        attrs: vec![],
-                                                                        qself: None,
-                                                                        path: syn_path_reference([
-                                                                            &local_origin_rust_name,
-                                                                        ]),
-                                                                    }),
-                                                                    type_to_rust(&Type::Record(vec![
-                                                                        TypeField {
-                                                                            name: part_name.clone(),
-                                                                            value: type_record_empty,
-                                                                        },
-                                                                    ])),
-                                                                ].into_iter().collect(),
-                                                            }),
-                                                        ))
-                                                        .collect(),
-                                                        gt_token: syn::token::Gt(syn_span()),
-                                                    },
-                                                ),
-                                            },
-                                        ]
-                                        .into_iter()
-                                        .collect(),
-                                    },
+                                    path: syn_path_construct(
+                                        ["std", "marker"],
+                                        "PhantomData",
+                                        std::iter::once(syn::Type::Tuple(syn::TypeTuple {
+                                            attrs: vec![],
+                                            paren_token: syn::token::Paren(syn_span()),
+                                            elems: [
+                                                syn::Type::Path(syn::TypePath {
+                                                    attrs: vec![],
+                                                    qself: None,
+                                                    path: syn_path_reference([
+                                                        &local_origin_rust_name,
+                                                    ]),
+                                                }),
+                                                type_to_rust(&Type::Record(vec![TypeField {
+                                                    name: part_name.clone(),
+                                                    value: type_record_empty,
+                                                }])),
+                                            ]
+                                            .into_iter()
+                                            .collect(),
+                                        })),
+                                    ),
                                 }))
                                 .collect(),
-                            })),
-                            diverge: None,
-                        }),
-                        semi_token: syn::token::Semi(syn_span()),
-                    }));
-                }
-            }
+                            }),
+                        })
+                        .collect(),
+                    dot2_token: None,
+                    rest: None,
+                })
+            };
+            rust_statements.push(syn::Stmt::Local(syn::Local {
+                attrs: vec![],
+                let_token: syn::token::Let(syn_span()),
+                modifiers: syn::LocalModifiers::default(),
+                pat: syn::Pat::Ident(syn::PatIdent {
+                    attrs: vec![],
+                    by_ref: None,
+                    mutability: None,
+                    ident: syn_ident(&name_to_lowercase_rust(origin_name.value.as_str())),
+                    subpat: None,
+                }),
+                init: Some(syn::LocalInit {
+                    eq_token: syn::token::Eq(syn_span()),
+                    expr: Box::new(rust_origin_value),
+                    diverge: None,
+                }),
+                semi_token: syn::token::Semi(syn_span()),
+            }));
             rust_statements.extend(syn_spread_expr_block_into_stmts(result_compiled));
             let rust = syn::Expr::Block(syn::ExprBlock {
                 attrs: vec![],
@@ -11101,6 +10958,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     stmts: rust_statements,
                 },
             });
+            local_variables.remove(&origin_name.value);
             origins.remove(&origin_name.value);
             rust
         }
@@ -14457,7 +14315,7 @@ This is not possible for values of type `Origin`.
 When you create an `Origin` with `^some-origin expression`,
 `some-origin` will be of type `Origin some-origin, .`.
 The first type uniquely identifies the `Origin` with type `some-origin`.
-The second type here specifies that there are no `Origin` values with the same unique origin type.
+The second type here specifies that there are no `Origin` values with the same unique origin type (explained later).
 
 An `Origin` type will also be present in `Slot`, `Span`, `Buf`, as the first type argument.
 For example `Slot Origin some-origin, .`
@@ -14471,9 +14329,13 @@ where the origin was created with `^ .chars .some .other .origins combined-origi
 The types are as follows:
 ```sloe
 ^ .a .b .c combined-origin
-# a is of type Origin combined-origin, .a .
-# b is of type Origin combined-origin, .b .
-# c is of type Origin combined-origin, .c .
+# The variable combined-origin is of type
+# .a Origin combined-origin, .a .
+# .b Origin combined-origin, .b .
+# .c Origin combined-origin, .c .
+
+# get the actual origins out with a query
+? combined-origin [.a a .b b .c c]
 ```
 This gives you a way to for example just pass one origin to a type alias and
 inside of the type alias use the .a ., .b . or .c . to choose the part you want.
@@ -16513,15 +16375,15 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
         name: WithStartPosition<&'a Name>,
         construct_info: ConstructInfo,
     },
-    PatternVariable {
+    LocalVariable {
         name: &'a Name,
         use_start: lsp_types::Position,
-        origin: PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
+        origin: LocalVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     },
     VariableUnknown {
-        pattern_variables: std::collections::HashMap<
+        local_variables: std::collections::HashMap<
             &'a Name,
-            PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
+            LocalVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
         >,
         origins: std::collections::HashMap<
             &'a Name,
@@ -16535,7 +16397,7 @@ pub enum ConstructInfo {
     ArgumentExists,
     Declaration,
 }
-pub struct PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types> {
+pub struct LocalVariableSymbolOrigin<'a, Expressions, Patterns, Types> {
     pub start: lsp_types::Position,
     pub scope: Option<&'a SyntaxExpression<Expressions, Patterns, Types>>,
     pub type_: Option<Type>,
@@ -16718,15 +16580,15 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                 })
                 .or_else(|| {
                     result.as_ref().and_then(|result| {
-                        let mut pattern_variables = std::collections::HashMap::new();
+                        let mut local_variables = std::collections::HashMap::new();
                         if let Some(parameter) = parameter {
                             syntax_query_pattern_variables_fold(
                                 parameter,
                                 (),
                                 &mut |(), parameter_variable_name, parameter_variable_type| {
-                                    pattern_variables.insert(
+                                    local_variables.insert(
                                         parameter_variable_name.value,
-                                        PatternVariableSymbolOrigin {
+                                        LocalVariableSymbolOrigin {
                                             start: parameter_variable_name.start,
                                             scope: Some(result),
                                             type_: parameter_variable_type.and_then(|type_| {
@@ -16754,7 +16616,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             item,
-                            &mut pattern_variables,
+                            &mut local_variables,
                             &mut std::collections::HashMap::new(),
                         )
                     })
@@ -16774,9 +16636,9 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
     scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
-    pattern_variables: &mut std::collections::HashMap<
+    local_variables: &mut std::collections::HashMap<
         &'a Name,
-        PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
+        LocalVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     >,
     origins: &mut std::collections::HashMap<
         &'a Name,
@@ -16803,12 +16665,12 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             .as_ref()
             .and_then(|value| type_symbol_at_position(value, position, types, scope, origins)),
         SyntaxExpression::Variable(name) => Some(
-            pattern_variables
+            local_variables
                 .remove(&name.value)
-                .map(|pattern_variable| SyntaxSymbol::PatternVariable {
+                .map(|local_variable| SyntaxSymbol::LocalVariable {
                     name: &name.value,
                     use_start: name.start,
-                    origin: pattern_variable,
+                    origin: local_variable,
                 })
                 .or_else(|| {
                     origins
@@ -16834,7 +16696,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         })
                 })
                 .unwrap_or_else(|| SyntaxSymbol::VariableUnknown {
-                    pattern_variables: std::mem::take(pattern_variables),
+                    local_variables: std::mem::take(local_variables),
                     origins: std::mem::take(origins),
                 }),
         ),
@@ -16844,19 +16706,12 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             argument,
         } => {
             if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
-                return Some(match pattern_variables.remove(&name.value) {
-                    Some(pattern_variable) => SyntaxSymbol::PatternVariable {
-                        name: &name.value,
-                        use_start: name.start,
-                        origin: pattern_variable,
-                    },
-                    None => SyntaxSymbol::ProjectFnOrUnknown {
-                        name: with_start_position_as_ref(name),
-                        construct_info: if argument.is_some() || !type_arguments.is_empty() {
-                            ConstructInfo::ArgumentExists
-                        } else {
-                            ConstructInfo::ArgumentMissing
-                        },
+                return Some(SyntaxSymbol::ProjectFnOrUnknown {
+                    name: with_start_position_as_ref(name),
+                    construct_info: if argument.is_some() || !type_arguments.is_empty() {
+                        ConstructInfo::ArgumentExists
+                    } else {
+                        ConstructInfo::ArgumentMissing
                     },
                 });
             }
@@ -16878,7 +16733,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             scope,
-                            pattern_variables,
+                            local_variables,
                             origins,
                         )
                     })
@@ -16914,7 +16769,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             scope,
-                            pattern_variables,
+                            local_variables,
                             origins,
                         )
                     })
@@ -16927,7 +16782,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
             result,
         } => {
             let result = result.as_ref().map(|result| expressions.item(result));
-            pattern_variables.clear();
+            local_variables.clear();
             parameter
                 .as_ref()
                 .and_then(|parameter| {
@@ -16951,9 +16806,9 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                                 parameter,
                                 (),
                                 &mut |(), name, type_| {
-                                    pattern_variables.insert(
+                                    local_variables.insert(
                                         name.value,
-                                        PatternVariableSymbolOrigin {
+                                        LocalVariableSymbolOrigin {
                                             start: name.start,
                                             scope: Some(result),
                                             type_: type_.and_then(|type_| {
@@ -16980,7 +16835,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                             patterns,
                             types,
                             scope,
-                            pattern_variables,
+                            local_variables,
                             origins,
                         )
                     })
@@ -17001,7 +16856,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         patterns,
                         types,
                         scope,
-                        pattern_variables,
+                        local_variables,
                         origins,
                     )
                 }),
@@ -17019,7 +16874,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         patterns,
                         types,
                         scope,
-                        pattern_variables,
+                        local_variables,
                         origins,
                     )
                 }),
@@ -17043,7 +16898,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     scope,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 )
             }),
@@ -17062,7 +16917,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 scope,
-                pattern_variables,
+                local_variables,
                 origins,
             )
         }),
@@ -17080,7 +16935,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 scope,
-                pattern_variables,
+                local_variables,
                 origins,
             )
         }),
@@ -17101,7 +16956,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     scope,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 )
             })
@@ -17119,7 +16974,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                         patterns,
                         types,
                         scope,
-                        pattern_variables,
+                        local_variables,
                         origins,
                     )
                 })
@@ -17137,24 +16992,6 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     parts: parts,
                     scope: result,
                 };
-                for part in parts {
-                    if let Some(part_name) = &part.value
-                        && range_includes_position(
-                            name_range(WithStartPosition {
-                                start: position_add_characters(part.start, 1),
-                                value: part_name,
-                            }),
-                            position,
-                        )
-                    {
-                        return Some(SyntaxSymbol::Origin {
-                            name: part_name,
-                            use_start: position_add_characters(part.start, 1),
-                            origin_unique_name: &name.value,
-                            origin: origin_declaration_info,
-                        });
-                    }
-                }
                 if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
                     return Some(SyntaxSymbol::Origin {
                         name: &name.value,
@@ -17164,6 +17001,17 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     });
                 }
                 origins.insert(&name.value, origin_declaration_info);
+                local_variables.insert(
+                    &name.value,
+                    LocalVariableSymbolOrigin {
+                        start: name.start,
+                        scope: result,
+                        type_: Some(origin_type_from_part_names(
+                            &name.value,
+                            parts.iter().filter_map(|part| part.value.as_ref()),
+                        )),
+                    },
+                );
             }
             let result_symbol = result.and_then(|result| {
                 expression_symbol_at_position(
@@ -17176,7 +17024,7 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     patterns,
                     types,
                     scope,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 )
             });
@@ -17198,9 +17046,9 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
     scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
-    pattern_variables: &mut std::collections::HashMap<
+    local_variables: &mut std::collections::HashMap<
         &'a Name,
-        PatternVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
+        LocalVariableSymbolOrigin<'a, Expressions, Patterns, Types>,
     >,
     origins: &mut std::collections::HashMap<
         &'a Name,
@@ -17227,7 +17075,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
             let Some(result) = &case.result else {
                 return None;
             };
-            // don't modify pattern_variables unless known to be in the right case
+            // don't modify local_variables unless known to be in the right case
             if !range_includes_position(
                 expression_range(result, expressions, patterns, types),
                 position,
@@ -17240,9 +17088,9 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
                     expected_pattern_type,
                     (),
                     &mut |(), name, type_| {
-                        pattern_variables.insert(
+                        local_variables.insert(
                             name.value,
-                            PatternVariableSymbolOrigin {
+                            LocalVariableSymbolOrigin {
                                 start: name.start,
                                 scope: Some(result),
                                 type_: type_,
@@ -17263,7 +17111,7 @@ fn expression_query_case_symbol_at_position<'a, Expressions, Patterns, Types>(
                 patterns,
                 types,
                 scope,
-                pattern_variables,
+                local_variables,
                 origins,
             )
         })
@@ -17459,10 +17307,10 @@ fn pattern_symbol_at_position<'a, Expressions, Patterns, Types>(
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
             if range_includes_position(name_range(with_start_position_as_ref(name)), position) {
-                return Some(SyntaxSymbol::PatternVariable {
+                return Some(SyntaxSymbol::LocalVariable {
                     name: &name.value,
                     use_start: name.start,
-                    origin: PatternVariableSymbolOrigin {
+                    origin: LocalVariableSymbolOrigin {
                         start: name.start,
                         scope: expression_scope,
                         type_: expected_type.cloned().or_else(|| {
@@ -17868,7 +17716,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
             }
             _ => None,
         }),
-        SyntaxSymbol::PatternVariable {
+        SyntaxSymbol::LocalVariable {
             name,
             use_start: _,
             origin,
@@ -17976,7 +17824,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
             SyntaxProjectItem::Comments(_) => {}
             SyntaxProjectItem::Unrecognized { .. } => {}
         },
-        SyntaxSymbol::PatternVariable {
+        SyntaxSymbol::LocalVariable {
             name: _,
             use_start: _,
             origin,
@@ -18325,7 +18173,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
     expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
-    pattern_variables: &std::collections::HashSet<&Name>,
+    local_variables: &std::collections::HashSet<&Name>,
     origins: &std::collections::HashSet<&Name>,
 ) {
     match expression {
@@ -18357,13 +18205,13 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 origin_unique_name: _,
                 origin: _,
             }
-            | SyntaxSymbol::PatternVariable {
+            | SyntaxSymbol::LocalVariable {
                 name: symbol_name,
                 use_start: _,
                 origin: _,
             } => {
                 if *symbol_name == &name.value
-                    && !pattern_variables.contains(&name.value)
+                    && !local_variables.contains(&name.value)
                     && !origins.contains(&name.value)
                 {
                     uses.push(name_range(with_start_position_as_ref(name)));
@@ -18380,7 +18228,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                 | SyntaxSymbol::Origin { .. }
                 | SyntaxSymbol::ProjectTypeOrUnknown { .. }
                 | SyntaxSymbol::VariantOrUnknown(_)
-                | SyntaxSymbol::PatternVariable { .. }
+                | SyntaxSymbol::LocalVariable { .. }
                 | SyntaxSymbol::VariableUnknown { .. } => {}
                 SyntaxSymbol::ProjectFnOrUnknown {
                     name:
@@ -18409,7 +18257,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
@@ -18439,7 +18287,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
@@ -18451,7 +18299,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             result,
         } => {
             match symbol {
-                SyntaxSymbol::PatternVariable { .. } => return,
+                SyntaxSymbol::LocalVariable { .. } => return,
                 SyntaxSymbol::ProjectTypeOrUnknown { .. }
                 | SyntaxSymbol::Origin { .. }
                 | SyntaxSymbol::TypeVariable { .. }
@@ -18499,7 +18347,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
@@ -18521,7 +18369,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
@@ -18539,7 +18387,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
@@ -18556,7 +18404,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
@@ -18574,13 +18422,13 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
             for case in cases {
                 if let Some(result) = &case.result {
-                    let mut pattern_variables = std::borrow::Cow::Borrowed(pattern_variables);
+                    let mut local_variables = std::borrow::Cow::Borrowed(local_variables);
                     if let Some(pattern) = &case.pattern {
                         syntax_pattern_symbol_uses_into(
                             uses, pattern, symbol, patterns, types, origins,
@@ -18589,9 +18437,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                             pattern,
                             (),
                             &mut |(), pattern_variable_name, _type_| {
-                                pattern_variables
-                                    .to_mut()
-                                    .insert(pattern_variable_name.value);
+                                local_variables.to_mut().insert(pattern_variable_name.value);
                             },
                             patterns,
                         );
@@ -18603,7 +18449,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         expressions,
                         patterns,
                         types,
-                        &pattern_variables,
+                        &local_variables,
                         origins,
                     );
                 }
@@ -18624,7 +18470,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                         origin_unique_name: _,
                         origin: _,
                     }
-                    | SyntaxSymbol::PatternVariable {
+                    | SyntaxSymbol::LocalVariable {
                         name: symbol_name,
                         use_start: _,
                         origin: _,
@@ -18646,7 +18492,7 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     &origins,
                 );
             }
@@ -18660,7 +18506,7 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
     expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
-    pattern_variables: &std::collections::HashSet<&Name>,
+    local_variables: &std::collections::HashSet<&Name>,
     origins: &std::collections::HashSet<&Name>,
 ) {
     match part {
@@ -18673,7 +18519,7 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }
@@ -18690,7 +18536,7 @@ fn syntax_expression_record_part_symbol_uses_into<Expressions, Patterns, Types>(
                     expressions,
                     patterns,
                     types,
-                    pattern_variables,
+                    local_variables,
                     origins,
                 );
             }

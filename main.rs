@@ -290,11 +290,11 @@ fn present_type_alias_markdown(name: &sloe::Name, type_alias: &sloe::CheckedType
         }
     }
 }
-fn present_pattern_variable_markdown(type_: Option<&sloe::Type>) -> String {
+fn present_local_variable_markdown(type_: Option<&sloe::Type>) -> String {
     match type_ {
-        None => "pattern variable".to_string(),
+        None => "local variable".to_string(),
         Some(type_) => {
-            let mut type_string = "pattern variable of type\n```sloe\n".to_string();
+            let mut type_string = "local variable of type\n```sloe\n".to_string();
             sloe::type_format(&mut type_string, 0, type_);
             type_string + "\n```\n"
         }
@@ -1141,14 +1141,14 @@ fn respond_to_hover<Expressions, Patterns, Types>(
             }
         }),
         sloe::SyntaxSymbol::VariableUnknown { .. } => None,
-        sloe::SyntaxSymbol::PatternVariable {
+        sloe::SyntaxSymbol::LocalVariable {
             name,
             use_start,
             origin,
         } => Some(lsp_types::Hover {
             contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
-                value: present_pattern_variable_markdown(origin.type_.as_ref()),
+                value: present_local_variable_markdown(origin.type_.as_ref()),
             }),
             range: Some(sloe::name_range(sloe::WithStartPosition {
                 start: use_start,
@@ -1254,7 +1254,7 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
             name,
             construct_info: _,
         } => Some(sloe::name_range(name)),
-        sloe::SyntaxSymbol::PatternVariable {
+        sloe::SyntaxSymbol::LocalVariable {
             name,
             use_start,
             origin: _,
@@ -1785,19 +1785,17 @@ fn respond_to_completion<Expressions, Patterns, Types>(
             }
         },
         sloe::SyntaxSymbol::VariableUnknown {
-            pattern_variables,
+            local_variables,
             origins,
         } => Some(lsp_types::CompletionResponse::CompletionItemList(
-            pattern_variables
+            local_variables
                 .into_iter()
                 .map(
-                    |(pattern_variable, pattern_variable_origin)| lsp_types::CompletionItem {
-                        label: pattern_variable.to_string(),
+                    |(local_variable, local_variable_origin)| lsp_types::CompletionItem {
+                        label: local_variable.to_string(),
                         kind: Some(lsp_types::CompletionItemKind::Variable),
                         documentation: Some(lsp_documentation_markdown(
-                            present_pattern_variable_markdown(
-                                pattern_variable_origin.type_.as_ref(),
-                            ),
+                            present_local_variable_markdown(local_variable_origin.type_.as_ref()),
                         )),
                         ..lsp_types::CompletionItem::default()
                     },
@@ -1842,7 +1840,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 .collect(),
         )),
         sloe::SyntaxSymbol::Origin { .. } => None,
-        sloe::SyntaxSymbol::PatternVariable {
+        sloe::SyntaxSymbol::LocalVariable {
             name: _,
             use_start: _,
             origin: _,
