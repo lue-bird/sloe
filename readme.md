@@ -6,7 +6,7 @@ Hello, world!
 ```sloe
 fn Greet
     .name name str .buf buf Buf _origin, char
-    : .buf Buf _origin, char .span Span _origin =
+: .buf Buf _origin, char .span Span _origin =
     ? Buf-add-str-chars .buf buf .new "Hello, " str [string]
     ? Buf-span-add-str-chars .. string .new name [string]
     Buf-span-add .. string .new "!" char
@@ -156,14 +156,14 @@ ty State _expressions-origin
 
 fn Initial-state
     .expressions-origin expressions-origin Origin _expressions-origin, _expressions_part
-    : State (Origin _expressions-origin, _expressions_part) =
+: State (Origin _expressions-origin, _expressions_part) =
     .expressions Buf-empty{Expression _expressions-origin} expressions-origin
     .root-expression (..do parsing..)
 
 fn State-to-interfaces-into
     .interfaces interfaces Buf _interfaces-origin, Interface State _expressions-origin
     .state state State _expressions-origin
-    : Buf _interfaces-origin, Interface State _expressions-origin =
+: Buf _interfaces-origin, Interface State _expressions-origin =
     ? (
         Buf-one
         .origin interfaces-origin
@@ -265,9 +265,10 @@ some-variable some-type
 # functions require appended type parameters: {...}
 fn Function-name{_potential}{_type-arguments}{_only-used-in-the-result}
     parameter-pattern-with-types
-    : result-type =
-    # optional documentation
-    # comment
+: result-type
+# optional documentation
+# comment
+=
     result-expression
 
 # type name without arguments. lowercase
@@ -505,7 +506,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Recurse
       .consume-origin consume-origin Origin _consume-origin, .
       .result-origin result-origin _result-origin
-      : Buf _result-origin, u32 =
+  : Buf _result-origin, u32 =
       ^local-origin
       ? Buf-empty{u32} consume-origin [temporary]
       ? Recurse local-origin result-origin [result]
@@ -533,10 +534,10 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   ```sloe
   fn Origin-unerase
       .erased Origin-erased .origin Origin _o
-      : Origin-isolated _o
+  : Origin-isolated _o
   fn Origin-isolated-split
       Origin-isolated _o, .a _a .b _b
-      : .a Origin-isolated _o, _a .b origin-isolated _o, _b
+  : .a Origin-isolated _o, _a .b origin-isolated _o, _b
   ```
   but I couldn't find something reasonable for choice types
 - (once there is an easy way to check if a pointer is aligned in rust) change `cast_or_rid_and_allocate` to recover alignment differences if the address happens to align
@@ -752,18 +753,14 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- new origin sema: fix codegen, fix origin_new!
-
 - move collecting records and choice types to codegen phase, so that e.g. they are not unnecessarily collected for js or zig backend
-
-- consider format in fn moving : and = to indent 0
 
 - add `Buf-(opt-)span-step(-while)` and `Buf-(opt-)span-alter` which asks for `.span (Opt) Span _origin .item-alter Fn _item, _item`. for non--Span-destructive `Span-fold`
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
   fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item
-      : .buf Buf _origin, _item .slot Slot
+  : .buf Buf _origin, _item .slot Slot
   ```
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
@@ -776,7 +773,7 @@ I imagine the current style leaves some performance on the table but I'd be surp
   fn Origin-erased-map
       .erased Origin-erased _value-erased
       .change Fn _value-erased, _value-erased-new
-      :
+  :
       Origin-erased _value-erased-new
   ```
   If currently uneraser API is here to stay, remove Origin-erased-rid. It can't really be made useful

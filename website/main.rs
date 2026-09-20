@@ -777,15 +777,15 @@ const fn example_info(example: Example) -> ExampleInfo {
             source: r#"
 fn Hi
     origin Origin _origin, _part
-    :
+:
     .buf Buf (Origin _origin, _part), char
     .span Span Origin _origin, _part
-    =
+=
     Greet .name "world" str .buf Buf-empty{char} origin
 
 fn Greet
     .name name str .buf buf Buf _origin, char
-    : .buf Buf _origin, char .span Span _origin =
+: .buf Buf _origin, char .span Span _origin =
     ? Buf-add-str-chars .buf buf .new "Hello, " str [string]
     ? Buf-span-add-str-chars .. string .new name [string]
     Buf-span-add .. string .new "!" char
@@ -907,7 +907,7 @@ fn Call-function-value . : i32 =
 fn Buf-with-capacity{_item}
     .origin origin Origin _origin, _part
     .length length u32
-    : Buf (Origin _origin, _part), _item =
+: Buf (Origin _origin, _part), _item =
     Buf-pre-allocate-at-least
     .length length
     .buf Buf-empty{_item} origin
@@ -956,7 +956,7 @@ ty empty-record
     .
 
 fn Multiple-shapes-of-data-bundled-together .
-    : .weight f32 .color color .position position =
+: .weight f32 .color color .position position =
     .weight 1.0 f32
     .color (.r 255 u32 .g 100 u32 .b 40 u32)
     .position (.x 0.0 f32 .y 0.0 f32)
@@ -1022,7 +1022,7 @@ ty Type-syntax _types
 fn Type-rid
     .type type Type-syntax _types
     .buf buf Buf _types, Type-syntax _types
-    : Buf _types, Type-syntax _types =
+: Buf _types, Type-syntax _types =
     ? type
     ['variable variable] (
         ? Str-rid variable [.]
@@ -1042,7 +1042,7 @@ fn Type-rid
 fn Type-span-rid
     .span span Span _types
     .buf buf Buf _types, Type-syntax _types
-    : Buf _types, Type-syntax _types =
+: Buf _types, Type-syntax _types =
     Span-fold
     .direction 'up{'down .} .
     .span span
@@ -1085,10 +1085,10 @@ fn Example-array . : Array u32, .i0 u32 .i1 u32 .i2 u32 =
 fn U32s-sum
     .span span Span _origin
     .buf buf Buf _origin, u32
-    :
+:
     .sum u32
     .buf Buf _origin, u32
-    =
+=
     Span-fold
     .direction 'up{'down .} .
     .span span
@@ -1143,14 +1143,15 @@ If you're wondering how to store `Buf`s persistently, check `Origin-erase`",
 #shegang
 
 fn Documented-after-the-type . : .
-    # fn documentation.
-    # All comments can span
-    # multiple lines.
-    =
+# fn documentation.
+# All comments can span
+# multiple lines.
+=
     .
 
-ty string str
-    # type documentation
+ty string
+# type alias documentation
+    str
 
 fn Nice . : . =
     # in front of any expression

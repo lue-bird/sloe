@@ -10,10 +10,10 @@ fn Stack-cons
     .nodes nodes Buf _origin, Stack _origin, _item
     .stack tail Stack _origin, _item
     .new new-head _item
-    :
+:
     .nodes Buf _origin, Stack _origin, _item
     .stack Stack _origin, _item
-    =
+=
     ? Buf-insert .buf nodes .new tail [.buf nodes .slot tail-slot]
     .nodes nodes
     .stack ('stacked{Stack _origin, _item} .head new-head .tail tail-slot)
@@ -21,14 +21,14 @@ fn Stack-cons
 fn Stack-pop
     .nodes nodes Buf _origin, Stack _origin, _item
     .stack stack Stack _origin, _item
-    :
+:
     .nodes Buf _origin, Stack _origin, _item
     .item (
         Opt
         .head _item
         .tail Stack _origin, _item
     )
-    =
+=
     ? stack
     ['empty .] (
         .nodes nodes
@@ -51,10 +51,10 @@ fn Stack-fold
     .stack stack Stack _origin, _item
     .state state _state
     .reduce reduce Fn .state _state .item _item, _state
-    :
+:
     .nodes Buf _origin, Stack _origin, _item
     .state _state
-    =
+=
     ? stack
     ['empty .] (
         ? Fn-rid reduce [.]

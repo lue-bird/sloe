@@ -14744,6 +14744,9 @@ fn range_line_span(range: lsp_types::Range) -> LineSpan {
 }
 fn linebreak_indented_into(formatted: &mut String, indent: usize) {
     formatted.push('\n');
+    indented_into(formatted, indent);
+}
+fn indented_into(formatted: &mut String, indent: usize) {
     formatted.extend(std::iter::repeat_n(' ', indent));
 }
 fn space_or_linebreak_indented_into(formatted: &mut String, line_span: LineSpan, indent: usize) {
@@ -14841,8 +14844,9 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                 }
                 match documentation {
                     Some(documentation) => {
-                        linebreak_indented_into(&mut formatted, next_indent(0));
-                        syntax_comments_format(&mut formatted, next_indent(0), documentation);
+                        linebreak_indented_into(&mut formatted, 0);
+                        syntax_comments_format(&mut formatted, 0, documentation);
+                        indented_into(&mut formatted, next_indent(0));
                     }
                     None => match type_ {
                         Some(type_) => {
@@ -14911,8 +14915,8 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                         parameter,
                     );
                 }
-                space_or_linebreak_indented_into(&mut formatted, header_line_span, next_indent(0));
-                formatted.push_str(":");
+                space_or_linebreak_indented_into(&mut formatted, header_line_span, 0);
+                formatted.push(':');
                 match result_type {
                     Some(result_type) => {
                         let result_type_lne_span = range_line_span(type_range(result_type, types));
@@ -14927,22 +14931,14 @@ pub fn syntax_project_format<Expressions, Patterns, Types>(
                             types,
                             result_type,
                         );
-                        space_or_linebreak_indented_into(
-                            &mut formatted,
-                            result_type_lne_span,
-                            next_indent(0),
-                        );
+                        space_or_linebreak_indented_into(&mut formatted, result_type_lne_span, 0);
                     }
                     None => {
-                        space_or_linebreak_indented_into(
-                            &mut formatted,
-                            header_line_span,
-                            next_indent(0),
-                        );
+                        space_or_linebreak_indented_into(&mut formatted, header_line_span, 0);
                     }
                 }
                 if let Some(documentation) = documentation {
-                    syntax_comments_format(&mut formatted, next_indent(0), documentation);
+                    syntax_comments_format(&mut formatted, 0, documentation);
                 }
                 formatted.push('=');
                 linebreak_indented_into(&mut formatted, next_indent(0));
@@ -19357,7 +19353,7 @@ pub fn checked_project_fn_format(
     if let Some(fn_parameter_type) = &project_fn.parameter_type {
         type_format(formatted, 4, fn_parameter_type);
     }
-    formatted.push_str("\n    :\n    ");
+    formatted.push_str("\n:\n    ");
     if let Some(fn_result_type) = &project_fn.result_type {
         type_format(formatted, 4, fn_result_type);
     }

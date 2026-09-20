@@ -31,7 +31,7 @@ fn Initial-state . : state =
 
 fn Mouse-trail-origin-isolate
     mouse-trail Mouse-trail Origin _origin, _part
-    : Origin-isolated _origin, Mouse-trail-origin-erased _part =
+: Origin-isolated _origin, Mouse-trail-origin-erased _part =
     ? mouse-trail [.buf buf .span span]
     Origin-isolated-map
     .change (
@@ -57,10 +57,10 @@ fn Mouse-trail-origin-isolate
 fn Mouse-trail-origin-unerase
     .erased erased Mouse-trail-origin-erased _part
     .uneraser uneraser Origin-uneraser _origin
-    :
+:
     .unerased Mouse-trail Origin _origin, _part
     .uneraser Origin-uneraser _origin
-    =
+=
     ? erased [.buf buf .span span]
     ? Buf-origin-unerase-keep-items .buf buf .uneraser uneraser
     [.buf buf .uneraser uneraser]
@@ -71,7 +71,7 @@ fn Mouse-trail-origin-unerase
 fn Update
     .state state state
     .event event event
-    : state =
+: state =
     ? event
     ['counter-clicked .] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail]
@@ -114,14 +114,14 @@ fn View
     .modifiers
         modifiers Buf (Origin _view, .modifier .), Modifier event, _view
     .chars chars Buf (Origin _view, .char .), char
-    :
+:
     .state state
     .html Html _view
     .htmls Buf (Origin _view, .html .), Html _view
     .modifiers
         Buf (Origin _view, .modifier .), Modifier event, _view
     .chars Buf (Origin _view, .char .), char
-    =
+=
     ? state [.count count .mouse-x mouse-x .mouse-y mouse-y .mouse-trail mouse-trail]
     ? .buf chars .span 'no{Opt Span Origin _view, .char .} . [text]
     ? Buf-opt-span-add-str-chars .. text .new "your mouse is at .x " str [text]
@@ -159,7 +159,7 @@ fn View
     .chars chars
 
 ty Html _view
-    # for namespace, use xmlns attribute
+# for namespace, use xmlns attribute
     'element
         .tag str
         .modifiers (Opt Span Origin _view, .modifier .)
