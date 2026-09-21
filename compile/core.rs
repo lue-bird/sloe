@@ -768,15 +768,15 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     pub fn pre_allocation_rid(&mut self) {
         self.items.shrink_to_fit();
     }
-    pub fn as_slice<'a>(&'a self) -> &'a [std::option::Option<Item>] {
+    pub fn as_slice(&self) -> &[std::option::Option<Item>] {
         &self.items
     }
-    fn item_option<'a>(&'a self, slot: &'a Slot<LocalOrigin>) -> &'a std::option::Option<Item> {
+    fn item_option<'a>(&'a self, slot: &'a Slot<LocalOrigin>) -> std::option::Option<&'a Item> {
         // new slots are bound to this collection origin and contain a known valid index
-        unsafe { self.items.get_unchecked(slot.index as usize) }
+        unsafe { self.items.get_unchecked(slot.index as usize) }.as_ref()
     }
     pub fn item<'a>(&'a self, slot: &'a Slot<LocalOrigin>) -> &'a Item {
-        unsafe { self.item_option(slot).as_ref().unwrap_unchecked() }
+        unsafe { self.item_option(slot).unwrap_unchecked() }
     }
     fn item_option_mut<'a>(
         &'a mut self,
@@ -864,8 +864,8 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         unsafe { self.items.get_unchecked_mut(span.to_range()) }
     }
     /// this APIs is a bit wonky and compromises on performance and useability
-    fn span_into_iter<'a, Out>(
-        &'a mut self,
+    fn span_into_iter<Out>(
+        &mut self,
         span: Span<LocalOrigin>,
         consume_iterator: impl std::ops::FnOnce(
             &mut dyn std::iter::DoubleEndedIterator<Item = Item>,
@@ -904,6 +904,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     }
     /// After this, slot0 will reference the same item that slot1 did originally
     /// and slot1 will reference the same item that slot0 did originally
+    #[allow(clippy::needless_pass_by_ref_mut)]
     fn swap(&mut self, slot0: &mut Slot<LocalOrigin>, slot1: &mut Slot<LocalOrigin>) {
         // can probably be opimized by asserting slot0.index == slot1.index is unreachable
         self.items.swap(slot0.index as usize, slot1.index as usize);
@@ -938,7 +939,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     pub fn span_rid(&mut self, span: Span<LocalOrigin>, item_rid: impl std::ops::Fn(Item)) {
         self.span_into_iter(span, |items| {
             for item in items {
-                item_rid(item)
+                item_rid(item);
             }
         });
     }
@@ -948,7 +949,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         item_alter: impl std::ops::Fn(Item) -> Item,
     ) {
         if let Opt::Yes(span) = span {
-            self.span_alter(span, item_alter)
+            self.span_alter(span, item_alter);
         }
     }
     pub fn span_alter(
@@ -990,14 +991,14 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                         std::option::Option::Some(_) => std::option::Option::None,
                     },
                 )
-                .unwrap_or_else(|| u32::MAX);
+                .unwrap_or(u32::MAX);
                 Slot::<LocalOrigin>::from_index(set_index)
             }
             std::option::Option::None => self.add(new_item),
         }
     }
     fn find_unset_length_positive(
-        &mut self,
+        &self,
         unset_length_to_find: std::num::NonZeroU32,
     ) -> std::option::Option<u32> {
         // can maybe be optimized by skipping unset_length_to_find - 1 ahead when encountering a None
@@ -1134,10 +1135,9 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         source_span: Span<SourceOrigin>,
     ) -> Span<LocalOrigin> {
         let source_span_length = source_span.length;
-        let new_span = source.span_into_iter(source_span, |source_items| {
+        source.span_into_iter(source_span, |source_items| {
             self.insert_iterator_filled(source_items, source_span_length)
-        });
-        new_span
+        })
     }
     pub fn add_buf_span<SourceOrigin>(
         &mut self,
@@ -1145,10 +1145,9 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         source_span: Span<SourceOrigin>,
     ) -> Span<LocalOrigin> {
         let source_span_length = source_span.length;
-        let new_span = source.span_into_iter(source_span, |source_items| {
+        source.span_into_iter(source_span, |source_items| {
             self.add_iterator_filled(source_items, source_span_length)
-        });
-        new_span
+        })
     }
     pub fn span_add_buf_span<SourceOrigin>(
         &mut self,
@@ -1156,10 +1155,9 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
         source: &mut Buf<SourceOrigin, Item>,
         source_span: Span<SourceOrigin>,
     ) -> Span<LocalOrigin> {
-        let new_span = source.span_into_iter(source_span, |source_items| {
+        source.span_into_iter(source_span, |source_items| {
             self.span_add_iterator(span, source_items)
-        });
-        new_span
+        })
     }
     pub fn span_add_buf_opt_span<SourceOrigin>(
         &mut self,
@@ -1169,10 +1167,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     ) -> Span<LocalOrigin> {
         match source_span {
             Opt::No(()) => span,
-            Opt::Yes(source_span) => {
-                let combined_span = self.span_add_buf_span(span, source, source_span);
-                combined_span
-            }
+            Opt::Yes(source_span) => self.span_add_buf_span(span, source, source_span),
         }
     }
     pub fn opt_span_add_buf_span<SourceOrigin>(
@@ -1315,7 +1310,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
                             std::option::Option::Some(_) => std::option::Option::None,
                         },
                     )
-                    .unwrap_or_else(|| u32::MAX);
+                    .unwrap_or(u32::MAX);
                 } else {
                     // self.first_unset_index is either u32::MAX or at an earlier index
                 }
@@ -1439,12 +1434,7 @@ impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
                     // when the `item_erase` really justs erases origins
                     items: std::iter::Iterator::collect(std::iter::Iterator::map(
                         std::iter::IntoIterator::into_iter(self.items),
-                        |item| match item {
-                            std::option::Option::None => std::option::Option::None,
-                            std::option::Option::Some(item) => {
-                                std::option::Option::Some(item_erase(item).value_erased)
-                            }
-                        },
+                        |item| item.map(|item| item_erase(item).value_erased),
                     )),
                     first_unset_index: self.first_unset_index,
                 },
@@ -1477,12 +1467,7 @@ impl<Item, Part> Buf<Origin<Erased, Part>, Item> {
             // when the `item_unerase` really justs unerases origins
             items: std::iter::Iterator::collect(std::iter::Iterator::map(
                 std::iter::IntoIterator::into_iter(self.items),
-                |item| match item {
-                    std::option::Option::None => std::option::Option::None,
-                    std::option::Option::Some(item) => {
-                        std::option::Option::Some(item_unerase(item, Origin_uneraser(uneraser.0)).0)
-                    }
-                },
+                |item| item.map(|item| item_unerase(item, Origin_uneraser(uneraser.0)).0),
             )),
             first_unset_index: self.first_unset_index,
         }
@@ -1876,7 +1861,7 @@ pub fn f32_dup(n: F32) -> Record·a·b<F32, F32> {
 }
 pub fn f32_rid(_: F32) -> Record {}
 pub fn f32_pi((): Record) -> F32 {
-    return std::f32::consts::PI;
+    std::f32::consts::PI
 }
 pub fn f32_add_clamp(Record·a·b { a, b }: Record·a·b<F32, F32>) -> F32 {
     (a + b).clamp(f32::MIN, f32::MAX)
@@ -2407,7 +2392,7 @@ pub fn origin_erased_rid<ValueErased>(
         Fn<ValueErased, Record>,
     >,
 ) -> Record {
-    rid(erased.value_erased)
+    rid(erased.value_erased);
 }
 pub fn origin_unerase<LocalOrigin, Value, ValueErased>(
     Record·erased·origin·unerase {

@@ -79,3 +79,8 @@ redundant_closure_for_method_calls = { level = "allow" }
 implicit_hasher = { level = "allow" }
 # annoying, not relevant for correctness
 inconsistent_struct_constructor = { level = "allow" }
+struct-excessive-bools = { level = "allow" }
+range_plus_one = { level = "allow" }
+missing_panics_doc = { level = "allow" }
+missing_safety_doc = { level = "allow" }
+must_use_candidate = { level = "allow" }
