@@ -608,6 +608,26 @@ test "buf insert, add, take, setCount, rid" {
     try std.testing.expectEqual(0, buf.setCount());
     buf.rid(allocator);
 }
+test "buf set or insert" {
+    const allocator = std.testing.allocator;
+    const BufOrigin = enum {};
+    const origin: core.Origin(BufOrigin, void) = .{};
+    var buf = core.buf_empty(i32, BufOrigin, void, origin);
+    const slot0 = try buf.add(allocator, 123);
+    const slot1 = try buf.add(allocator, 456);
+    const slot2 = try buf.add(allocator, 789);
+    try std.testing.expectEqual(123, buf.remove(slot0));
+    try std.testing.expectEqual(456, buf.remove(slot1));
+    const slot1_reused = try buf.setOrInsert(allocator, 1, -456);
+    const slot0_reused = try buf.insert(allocator, -123);
+    try std.testing.expectEqual(1, slot1_reused.index);
+    try std.testing.expectEqual(0, slot0_reused.index);
+    try std.testing.expectEqualSlices(i32, &.{ -123, -456, 789 }, buf.items.items[0..3]);
+    try std.testing.expectEqual(-123, buf.remove(slot0_reused));
+    try std.testing.expectEqual(-456, buf.remove(slot1_reused));
+    try std.testing.expectEqual(789, buf.remove(slot2));
+    buf.rid(allocator);
+}
 test "buf_replace" {
     const BufOrigin = enum {};
     const buf_origin: core.Origin(BufOrigin, void) = .{};

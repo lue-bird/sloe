@@ -255,6 +255,12 @@ pub struct Record·buf·new·slot<Buf, New, Slot> {
     pub slot: Slot,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·buf·index·new<Buf, Index, New> {
+    pub buf: Buf,
+    pub index: Index,
+    pub new: New,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·span<Buf, Span> {
     pub buf: Buf,
     pub span: Span,
@@ -1031,21 +1037,41 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             std::option::Option::Some(item_option_to_set) => {
                 _ = item_option_to_set.insert(new_item);
                 let set_index = self.first_unset_index;
-                self.first_unset_index = std::iter::Iterator::find_map(
-                    &mut std::iter::Iterator::skip(
-                        std::iter::Iterator::enumerate(self.items.iter()),
-                        (self.first_unset_index + 1) as usize,
-                    ),
-                    |(i, item)| match item {
-                        std::option::Option::None => std::option::Option::Some(i as u32),
-                        std::option::Option::Some(_) => std::option::Option::None,
-                    },
-                )
-                .unwrap_or(u32::MAX);
+                self.first_unset_index = self
+                    .find_unset_index_after_length(self.first_unset_index + 1)
+                    .unwrap_or(u32::MAX);
                 Slot::<LocalOrigin>::from_index(set_index)
             }
             std::option::Option::None => self.add(new_item),
         }
+    }
+    pub fn set_or_insert(&mut self, index: u32, new_item: Item) -> Slot<LocalOrigin> {
+        match self.items.get_mut(index as usize) {
+            std::option::Option::Some(item_option_to_set @ std::option::Option::None) => {
+                _ = item_option_to_set.insert(new_item);
+                if index == self.first_unset_index {
+                    self.first_unset_index = self
+                        .find_unset_index_after_length(self.first_unset_index + 1)
+                        .unwrap_or(u32::MAX);
+                }
+                Slot::<LocalOrigin>::from_index(index)
+            }
+            std::option::Option::None | std::option::Option::Some(std::option::Option::Some(_)) => {
+                self.insert(new_item)
+            }
+        }
+    }
+    fn find_unset_index_after_length(&self, skipped_start_length: u32) -> std::option::Option<u32> {
+        std::iter::Iterator::find_map(
+            &mut std::iter::Iterator::skip(
+                std::iter::Iterator::enumerate(self.items.iter()),
+                skipped_start_length as usize,
+            ),
+            |(i, item)| match item {
+                std::option::Option::None => std::option::Option::Some(i as u32),
+                std::option::Option::Some(_) => std::option::Option::None,
+            },
+        )
     }
     fn find_unset_length_positive(
         &self,
@@ -2658,6 +2684,19 @@ pub fn buf_insert<Item, Origin>(
     }: Record·buf·new<Buf<Origin, Item>, Item>,
 ) -> Record·buf·slot<Buf<Origin, Item>, Slot<Origin>> {
     let slot = buf.insert(new_item);
+    Record·buf·slot {
+        buf: buf,
+        slot: slot,
+    }
+}
+pub fn buf_set_or_insert<Item, Origin>(
+    Record·buf·index·new {
+        mut buf,
+        index,
+        new: new_item,
+    }: Record·buf·index·new<Buf<Origin, Item>, U32, Item>,
+) -> Record·buf·slot<Buf<Origin, Item>, Slot<Origin>> {
+    let slot = buf.set_or_insert(index, new_item);
     Record·buf·slot {
         buf: buf,
         slot: slot,

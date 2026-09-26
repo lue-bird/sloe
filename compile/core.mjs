@@ -834,6 +834,14 @@ export function buf_insert(insert) {
     return buf_add(insert);
   }
 }
+/** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, index: U32, newø: $Item, }} set @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} */
+export function buf_set_insert(set) {
+  if (set.buf[set.index] === SYMBOL$UNSET) {
+    set.buf[set.index] = set.newø;
+    return { buf: set.buf, slot: set.index };
+  }
+  return buf_insert(set);
+}
 /** @template $Item, $Origin @template $Record @param {{ buf: Buf<$Origin, $Item>, newø: Array<$Item, $Record>, }} add @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
 export function buf_add_array(add) {
   add.buf.push(...add.newø);

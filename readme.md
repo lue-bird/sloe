@@ -800,12 +800,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - add `Buf-(opt-)span-step-while` for non--Span-destructive `Span-step`
 
-- New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
-  ```sloe
-  fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item
-  : .buf Buf _origin, _item .slot Slot
-  ```
-
 - finish io smuggling example
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful

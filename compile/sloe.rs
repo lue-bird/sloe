@@ -13190,6 +13190,51 @@ You may also use it to adjust memory usage after `Buf-reuse` when the given `Uns
                 name: "Buf-insert",
                 documentation: "Add a new item into the `Buf` and keep a slot to it,
 reusing unset space closest to the start of the `Buf` when available.
+Use `Buf-add` if you don't care about reuse.
+Use `Buf-set-or-insert` if you already know of an index that's likely unset",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("new", type_variable("item")),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("slot", type_slot(type_variable("origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-set-or-insert",
+                documentation: "Add a new item into the `Buf`
+a a specific index (starting at 0 for the first item) and keep a slot to it.
+If the given index is already occupied, chooses an unset index closest to the start of the `Buf` when available.
+
+You can use this to more cheaply return temporarily removed items to their original spots.
+```sloe
+fn Buf-dup-char
+    .buf buf Buf _origin, char
+    .slot slot Slot _origin
+:
+    .buf Buf _origin, char
+    .slot Slot _origin
+    .item char
+=
+    ? Slot-index slot [.slot slot .index index]
+    ? Buf-remove .buf buf .slot slot [.buf buf .item item]
+    ? Char-dup item [.a item .b item-duped]
+    # you may have chosen Buf-insert here.
+    # while that works, it may try to find an unset Slot earlier than the one you removed.
+    .. Buf-set-or-insert .buf buf .index index .new item
+    .item item-duped
+```
+`Span-start-index` is also often useful here.
+Note that `Buf-item-step`, `Buf-swap` etc. will be enough to fulfill most of the same purposes without indexes flying about.
+
 Use `Buf-add` if you don't care about reuse.",
                 type_parameters: vec![],
                 parameter_type: type_record([
@@ -13197,6 +13242,7 @@ Use `Buf-add` if you don't care about reuse.",
                         "buf",
                         type_buf(type_variable("origin"), type_variable("item")),
                     ),
+                    ("index", type_u32),
                     ("new", type_variable("item")),
                 ]),
                 result_type: type_record([
@@ -14749,6 +14795,7 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Buf-add-str-chars"
         | "Buf-add"
         | "Buf-insert"
+        | "Buf-set-or-insert"
         | "Buf-pre-allocation-rid"
         | "Buf-pre-allocate-at-least" => true,
         _ => false,

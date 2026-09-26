@@ -566,6 +566,26 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 },
             }
         }
+        pub fn setOrInsert(
+            @"%buf": *@This(),
+            @"%allocator": std.mem.Allocator,
+            @"%index": U32,
+            @"%new_item": @"%Item",
+        ) error{OutOfMemory}!Slot(@"%Origin") {
+            if (@"%index" >= @"%buf".items.items.len) {
+                return @"%buf".insert(@"%allocator", @"%new_item");
+            }
+            var @"%unset_bit_set" = @"%buf".unsetBitSet();
+            if (!@"%unset_bit_set".isSet(@"%index")) {
+                return @"%buf".insert(@"%allocator", @"%new_item");
+            }
+            @"%buf".items.items[@"%index"] = @"%new_item";
+            @"%unset_bit_set".unset(@"%index");
+            if (@"%buf".first_unset_index == @as(UnsetIndexOrNone, @enumFromInt(@"%index"))) {
+                @"%buf".first_unset_index = @"%buf".firstUnsetIndexStartSearchFrom(@"%index" + 1);
+            }
+            return Slot(@"%Origin"){ .index = @"%index" };
+        }
         fn firstUnsetIndexStartSearchFrom(@"%buf": @This(), @"%search_start_index": u32) UnsetIndexOrNone {
             const @"%unset_bit_set" = @"%buf".unsetBitSet();
             // skip first_unset_index bits rounded down to the mask
@@ -1708,6 +1728,16 @@ pub fn buf_insert(
 ) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), slot: Slot(@"%Origin") }) {
     var @"%buf" = @"%".buf;
     const @"%slot" = try @"%buf".insert(@"%allocator", @"%".new);
+    return .{ .buf = @"%buf", .slot = @"%slot" };
+}
+pub fn buf_set_or_insert(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), index: U32, new: @"%Item" }),
+) error{OutOfMemory}!Record(struct { buf: Buf(@"%Origin", @"%Item"), slot: Slot(@"%Origin") }) {
+    var @"%buf" = @"%".buf;
+    const @"%slot" = try @"%buf".setOrInsert(@"%allocator", @"%".index, @"%".new);
     return .{ .buf = @"%buf", .slot = @"%slot" };
 }
 pub fn buf_add(
