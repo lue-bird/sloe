@@ -3664,10 +3664,15 @@ fn syntax_project_fn_check<'a, Expressions, Patterns, Types>(
     }
     if let Some(result_type_diff) = type_diff(&header_result_type, &checked_result_expression_type)
     {
-        errors.push(ErrorNode {
-            range: expression_range(syntax_result, expressions, patterns, types),
-            message: type_diff_error_message(&result_type_diff).into_boxed_str(),
-        });
+        place_expression_type_diff_errors(
+            errors,
+            syntax_result,
+            &result_type_diff,
+            expressions,
+            patterns,
+            types,
+            checked_spread_records,
+        );
         return CheckedProjectFn {
             documentation: documentation,
             type_parameters: checked_header.type_parameters,
@@ -8679,11 +8684,15 @@ Type arguments are provided each wrapped in curly braces after the fn name, like
             if let Some(argument_variable_input_type_diff) =
                 type_diff(&expected_concrete_argument_type, &checked_argument_type)
             {
-                errors.push(ErrorNode {
-                    range: expression_range(syntax_argument, expressions, patterns, types),
-                    message: type_diff_error_message(&argument_variable_input_type_diff)
-                        .into_boxed_str(),
-                });
+                place_expression_type_diff_errors(
+                    errors,
+                    syntax_argument,
+                    &argument_variable_input_type_diff,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_spread_records,
+                );
                 return None;
             }
             checked_calls.insert(
@@ -8785,11 +8794,15 @@ If there should only ever by one variant, using a record with a single field is 
                     if let Some(variant_value_type_diff) =
                         type_diff(expected_value_type, &checked_value_type)
                     {
-                        errors.push(ErrorNode {
-                            range: expression_range(value, expressions, patterns, types),
-                            message: type_diff_error_message(&variant_value_type_diff)
-                                .into_boxed_str(),
-                        });
+                        place_expression_type_diff_errors(
+                            errors,
+                            value,
+                            &variant_value_type_diff,
+                            expressions,
+                            patterns,
+                            types,
+                            checked_spread_records,
+                        );
                         return None;
                     }
                     Some(checked_type)
@@ -9094,10 +9107,15 @@ If there should only ever by one variant, using a record with a single field is 
                     return None;
                 };
                 if let Some(type_diff) = type_diff(&checked_item0, &checked_item) {
-                    errors.push(ErrorNode {
-                        range: expression_range(item, expressions, patterns, types),
-                        message: type_diff_error_message(&type_diff).into_boxed_str(),
-                    });
+                    place_expression_type_diff_errors(
+                        errors,
+                        item,
+                        &type_diff,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_spread_records,
+                    );
                     return None;
                 }
                 type_fields.push(TypeField {
@@ -9459,12 +9477,15 @@ If you do not need to use this variable in that case, use any of the -rid functi
                 if let Some(match_result_case_result_type_diff) =
                     type_diff(&checked_query_result_type, &checked_case_result_type)
                 {
-                    errors.push(ErrorNode {
-                        range: expression_range(case_result, expressions, patterns, types),
-                        message: (type_diff_error_message(&match_result_case_result_type_diff)
-                            + "\n\nAll query case results must have the same type")
-                            .into_boxed_str(),
-                    });
+                    place_expression_type_diff_errors(
+                        errors,
+                        case_result,
+                        &match_result_case_result_type_diff,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_spread_records,
+                    );
                     invalid_case_indexes.push(case_index);
                 }
             }
@@ -11502,6 +11523,285 @@ fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
             .iter()
             .map(|variant| 3 + variant.name.len() + type_diff_length_estimate(&variant.value))
             .sum(),
+    }
+}
+
+fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
+    errors: &mut Vec<ErrorNode>,
+    expression: &SyntaxExpression<Expressions, Patterns, Types>,
+    type_diff: &TypeDiff,
+    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
+    patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+) {
+    match expression {
+        SyntaxExpression::Number { .. } => {
+            errors.push(ErrorNode {
+                range: expression_range(expression, expressions, patterns, types),
+                message: type_diff_error_message(&type_diff).into_boxed_str(),
+            });
+        }
+        SyntaxExpression::Text { .. } => {
+            errors.push(ErrorNode {
+                range: expression_range(expression, expressions, patterns, types),
+                message: type_diff_error_message(&type_diff).into_boxed_str(),
+            });
+        }
+        SyntaxExpression::Variable(_) => {
+            errors.push(ErrorNode {
+                range: expression_range(expression, expressions, patterns, types),
+                message: type_diff_error_message(&type_diff).into_boxed_str(),
+            });
+        }
+        SyntaxExpression::Call { .. } => {
+            errors.push(ErrorNode {
+                range: expression_range(expression, expressions, patterns, types),
+                message: type_diff_error_message(&type_diff).into_boxed_str(),
+            });
+        }
+        SyntaxExpression::Variant {
+            tick_start: _,
+            type_: _,
+            name,
+            value,
+        } => match name {
+            Some(name) => match type_diff {
+                TypeDiff::Choice(variant_type_diffs) => {
+                    match variant_type_diffs
+                        .iter()
+                        .find(|variant_type_diff| variant_type_diff.name == name.value)
+                    {
+                        Some(variant_type_diff) => {
+                            if let Some(value) = value {
+                                place_expression_type_diff_errors(
+                                    errors,
+                                    expressions.item(value),
+                                    &variant_type_diff.value,
+                                    expressions,
+                                    patterns,
+                                    types,
+                                    checked_spread_records,
+                                );
+                            }
+                        }
+                        None => {
+                            errors.push(ErrorNode {
+                                range: expression_range(expression, expressions, patterns, types),
+                                message: type_diff_error_message(type_diff).into_boxed_str(),
+                            });
+                        }
+                    }
+                }
+                TypeDiff::Conflict { .. }
+                | TypeDiff::Variable(_)
+                | TypeDiff::Origin(_)
+                | TypeDiff::CoreConstruct { .. }
+                | TypeDiff::Record(_) => {
+                    errors.push(ErrorNode {
+                        range: expression_range(expression, expressions, patterns, types),
+                        message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    });
+                }
+            },
+            None => {
+                errors.push(ErrorNode {
+                    range: expression_range(expression, expressions, patterns, types),
+                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                });
+            }
+        },
+        SyntaxExpression::Fn {
+            open_bracket_start: _,
+            parameter,
+            closed_bracket_start: _,
+            result,
+        } => match type_diff {
+            TypeDiff::CoreConstruct { name, arguments } => {
+                if name == "Fn"
+                    && let [parameter_type_diff, result_type_diff] = arguments.as_slice()
+                {
+                    if let Some(parameter) = parameter {
+                        errors.push(ErrorNode {
+                            range: pattern_range(parameter, patterns, types),
+                            message: type_diff_error_message(&parameter_type_diff).into_boxed_str(),
+                        });
+                    }
+                    if let Some(result) = result {
+                        place_expression_type_diff_errors(
+                            errors,
+                            expressions.item(result),
+                            result_type_diff,
+                            expressions,
+                            patterns,
+                            types,
+                            checked_spread_records,
+                        );
+                    }
+                }
+            }
+            TypeDiff::Record(_)
+            | TypeDiff::Conflict { .. }
+            | TypeDiff::Variable(_)
+            | TypeDiff::Origin(_)
+            | TypeDiff::Choice(_) => {
+                errors.push(ErrorNode {
+                    range: expression_range(expression, expressions, patterns, types),
+                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                });
+            }
+        },
+        SyntaxExpression::RecordEmpty { .. } => {
+            errors.push(ErrorNode {
+                range: expression_range(expression, expressions, patterns, types),
+                message: type_diff_error_message(&type_diff).into_boxed_str(),
+            });
+        }
+        SyntaxExpression::Record { part0, part1_up } => match type_diff {
+            TypeDiff::Record(type_diff_fields) => {
+                for part in std::iter::once(part0).chain(part1_up) {
+                    match part {
+                        SyntaxRecordPart::Field { name, value } => {
+                            if let Some(name_value) = &name.value
+                                && let Some(field_type_diff) = type_diff_fields
+                                    .iter()
+                                    .find(|field_type_diff| name_value == &field_type_diff.name)
+                                && let Some(value) = value
+                            {
+                                place_expression_type_diff_errors(
+                                    errors,
+                                    expressions.item(value),
+                                    &field_type_diff.value,
+                                    expressions,
+                                    patterns,
+                                    types,
+                                    checked_spread_records,
+                                );
+                            }
+                        }
+                        SyntaxRecordPart::Spread {
+                            dot_dot_start,
+                            record,
+                        } => {
+                            if let Some(spread_field_names) =
+                                checked_spread_records.get(dot_dot_start)
+                                && let Some(record) = record
+                            {
+                                place_expression_type_diff_errors(
+                                    errors,
+                                    expressions.item(record),
+                                    &TypeDiff::Record(
+                                        type_diff_fields
+                                            .iter()
+                                            .filter(|field_type_diff| {
+                                                spread_field_names.contains(&field_type_diff.name)
+                                            })
+                                            .cloned()
+                                            .collect(),
+                                    ),
+                                    expressions,
+                                    patterns,
+                                    types,
+                                    checked_spread_records,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            TypeDiff::Conflict { .. }
+            | TypeDiff::Variable(_)
+            | TypeDiff::Origin(_)
+            | TypeDiff::CoreConstruct { .. }
+            | TypeDiff::Choice(_) => {
+                errors.push(ErrorNode {
+                    range: expression_range(expression, expressions, patterns, types),
+                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                });
+            }
+        },
+        SyntaxExpression::Array { .. } => {
+            errors.push(ErrorNode {
+                range: expression_range(expression, expressions, patterns, types),
+                message: type_diff_error_message(&type_diff).into_boxed_str(),
+            });
+        }
+        SyntaxExpression::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => {
+            if let Some(inner) = inner {
+                place_expression_type_diff_errors(
+                    errors,
+                    expressions.item(inner),
+                    type_diff,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_spread_records,
+                );
+            }
+        }
+        SyntaxExpression::Commented {
+            comments: _,
+            expression,
+        } => {
+            if let Some(after_comments) = expression {
+                place_expression_type_diff_errors(
+                    errors,
+                    expressions.item(after_comments),
+                    type_diff,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_spread_records,
+                );
+            }
+        }
+        SyntaxExpression::Query {
+            question_mark_start: _,
+            queried: _,
+            cases,
+        } => {
+            for SyntaxExpressionQueryCase {
+                open_bracket_start: _,
+                pattern: _,
+                closed_bracket_start: _,
+                result: case_result,
+            } in cases
+            {
+                if let Some(case_result) = case_result {
+                    place_expression_type_diff_errors(
+                        errors,
+                        case_result,
+                        type_diff,
+                        expressions,
+                        patterns,
+                        types,
+                        checked_spread_records,
+                    );
+                }
+            }
+        }
+        SyntaxExpression::Origin {
+            caret_key_symbol_start: _,
+            parts: _,
+            name: _,
+            result,
+        } => {
+            if let Some(result) = result {
+                place_expression_type_diff_errors(
+                    errors,
+                    expressions.item(result),
+                    type_diff,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_spread_records,
+                );
+            }
+        }
     }
 }
 
