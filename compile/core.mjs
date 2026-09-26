@@ -754,19 +754,61 @@ export function buf_span_alter(unset) {
   return { buf: unset.buf, span: unset.span };
 }
 /** @template $Item, $Origin
- * @param {{ buf: Buf<$Origin, $Item>, item_alter: Fn<$Item, $Item>, span: Opt<Span<$Origin>>, }} unset
+ * @param {{ buf: Buf<$Origin, $Item>, item_alter: Fn<$Item, $Item>, span: Opt<Span<$Origin>>, }} alter
  * @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>> }} */
-export function buf_opt_span_alter(unset) {
-  if ("yes" in unset.span) {
+export function buf_opt_span_alter(alter) {
+  if ("yes" in alter.span) {
     for (
-      let i = unset.span.yes.start;
-      i < unset.span.yes.start + unset.span.yes.length;
+      let i = alter.span.yes.start;
+      i < alter.span.yes.start + alter.span.yes.length;
       i++
     ) {
-      unset.buf[i] = unset.item_alter(/** @type $Item */ (unset.buf[i]));
+      alter.buf[i] = alter.item_alter(/** @type $Item */ (alter.buf[i]));
     }
   }
-  return { buf: unset.buf, span: unset.span };
+  return { buf: alter.buf, span: alter.span };
+}
+/** @template $Item, $Origin, $State
+ * @param {{
+ *     buf: Buf<$Origin, $Item>,
+ *     span: Span<$Origin>,
+ *     direction: { up: void } | { down: void },
+ *     state: $State,
+ *     step: Fn<{ item: $Item, state: $State, }, { item: $Item, state: $State, }>,
+ * }} step
+ * @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, state: $State, }} */
+export function buf_span_step(step) {
+  let state = step.state;
+  for (let i = step.span.start; i < step.span.start + step.span.length; i++) {
+    const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
+    step.buf[i] = stepped.item;
+    state = stepped.state;
+  }
+  return { buf: step.buf, span: step.span, state: state };
+}
+/** @template $Item, $Origin, $State
+ * @param {{
+ *     buf: Buf<$Origin, $Item>,
+ *     span: Opt<Span<$Origin>>,
+ *     direction: { up: void } | { down: void },
+ *     state: $State,
+ *     step: Fn<{ item: $Item, state: $State, }, { item: $Item, state: $State, }>,
+ * }} step
+ * @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>>, state: $State, }} */
+export function buf_opt_span_step(step) {
+  let state = step.state;
+  if ("yes" in step.span) {
+    for (
+      let i = step.span.yes.start;
+      i < step.span.yes.start + step.span.yes.length;
+      i++
+    ) {
+      const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
+      step.buf[i] = stepped.item;
+      state = stepped.state;
+    }
+  }
+  return { buf: step.buf, span: step.span, state: state };
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, length: U32, }} pre_allocate @returns {Buf<$Origin, $Item>} */
 export function buf_pre_allocate_at_least(pre_allocate) {

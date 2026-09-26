@@ -662,6 +662,44 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 },
             }
         }
+        pub fn spanStep(
+            @"%buf": @This(),
+            @"%State": type,
+            @"%allocator": std.mem.Allocator,
+            @"%span": Span(@"%Origin"),
+            @"%direction": @"'down'up"(void, void),
+            @"%initial_state": @"%State",
+            @"%step": Fn(
+                Record(struct { item: @"%Item", state: @"%State" }),
+                Record(struct { item: @"%Item", state: @"%State" }),
+            ),
+        ) error{OutOfMemory}!@"%State" {
+            var @"%state" = @"%initial_state";
+            switch (@"%direction") {
+                .up => {
+                    for (@"%buf".spanSlice(@"%span")) |*@"%item"| {
+                        const @"%stepped" = try @"%step"(
+                            @"%allocator",
+                            .{ .item = @"%item".*, .state = @"%state" },
+                        );
+                        @"%item".* = @"%stepped".item;
+                        @"%state" = @"%stepped".state;
+                    }
+                },
+                .down => {
+                    var @"%slice_reverse_iterator" = std.mem.reverseIterator(@"%buf".spanSlice(@"%span"));
+                    while (@"%slice_reverse_iterator".nextPtr()) |@"%item"| {
+                        const @"%stepped" = try @"%step"(
+                            @"%allocator",
+                            .{ .item = @"%item".*, .state = @"%state" },
+                        );
+                        @"%item".* = @"%stepped".item;
+                        @"%state" = @"%stepped".state;
+                    }
+                },
+            }
+            return @"%state";
+        }
         // The given span is invalid while the returned slice is live
         pub fn spanSlice(@"%buf": @This(), @"%span": Span(@"%Origin")) []@"%Item" {
             return @"%buf".items.items[@"%span".start..][0..@"%span".length.positive];
@@ -1838,6 +1876,65 @@ pub fn buf_opt_span_alter(
     var @"%buf" = @"%".buf;
     try @"%buf".optSpanAlter(@"%allocator", @"%".span, @"%".item_aler);
     return .{ .buf = @"%buf", .span = @"%".span };
+}
+pub fn buf_span_step(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%State": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        direction: @"'down'up"(void, void),
+        span: Span(@"%Origin"),
+        state: @"%State",
+        step: Fn(
+            Record(struct { item: @"%Item", state: @"%State" }),
+            Record(struct { item: @"%Item", state: @"%State" }),
+        ),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Span(@"%Origin"),
+    state: @"%State",
+}) {
+    const @"%stepped_state" = try @"%".buf.spanStep(@"%State", @"%allocator", @"%".span, @"%".direction, @"%".state, @"%".step);
+    return .{ .buf = @"%".buf, .span = @"%".span, .state = @"%stepped_state" };
+}
+pub fn buf_opt_span_step(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%State": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        direction: @"'down'up"(void, void),
+        span: Opt(Span(@"%Origin")),
+        state: @"%State",
+        step: Fn(
+            Record(struct { item: @"%Item", state: @"%State" }),
+            Record(struct { item: @"%Item", state: @"%State" }),
+        ),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Opt(Span(@"%Origin")),
+    state: @"%State",
+}) {
+    const @"%stepped_state" = @"%stepped_state": {
+        switch (@"%".span) {
+            .no => {
+                break :@"%stepped_state" @"%".state;
+            },
+            .yes => |@"%span"| {
+                break :@"%stepped_state" try @"%".buf.spanStep(@"%State", @"%allocator", @"%span", @"%".direction, @"%".state, @"%".step);
+            },
+        }
+    };
+    return .{
+        .buf = @"%".buf,
+        .span = @"%".span,
+        .state = @"%stepped_state",
+    };
 }
 pub fn buf_opt_span_add(
     @"%Item": type,

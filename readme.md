@@ -384,6 +384,50 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   I'm not blind to this feeling!
   It's _the_ reason you might call sloe "great on paper, died to the real world".
   Do you have ideas of how this could be fixed in parts?
+- Currently Origin parts can only go 1 level deep.
+  This means often you still do have to take separate type parameters for each part origin
+  and origin erasing/unerasing more or less requires that all part-origin-dependent stuff gets covered.
+  
+  How could sloe enable nested origins?  
+  I've tried around a bit but can't seem to make this possible nicely:
+  
+  -- second try below --
+  For example to create a variable `inner-origin` of type `Origin In (In unique-origin, .outer), .inner .`,
+  ```sloe
+  ^ unique-origin {.outer .inner .}
+  ? unique-origin [.outer .inner inner-origin]
+  ```
+  where `In` is a new core type that has no values and just exists to make types prettier.
+  (Notice also how the Origin type itself only has 1 type parmeter now
+  and types like Buf don' write out Origin everytime. Just In which reads much nicer)
+  
+  When unerasing, the exact type in origin can be taken to mean the parent:
+  ```sloe
+  fn Origin-unerase
+      .erased Origin-erased _erased
+      .unerase Fn (... .uneraser Origin-uneraser _origin), ... .uneraser Origin-uneraser _origin
+      : ...
+  fn Slot-origin-isolate
+      Slot In _origin, _part
+      : Origin-isolated _origin (Slot In erased, _part)
+  fn Slot-origin-unerase
+      .uneraser Origin-uneraser _origin .slot Slot (In erased _part)
+      : ... .slot Slot In _origin, _part
+  ```
+  This means though that
+    - we only unerase and erase 1 level deep (??). This must be addressed
+    - (less critical) This still means Origin/Slot/... by default need an `In unique, .` argument
+  
+  -- first try below --
+  For example to create a variable `inner-origin` of type `Origin unique-origin, In (In ., .outer), .inner .`,
+  ```sloe
+  ^ unique-origin {.outer .inner .}
+  ? unique-origin [.outer .inner inner-origin]
+  ```
+  where `In` is a new core type that has no values and just exists to make types prettier.
+  
+  Question: Should simple origin creation also produce `Origin unique, In . .` instead of `Origin unique, .`?
+  The only reason I could see is that it would allow `Origin-unerase` to preserve the outer part of the given origin as the outer part of the unerased values. How would this work for sub-origins when isolating then?
 
 # potential improvements in the future
 - IDE type and type diff error displays suck ass, mostly due to indentation being stripped. But markdown support seems to still be ways off for most editors for some reason. Anyone know a solution?
@@ -754,13 +798,15 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- add `Buf-(opt-)span-step(-while)` for non--Span-destructive `Span-step`
+- add `Buf-(opt-)span-step-while` for non--Span-destructive `Span-step`
 
 - New unset index hint API: there is always an explicit lookup whether the item at that slot is actually free. If not, an actually free slot is looked for.
   ```sloe
   fn Buf-insert-hint-index .buf Buf _origin, _item .hint u32 .item _item
   : .buf Buf _origin, _item .slot Slot
   ```
+
+- finish io smuggling example
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
@@ -785,21 +831,7 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - (qol) try to report more precise error locations on type diff. For example skip comments, single-case query starts and if possible enter records when reporting specific field value differences
 
-- enable nested origins where the unique origin type can itself be an origin.
-  This could make nested parts viable.
-  For example to create a variable `inner-origin` of type `Origin unique-origin, In (In ., .outer), .inner .`,
-  ```sloe
-  ^ unique-origin {.outer .inner .}
-  ? unique-origin [.outer .inner inner-origin]
-  ```
-  where `In` is a new core type that has no values and just exists to make types prettier.
-  
-  Question: Should simple origin creation also produce `Origin unique, In . .` instead of `Origin unique, .`?
-  The only reason I could see is that it would allow `Origin-unerase` to preserve the outer part of the given origin as the outer part of the unerased values. How would this work for sub-origins when isolating then?
-
 - fix comment TODOs
-
-- consider dropping the `fn` keyword because declaring functions is so common. Make sure to therefore consequently fail when function or type construct with args names land at .character==0
 
 
 # not coherently formulated thoughts

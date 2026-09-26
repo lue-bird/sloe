@@ -128,6 +128,11 @@ pub struct Record·item·in<Item, In> {
     pub in_: In,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·item·state<Item, State> {
+    pub item: Item,
+    pub state: State,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·item·uneraser<Item, Uneraser> {
     pub item: Item,
     pub uneraser: Uneraser,
@@ -255,6 +260,12 @@ pub struct Record·buf·span<Buf, Span> {
     pub span: Span,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·buf·span·state<Buf, Span, State> {
+    pub buf: Buf,
+    pub span: Span,
+    pub state: State,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·new·span<Buf, New, Span> {
     pub buf: Buf,
     pub new: New,
@@ -328,6 +339,14 @@ pub struct Record·direction·state·step·str<Direction, State, Step, Str> {
 pub struct Record·buf·direction·state·step<Buf, Direction, State, Step> {
     pub buf: Buf,
     pub direction: Direction,
+    pub state: State,
+    pub step: Step,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·buf·direction·span·state·step<Buf, Direction, Span, State, Step> {
+    pub buf: Buf,
+    pub direction: Direction,
+    pub span: Span,
     pub state: State,
     pub step: Step,
 }
@@ -945,7 +964,7 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     }
     pub fn opt_span_alter(
         &mut self,
-        span: &mut Opt<Span<LocalOrigin>>,
+        span: Opt<&mut Span<LocalOrigin>>,
         item_alter: impl std::ops::Fn(Item) -> Item,
     ) {
         if let Opt::Yes(span) = span {
@@ -961,6 +980,37 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             let item = unsafe { option_item_mut.take().unwrap_unchecked() };
             _ = option_item_mut.insert(item_alter(item));
         }
+    }
+    pub fn opt_span_step<State>(
+        &mut self,
+        span: Opt<&mut Span<LocalOrigin>>,
+        direction: Choice·Down·Up<Record, Record>,
+        initial_state: State,
+        step: impl std::ops::Fn(State, Item) -> (State, Item),
+    ) -> State {
+        match span {
+            Opt::Yes(span) => self.span_step(span, direction, initial_state, step),
+            Opt::No(()) => initial_state,
+        }
+    }
+    pub fn span_step<State>(
+        &mut self,
+        span: &mut Span<LocalOrigin>,
+        direction: Choice·Down·Up<Record, Record>,
+        initial_state: State,
+        step: impl std::ops::Fn(State, Item) -> (State, Item),
+    ) -> State {
+        iterator_fold_in_direction(
+            self.span_slice_option_mut(span).iter_mut(),
+            direction,
+            initial_state,
+            |state, option_item_mut| {
+                let item = unsafe { option_item_mut.take().unwrap_unchecked() };
+                let (new_state, new_item) = step(state, item);
+                _ = option_item_mut.insert(new_item);
+                new_state
+            },
+        )
     }
     fn rid_trailing_unset(&mut self) {
         // this feels unoptimal somehow
@@ -2538,10 +2588,66 @@ pub fn buf_opt_span_alter<Item, Origin>(
         mut span,
     }: Record·buf·item_rid·span<Buf<Origin, Item>, Fn<Item, Item>, Opt<Span<Origin>>>,
 ) -> Record·buf·span<Buf<Origin, Item>, Opt<Span<Origin>>> {
-    buf.opt_span_alter(&mut span, item_rid);
+    buf.opt_span_alter(span.as_mut(), item_rid);
     Record·buf·span {
         buf: buf,
         span: span,
+    }
+}
+pub fn buf_span_step<Item, Origin, State>(
+    Record·buf·direction·span·state·step {
+        mut buf,
+        direction,
+        mut span,
+        state,
+        step,
+    }: Record·buf·direction·span·state·step<
+        Buf<Origin, Item>,
+        Choice·Down·Up<Record, Record>,
+        Span<Origin>,
+        State,
+        Fn<Record·item·state<Item, State>, Record·item·state<Item, State>>,
+    >,
+) -> Record·buf·span·state<Buf<Origin, Item>, Span<Origin>, State> {
+    let state = buf.span_step(&mut span, direction, state, |state, item| {
+        let Record·item·state { item, state } = step(Record·item·state {
+            item: item,
+            state: state,
+        });
+        (state, item)
+    });
+    Record·buf·span·state {
+        buf: buf,
+        span: span,
+        state: state,
+    }
+}
+pub fn buf_opt_span_step<Item, Origin, State>(
+    Record·buf·direction·span·state·step {
+        mut buf,
+        direction,
+        mut span,
+        state,
+        step,
+    }: Record·buf·direction·span·state·step<
+        Buf<Origin, Item>,
+        Choice·Down·Up<Record, Record>,
+        Opt<Span<Origin>>,
+        State,
+        Fn<Record·item·state<Item, State>, Record·item·state<Item, State>>,
+    >,
+) -> Record·buf·span·state<Buf<Origin, Item>, Opt<Span<Origin>>, State> {
+    let state = buf.opt_span_step(span.as_mut(), direction, state, |state, item| {
+        let Record·item·state { item, state } = step(Record·item·state {
+            item: item,
+            state: state,
+        });
+        (state, item)
+    });
+    Record·buf·span·state {
+        buf: buf,
+        span: span,
+        state: state,
     }
 }
 pub fn buf_rid<Item, Origin>(_: Buf<Origin, Item>) -> Record {}

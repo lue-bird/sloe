@@ -516,6 +516,66 @@ test "buf_span_alter" {
     try std.testing.expectEqual(3, altered.buf.items.items[1]);
     core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, altered.buf);
 }
+test "buf_span_step up" {
+    const ExampleOrigin = enum {};
+    const example_origin: core.Origin(ExampleOrigin, void) = .{};
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
+        .buf = example_buf,
+        .span = .{ .no = {} },
+        .new = .{ @as(u32, 0), @as(u32, 2) },
+    });
+    const stepped = try core.buf_span_step(u32, @TypeOf(example_origin), u32, std.testing.allocator, .{
+        .buf = with_array.buf,
+        .span = with_array.span,
+        .direction = .{ .up = {} },
+        .state = 3,
+        .step = struct {
+            pub fn f(
+                _: std.mem.Allocator,
+                step: core.Record(struct { item: u32, state: u32 }),
+            ) error{OutOfMemory}!core.Record(struct { item: u32, state: u32 }) {
+                return .{ .item = step.item + 1, .state = step.state + step.item };
+            }
+        }.f,
+    });
+    try std.testing.expectEqual(stepped.state, 5);
+    try std.testing.expectEqual(stepped.span, with_array.span);
+    try std.testing.expectEqual(2, stepped.buf.items.items.len);
+    try std.testing.expectEqual(1, stepped.buf.items.items[0]);
+    try std.testing.expectEqual(3, stepped.buf.items.items[1]);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, stepped.buf);
+}
+test "buf_opt_span_step down" {
+    const ExampleOrigin = enum {};
+    const example_origin: core.Origin(ExampleOrigin, void) = .{};
+    const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
+    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
+        .buf = example_buf,
+        .span = .{ .no = {} },
+        .new = .{ @as(u32, 3), @as(u32, 2) },
+    });
+    const stepped = try core.buf_opt_span_step(u32, @TypeOf(example_origin), u32, std.testing.allocator, .{
+        .buf = with_array.buf,
+        .span = .{ .yes = with_array.span },
+        .direction = .{ .down = {} },
+        .state = 2,
+        .step = struct {
+            pub fn f(
+                _: std.mem.Allocator,
+                step: core.Record(struct { item: u32, state: u32 }),
+            ) error{OutOfMemory}!core.Record(struct { item: u32, state: u32 }) {
+                return .{ .item = step.item + 1, .state = std.math.pow(u32, step.state, step.item) };
+            }
+        }.f,
+    });
+    try std.testing.expectEqual(stepped.state, 64);
+    try std.testing.expectEqual(stepped.span.yes, with_array.span);
+    try std.testing.expectEqual(2, stepped.buf.items.items.len);
+    try std.testing.expectEqual(4, stepped.buf.items.items[0]);
+    try std.testing.expectEqual(3, stepped.buf.items.items[1]);
+    core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, stepped.buf);
+}
 test "unset_slice castOrRidAndAllocate working" {
     const allocator = std.testing.allocator;
     const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
