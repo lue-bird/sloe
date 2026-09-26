@@ -823,8 +823,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - give nicer error when only a field is missing or too much
 
-- (qol) try to report more precise error locations on type diff for patterns, similar to how it's already done for expressions
-
 - fix comment TODOs
 
 
