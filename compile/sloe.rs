@@ -2566,7 +2566,6 @@ If you were trying to start a type variable, no type was expected here. Maybe yo
         core_type_aliases.clone();
     checked_type_aliases.reserve(project_type_by_graph_node.len());
     for project_type_strongly_connected_component in type_graph.find_sccs().iter_sccs() {
-        // TODO report and skip (mutually) recursive project types. Currently these are reported as "not found" at best
         for project_type in project_type_strongly_connected_component
             .iter_nodes()
             .filter_map(|variable_declaration_graph_node| {
@@ -3731,11 +3730,10 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
         gt_token: Some(syn::token::Gt(syn_span())),
         where_clause: None,
     };
-    let mut parameter_introduced_variables = std::collections::HashMap::new();
+    let mut parameter_introduced_variables = std::collections::HashSet::new();
     let mut rust_statements = Vec::new();
-    let compiled_parameter = match syntax_pattern_to_rust(
+    let compiled_parameter = match syntax_parameter_pattern_to_rust(
         syntax_parameter,
-        None,
         &mut parameter_introduced_variables,
         type_aliases,
         checked_spread_records,
@@ -5292,10 +5290,11 @@ fn syntax_parameter_pattern_check<'a, Patterns, Types>(
         },
     }
 }
-fn syntax_pattern_to_rust<'a, Patterns, Types>(
+
+fn syntax_query_case_pattern_to_rust<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
-    expected_type: Option<&Type>,
-    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
+    expected_type: &Type,
+    introduced_variables: &mut std::collections::HashSet<&'a Name>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
@@ -5304,153 +5303,67 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
     recombine_statements: &mut Vec<syn::Stmt>,
 ) -> Option<syn::Pat> {
     match pattern {
-        SyntaxPattern::Variable {
-            name,
-            type_: syntax_type,
-        } => {
-            let (variable_type, variable_rust) = match syntax_type.as_ref() {
-                None => match expected_type {
-                    None => return None,
-                    Some(expected_type) => (
-                        expected_type.clone(),
-                        syn::Pat::Ident(syn::PatIdent {
-                            attrs: vec![],
-                            by_ref: None,
-                            mutability: None,
-                            ident: syn_ident(&name_to_lowercase_rust(&name.value)),
-                            subpat: None,
-                        }),
-                    ),
-                },
-                Some(syntax_type) => {
-                    let Some(type_) =
-                        syntax_type_to_type(syntax_type, type_aliases, types, origins)
-                    else {
-                        return None;
-                    };
-                    (
-                        type_,
-                        match expected_type {
-                            None => syn::Pat::Ident(syn::PatIdent {
-                                attrs: vec![],
-                                by_ref: None,
-                                mutability: None,
-                                ident: syn_ident(&name_to_lowercase_rust(&name.value)),
-                                subpat: None,
-                            }),
-                            Some(expected_type) => syn::Pat::Type(syn::PatType {
-                                attrs: vec![],
-                                pat: Box::new(syn::Pat::Ident(syn::PatIdent {
-                                    attrs: vec![],
-                                    by_ref: None,
-                                    mutability: None,
-                                    ident: syn_ident(&name_to_lowercase_rust(&name.value)),
-                                    subpat: None,
-                                })),
-                                colon_token: syn::token::Colon(syn_span()),
-                                ty: Box::new(type_to_rust(expected_type)),
-                            }),
-                        },
-                    )
-                }
-            };
-            let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
-                &name.value,
-                CheckedLocalVariable {
-                    origin_start: name.start,
-                    type_: Some(variable_type),
-                },
-            );
-            if maybe_existing_variable_with_the_same_name.is_some()
-                || origins.contains_key(&name.value)
-            {
+        SyntaxPattern::Variable { name, type_: _ } => {
+            let no_existing_variable_with_the_same_name = introduced_variables.insert(&name.value);
+            if !no_existing_variable_with_the_same_name || origins.contains_key(&name.value) {
                 return None;
             }
-            Some(variable_rust)
+            Some(syn::Pat::Ident(syn::PatIdent {
+                attrs: vec![],
+                by_ref: None,
+                mutability: None,
+                ident: syn_ident(&name_to_lowercase_rust(&name.value)),
+                subpat: None,
+            }))
         }
         SyntaxPattern::Variant { name, value } => {
             let Some(name_value) = &name.value else {
                 return None;
             };
-            match expected_type {
-                None => {
-                    let Some(value) = value else {
-                        return None;
-                    };
-                    let Some(compiled_value) = syntax_pattern_to_rust(
-                        patterns.item(value),
-                        None,
-                        introduced_variables,
-                        type_aliases,
-                        checked_spread_records,
-                        patterns,
-                        types,
-                        origins,
-                        recombine_statements,
-                    ) else {
-                        return None;
-                    };
-                    Some(syn::Pat::TupleStruct(syn::PatTupleStruct {
-                        attrs: vec![],
-                        qself: None,
-                        path: syn_path_reference([
-                            &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
-                                std::iter::once(name_value),
-                            )),
-                            &name_to_uppercase_rust(name_value),
-                        ]),
-                        paren_token: syn::token::Paren(syn_span()),
-                        elems: std::iter::once(compiled_value).collect(),
-                    }))
-                }
-                Some(expected_type) => {
-                    let Type::Choice(origin_choice_type_variants) = &expected_type else {
-                        return None;
-                    };
-                    let Some(expected_value_type) =
-                        origin_choice_type_variants.iter().find_map(|variant| {
-                            if &variant.name == name_value {
-                                Some(&variant.value)
-                            } else {
-                                None
-                            }
-                        })
-                    else {
-                        return None;
-                    };
-                    let Some(value) = value else {
-                        return None;
-                    };
-                    let value = patterns.item(value);
-                    let Some(compiled_value) = syntax_pattern_to_rust(
-                        value,
-                        Some(expected_value_type),
-                        introduced_variables,
-                        type_aliases,
-                        checked_spread_records,
-                        patterns,
-                        types,
-                        origins,
-                        recombine_statements,
-                    ) else {
-                        return None;
-                    };
-                    Some(syn::Pat::TupleStruct(syn::PatTupleStruct {
-                        attrs: vec![],
-                        qself: None,
-                        path: syn_path_reference([
-                            &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
-                                origin_choice_type_variants
-                                    .iter()
-                                    .map(|variant| &variant.name),
-                            )),
-                            &name_to_uppercase_rust(name_value),
-                        ]),
-                        paren_token: syn::token::Paren(syn_span()),
-                        elems: std::iter::once(compiled_value).collect(),
-                    }))
-                }
-            }
+            let Type::Choice(origin_choice_type_variants) = &expected_type else {
+                return None;
+            };
+            let Some(expected_value_type) =
+                origin_choice_type_variants.iter().find_map(|variant| {
+                    if &variant.name == name_value {
+                        Some(&variant.value)
+                    } else {
+                        None
+                    }
+                })
+            else {
+                return None;
+            };
+            let Some(value) = value else {
+                return None;
+            };
+            let Some(compiled_value) = syntax_query_case_pattern_to_rust(
+                patterns.item(value),
+                expected_value_type,
+                introduced_variables,
+                type_aliases,
+                checked_spread_records,
+                patterns,
+                types,
+                origins,
+                recombine_statements,
+            ) else {
+                return None;
+            };
+            Some(syn::Pat::TupleStruct(syn::PatTupleStruct {
+                attrs: vec![],
+                qself: None,
+                path: syn_path_reference([
+                    &name_to_uppercase_rust(&variant_names_to_rust_enum_name(
+                        origin_choice_type_variants
+                            .iter()
+                            .map(|variant| &variant.name),
+                    )),
+                    &name_to_uppercase_rust(name_value),
+                ]),
+                paren_token: syn::token::Paren(syn_span()),
+                elems: std::iter::once(compiled_value).collect(),
+            }))
         }
         SyntaxPattern::RecordEmpty { dot_start: _ } => Some(syn::Pat::Tuple(syn::PatTuple {
             attrs: vec![],
@@ -5470,22 +5383,23 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         let Some(value) = value else {
                             return None;
                         };
-                        let maybe_expected_type_record =
-                            expected_type.and_then(|expected_type| match expected_type {
-                                Type::Variable(_)
-                                | Type::Origin(_)
-                                | Type::CoreConstruct { .. }
-                                | Type::Choice { .. } => None,
-                                Type::Record(type_fields) => Some(type_fields),
-                            });
-                        let compiled_field_value = syntax_pattern_to_rust(
-                            patterns.item(value),
-                            maybe_expected_type_record.and_then(|expected_record_type| {
-                                expected_record_type
+                        let Some(expected_field_value_type) = (match expected_type {
+                            Type::Variable(_)
+                            | Type::Origin(_)
+                            | Type::CoreConstruct { .. }
+                            | Type::Choice { .. } => None,
+                            Type::Record(expected_record_type_fields) => {
+                                expected_record_type_fields
                                     .iter()
                                     .find(|expected_field| &expected_field.name == field_name_value)
                                     .map(|expected_field| &expected_field.value)
-                            }),
+                            }
+                        }) else {
+                            return None;
+                        };
+                        let Some(compiled_field_value) = syntax_query_case_pattern_to_rust(
+                            patterns.item(value),
+                            expected_field_value_type,
                             introduced_variables,
                             type_aliases,
                             checked_spread_records,
@@ -5493,8 +5407,7 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                             types,
                             origins,
                             recombine_statements,
-                        );
-                        let Some(compiled_field_value) = compiled_field_value else {
+                        ) else {
                             return None;
                         };
                         field_names.push(field_name_value);
@@ -5519,22 +5432,20 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
                         else {
                             return None;
                         };
-                        let Some(compiled_record) = syntax_pattern_to_rust(
+                        let Type::Record(expected_spread_field_types) = expected_type else {
+                            return None;
+                        };
+                        let Some(compiled_record) = syntax_query_case_pattern_to_rust(
                             patterns.item(record),
-                            if let Some(Type::Record(expected_field_types)) = expected_type {
-                                Some(Type::Record(
-                                    expected_field_types
-                                        .iter()
-                                        .filter(|expected_field| {
-                                            record_spread_field_names.contains(&expected_field.name)
-                                        })
-                                        .cloned()
-                                        .collect(),
-                                ))
-                            } else {
-                                None
-                            }
-                            .as_ref(),
+                            &Type::Record(
+                                expected_spread_field_types
+                                    .iter()
+                                    .filter(|expected_field| {
+                                        record_spread_field_names.contains(&expected_field.name)
+                                    })
+                                    .cloned()
+                                    .collect(),
+                            ),
                             introduced_variables,
                             type_aliases,
                             checked_spread_records,
@@ -5636,9 +5547,239 @@ fn syntax_pattern_to_rust<'a, Patterns, Types>(
             closed_paren_start: _,
         } => match inner {
             None => None,
-            Some(inner) => syntax_pattern_to_rust(
+            Some(inner) => syntax_query_case_pattern_to_rust(
                 patterns.item(inner),
                 expected_type,
+                introduced_variables,
+                type_aliases,
+                checked_spread_records,
+                patterns,
+                types,
+                origins,
+                recombine_statements,
+            ),
+        },
+    }
+}
+fn syntax_parameter_pattern_to_rust<'a, Patterns, Types>(
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    introduced_variables: &mut std::collections::HashSet<&'a Name>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    origins: &std::collections::HashMap<&Name, CheckedOrigin>,
+    recombine_statements: &mut Vec<syn::Stmt>,
+) -> Option<syn::Pat> {
+    match pattern {
+        SyntaxPattern::Variable {
+            name,
+            type_: syntax_type,
+        } => {
+            let no_existing_variable_with_the_same_name = introduced_variables.insert(&name.value);
+            if !no_existing_variable_with_the_same_name || origins.contains_key(&name.value) {
+                return None;
+            }
+            match syntax_type {
+                None => None,
+                Some(_) => Some(syn::Pat::Ident(syn::PatIdent {
+                    attrs: vec![],
+                    by_ref: None,
+                    mutability: None,
+                    ident: syn_ident(&name_to_lowercase_rust(&name.value)),
+                    subpat: None,
+                })),
+            }
+        }
+        SyntaxPattern::Variant { name, value } => {
+            let Some(name_value) = &name.value else {
+                return None;
+            };
+            let Some(value) = value else {
+                return None;
+            };
+            let Some(compiled_value) = syntax_parameter_pattern_to_rust(
+                patterns.item(value),
+                introduced_variables,
+                type_aliases,
+                checked_spread_records,
+                patterns,
+                types,
+                origins,
+                recombine_statements,
+            ) else {
+                return None;
+            };
+            Some(syn::Pat::TupleStruct(syn::PatTupleStruct {
+                attrs: vec![],
+                qself: None,
+                path: syn_path_reference([
+                    &name_to_uppercase_rust(&variant_names_to_rust_enum_name(std::iter::once(
+                        name_value,
+                    ))),
+                    &name_to_uppercase_rust(name_value),
+                ]),
+                paren_token: syn::token::Paren(syn_span()),
+                elems: std::iter::once(compiled_value).collect(),
+            }))
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(syn::Pat::Tuple(syn::PatTuple {
+            attrs: vec![],
+            paren_token: syn::token::Paren(syn_span()),
+            elems: syn::punctuated::Punctuated::new(),
+        })),
+        SyntaxPattern::Record { part0, part1_up } => {
+            let mut rust_fields: syn::punctuated::Punctuated<syn::FieldPat, syn::token::Comma> =
+                syn::punctuated::Punctuated::new();
+            let mut field_names: Vec<&Name> = Vec::new();
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        let Some(field_name_value) = &name.value else {
+                            return None;
+                        };
+                        let Some(value) = value else {
+                            return None;
+                        };
+                        let Some(compiled_field_value) = syntax_parameter_pattern_to_rust(
+                            patterns.item(value),
+                            introduced_variables,
+                            type_aliases,
+                            checked_spread_records,
+                            patterns,
+                            types,
+                            origins,
+                            recombine_statements,
+                        ) else {
+                            return None;
+                        };
+                        field_names.push(field_name_value);
+                        rust_fields.push(syn::FieldPat {
+                            attrs: vec![],
+                            member: syn::Member::Named(syn_ident(&name_to_lowercase_rust(
+                                field_name_value,
+                            ))),
+                            colon_token: Some(syn::token::Colon(syn_span())),
+                            pat: Box::new(compiled_field_value),
+                        });
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        let Some(record) = record else {
+                            return None;
+                        };
+                        let Some(record_spread_field_names) =
+                            checked_spread_records.get(dot_dot_start)
+                        else {
+                            return None;
+                        };
+                        let Some(compiled_record) = syntax_parameter_pattern_to_rust(
+                            patterns.item(record),
+                            introduced_variables,
+                            type_aliases,
+                            checked_spread_records,
+                            patterns,
+                            types,
+                            origins,
+                            recombine_statements,
+                        ) else {
+                            return None;
+                        };
+                        let generated_record_field_variable_name = |rust_field_name: &str| {
+                            format!(
+                                "to_spread_{}·{}_{rust_field_name}",
+                                dot_dot_start.line, dot_dot_start.character
+                            )
+                        };
+                        rust_fields.extend(record_spread_field_names.iter().map(
+                            |record_spread_field_name| {
+                                let rust_record_spread_field_name =
+                                    name_to_lowercase_rust(record_spread_field_name);
+                                syn::FieldPat {
+                                    attrs: vec![],
+                                    member: syn::Member::Named(syn_ident(
+                                        &rust_record_spread_field_name,
+                                    )),
+                                    colon_token: Some(syn::token::Colon(syn_span())),
+                                    pat: Box::new(syn::Pat::Ident(syn::PatIdent {
+                                        attrs: vec![],
+                                        by_ref: None,
+                                        mutability: None,
+                                        ident: syn_ident(&generated_record_field_variable_name(
+                                            &rust_record_spread_field_name,
+                                        )),
+                                        subpat: None,
+                                    })),
+                                }
+                            },
+                        ));
+                        field_names.extend(record_spread_field_names);
+                        let recombined = syn::Expr::Struct(syn::ExprStruct {
+                            attrs: vec![],
+                            qself: None,
+                            path: syn_path_reference([&field_names_to_rust_record_struct_name(
+                                record_spread_field_names.iter(),
+                            )]),
+                            brace_token: syn::token::Brace(syn_span()),
+                            fields: record_spread_field_names
+                                .iter()
+                                .map(|record_spread_field_name| {
+                                    let rust_record_spread_field_name =
+                                        name_to_lowercase_rust(record_spread_field_name);
+                                    syn::FieldValue {
+                                        attrs: vec![],
+                                        member: syn::Member::Named(syn_ident(
+                                            &rust_record_spread_field_name,
+                                        )),
+                                        colon_token: Some(syn::token::Colon(syn_span())),
+                                        expr: syn_expr_reference([
+                                            &generated_record_field_variable_name(
+                                                &rust_record_spread_field_name,
+                                            ),
+                                        ]),
+                                    }
+                                })
+                                .collect(),
+                            dot2_token: None,
+                            rest: None,
+                        });
+                        // parameter patterns always succeed, so we can use let destructuring
+                        recombine_statements.push(syn::Stmt::Local(syn::Local {
+                            attrs: vec![],
+                            let_token: syn::token::Let(syn_span()),
+                            modifiers: syn::LocalModifiers::default(),
+                            pat: compiled_record,
+                            init: Some(syn::LocalInit {
+                                eq_token: syn::token::Eq(syn_span()),
+                                expr: Box::new(recombined),
+                                diverge: None,
+                            }),
+                            semi_token: syn::token::Semi(syn_span()),
+                        }));
+                    }
+                }
+            }
+            Some(syn::Pat::Struct(syn::PatStruct {
+                attrs: vec![],
+                qself: None,
+                path: syn_path_reference([&field_names_to_rust_record_struct_name(
+                    field_names.into_iter(),
+                )]),
+                brace_token: syn::token::Brace(syn_span()),
+                fields: rust_fields,
+                rest: None,
+            }))
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start: _,
+            inner,
+            closed_paren_start: _,
+        } => match inner {
+            None => None,
+            Some(inner) => syntax_parameter_pattern_to_rust(
+                patterns.item(inner),
                 introduced_variables,
                 type_aliases,
                 checked_spread_records,
@@ -9743,8 +9884,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
         /* .. start */ lsp_types::Position,
         Vec<Name>,
     >,
-    // TODO I don't think the type or anything needs to be stored for variables?
-    local_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
+    local_variables: &mut std::collections::HashSet<&'a Name>,
     origins: &mut std::collections::HashMap<&'a Name, CheckedOrigin>,
     expression: &'a SyntaxExpression<Expressions, Patterns, Types>,
 ) -> syn::Expr {
@@ -9871,10 +10011,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             }
         }
         SyntaxExpression::Variable(name) => {
-            if let Some(variable_info) = local_variables.remove(&name.value) {
-                let Some(_) = variable_info.type_ else {
-                    return syn_expr_todo();
-                };
+            if local_variables.remove(&name.value) {
                 syn_expr_reference([&name_to_lowercase_rust(&name.value)])
             } else {
                 syn_expr_todo()
@@ -10037,14 +10174,11 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(result) = result else {
                 return syn_expr_todo();
             };
-            let mut parameter_introduced_variables: std::collections::HashMap<
-                &Name,
-                CheckedLocalVariable,
-            > = std::collections::HashMap::new();
+            let mut parameter_introduced_variables: std::collections::HashSet<&Name> =
+                std::collections::HashSet::new();
             let mut fn_result_statements: Vec<syn::Stmt> = Vec::new();
-            let Some(compiled_parameter) = syntax_pattern_to_rust(
+            let Some(compiled_parameter) = syntax_parameter_pattern_to_rust(
                 parameter,
-                None,
                 &mut parameter_introduced_variables,
                 type_aliases,
                 checked_spread_records,
@@ -10636,14 +10770,12 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     continue 'compiling_cases;
                 };
                 // can be optimized by not cloning if only one case exists
-                let mut case_local_variables: std::collections::HashMap<
-                    &Name,
-                    CheckedLocalVariable,
-                > = local_variables.clone();
+                let mut case_local_variables: std::collections::HashSet<&Name> =
+                    local_variables.clone();
                 let mut case_statements: Vec<syn::Stmt> = Vec::new();
-                let Some(case_pattern_compiled) = syntax_pattern_to_rust(
+                let Some(case_pattern_compiled) = syntax_query_case_pattern_to_rust(
                     case_pattern,
-                    Some(&checked_query.queried_type),
+                    &checked_query.queried_type,
                     &mut case_local_variables,
                     type_aliases,
                     checked_spread_records,
@@ -10757,16 +10889,7 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     origin_start: origin_name.start,
                 },
             );
-            local_variables.insert(
-                &origin_name.value,
-                CheckedLocalVariable {
-                    origin_start: origin_name.start,
-                    type_: Some(origin_type_from_part_names(
-                        &origin_name.value,
-                        parts.iter().filter_map(|part| part.value.as_ref()),
-                    )),
-                },
-            );
+            local_variables.insert(&origin_name.value);
             let result_compiled = syntax_expression_to_rust(
                 type_aliases,
                 project_fns,
