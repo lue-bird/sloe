@@ -114,7 +114,7 @@ fn installation_html<Event>() -> sauron::Node<Event> {
                     sauron::code(
                         [],
                         [html_text(
-                            "cargo install --git https://github.com/lue-bird/sloe sloe",
+                            "cargo install --git https://codeberg.org/lue-bird/sloe sloe",
                         )],
                     ),
                 ]

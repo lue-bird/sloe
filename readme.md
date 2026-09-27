@@ -17,7 +17,7 @@ It appends the name and other strings to the chars to form and return a message 
 
 Install with (requires having [rust installed](https://rust-lang.org/tools/install/))
 ```bash
-cargo install --git https://github.com/lue-bird/sloe sloe
+cargo install --git https://codeberg.org/lue-bird/sloe sloe
 ```
 
 ## concept: each value must be used used exctly once
@@ -316,7 +316,7 @@ Optionally for a file icon in the project panel, open the editor command panel, 
 
 ### vscode-like
 #### pre-built
-1. download https://github.com/lue-bird/sloe/blob/main/vscode/sloe-0.1.0.vsix
+1. download https://codeberg.org/lue-bird/sloe/src/branch/main/vscode/sloe-0.1.0.vsix
 2. open the command bar at the top and select: `>Extensions: Install from VSIX`
 #### build from source
 1. clone this repo
