@@ -8897,7 +8897,9 @@ If there should only ever by one variant, using a record with a single field is 
             };
             let Some(value) = value else {
                 errors.push(ErrorNode {
-                    range: braced_type_argument_range(syntax_type_argument, types),
+                    range: syntax_type_argument.closed_brace_start
+                        .map(|closed_brace_start|symbol_range(closed_brace_start, "}"))
+                        .unwrap_or_else(|| type_range(syntax_type, types)),
                     message: Box::from(
                         "this variant is missing an associated value after these curly braces. Every variant has a value, even if it's just . (an empy record).",
                     ),
@@ -14122,6 +14124,7 @@ If your change function needs extra context from the outside, use `Buf-opt-span-
                 name: "Buf-span-step",
                 documentation: "Step through each item for a given Span,
 change it to a new item of the same type and update the given initial state.
+If you want to be able to exit anytime, use `Buf-span-step-while` instead.
 If you need more control (for example accessing the given Buf during a step), use `Span-step` instead.
 To change every item without any state, use `Buf-span-alter`",
                 type_parameters: vec![],
@@ -14160,6 +14163,7 @@ To change every item without any state, use `Buf-span-alter`",
                 name: "Buf-opt-span-step",
                 documentation: "Step through each item for a given Opt Span,
 change it to a new item of the same type and update the given initial state.
+If you want to be able to exit anytime, use `Buf-opt-span-step-while` instead.
 If you need more control (for example accessing the given Buf during a step), use `Opt-span-step` instead.
 To change every item without any state, use `Buf-opt-span-alter`",
                 type_parameters: vec![],
@@ -14192,6 +14196,137 @@ To change every item without any state, use `Buf-opt-span-alter`",
                     ),
                     ("span", type_opt(type_span(type_variable("origin")))),
                     ("state", type_variable("state")),
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-span-step-while",
+                documentation: "Step through each item for a given Span,
+change it to a new item of the same type and update the given initial state or exit early.
+```sloe
+fn Buf-span-last-negative-i32
+    .buf buf Buf _origin, i32
+    .span span Span _origin
+:
+    .buf Buf _origin, i32
+    .span Span _origin
+    .last-negative 'yes i32 'no .
+=
+    ?
+        Buf-span-step-while
+        .buf buf
+        .span span
+        .direction 'down{'up .} .
+        .state .
+        .step
+        [.state . .item i]
+        ? I32-dup i [.a i-to-return .b i]
+        .item i-to-return
+        .state (
+            ? I32-dup i [.a i-use .b i]
+            ? I32-order .left i-use .right 0
+            ['less .] 'done{'going .} i
+            ['equal .] ? I32-rid i [.] 'going{'done i32} .
+            ['greater .] ? I32-rid i [.] 'going{'done i32} .
+        )
+    [.. buf-span .state state]
+    .. buf-span .last-negative ? state ['going .] 'no . ['done i] i
+```
+If you want to step through all items instead, use `Buf-span-step`.
+If you need more control (for example accessing the given Buf during a step), use `Span-step-while` instead.
+To change every item without any state, use `Buf-span-alter`",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                    ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
+                    ("state", type_variable("state")),
+                    (
+                        "step",
+                        type_fn(
+                            type_record([
+                                ("item", type_variable("item")),
+                                ("state", type_variable("state")),
+                            ]),
+                            type_record([
+                                ("item", type_variable("item")),
+                                (
+                                    "state",
+                                    type_choice([
+                                        ("going", type_variable("state")),
+                                        ("done", type_variable("done")),
+                                    ])
+                                )
+                            ]),
+                        )
+                    ),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                    (
+                        "state",
+                        type_choice([
+                            ("going", type_variable("state")),
+                            ("done", type_variable("done")),
+                        ])
+                    )
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-opt-span-step-while",
+                documentation: "Step through each item for a given Span,
+change it to a new item of the same type and update the given initial state with the possibility to exit early.
+If you want to step through all items instead, use `Buf-opt-span-step`.
+If you need more control (for example accessing the given Buf during a step), use `Opt-span-step-while` instead.
+To change every item without any state, use `Buf-opt-span-alter`",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                    ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
+                    ("state", type_variable("state")),
+                    (
+                        "step",
+                        type_fn(
+                            type_record([
+                                ("item", type_variable("item")),
+                                ("state", type_variable("state")),
+                            ]),
+                            type_record([
+                                ("item", type_variable("item")),
+                                (
+                                    "state",
+                                    type_choice([
+                                        ("going", type_variable("state")),
+                                        ("done", type_variable("done")),
+                                    ])
+                                )
+                            ]),
+                        )
+                    ),
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                    (
+                        "state",
+                        type_choice([
+                            ("going", type_variable("state")),
+                            ("done", type_variable("done")),
+                        ])
+                    )
                 ]),
             },
             CoreFnInfo {
@@ -15346,6 +15481,8 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Buf-span-alter"
         | "Buf-opt-span-step"
         | "Buf-span-step"
+        | "Buf-opt-span-step-while"
+        | "Buf-span-step-while"
         | "Buf-opt-span-move-to-end"
         | "Buf-span-move-to-end"
         | "Buf-opt-span-add-own-opt-span"

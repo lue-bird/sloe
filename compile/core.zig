@@ -720,6 +720,59 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             }
             return @"%state";
         }
+        pub fn spanStepWhile(
+            @"%buf": @This(),
+            @"%Done": type,
+            @"%State": type,
+            @"%allocator": std.mem.Allocator,
+            @"%span": Span(@"%Origin"),
+            @"%direction": @"'down'up"(void, void),
+            @"%initial_state": @"%State",
+            @"%step": Fn(
+                Record(struct { item: @"%Item", state: @"%State" }),
+                Record(struct { item: @"%Item", state: @"'done'going"(@"%Done", @"%State") }),
+            ),
+        ) error{OutOfMemory}!@"'done'going"(@"%Done", @"%State") {
+            var @"%state" = @"%initial_state";
+            switch (@"%direction") {
+                .up => {
+                    for (@"%buf".spanSlice(@"%span")) |*@"%item"| {
+                        const @"%stepped" = try @"%step"(
+                            @"%allocator",
+                            .{ .item = @"%item".*, .state = @"%state" },
+                        );
+                        @"%item".* = @"%stepped".item;
+                        switch (@"%stepped".state) {
+                            .done => |@"%done"| {
+                                return .{ .done = @"%done" };
+                            },
+                            .going => |@"%going"| {
+                                @"%state" = @"%going";
+                            },
+                        }
+                    }
+                },
+                .down => {
+                    var @"%slice_reverse_iterator" = std.mem.reverseIterator(@"%buf".spanSlice(@"%span"));
+                    while (@"%slice_reverse_iterator".nextPtr()) |@"%item"| {
+                        const @"%stepped" = try @"%step"(
+                            @"%allocator",
+                            .{ .item = @"%item".*, .state = @"%state" },
+                        );
+                        @"%item".* = @"%stepped".item;
+                        switch (@"%stepped".state) {
+                            .done => |@"%done"| {
+                                return .{ .done = @"%done" };
+                            },
+                            .going => |@"%going"| {
+                                @"%state" = @"%going";
+                            },
+                        }
+                    }
+                },
+            }
+            return .{ .going = @"%state" };
+        }
         // The given span is invalid while the returned slice is live
         pub fn spanSlice(@"%buf": @This(), @"%span": Span(@"%Origin")) []@"%Item" {
             return @"%buf".items.items[@"%span".start..][0..@"%span".length.positive];
@@ -1957,6 +2010,67 @@ pub fn buf_opt_span_step(
             },
             .yes => |@"%span"| {
                 break :@"%stepped_state" try @"%".buf.spanStep(@"%State", @"%allocator", @"%span", @"%".direction, @"%".state, @"%".step);
+            },
+        }
+    };
+    return .{
+        .buf = @"%".buf,
+        .span = @"%".span,
+        .state = @"%stepped_state",
+    };
+}
+pub fn buf_span_step_while(
+    @"%Done": type,
+    @"%Item": type,
+    @"%Origin": type,
+    @"%State": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        direction: @"'down'up"(void, void),
+        span: Span(@"%Origin"),
+        state: @"%State",
+        step: Fn(
+            Record(struct { item: @"%Item", state: @"%State" }),
+            Record(struct { item: @"%Item", state: @"'done'going"(@"%Done", @"%State") }),
+        ),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Span(@"%Origin"),
+    state: @"'done'going"(@"%Done", @"%State"),
+}) {
+    const @"%stepped_state" = try @"%".buf.spanStepWhile(@"%Done", @"%State", @"%allocator", @"%".span, @"%".direction, @"%".state, @"%".step);
+    return .{ .buf = @"%".buf, .span = @"%".span, .state = @"%stepped_state" };
+}
+pub fn buf_opt_span_step_while(
+    @"%Done": type,
+    @"%Item": type,
+    @"%Origin": type,
+    @"%State": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        direction: @"'down'up"(void, void),
+        span: Opt(Span(@"%Origin")),
+        state: @"%State",
+        step: Fn(
+            Record(struct { item: @"%Item", state: @"%State" }),
+            Record(struct { item: @"%Item", state: @"'done'going"(@"%Done", @"%State") }),
+        ),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Opt(Span(@"%Origin")),
+    state: @"'done'going"(@"%Done", @"%State"),
+}) {
+    const @"%stepped_state" = @"%stepped_state": {
+        switch (@"%".span) {
+            .no => {
+                break :@"%stepped_state" @"'done'going"(@"%Done", @"%State"){ .going = @"%".state };
+            },
+            .yes => |@"%span"| {
+                break :@"%stepped_state" try @"%".buf.spanStepWhile(@"%Done", @"%State", @"%allocator", @"%span", @"%".direction, @"%".state, @"%".step);
             },
         }
     };

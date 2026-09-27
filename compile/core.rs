@@ -1018,6 +1018,37 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
             },
         )
     }
+    pub fn opt_span_step_while<Done, State>(
+        &mut self,
+        span: Opt<&mut Span<LocalOrigin>>,
+        direction: Choice·Down·Up<Record, Record>,
+        initial_state: State,
+        step: impl std::ops::Fn(State, Item) -> (Choice·Done·Going<Done, State>, Item),
+    ) -> Choice·Done·Going<Done, State> {
+        match span {
+            Opt::Yes(span) => self.span_step_while(span, direction, initial_state, step),
+            Opt::No(()) => Choice·Done·Going::Going(initial_state),
+        }
+    }
+    pub fn span_step_while<Done, State>(
+        &mut self,
+        span: &mut Span<LocalOrigin>,
+        direction: Choice·Down·Up<Record, Record>,
+        initial_state: State,
+        step: impl std::ops::Fn(State, Item) -> (Choice·Done·Going<Done, State>, Item),
+    ) -> Choice·Done·Going<Done, State> {
+        Choice·Done·Going::from_control_flow(iterator_try_fold_in_direction(
+            self.span_slice_option_mut(span).iter_mut(),
+            direction,
+            initial_state,
+            |state, option_item_mut| {
+                let item = unsafe { option_item_mut.take().unwrap_unchecked() };
+                let (new_state, new_item) = step(state, item);
+                _ = option_item_mut.insert(new_item);
+                new_state.into_control_flow()
+            },
+        ))
+    }
     fn rid_trailing_unset(&mut self) {
         // this feels unoptimal somehow
         while let std::option::Option::Some(std::option::Option::None) = self.items.last() {
@@ -2664,6 +2695,62 @@ pub fn buf_opt_span_step<Item, Origin, State>(
     >,
 ) -> Record·buf·span·state<Buf<Origin, Item>, Opt<Span<Origin>>, State> {
     let state = buf.opt_span_step(span.as_mut(), direction, state, |state, item| {
+        let Record·item·state { item, state } = step(Record·item·state {
+            item: item,
+            state: state,
+        });
+        (state, item)
+    });
+    Record·buf·span·state {
+        buf: buf,
+        span: span,
+        state: state,
+    }
+}
+pub fn buf_span_step_while<Done, Item, Origin, State>(
+    Record·buf·direction·span·state·step {
+        mut buf,
+        direction,
+        mut span,
+        state,
+        step,
+    }: Record·buf·direction·span·state·step<
+        Buf<Origin, Item>,
+        Choice·Down·Up<Record, Record>,
+        Span<Origin>,
+        State,
+        Fn<Record·item·state<Item, State>, Record·item·state<Item, Choice·Done·Going<Done, State>>>,
+    >,
+) -> Record·buf·span·state<Buf<Origin, Item>, Span<Origin>, Choice·Done·Going<Done, State>> {
+    let state = buf.span_step_while(&mut span, direction, state, |state, item| {
+        let Record·item·state { item, state } = step(Record·item·state {
+            item: item,
+            state: state,
+        });
+        (state, item)
+    });
+    Record·buf·span·state {
+        buf: buf,
+        span: span,
+        state: state,
+    }
+}
+pub fn buf_opt_span_step_while<Done, Item, Origin, State>(
+    Record·buf·direction·span·state·step {
+        mut buf,
+        direction,
+        mut span,
+        state,
+        step,
+    }: Record·buf·direction·span·state·step<
+        Buf<Origin, Item>,
+        Choice·Down·Up<Record, Record>,
+        Opt<Span<Origin>>,
+        State,
+        Fn<Record·item·state<Item, State>, Record·item·state<Item, Choice·Done·Going<Done, State>>>,
+    >,
+) -> Record·buf·span·state<Buf<Origin, Item>, Opt<Span<Origin>>, Choice·Done·Going<Done, State>> {
+    let state = buf.opt_span_step_while(span.as_mut(), direction, state, |state, item| {
         let Record·item·state { item, state } = step(Record·item·state {
             item: item,
             state: state,
