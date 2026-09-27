@@ -3440,9 +3440,8 @@ fn syntax_project_fn_header_check<'a, Expressions, Patterns, Types>(
 ) -> CheckedProjectFn {
     let parameter_type = {
         match &project_fn.parameter {
-            Some(parameter) => syntax_pattern_check(
+            Some(parameter) => syntax_parameter_pattern_check(
                 parameter,
-                None,
                 errors,
                 &mut std::collections::HashMap::new(),
                 type_aliases,
@@ -4710,11 +4709,9 @@ fn pattern_matches_specific_pattern_catch<Patterns, Types>(
     }
 }
 
-/// TODO strongly consider splitting into syntax_query_pattern_check and syntax_parameter_pattern_check.
-/// syntax_parameter_pattern_check does not need to return a type
-fn syntax_pattern_check<'a, Patterns, Types>(
+fn syntax_query_case_pattern_check<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
-    expected_type: Option<&Type>,
+    expected_type: &Type,
     errors: &mut Vec<ErrorNode>,
     introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
@@ -4725,75 +4722,44 @@ fn syntax_pattern_check<'a, Patterns, Types>(
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     records_used: &mut std::collections::HashSet<Vec<Name>>,
     choices_used: &mut std::collections::HashSet<Vec<Name>>,
-) -> Option<Type> {
+) {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
-            let maybe_checked_variable = match type_.as_ref() {
-                None => match expected_type {
-                    None => {
-                        errors.push(ErrorNode {
-                            range: name_range(with_start_position_as_ref(name)),
-                            message: Box::from("fn parameters need to have an explicit type. Add one to this pattern variable by appending a type like in your-variable u32 (both in parens if necessary)"),
-                        });
-                        None
-                    }
-                    Some(expected_type) => Some(expected_type.clone()),
-                },
-                Some(actual_type) => {
-                    if expected_type.is_some() {
-                        errors.push(ErrorNode {
-                            range: type_range(actual_type, types),
-                            message: Box::from(
-                                "query pattern variables cannot specify an explicit type. Remove it",
-                            ),
-                        });
-                    }
-                    let Some(actual_type) = syntax_type_check(
-                        actual_type,
-                        errors,
-                        type_aliases,
-                        types,
-                        origins,
-                        records_used,
-                        choices_used,
-                    ) else {
-                        return None;
-                    };
-                    Some(actual_type)
-                }
-            };
-            if let Some(checked_variable_type) = &maybe_checked_variable {
-                let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
-                    &name.value,
-                    CheckedLocalVariable {
-                        origin_start: name.start,
-                        type_: Some(checked_variable_type.clone()),
-                    },
-                );
-                if let Some(_existing_variable_with_the_same_name) =
-                    maybe_existing_variable_with_the_same_name
-                {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: Box::from(
-                            "a pattern variable with this name already exists in the surrounding pattern. Rename either variable",
-                        ),
-                    });
-                    return None;
-                } else if let Some(existing_variable_with_the_same_name) =
-                    existing_local_variables.get(&name.value)
-                {
-                    errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!(
-                            "a local variable with this name already exists (intruduced at {}). Rename either variable",
-                            position_to_string(existing_variable_with_the_same_name.origin_start)
-                        ).into_boxed_str(),
-                    });
-                    return None;
-                }
+            if let Some(actual_type) = type_.as_ref() {
+                errors.push(ErrorNode {
+                    range: type_range(actual_type, types),
+                    message: Box::from(
+                        "query pattern variables cannot specify an explicit type. Remove it",
+                    ),
+                });
             }
-            maybe_checked_variable
+            let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
+                &name.value,
+                CheckedLocalVariable {
+                    origin_start: name.start,
+                    type_: Some(expected_type.clone()),
+                },
+            );
+            if let Some(_existing_variable_with_the_same_name) =
+                maybe_existing_variable_with_the_same_name
+            {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: Box::from(
+                        "a pattern variable with this name already exists in the surrounding pattern. Rename either variable",
+                    ),
+                });
+            } else if let Some(existing_variable_with_the_same_name) =
+                existing_local_variables.get(&name.value)
+            {
+                errors.push(ErrorNode {
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: format!(
+                        "a local variable with this name already exists (intruduced at {}). Rename either variable",
+                        position_to_string(existing_variable_with_the_same_name.origin_start)
+                    ).into_boxed_str(),
+                });
+            }
         }
         SyntaxPattern::Variant { name, value } => {
             let Some(name_value) = &name.value else {
@@ -4801,141 +4767,85 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                     range: symbol_range(name.start, "'"),
                     message: Box::from("missing variant name after this single quote '. An example of a variant pattern is 'yes your-variable")
                 });
-                return None;
+                return;
             };
-            match expected_type {
-                None => {
-                    let Some(value) = value else {
-                        errors.push(ErrorNode {
-                            range: optional_variant_name_range(name),
-                            message: Box::from("missing variant value after this variant name. Each variants has a value, even if just ., an example of a variant pattern is 'yes your-variable")
-                        });
-                        return None;
-                    };
-                    let Some(checked_value_type) = syntax_pattern_check(
-                        patterns.item(value),
-                        None,
-                        errors,
-                        introduced_variables,
-                        type_aliases,
-                        patterns,
-                        types,
-                        origins,
-                        existing_local_variables,
-                        checked_spread_records,
-                        records_used,
-                        choices_used,
-                    ) else {
-                        return None;
-                    };
-                    Some(Type::Choice(vec![TypeVariant {
-                        name: name_value.clone(),
-                        value: checked_value_type,
-                    }]))
-                }
-                Some(expected_type) => {
-                    let Type::Choice(origin_choice_type_variants) = &expected_type else {
-                        let mut error_message: String = String::from(
-                            "A variant is part of a choice type (for example |a u32 |b str) but the expected type here is\n",
-                        );
-                        type_format(&mut error_message, 0, expected_type);
-                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
-                        errors.push(ErrorNode {
-                            range: optional_variant_name_range(name),
-                            message: error_message.into_boxed_str(),
-                        });
-                        return None;
-                    };
-                    let Some(expected_value_type) =
-                        origin_choice_type_variants.iter().find_map(|variant| {
-                            if &variant.name == name_value {
-                                Some(&variant.value)
-                            } else {
-                                None
-                            }
-                        })
-                    else {
-                        let mut error_message: String = format!(
-                            "this variant name {} is not included in it's expected type\n",
-                            name_value
-                        );
-                        type_format(&mut error_message, 0, expected_type);
-                        errors.push(ErrorNode {
-                            range: optional_variant_name_range(name),
-                            message: error_message.into_boxed_str(),
-                        });
-                        return None;
-                    };
-                    let Some(value) = value else {
-                        let mut error_message: String =
-                            String::from("this variant is missing its associated value of type\n");
-                        type_format(&mut error_message, 0, expected_value_type);
-                        errors.push(ErrorNode {
-                            range: optional_variant_name_range(name),
-                            message: error_message.into_boxed_str(),
-                        });
-                        return None;
-                    };
-                    let value = patterns.item(value);
-                    let Some(checked_value_type) = syntax_pattern_check(
-                        value,
-                        Some(expected_value_type),
-                        errors,
-                        introduced_variables,
-                        type_aliases,
-                        patterns,
-                        types,
-                        origins,
-                        existing_local_variables,
-                        checked_spread_records,
-                        records_used,
-                        choices_used,
-                    ) else {
-                        return None;
-                    };
-                    if let Some(variant_value_type_diff) =
-                        type_diff(expected_value_type, &checked_value_type)
-                    {
-                        place_pattern_type_diff_errors(
-                            errors,
-                            value,
-                            &variant_value_type_diff,
-                            patterns,
-                            types,
-                            checked_spread_records,
-                        );
-                        return None;
+            let Type::Choice(origin_choice_type_variants) = &expected_type else {
+                let mut error_message: String = String::from(
+                    "A variant is part of a choice type (for example |a u32 |b str) but the expected type here is\n",
+                );
+                type_format(&mut error_message, 0, expected_type);
+                error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
+                errors.push(ErrorNode {
+                    range: optional_variant_name_range(name),
+                    message: error_message.into_boxed_str(),
+                });
+                return;
+            };
+            let Some(expected_value_type) =
+                origin_choice_type_variants.iter().find_map(|variant| {
+                    if &variant.name == name_value {
+                        Some(&variant.value)
+                    } else {
+                        None
                     }
-                    Some(expected_type.clone())
-                }
-            }
+                })
+            else {
+                let mut error_message: String = format!(
+                    "this variant name {} is not included in it's expected type\n",
+                    name_value
+                );
+                type_format(&mut error_message, 0, expected_type);
+                errors.push(ErrorNode {
+                    range: optional_variant_name_range(name),
+                    message: error_message.into_boxed_str(),
+                });
+                return;
+            };
+            let Some(value) = value else {
+                let mut error_message: String =
+                    String::from("this variant is missing its associated value of type\n");
+                type_format(&mut error_message, 0, expected_value_type);
+                errors.push(ErrorNode {
+                    range: optional_variant_name_range(name),
+                    message: error_message.into_boxed_str(),
+                });
+                return;
+            };
+            let value = patterns.item(value);
+            syntax_query_case_pattern_check(
+                value,
+                expected_value_type,
+                errors,
+                introduced_variables,
+                type_aliases,
+                patterns,
+                types,
+                origins,
+                existing_local_variables,
+                checked_spread_records,
+                records_used,
+                choices_used,
+            );
         }
-        SyntaxPattern::RecordEmpty { dot_start: _ } => {
-            if let Some(expected_type) = expected_type
-                && match expected_type {
-                    Type::Record(type_fields) if type_fields.is_empty() => false,
-                    _ => true,
-                }
-            {
-                {
-                    let mut error_message: String = String::from(
-                        "This pattern matches an empty record but the expected type here is\n",
-                    );
-                    type_format(&mut error_message, 0, expected_type);
-                    error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
-                    errors.push(ErrorNode {
-                        range: pattern_range(pattern, patterns, types),
-                        message: error_message.into_boxed_str(),
-                    });
-                    return None;
-                }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => match expected_type {
+            Type::Record(type_fields) if type_fields.is_empty() => {}
+            _ => {
+                let mut error_message: String = String::from(
+                    "This pattern matches an empty record but the expected type here is\n",
+                );
+                type_format(&mut error_message, 0, expected_type);
+                error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
+                errors.push(ErrorNode {
+                    range: pattern_range(pattern, patterns, types),
+                    message: error_message.into_boxed_str(),
+                });
             }
-            Some(type_record_empty)
-        }
+        },
         SyntaxPattern::Record { part0, part1_up } => {
             let mut type_fields: Vec<TypeField> = Vec::with_capacity(1 + part1_up.len());
             match expected_type {
-                None => {
+                Type::Record(expected_type_record) => {
+                    let mut contains_spread = false;
                     for part in std::iter::once(part0).chain(part1_up) {
                         match part {
                             SyntaxRecordPart::Field { name, value } => {
@@ -4944,7 +4854,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                         range: symbol_range(name.start, "."),
                                         message: Box::from("missing field name after this dot ."),
                                     });
-                                    return None;
+                                    return;
                                 };
                                 let Some(value) = value else {
                                     errors.push(ErrorNode {
@@ -4956,7 +4866,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                             "missing field value after this field name",
                                         ),
                                     });
-                                    return None;
+                                    return;
                                 };
                                 if type_fields
                                     .iter()
@@ -4971,11 +4881,29 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                             "a field with this name already exists in the record pattern",
                                         ),
                                     });
-                                    return None;
+                                    return;
                                 }
-                                let Some(checked_field_value_type) = syntax_pattern_check(
+                                let Some(expected_type_field) =
+                                    expected_type_record.iter().find(|expected_field| {
+                                        &expected_field.name == field_name_value
+                                    })
+                                else {
+                                    let error_message: String = format!(
+                                            "This pattern matches a record with the field .{} but the expected record type here only expects these fields
+.{}
+You might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases",
+                                                field_name_value,
+                                                expected_type_record.iter().map(|expected_type_field| expected_type_field.name.as_str()).collect::<Vec<_>>().join(" .")
+                                            );
+                                    errors.push(ErrorNode {
+                                        range: pattern_range(pattern, patterns, types),
+                                        message: error_message.into_boxed_str(),
+                                    });
+                                    return;
+                                };
+                                syntax_query_case_pattern_check(
                                     patterns.item(value),
-                                    None,
+                                    &expected_type_field.value,
                                     errors,
                                     introduced_variables,
                                     type_aliases,
@@ -4986,13 +4914,7 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                     checked_spread_records,
                                     records_used,
                                     choices_used,
-                                ) else {
-                                    return None;
-                                };
-                                type_fields.push(TypeField {
-                                    name: field_name_value.clone(),
-                                    value: checked_field_value_type,
-                                });
+                                );
                             }
                             SyntaxRecordPart::Spread {
                                 dot_dot_start,
@@ -5003,11 +4925,44 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                         range: symbol_range(*dot_dot_start, ".."),
                                         message: Box::from("missing pattern to spread into the record after this .. syntax. An example of a record spread pattern is .. variable its-record-type")
                                     });
-                                    return None;
+                                    return;
                                 };
-                                let Some(checked_record_type) = syntax_pattern_check(
+                                if contains_spread {
+                                    errors.push(ErrorNode {
+                                        range: symbol_range(*dot_dot_start, ".."),
+                                        message: Box::from("multiple record spreads .. are not allowed in query case patterns as it can be ambiguous which specific fields are contained in what spread (think ? .a . .b . .c . [.a ..b ..c]: what fields should b and c match?).
+Switch to matching all fields explicitly for at leas one of these spreads")
+                                    });
+                                    return;
+                                }
+                                contains_spread = true;
+                                let mut spread_field_types = expected_type_record.clone();
+                                // n^2. okay since query field count is almost always relatively small
+                                for potential_field in std::iter::once(part0).chain(part1_up) {
+                                    match potential_field {
+                                        SyntaxRecordPart::Field { name, value: _ } => {
+                                            if let Some(name) = &name.value
+                                                && let Some(expected_field_to_exclude_index) =
+                                                    spread_field_types.iter().position(
+                                                        |expected_field| {
+                                                            &expected_field.name == name
+                                                        },
+                                                    )
+                                            {
+                                                spread_field_types
+                                                    .swap_remove(expected_field_to_exclude_index);
+                                            }
+                                        }
+                                        SyntaxRecordPart::Spread { .. } => {}
+                                    }
+                                }
+                                let spread_field_names: Vec<Name> = spread_field_types
+                                    .iter()
+                                    .map(|field| field.name.clone())
+                                    .collect();
+                                syntax_query_case_pattern_check(
                                     patterns.item(record),
-                                    None,
+                                    &Type::Record(spread_field_types),
                                     errors,
                                     introduced_variables,
                                     type_aliases,
@@ -5018,224 +4973,290 @@ fn syntax_pattern_check<'a, Patterns, Types>(
                                     checked_spread_records,
                                     records_used,
                                     choices_used,
-                                ) else {
-                                    return None;
-                                };
-                                let Type::Record(checked_record_type_fields) = checked_record_type
-                                else {
-                                    let mut error_message =
-                                            "the pattern after this record spread .. is not a record but\n"
-                                    .to_string();
-                                    type_format(&mut error_message, 0, &checked_record_type);
-                                    errors.push(ErrorNode {
-                                        range: symbol_range(*dot_dot_start, ".."),
-                                        message: error_message.into_boxed_str(),
-                                    });
-                                    return None;
-                                };
-                                checked_spread_records.insert(
-                                    *dot_dot_start,
-                                    checked_record_type_fields
-                                        .iter()
-                                        .map(|checked_record_field| {
-                                            checked_record_field.name.clone()
-                                        })
-                                        .collect::<Vec<Name>>(),
                                 );
-                                if let Some(overlapping_field) =
-                                    type_fields.iter().find(|type_field| {
-                                        checked_record_type_fields.iter().any(
-                                            |checked_record_type_field| {
-                                                type_field.name == checked_record_type_field.name
-                                            },
-                                        )
-                                    })
-                                {
-                                    let mut error_message = format!(
-                                        "The type of the record pattern after this .. spread contains a field with the name {}. A field with this name already exists in the record pattern. The type of the record pattern after .. is\n",
-                                        overlapping_field.name
-                                    );
-                                    type_record_format(
-                                        &mut error_message,
-                                        0,
-                                        &checked_record_type_fields,
-                                    );
-                                    errors.push(ErrorNode {
-                                        range: symbol_range(*dot_dot_start, ".."),
-                                        message: error_message.into_boxed_str(),
-                                    });
-                                    return None;
-                                }
-                                type_fields.extend(checked_record_type_fields);
+                                checked_spread_records.insert(*dot_dot_start, spread_field_names);
                             }
                         }
                     }
-                    records_used.insert(sorted_field_names(
-                        type_fields.iter().map(|type_field| &type_field.name),
-                    ));
+                    type_fields.clone_from(expected_type_record);
                 }
-                Some(expected_type) => match expected_type {
-                    Type::Record(expected_type_record) => {
-                        let mut contains_spread = false;
-                        for part in std::iter::once(part0).chain(part1_up) {
-                            match part {
-                                SyntaxRecordPart::Field { name, value } => {
-                                    let Some(field_name_value) = &name.value else {
-                                        errors.push(ErrorNode {
-                                            range: symbol_range(name.start, "."),
-                                            message: Box::from(
-                                                "missing field name after this dot .",
-                                            ),
-                                        });
-                                        return None;
-                                    };
-                                    let Some(value) = value else {
-                                        errors.push(ErrorNode {
-                                            range: field_name_range(WithStartPosition {
-                                                start: name.start,
-                                                value: field_name_value,
-                                            }),
-                                            message: Box::from(
-                                                "missing field value after this field name",
-                                            ),
-                                        });
-                                        return None;
-                                    };
-                                    if type_fields
-                                        .iter()
-                                        .any(|type_field| &type_field.name == field_name_value)
-                                    {
-                                        errors.push(ErrorNode {
-                                            range: field_name_range(WithStartPosition {
-                                                start: name.start,
-                                                value: field_name_value,
-                                            }),
-                                            message: Box::from(
-                                                "a field with this name already exists in the record pattern",
-                                            ),
-                                        });
-                                        return None;
-                                    }
-                                    let expected_type_field_value = match expected_type_record
-                                        .iter()
-                                        .find(|expected_field| {
-                                            &expected_field.name == field_name_value
-                                        }) {
-                                        Some(expected_type_field) => &expected_type_field.value,
-                                        None => {
-                                            let error_message: String = format!(
-                                            "This pattern matches a record with the field .{} but the expected record type here only expects these fields
-.{}
-You might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases",
-                                                field_name_value,
-                                                expected_type_record.iter().map(|expected_type_field| expected_type_field.name.as_str()).collect::<Vec<_>>().join(" .")
-                                            );
-                                            errors.push(ErrorNode {
-                                                range: pattern_range(pattern, patterns, types),
-                                                message: error_message.into_boxed_str(),
-                                            });
-                                            return None;
-                                        }
-                                    };
-                                    let Some(_checked_field_value) = syntax_pattern_check(
-                                        patterns.item(value),
-                                        Some(expected_type_field_value),
-                                        errors,
-                                        introduced_variables,
-                                        type_aliases,
-                                        patterns,
-                                        types,
-                                        origins,
-                                        existing_local_variables,
-                                        checked_spread_records,
-                                        records_used,
-                                        choices_used,
-                                    ) else {
-                                        return None;
-                                    };
-                                }
-                                SyntaxRecordPart::Spread {
-                                    dot_dot_start,
-                                    record,
-                                } => {
-                                    let Some(record) = record else {
-                                        errors.push(ErrorNode {
-                                            range: symbol_range(*dot_dot_start, ".."),
-                                            message: Box::from("missing pattern to spread into the record after this .. syntax. An example of a record spread pattern is .. variable its-record-type")
-                                        });
-                                        return None;
-                                    };
-                                    if contains_spread {
-                                        errors.push(ErrorNode {
-                                            range: symbol_range(*dot_dot_start, ".."),
-                                            message: Box::from("multiple record spreads .. are not allowed in query case patterns as it can be ambiguous which specific fields are contained in what spread (think ? .a . .b . .c . [.a ..b ..c]: what fields should b and c match?).
-Switch to matching all fields explicitly for at leas one of these spreads")
-                                        });
-                                        return None;
-                                    }
-                                    contains_spread = true;
-                                    let mut spread_field_types = expected_type_record.clone();
-                                    // n^2. okay since query field count is almost always relatively small
-                                    for potential_field in std::iter::once(part0).chain(part1_up) {
-                                        match potential_field {
-                                            SyntaxRecordPart::Field { name, value: _ } => {
-                                                if let Some(name) = &name.value
-                                                    && let Some(expected_field_to_exclude_index) =
-                                                        spread_field_types.iter().position(
-                                                            |expected_field| {
-                                                                &expected_field.name == name
-                                                            },
-                                                        )
-                                                {
-                                                    spread_field_types.swap_remove(
-                                                        expected_field_to_exclude_index,
-                                                    );
-                                                }
-                                            }
-                                            SyntaxRecordPart::Spread { .. } => {}
-                                        }
-                                    }
-                                    let spread_field_names: Vec<Name> = spread_field_types
-                                        .iter()
-                                        .map(|field| field.name.clone())
-                                        .collect();
-                                    let Some(_checked_record_type) = syntax_pattern_check(
-                                        patterns.item(record),
-                                        Some(&Type::Record(spread_field_types)),
-                                        errors,
-                                        introduced_variables,
-                                        type_aliases,
-                                        patterns,
-                                        types,
-                                        origins,
-                                        existing_local_variables,
-                                        checked_spread_records,
-                                        records_used,
-                                        choices_used,
-                                    ) else {
-                                        return None;
-                                    };
-                                    checked_spread_records
-                                        .insert(*dot_dot_start, spread_field_names);
-                                }
-                            }
-                        }
-                        type_fields.clone_from(expected_type_record);
-                    }
-                    _ => {
-                        let mut error_message: String = String::from(
-                            "This pattern matches a record but the expected type here is\n",
-                        );
-                        type_format(&mut error_message, 0, expected_type);
-                        error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
-                        errors.push(ErrorNode {
-                            range: pattern_range(pattern, patterns, types),
-                            message: error_message.into_boxed_str(),
-                        });
-                        return None;
-                    }
-                },
+                _ => {
+                    let mut error_message: String = String::from(
+                        "This pattern matches a record but the expected type here is\n",
+                    );
+                    type_format(&mut error_message, 0, expected_type);
+                    error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
+                    errors.push(ErrorNode {
+                        range: pattern_range(pattern, patterns, types),
+                        message: error_message.into_boxed_str(),
+                    });
+                }
             }
+        }
+        SyntaxPattern::Parenthesized {
+            open_paren_start,
+            inner,
+            closed_paren_start,
+        } => match inner {
+            None => {
+                errors.push(ErrorNode {
+                    range: lsp_types::Range {
+                        start: *open_paren_start,
+                        end: closed_paren_start
+                            .map(|closed_paren_start| symbol_end(closed_paren_start, ")"))
+                            .unwrap_or_else(|| symbol_end(*open_paren_start, "(")),
+                    },
+                    message: Box::from("missing pattern in parens between (here)"),
+                });
+            }
+            Some(inner) => syntax_query_case_pattern_check(
+                patterns.item(inner),
+                expected_type,
+                errors,
+                introduced_variables,
+                type_aliases,
+                patterns,
+                types,
+                origins,
+                existing_local_variables,
+                checked_spread_records,
+                records_used,
+                choices_used,
+            ),
+        },
+    }
+}
+fn syntax_parameter_pattern_check<'a, Patterns, Types>(
+    pattern: &'a SyntaxPattern<Patterns, Types>,
+    errors: &mut Vec<ErrorNode>,
+    introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
+    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
+    patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
+    types: &core::Buf<Types, SyntaxType<Types>>,
+    origins: &std::collections::HashMap<&Name, CheckedOrigin>,
+    existing_local_variables: &std::collections::HashMap<&Name, CheckedLocalVariable>,
+    checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
+    records_used: &mut std::collections::HashSet<Vec<Name>>,
+    choices_used: &mut std::collections::HashSet<Vec<Name>>,
+) -> Option<Type> {
+    match pattern {
+        SyntaxPattern::Variable { name, type_ } => {
+            let maybe_checked_variable = match type_.as_ref() {
+                None => {
+                    errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name)),
+                        message: Box::from("function parameter pattern variables need to have an explicit type. Add one to this pattern variable by appending a type like in your-variable u32 (the whole thing in parens if necessary)"),
+                    });
+                    None
+                }
+                Some(actual_type) => {
+                    let Some(actual_type) = syntax_type_check(
+                        actual_type,
+                        errors,
+                        type_aliases,
+                        types,
+                        origins,
+                        records_used,
+                        choices_used,
+                    ) else {
+                        return None;
+                    };
+                    Some(actual_type)
+                }
+            };
+            let maybe_existing_variable_with_the_same_name = introduced_variables.insert(
+                &name.value,
+                CheckedLocalVariable {
+                    origin_start: name.start,
+                    type_: maybe_checked_variable.clone(),
+                },
+            );
+            if let Some(_existing_variable_with_the_same_name) =
+                maybe_existing_variable_with_the_same_name
+            {
+                errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name)),
+                        message: Box::from(
+                            "a pattern variable with this name already exists in the surrounding pattern. Rename either variable",
+                        ),
+                    });
+                return None;
+            } else if let Some(existing_variable_with_the_same_name) =
+                existing_local_variables.get(&name.value)
+            {
+                errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name)),
+                        message: format!(
+                            "a local variable with this name already exists (intruduced at {}). Rename either variable",
+                            position_to_string(existing_variable_with_the_same_name.origin_start)
+                        ).into_boxed_str(),
+                    });
+                return None;
+            }
+            maybe_checked_variable
+        }
+        SyntaxPattern::Variant { name, value } => {
+            let Some(name_value) = &name.value else {
+                errors.push(ErrorNode {
+                    range: symbol_range(name.start, "'"),
+                    message: Box::from("missing variant name after this single quote '. An example of a variant pattern is 'yes your-variable")
+                });
+                return None;
+            };
+            let Some(value) = value else {
+                errors.push(ErrorNode {
+                    range: optional_variant_name_range(name),
+                    message: Box::from("missing variant value after this variant name. Each variants has a value, even if just ., an example of a variant pattern is 'yes your-variable")
+                });
+                return None;
+            };
+            let Some(checked_value_type) = syntax_parameter_pattern_check(
+                patterns.item(value),
+                errors,
+                introduced_variables,
+                type_aliases,
+                patterns,
+                types,
+                origins,
+                existing_local_variables,
+                checked_spread_records,
+                records_used,
+                choices_used,
+            ) else {
+                return None;
+            };
+            Some(Type::Choice(vec![TypeVariant {
+                name: name_value.clone(),
+                value: checked_value_type,
+            }]))
+        }
+        SyntaxPattern::RecordEmpty { dot_start: _ } => Some(type_record_empty),
+        SyntaxPattern::Record { part0, part1_up } => {
+            let mut type_fields: Vec<TypeField> = Vec::with_capacity(1 + part1_up.len());
+            for part in std::iter::once(part0).chain(part1_up) {
+                match part {
+                    SyntaxRecordPart::Field { name, value } => {
+                        let Some(field_name_value) = &name.value else {
+                            errors.push(ErrorNode {
+                                range: symbol_range(name.start, "."),
+                                message: Box::from("missing field name after this dot ."),
+                            });
+                            return None;
+                        };
+                        let Some(value) = value else {
+                            errors.push(ErrorNode {
+                                range: field_name_range(WithStartPosition {
+                                    start: name.start,
+                                    value: field_name_value,
+                                }),
+                                message: Box::from("missing field value after this field name"),
+                            });
+                            return None;
+                        };
+                        if type_fields
+                            .iter()
+                            .any(|type_field| &type_field.name == field_name_value)
+                        {
+                            errors.push(ErrorNode {
+                                range: field_name_range(WithStartPosition {
+                                    start: name.start,
+                                    value: field_name_value,
+                                }),
+                                message: Box::from(
+                                    "a field with this name already exists in the record pattern",
+                                ),
+                            });
+                            return None;
+                        }
+                        let Some(checked_field_value_type) = syntax_parameter_pattern_check(
+                            patterns.item(value),
+                            errors,
+                            introduced_variables,
+                            type_aliases,
+                            patterns,
+                            types,
+                            origins,
+                            existing_local_variables,
+                            checked_spread_records,
+                            records_used,
+                            choices_used,
+                        ) else {
+                            return None;
+                        };
+                        type_fields.push(TypeField {
+                            name: field_name_value.clone(),
+                            value: checked_field_value_type,
+                        });
+                    }
+                    SyntaxRecordPart::Spread {
+                        dot_dot_start,
+                        record,
+                    } => {
+                        let Some(record) = record else {
+                            errors.push(ErrorNode {
+                                range: symbol_range(*dot_dot_start, ".."),
+                                message: Box::from("missing pattern to spread into the record after this .. syntax. An example of a record spread pattern is .. variable its-record-type")
+                            });
+                            return None;
+                        };
+                        let Some(checked_record_type) = syntax_parameter_pattern_check(
+                            patterns.item(record),
+                            errors,
+                            introduced_variables,
+                            type_aliases,
+                            patterns,
+                            types,
+                            origins,
+                            existing_local_variables,
+                            checked_spread_records,
+                            records_used,
+                            choices_used,
+                        ) else {
+                            return None;
+                        };
+                        let Type::Record(checked_record_type_fields) = checked_record_type else {
+                            let mut error_message =
+                                "the pattern after this record spread .. is not a record but\n"
+                                    .to_string();
+                            type_format(&mut error_message, 0, &checked_record_type);
+                            errors.push(ErrorNode {
+                                range: symbol_range(*dot_dot_start, ".."),
+                                message: error_message.into_boxed_str(),
+                            });
+                            return None;
+                        };
+                        checked_spread_records.insert(
+                            *dot_dot_start,
+                            checked_record_type_fields
+                                .iter()
+                                .map(|checked_record_field| checked_record_field.name.clone())
+                                .collect::<Vec<Name>>(),
+                        );
+                        if let Some(overlapping_field) = type_fields.iter().find(|type_field| {
+                            checked_record_type_fields
+                                .iter()
+                                .any(|checked_record_type_field| {
+                                    type_field.name == checked_record_type_field.name
+                                })
+                        }) {
+                            let mut error_message = format!(
+                                "The type of the record pattern after this .. spread contains a field with the name {}. A field with this name already exists in the record pattern. The type of the record pattern after .. is\n",
+                                overlapping_field.name
+                            );
+                            type_record_format(&mut error_message, 0, &checked_record_type_fields);
+                            errors.push(ErrorNode {
+                                range: symbol_range(*dot_dot_start, ".."),
+                                message: error_message.into_boxed_str(),
+                            });
+                            return None;
+                        }
+                        type_fields.extend(checked_record_type_fields);
+                    }
+                }
+            }
+            records_used.insert(sorted_field_names(
+                type_fields.iter().map(|type_field| &type_field.name),
+            ));
             Some(Type::Record(type_fields))
         }
         SyntaxPattern::Parenthesized {
@@ -5255,9 +5276,8 @@ Switch to matching all fields explicitly for at leas one of these spreads")
                 });
                 None
             }
-            Some(inner) => syntax_pattern_check(
+            Some(inner) => syntax_parameter_pattern_check(
                 patterns.item(inner),
-                expected_type,
                 errors,
                 introduced_variables,
                 type_aliases,
@@ -8839,9 +8859,8 @@ If there should only ever by one variant, using a record with a single field is 
                 &Name,
                 CheckedLocalVariable,
             > = std::collections::HashMap::new();
-            let Some(checked_parmeter_type) = syntax_pattern_check(
+            let Some(checked_parmeter_type) = syntax_parameter_pattern_check(
                 parameter,
-                None,
                 errors,
                 &mut parameter_introduced_variables,
                 type_aliases,
@@ -9257,9 +9276,9 @@ If there should only ever by one variant, using a record with a single field is 
                 &Name,
                 CheckedLocalVariable,
             > = std::collections::HashMap::new();
-            let Some(_checked_case0_pattern_type) = syntax_pattern_check(
+            syntax_query_case_pattern_check(
                 case0_pattern,
-                Some(&checked_queried_type),
+                &checked_queried_type,
                 errors,
                 &mut case0_pattern_introduced_variables,
                 type_aliases,
@@ -9270,9 +9289,7 @@ If there should only ever by one variant, using a record with a single field is 
                 checked_spread_records,
                 records_used,
                 choices_used,
-            ) else {
-                return None;
-            };
+            );
             let mut remaining_specific_pattern_catch_possibilities = Vec::new();
             type_to_possible_specific_pattern_catches(
                 &checked_queried_type,
@@ -9341,9 +9358,9 @@ If there should only ever by one variant, using a record with a single field is 
                     &Name,
                     CheckedLocalVariable,
                 > = std::collections::HashMap::new();
-                let Some(checked_case_pattern_type) = syntax_pattern_check(
+                syntax_query_case_pattern_check(
                     case_pattern,
-                    Some(&checked_queried_type),
+                    &checked_queried_type,
                     errors,
                     &mut case_pattern_introduced_variables,
                     type_aliases,
@@ -9354,24 +9371,7 @@ If there should only ever by one variant, using a record with a single field is 
                     checked_spread_records,
                     records_used,
                     choices_used,
-                ) else {
-                    invalid_case_indexes.push(case_index);
-                    continue 'checking_case1_up;
-                };
-                if let Some(queried_pattern_type_diff) =
-                    type_diff(&checked_queried_type, &checked_case_pattern_type)
-                {
-                    place_pattern_type_diff_errors(
-                        errors,
-                        case_pattern,
-                        &queried_pattern_type_diff,
-                        patterns,
-                        types,
-                        checked_spread_records,
-                    );
-                    invalid_case_indexes.push(case_index);
-                    continue 'checking_case1_up;
-                }
+                );
                 let remaining_specific_pattern_catch_possibilities_count_before_case =
                     remaining_specific_pattern_catch_possibilities.len();
                 specific_pattern_catches_remove_those_matched_by_pattern(
