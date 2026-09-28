@@ -197,6 +197,21 @@ pub fn Array(@"%Item": type, @"%Record": type) type {
         }
     ]@"%Item";
 }
+/// Typical use is with locally unique types like enum {}, opaque {} or @src() as the first argument.
+/// Important! For this to work correctly in e.g. loops you must ensure that no value referencing
+/// that unique local type "escapes" a loop step block.
+/// See https://ziglang.org/download/0.12.0/release-notes.html#Namespace-Type-Equivalence
+///
+/// If you still really wanted local unique origins that "escape" a loop step,
+/// you could introduce a loop variable that gets ignored in the unique local type, like
+/// ```zig
+/// inline for (0..) |i| {
+///     const uniqueLocal = enum {
+///         comptime { _ = i; }
+///     }
+/// }
+/// ```
+/// but I do no encourage it
 pub fn Origin(@"%Origin": type, @"%Part": type) type {
     return struct {
         pub const origin = @"%Origin";
