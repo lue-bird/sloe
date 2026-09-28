@@ -11894,6 +11894,14 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                             if let Some(spread_field_names) =
                                 checked_spread_records.get(dot_dot_start)
                                 && let Some(record) = record
+                                && (actual_extraneous_fields.iter().any(
+                                    |actual_extraneous_field_name| {
+                                        spread_field_names.contains(actual_extraneous_field_name)
+                                    },
+                                ) || type_diff_fields.iter().any(|field_type_diff| {
+                                    field_type_diff.value.is_some()
+                                        && spread_field_names.contains(&field_type_diff.name)
+                                }))
                             {
                                 place_expression_type_diff_errors(
                                     errors,
@@ -12174,6 +12182,14 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                             if let Some(spread_field_names) =
                                 checked_spread_records.get(dot_dot_start)
                                 && let Some(record) = record
+                                && (actual_extraneous_fields.iter().any(
+                                    |actual_extraneous_field_name| {
+                                        spread_field_names.contains(actual_extraneous_field_name)
+                                    },
+                                ) || type_diff_fields.iter().any(|field_type_diff| {
+                                    field_type_diff.value.is_some()
+                                        && spread_field_names.contains(&field_type_diff.name)
+                                }))
                             {
                                 place_pattern_type_diff_errors(
                                     errors,
