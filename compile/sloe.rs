@@ -14438,7 +14438,7 @@ To change every item without any state, use `Buf-opt-span-alter`",
                         "buf",
                         type_buf(type_variable("origin"), type_variable("item")),
                     ),
-                    ("span", type_span(type_variable("origin"))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                     ("direction", type_choice([("up", type_record_empty), ("down", type_record_empty)])),
                     ("state", type_variable("state")),
                     (
@@ -14466,7 +14466,7 @@ To change every item without any state, use `Buf-opt-span-alter`",
                         "buf",
                         type_buf(type_variable("origin"), type_variable("item")),
                     ),
-                    ("span", type_span(type_variable("origin"))),
+                    ("span", type_opt(type_span(type_variable("origin")))),
                     (
                         "state",
                         type_choice([
