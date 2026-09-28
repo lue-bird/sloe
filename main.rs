@@ -392,32 +392,35 @@ fn check_main(maybe_input_file_path: Option<&std::path::Path>) -> Result<(), ()>
         &mut syntax_types,
         &project_source,
     );
-    let mut output_errors: Vec<sloe::ErrorNode> = Vec::new();
+    let mut check_errors: Vec<sloe::ErrorNode> = Vec::new();
     let _checked_info = sloe::syntax_project_check(
-        &mut output_errors,
+        &mut check_errors,
         &syntax_project,
         &syntax_expressions,
         &syntax_patterns,
         &syntax_types,
     );
-    if output_errors.is_empty() {
+    if check_errors.is_empty() {
         println!(
             "No errors found. Note that sloe <language target> already checks before building."
         );
         Ok(())
     } else {
-        for output_error in output_errors.iter().rev() {
-            eprintln!(
-                "{input_file_path}:{range_start_line}:{range_start_column} {message}",
-                input_file_path = input_file_path.to_string_lossy(),
-                range_start_line = output_error.range.start.line + 1,
-                range_start_column = output_error.range.start.character + 1,
-                message = output_error.message
-            );
-        }
+        print_sloe_check_errors(input_file_path, &check_errors);
         Err(())
     }
     // potential improvement: statistics
+}
+fn print_sloe_check_errors(input_file_path: &std::path::Path, output_errors: &[sloe::ErrorNode]) {
+    for check_error in output_errors.iter().rev() {
+        eprintln!(
+            "- {input_file_path}:{range_start_line}:{range_start_column} {message}",
+            input_file_path = input_file_path.to_string_lossy(),
+            range_start_line = check_error.range.start.line + 1,
+            range_start_column = check_error.range.start.character + 1,
+            message = check_error.message
+        );
+    }
 }
 #[derive(Clone, Copy)]
 enum CompileOutputLanguage {
@@ -464,24 +467,16 @@ fn build_main(
         &mut syntax_types,
         &project_source,
     );
-    let mut output_errors: Vec<sloe::ErrorNode> = Vec::new();
+    let mut check_errors: Vec<sloe::ErrorNode> = Vec::new();
     let checked_project = sloe::syntax_project_check(
-        &mut output_errors,
+        &mut check_errors,
         &syntax_project,
         &syntax_expressions,
         &syntax_patterns,
         &syntax_types,
     );
-    if !output_errors.is_empty() {
-        for output_error in output_errors.iter().rev() {
-            eprintln!(
-                "- {input_file_path}:{range_start_line}:{range_start_column} {message}",
-                input_file_path = input_file_path.to_string_lossy(),
-                range_start_line = output_error.range.start.line + 1,
-                range_start_column = output_error.range.start.character + 1,
-                message = output_error.message
-            );
-        }
+    if !check_errors.is_empty() {
+        print_sloe_check_errors(input_file_path, &check_errors);
         eprintln!(
             "\nSince there are errors, running the output code may {}. Do not use it in production.",
             match output_language {
@@ -536,7 +531,7 @@ fn build_main(
         );
         return Err(());
     }
-    if output_errors.is_empty() {
+    if check_errors.is_empty() {
         Ok(())
     } else {
         Err(())
