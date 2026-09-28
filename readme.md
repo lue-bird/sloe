@@ -827,8 +827,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
   ```
   If currently uneraser API is here to stay, remove Origin-erased-rid. It can't really be made useful
 
-- optimize core.zig Buf.markLengthPositiveAsSet
-
 
 # not coherently formulated thoughts
 

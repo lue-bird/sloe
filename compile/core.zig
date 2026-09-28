@@ -945,13 +945,14 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                         .masks = @"%buf".unset_masks + @"%unset_bit_mask_index_to_start_search",
                         .bit_length = @"%buf".items.items.len - (@"%unset_bit_mask_index_to_start_search" * @bitSizeOf(std.bit_set.Dynamic.MaskInt)),
                     }).iterator(.{ .direction = .forward, .kind = .set });
-                    // TODO try manually setting the bit offset
                     _ = @"%unset_iterator".next().?;
+                    // unset_iterator is now at after first_unset_index
+                    // because we know there is no unset index before first_unset_index
                     var @"%unset_end_so_far" = @"%first_unset_index";
                     var @"%unset_length_so_far": u32 = 1;
                     while (@"%unset_iterator".next()) |@"%unset_index_usize"| {
                         const @"%unset_index": u32 = @intCast(@"%unset_index_usize");
-                        if (@"%unset_end_so_far" + 1 > @"%unset_index") {
+                        if (@"%unset_index" > @"%unset_end_so_far" + 1) {
                             @"%unset_length_so_far" = 0;
                         } else {
                             @"%unset_length_so_far" += 1;
