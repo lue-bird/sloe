@@ -774,17 +774,28 @@ If you're looking to learn from sloe's central ideas, maybe do not learn from th
   So yeah, these aren't amazing either.
 
 
-# general quetions you might have
+# general questions you might have
 
 ## does sloe fill any niche well enough to be worth it?
-I'd say domains where languages like safe rust or performance-aware C#/swift/go stand today:
+I'd say domains where languages like performance-aware safe rust/C#/swift/go stand today:
   - not extensive enough to have a front seat in systems programming,
     but comfortably sitting on top of a somewhat thin platform layer
   - not as easy to use as scripting languages like python, gleam, lua, elm, prolog, etc.
-  - mainly used for tools, applications or similar where maintainability, robustness and being easy to reason about is important
+  - mainly used for the subset of tools, applications or similar where maintainability, robustness and being easy to reason about is more important than dev speed
 
+That's far from general-purpose!
 Don't be afraid to program in a language sloe compiles to for tasks sloe feels annoying to use for.
 E.g. I imagine writing a recursive file watcher in sloe is not fun, so just "outsource" it :)
+
+## why do allocating functions not return an error?
+- sloe is already too tedious. I certainly would hate (if was the default)
+- sloe's out of memory handling is already relatively graceful. E.g. when outputting zig, functions will return an explicit error.OutOfMemory. In rust, panicing on failed allocation is safe and the default.
+- output language targets like js do not support this anyway
+
+I will consider adding a version of pre-allocate which cleanly fails.
+I think this could be a reasonable compromise because pre-allocating
+is a very useful and prevalent pattern anyway when running out of memory is possible.
+Please open an issue if you'd like to see this added!
 
 ## why put work into transpiling to existing languages
 The best user experience interfacing with sloe code from existing (system-level) languages
@@ -802,7 +813,8 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
-- add `Buf-(opt-)span-sort` (issue: how to implement in rust and js?)
+- add `Buf-(opt-)span-sort` (issue: how to implement in rust and js?).
+  Then consider adding `Buf-(opt-)span-binary-search` (maybe interpolation search)
 
 - again try to may make proper unerase viable (unlikely).
   If successful add
@@ -816,12 +828,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
   If currently uneraser API is here to stay, remove Origin-erased-rid. It can't really be made useful
 
 - optimize core.zig Buf.markLengthPositiveAsSet
-
-- consider adding `Buf-(opt-)span-binary-search` (maybe interpolation search)
-
-- give nicer error when only a field is missing or too much
-
-- fix comment TODOs
 
 
 # not coherently formulated thoughts
