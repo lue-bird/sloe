@@ -11933,15 +11933,48 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                 });
             }
         },
-        SyntaxExpression::Array { .. } => {
-            // TODO if TypeDiff == CoreConstruct{"Array"},
-            // report length differences on the opening bracket
-            // and otherwise place errors for the first array item
-            errors.push(ErrorNode {
-                range: expression_range(expression, expressions, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
-            });
-        }
+        SyntaxExpression::Array {
+            semicolon_start,
+            item0,
+            item1_up: _,
+        } => match type_diff {
+            TypeDiff::CoreConstruct { name, arguments } => {
+                if *name == "Array"
+                    && let [item_type_diff, length_type_diff] = arguments.as_slice()
+                {
+                    if let Some(item_type_diff) = item_type_diff
+                        && let Some(item0) = item0
+                    {
+                        place_expression_type_diff_errors(
+                            errors,
+                            expressions.item(item0),
+                            item_type_diff,
+                            expressions,
+                            patterns,
+                            types,
+                            checked_spread_records,
+                        );
+                    }
+                    if let Some(_) = length_type_diff {
+                        errors.push(ErrorNode {
+                            range: symbol_range(*semicolon_start, ";"),
+                            message: type_diff_error_message(&type_diff).into_boxed_str(),
+                        });
+                    }
+                } else {
+                    errors.push(ErrorNode {
+                        range: expression_range(expression, expressions, patterns, types),
+                        message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    });
+                }
+            }
+            TypeDiff::Conflict { .. } | TypeDiff::Record { .. } | TypeDiff::Choice(_) => {
+                errors.push(ErrorNode {
+                    range: expression_range(expression, expressions, patterns, types),
+                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                });
+            }
+        },
         SyntaxExpression::Parenthesized {
             open_paren_start: _,
             inner,
