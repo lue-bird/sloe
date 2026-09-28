@@ -11196,29 +11196,34 @@ pub fn syntax_pattern_type_variables_into<'a, Patterns, Types>(
 
 /// Fully validated type
 #[derive(Clone, Debug)]
-enum TypeDiff {
+enum TypeDiff<'a> {
     Conflict {
-        expected: Type,
-        actual: Type,
+        expected: &'a Type,
+        actual: &'a Type,
     },
-    Variable(Name),
-    Origin(Name),
     CoreConstruct {
-        name: Name,
-        arguments: Vec<TypeDiff>,
+        name: &'a Name,
+        /// None means no difference
+        arguments: Vec<Option<TypeDiff<'a>>>,
     },
-    Record(Vec<TypeDiffField>),
-    Choice(Vec<TypeDiffVariant>),
+    Record {
+        fields: Vec<TypeDiffField<'a>>,
+        actual_missing_fields: Vec<&'a Name>,
+        actual_extraneous_fields: Vec<&'a Name>,
+    },
+    Choice(Vec<TypeDiffVariant<'a>>),
 }
 #[derive(Clone, Debug)]
-struct TypeDiffField {
-    name: Name,
-    value: TypeDiff,
+struct TypeDiffField<'a> {
+    name: &'a Name,
+    /// None means no difference
+    value: Option<TypeDiff<'a>>,
 }
 #[derive(Clone, Debug)]
-struct TypeDiffVariant {
-    name: Name,
-    value: TypeDiff,
+struct TypeDiffVariant<'a> {
+    name: &'a Name,
+    /// None means no difference
+    value: Option<TypeDiff<'a>>,
 }
 
 fn type_collect_variables_that_are_concrete_into(
@@ -11291,7 +11296,7 @@ fn type_collect_variables_that_are_concrete_into(
 }
 
 /// None means the types are equal
-fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
+fn type_diff<'a>(expected_type: &'a Type, actual_type: &'a Type) -> Option<TypeDiff<'a>> {
     match expected_type {
         Type::Variable(expected_variable) => {
             if let Type::Variable(actual_variable) = actual_type
@@ -11300,8 +11305,8 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                 None
             } else {
                 Some(TypeDiff::Conflict {
-                    expected: expected_type.clone(),
-                    actual: actual_type.clone(),
+                    expected: expected_type,
+                    actual: actual_type,
                 })
             }
         }
@@ -11325,20 +11330,19 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                     return None;
                 }
                 Some(TypeDiff::CoreConstruct {
-                    name: expected_name.clone(),
+                    name: expected_name,
                     arguments: expected_arguments
                         .iter()
                         .zip(actual_choice_type_construct_arguments.iter())
                         .map(|(expected_argument, actual_argument)| {
                             type_diff(expected_argument, actual_argument)
-                                .unwrap_or_else(|| type_to_diff_without_conflict(expected_argument))
                         })
                         .collect(),
                 })
             } else {
                 Some(TypeDiff::Conflict {
-                    expected: expected_type.clone(),
-                    actual: actual_type.clone(),
+                    expected: expected_type,
+                    actual: actual_type,
                 })
             }
         }
@@ -11349,36 +11353,49 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                 None
             } else {
                 Some(TypeDiff::Conflict {
-                    expected: expected_type.clone(),
-                    actual: actual_type.clone(),
+                    expected: expected_type,
+                    actual: actual_type,
                 })
             }
         }
         Type::Record(expected_fields) => {
-            if let Type::Record(actual_fields) = actual_type
-                && expected_fields.len() == actual_fields.len()
-                && expected_fields.iter().all(|expected_field| {
-                    actual_fields
-                        .iter()
-                        .any(|actual_field| actual_field.name == expected_field.name)
-                })
-            {
-                if expected_fields
-                    .iter()
-                    .filter_map(|expected_field| {
+            if let Type::Record(actual_fields) = actual_type {
+                // all these filter(find) operations are quadratic.
+                // should be fine since records usually do not contain many fields
+                if expected_fields.len() == actual_fields.len()
+                    && expected_fields.iter().all(|expected_field| {
                         actual_fields
                             .iter()
                             .find(|actual_field| actual_field.name == expected_field.name)
-                            .map(|actual_field| (&expected_field.value, &actual_field.value))
-                    })
-                    .all(|(expected_field_value, actual_field_value)| {
-                        type_diff(expected_field_value, actual_field_value).is_none()
+                            .is_some_and(|actual_field| {
+                                type_diff(&expected_field.value, &actual_field.value).is_none()
+                            })
                     })
                 {
                     return None;
                 }
-                Some(TypeDiff::Record(
-                    expected_fields
+                Some(TypeDiff::Record {
+                    actual_missing_fields: expected_fields
+                        .iter()
+                        .filter(|expected_field| {
+                            actual_fields
+                                .iter()
+                                .find(|actual_field| actual_field.name == expected_field.name)
+                                .is_none()
+                        })
+                        .map(|expected_field| &expected_field.name)
+                        .collect(),
+                    actual_extraneous_fields: actual_fields
+                        .iter()
+                        .filter(|expected_field| {
+                            expected_fields
+                                .iter()
+                                .find(|actual_field| actual_field.name == expected_field.name)
+                                .is_none()
+                        })
+                        .map(|actual_field| &actual_field.name)
+                        .collect(),
+                    fields: expected_fields
                         .iter()
                         .filter_map(|expected_field| {
                             actual_fields
@@ -11387,18 +11404,15 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                                 .map(|actual_field| (expected_field, &actual_field.value))
                         })
                         .map(|(expected_field, actual_field_value)| TypeDiffField {
-                            name: expected_field.name.clone(),
-                            value: type_diff(&expected_field.value, actual_field_value)
-                                .unwrap_or_else(|| {
-                                    type_to_diff_without_conflict(&expected_field.value)
-                                }),
+                            name: &expected_field.name,
+                            value: type_diff(&expected_field.value, actual_field_value),
                         })
                         .collect(),
-                ))
+                })
             } else {
                 Some(TypeDiff::Conflict {
-                    expected: expected_type.clone(),
-                    actual: actual_type.clone(),
+                    expected: expected_type,
+                    actual: actual_type,
                 })
             }
         }
@@ -11435,55 +11449,20 @@ fn type_diff(expected_type: &Type, actual_type: &Type) -> Option<TypeDiff> {
                                 .map(|actual_variant| (expected_variant, &actual_variant.value))
                         })
                         .map(|(expected_variant, actual_variant_value)| TypeDiffVariant {
-                            name: expected_variant.name.clone(),
-                            value: type_diff(&expected_variant.value, actual_variant_value)
-                                .unwrap_or_else(|| {
-                                    type_to_diff_without_conflict(&expected_variant.value)
-                                }),
+                            name: &expected_variant.name,
+                            value: type_diff(&expected_variant.value, actual_variant_value),
                         })
                         .collect(),
                 ))
             } else {
                 Some(TypeDiff::Conflict {
-                    expected: expected_type.clone(),
-                    actual: actual_type.clone(),
+                    expected: expected_type,
+                    actual: actual_type,
                 })
             }
         }
     }
 }
-fn type_to_diff_without_conflict(type_: &Type) -> TypeDiff {
-    match type_ {
-        Type::Variable(name) => TypeDiff::Variable(name.clone()),
-        Type::Origin(name) => TypeDiff::Origin(name.clone()),
-        Type::CoreConstruct { name, arguments } => TypeDiff::CoreConstruct {
-            name: name.clone(),
-            arguments: arguments
-                .iter()
-                .map(type_to_diff_without_conflict)
-                .collect(),
-        },
-        Type::Choice(variants) => TypeDiff::Choice(
-            variants
-                .iter()
-                .map(|variant| TypeDiffVariant {
-                    name: variant.name.clone(),
-                    value: type_to_diff_without_conflict(&variant.value),
-                })
-                .collect(),
-        ),
-        Type::Record(fields) => TypeDiff::Record(
-            fields
-                .iter()
-                .map(|field| TypeDiffField {
-                    name: field.name.clone(),
-                    value: type_to_diff_without_conflict(&field.value),
-                })
-                .collect(),
-        ),
-    }
-}
-
 fn type_diff_error_message(type_diff: &TypeDiff) -> String {
     let mut builder: String = String::from("type mismatch:\n");
     type_diff_format(&mut builder, 0, type_diff);
@@ -11508,44 +11487,62 @@ fn type_diff_format(formatted: &mut String, indent: usize, type_diff: &TypeDiff)
             );
             type_format(formatted, next_indent(indent), actual);
         }
-        TypeDiff::Variable(name) => {
-            formatted.push('_');
-            formatted.push_str(name);
-        }
-        TypeDiff::Origin(name) => {
-            formatted.push_str(name);
-        }
         TypeDiff::CoreConstruct { name, arguments } => {
             formatted.push_str(name);
             if let Some((argument0, argument1_up)) = arguments.split_first() {
                 let line_span: LineSpan = type_diff_line_span(type_diff);
                 space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-                type_diff_parenthesized_if_open_ended_into(
+                option_type_diff_parenthesized_if_open_ended_into(
                     formatted,
                     next_indent(indent),
-                    argument0,
+                    argument0.as_ref(),
                 );
                 for argument in argument1_up {
                     formatted.push(',');
                     space_or_linebreak_indented_into(formatted, line_span, next_indent(indent));
-                    type_diff_parenthesized_if_open_ended_into(
+                    option_type_diff_parenthesized_if_open_ended_into(
                         formatted,
                         next_indent(indent),
-                        argument,
+                        argument.as_ref(),
                     );
                 }
             }
         }
-        TypeDiff::Record(fields) => match fields.split_first() {
+        TypeDiff::Record {
+            fields,
+            actual_missing_fields,
+            actual_extraneous_fields,
+        } => match fields.split_first() {
             None => {
                 formatted.push('.');
             }
             Some((field0, field1_up)) => {
                 type_diff_field_format(formatted, indent, field0);
-                let line_span: LineSpan = type_diff_line_span(type_diff);
+                let line_span: LineSpan =
+                    if actual_missing_fields.is_empty() && actual_extraneous_fields.is_empty() {
+                        type_diff_line_span(type_diff)
+                    } else {
+                        LineSpan::Multiple
+                    };
                 for field in field1_up {
                     space_or_linebreak_indented_into(formatted, line_span, indent);
                     type_diff_field_format(formatted, indent, field);
+                }
+                if !actual_missing_fields.is_empty() {
+                    linebreak_indented_into(formatted, indent);
+                    formatted.push_str("missing fields:");
+                    for actual_missing_field_name in actual_missing_fields {
+                        formatted.push_str(" .");
+                        formatted.push_str(actual_missing_field_name);
+                    }
+                }
+                if !actual_extraneous_fields.is_empty() {
+                    linebreak_indented_into(formatted, indent);
+                    formatted.push_str("extraneous fields:");
+                    for actual_extraneous_field_name in actual_extraneous_fields {
+                        formatted.push_str(" .");
+                        formatted.push_str(actual_extraneous_field_name);
+                    }
                 }
             }
         },
@@ -11564,20 +11561,38 @@ fn type_diff_format(formatted: &mut String, indent: usize, type_diff: &TypeDiff)
         },
     }
 }
+fn option_type_diff_parenthesized_if_open_ended_into(
+    formatted: &mut String,
+    indent: usize,
+    type_diff: Option<&TypeDiff>,
+) {
+    match type_diff {
+        None => {
+            formatted.push_str("(...)");
+        }
+        Some(type_diff) => type_diff_parenthesized_if_open_ended_into(formatted, indent, type_diff),
+    }
+}
 fn type_diff_parenthesized_if_open_ended_into(
     formatted: &mut String,
     indent: usize,
     type_diff: &TypeDiff,
 ) {
     let should_parenthesize_argument: bool = match type_diff {
-        TypeDiff::Variable(_) => false,
-        TypeDiff::Origin(_) => false,
         TypeDiff::Conflict { .. } => true,
         TypeDiff::CoreConstruct {
             name: _,
             arguments: argument_arguments,
         } => !argument_arguments.is_empty(),
-        TypeDiff::Record(fields) => !fields.is_empty(),
+        TypeDiff::Record {
+            fields,
+            actual_missing_fields,
+            actual_extraneous_fields,
+        } => {
+            !actual_missing_fields.is_empty()
+                || !actual_extraneous_fields.is_empty()
+                || !fields.is_empty()
+        }
         TypeDiff::Choice(variants) => !variants.is_empty(),
     };
     if should_parenthesize_argument {
@@ -11596,13 +11611,13 @@ fn type_diff_field_format(formatted: &mut String, indent: usize, type_diff_field
     formatted.push_str(&type_diff_field.name);
     space_or_linebreak_indented_into(
         formatted,
-        type_diff_line_span(&type_diff_field.value),
+        option_type_diff_line_span(type_diff_field.value.as_ref()),
         next_indent(indent),
     );
-    type_diff_parenthesized_if_open_ended_into(
+    option_type_diff_parenthesized_if_open_ended_into(
         formatted,
         next_indent(indent),
-        &type_diff_field.value,
+        type_diff_field.value.as_ref(),
     );
 }
 fn type_diff_variant_format(
@@ -11614,13 +11629,13 @@ fn type_diff_variant_format(
     formatted.push_str(&type_diff_variant.name);
     space_or_linebreak_indented_into(
         formatted,
-        type_diff_line_span(&type_diff_variant.value),
+        option_type_diff_line_span(type_diff_variant.value.as_ref()),
         next_indent(indent),
     );
-    type_diff_parenthesized_if_open_ended_into(
+    option_type_diff_parenthesized_if_open_ended_into(
         formatted,
         next_indent(indent),
-        &type_diff_variant.value,
+        type_diff_variant.value.as_ref(),
     );
 }
 /// this is set to a low-seeming number because hover windows and similar
@@ -11633,25 +11648,56 @@ fn type_diff_line_span(type_diff: &TypeDiff) -> LineSpan {
         LineSpan::Multiple
     }
 }
+fn option_type_diff_line_span(type_diff: Option<&TypeDiff>) -> LineSpan {
+    match type_diff {
+        Some(type_diff) => {
+            if type_diff_length_estimate(type_diff) <= type_info_line_length_estimate_maximum {
+                LineSpan::Single
+            } else {
+                LineSpan::Multiple
+            }
+        }
+        None => LineSpan::Single,
+    }
+}
+fn option_type_diff_length_estimate(type_diff: Option<&TypeDiff>) -> usize {
+    match type_diff {
+        None => 5,
+        Some(type_diff) => type_diff_length_estimate(type_diff),
+    }
+}
 fn type_diff_length_estimate(type_diff: &TypeDiff) -> usize {
     match type_diff {
         TypeDiff::Conflict { .. } => type_info_line_length_estimate_maximum + 1,
-        TypeDiff::Variable(variable_name) => variable_name.len(),
-        TypeDiff::Origin(name) => name.len(),
         TypeDiff::CoreConstruct { name, arguments } => {
             1 + name.len()
                 + arguments
                     .iter()
-                    .map(|argument| 2 + type_diff_length_estimate(argument))
+                    .map(|argument| 2 + option_type_diff_length_estimate(argument.as_ref()))
                     .sum::<usize>()
         }
-        TypeDiff::Record(fields) => fields
-            .iter()
-            .map(|field| 3 + field.name.len() + type_diff_length_estimate(&field.value))
-            .sum(),
+        TypeDiff::Record {
+            fields,
+            actual_missing_fields,
+            actual_extraneous_fields,
+        } => {
+            if actual_missing_fields.is_empty() && actual_extraneous_fields.is_empty() {
+                fields
+                    .iter()
+                    .map(|field| {
+                        3 + field.name.len()
+                            + option_type_diff_length_estimate(field.value.as_ref())
+                    })
+                    .sum()
+            } else {
+                type_info_line_length_estimate_maximum + 1
+            }
+        }
         TypeDiff::Choice(variants) => variants
             .iter()
-            .map(|variant| 3 + variant.name.len() + type_diff_length_estimate(&variant.value))
+            .map(|variant| {
+                3 + variant.name.len() + option_type_diff_length_estimate(variant.value.as_ref())
+            })
             .sum(),
     }
 }
@@ -11700,14 +11746,16 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                 TypeDiff::Choice(variant_type_diffs) => {
                     match variant_type_diffs
                         .iter()
-                        .find(|variant_type_diff| variant_type_diff.name == name.value)
+                        .find(|variant_type_diff| variant_type_diff.name == &name.value)
                     {
                         Some(variant_type_diff) => {
-                            if let Some(value) = value {
+                            if let Some(value) = value
+                                && let Some(variant_value_type_diff) = &variant_type_diff.value
+                            {
                                 place_expression_type_diff_errors(
                                     errors,
                                     expressions.item(value),
-                                    &variant_type_diff.value,
+                                    variant_value_type_diff,
                                     expressions,
                                     patterns,
                                     types,
@@ -11724,10 +11772,8 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                     }
                 }
                 TypeDiff::Conflict { .. }
-                | TypeDiff::Variable(_)
-                | TypeDiff::Origin(_)
                 | TypeDiff::CoreConstruct { .. }
-                | TypeDiff::Record(_) => {
+                | TypeDiff::Record { .. } => {
                     errors.push(ErrorNode {
                         range: expression_range(expression, expressions, patterns, types),
                         message: type_diff_error_message(&type_diff).into_boxed_str(),
@@ -11748,10 +11794,12 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
             result,
         } => match type_diff {
             TypeDiff::CoreConstruct { name, arguments } => {
-                if name == "Fn"
+                if *name == "Fn"
                     && let [parameter_type_diff, result_type_diff] = arguments.as_slice()
                 {
-                    if let Some(parameter) = parameter {
+                    if let Some(parameter) = parameter
+                        && let Some(parameter_type_diff) = parameter_type_diff
+                    {
                         place_pattern_type_diff_errors(
                             errors,
                             parameter,
@@ -11761,7 +11809,9 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                             checked_spread_records,
                         );
                     }
-                    if let Some(result) = result {
+                    if let Some(result) = result
+                        && let Some(result_type_diff) = result_type_diff
+                    {
                         place_expression_type_diff_errors(
                             errors,
                             expressions.item(result),
@@ -11774,11 +11824,7 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                     }
                 }
             }
-            TypeDiff::Record(_)
-            | TypeDiff::Conflict { .. }
-            | TypeDiff::Variable(_)
-            | TypeDiff::Origin(_)
-            | TypeDiff::Choice(_) => {
+            TypeDiff::Record { .. } | TypeDiff::Conflict { .. } | TypeDiff::Choice(_) => {
                 errors.push(ErrorNode {
                     range: expression_range(expression, expressions, patterns, types),
                     message: type_diff_error_message(&type_diff).into_boxed_str(),
@@ -11792,25 +11838,53 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
             });
         }
         SyntaxExpression::Record { part0, part1_up } => match type_diff {
-            TypeDiff::Record(type_diff_fields) => {
+            TypeDiff::Record {
+                fields: type_diff_fields,
+                actual_extraneous_fields,
+                actual_missing_fields,
+            } => {
+                if !actual_missing_fields.is_empty() {
+                    errors.push(ErrorNode {
+                        range: symbol_range(
+                            match part0 {
+                                SyntaxRecordPart::Field { name, value: _ } => name.start,
+                                SyntaxRecordPart::Spread { dot_dot_start, record: _ } => *dot_dot_start,
+                            },
+                            "."
+                        ),
+                        message: format!(
+                            "missing fields:{}. Those fields are included in the record type expected for this expression. Add them",
+                            actual_missing_fields.iter().fold(String::new(), |s, f| s + " ." + f)
+                        ).into_boxed_str(),
+                    });
+                }
                 for part in std::iter::once(part0).chain(part1_up) {
                     match part {
                         SyntaxRecordPart::Field { name, value } => {
-                            if let Some(name_value) = &name.value
-                                && let Some(field_type_diff) = type_diff_fields
+                            if let Some(name_value) = &name.value {
+                                if let Some(field_type_diff) = type_diff_fields
                                     .iter()
-                                    .find(|field_type_diff| name_value == &field_type_diff.name)
-                                && let Some(value) = value
-                            {
-                                place_expression_type_diff_errors(
-                                    errors,
-                                    expressions.item(value),
-                                    &field_type_diff.value,
-                                    expressions,
-                                    patterns,
-                                    types,
-                                    checked_spread_records,
-                                );
+                                    .find(|field_type_diff| name_value == field_type_diff.name)
+                                    && let Some(value) = value
+                                {
+                                    if let Some(field_value_type_diff) = &field_type_diff.value {
+                                        place_expression_type_diff_errors(
+                                            errors,
+                                            expressions.item(value),
+                                            field_value_type_diff,
+                                            expressions,
+                                            patterns,
+                                            types,
+                                            checked_spread_records,
+                                        );
+                                    }
+                                } else {
+                                    // actual_extraneous_fields.contains(&name_value)
+                                    errors.push(ErrorNode {
+                                        range: field_name_range(WithStartPosition { start: name.start, value:name_value }),
+                                        message: Box::from("extraneous field. This field is not included in the record type expected for this expression. Remove it"),
+                                    });
+                                }
                             }
                         }
                         SyntaxRecordPart::Spread {
@@ -11824,15 +11898,24 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                                 place_expression_type_diff_errors(
                                     errors,
                                     expressions.item(record),
-                                    &TypeDiff::Record(
-                                        type_diff_fields
+                                    &TypeDiff::Record {
+                                        fields: type_diff_fields
                                             .iter()
                                             .filter(|field_type_diff| {
                                                 spread_field_names.contains(&field_type_diff.name)
                                             })
                                             .cloned()
                                             .collect(),
-                                    ),
+                                        actual_missing_fields: vec![],
+                                        actual_extraneous_fields: actual_extraneous_fields
+                                            .iter()
+                                            .filter(|actual_extraneous_field_name| {
+                                                spread_field_names
+                                                    .contains(actual_extraneous_field_name)
+                                            })
+                                            .cloned()
+                                            .collect(),
+                                    },
                                     expressions,
                                     patterns,
                                     types,
@@ -11843,11 +11926,7 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                     }
                 }
             }
-            TypeDiff::Conflict { .. }
-            | TypeDiff::Variable(_)
-            | TypeDiff::Origin(_)
-            | TypeDiff::CoreConstruct { .. }
-            | TypeDiff::Choice(_) => {
+            TypeDiff::Conflict { .. } | TypeDiff::CoreConstruct { .. } | TypeDiff::Choice(_) => {
                 errors.push(ErrorNode {
                     range: expression_range(expression, expressions, patterns, types),
                     message: type_diff_error_message(&type_diff).into_boxed_str(),
@@ -11855,6 +11934,9 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
             }
         },
         SyntaxExpression::Array { .. } => {
+            // TODO if TypeDiff == CoreConstruct{"Array"},
+            // report length differences on the opening bracket
+            // and otherwise place errors for the first array item
             errors.push(ErrorNode {
                 range: expression_range(expression, expressions, patterns, types),
                 message: type_diff_error_message(&type_diff).into_boxed_str(),
@@ -11898,24 +11980,23 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
             queried: _,
             cases,
         } => {
-            for SyntaxExpressionQueryCase {
+            if let Some(SyntaxExpressionQueryCase {
                 open_bracket_start: _,
                 pattern: _,
                 closed_bracket_start: _,
                 result: case_result,
-            } in cases
+            }) = cases.first()
+                && let Some(case_result) = case_result
             {
-                if let Some(case_result) = case_result {
-                    place_expression_type_diff_errors(
-                        errors,
-                        case_result,
-                        type_diff,
-                        expressions,
-                        patterns,
-                        types,
-                        checked_spread_records,
-                    );
-                }
+                place_expression_type_diff_errors(
+                    errors,
+                    case_result,
+                    type_diff,
+                    expressions,
+                    patterns,
+                    types,
+                    checked_spread_records,
+                );
             }
         }
         SyntaxExpression::Origin {
@@ -11958,14 +12039,16 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                 TypeDiff::Choice(variant_type_diffs) => {
                     match variant_type_diffs
                         .iter()
-                        .find(|variant_type_diff| &variant_type_diff.name == name_value)
+                        .find(|variant_type_diff| variant_type_diff.name == name_value)
                     {
                         Some(variant_type_diff) => {
-                            if let Some(value) = value {
+                            if let Some(value) = value
+                                && let Some(variant_value_type_diff) = &variant_type_diff.value
+                            {
                                 place_pattern_type_diff_errors(
                                     errors,
                                     patterns.item(value),
-                                    &variant_type_diff.value,
+                                    variant_value_type_diff,
                                     patterns,
                                     types,
                                     checked_spread_records,
@@ -11981,10 +12064,8 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                     }
                 }
                 TypeDiff::Conflict { .. }
-                | TypeDiff::Variable(_)
-                | TypeDiff::Origin(_)
                 | TypeDiff::CoreConstruct { .. }
-                | TypeDiff::Record(_) => {
+                | TypeDiff::Record { .. } => {
                     errors.push(ErrorNode {
                         range: pattern_range(pattern, patterns, types),
                         message: type_diff_error_message(&type_diff).into_boxed_str(),
@@ -12005,24 +12086,52 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
             });
         }
         SyntaxPattern::Record { part0, part1_up } => match type_diff {
-            TypeDiff::Record(type_diff_fields) => {
+            TypeDiff::Record {
+                fields: type_diff_fields,
+                actual_missing_fields,
+                actual_extraneous_fields,
+            } => {
+                if !actual_missing_fields.is_empty() {
+                    errors.push(ErrorNode {
+                        range: symbol_range(
+                            match part0 {
+                                SyntaxRecordPart::Field { name, value: _ } => name.start,
+                                SyntaxRecordPart::Spread { dot_dot_start, record: _ } => *dot_dot_start,
+                            },
+                            "."
+                        ),
+                        message: format!(
+                            "missing fields:{}. Those fields are included in the record type expected for this expression. Add them",
+                            actual_missing_fields.iter().fold(String::new(), |s, f| s + " ." + f)
+                        ).into_boxed_str(),
+                    });
+                }
                 for part in std::iter::once(part0).chain(part1_up) {
                     match part {
                         SyntaxRecordPart::Field { name, value } => {
-                            if let Some(name_value) = &name.value
-                                && let Some(field_type_diff) = type_diff_fields
+                            if let Some(name_value) = &name.value {
+                                if let Some(field_type_diff) = type_diff_fields
                                     .iter()
-                                    .find(|field_type_diff| name_value == &field_type_diff.name)
-                                && let Some(value) = value
-                            {
-                                place_pattern_type_diff_errors(
-                                    errors,
-                                    patterns.item(value),
-                                    &field_type_diff.value,
-                                    patterns,
-                                    types,
-                                    checked_spread_records,
-                                );
+                                    .find(|field_type_diff| name_value == field_type_diff.name)
+                                    && let Some(value) = value
+                                {
+                                    if let Some(field_value_type_diff) = &field_type_diff.value {
+                                        place_pattern_type_diff_errors(
+                                            errors,
+                                            patterns.item(value),
+                                            field_value_type_diff,
+                                            patterns,
+                                            types,
+                                            checked_spread_records,
+                                        );
+                                    }
+                                } else {
+                                    // actual_extraneous_fields.contains(&name_value)
+                                    errors.push(ErrorNode {
+                                        range: field_name_range(WithStartPosition { start: name.start, value:name_value }),
+                                        message: Box::from("extraneous field. This field is not included in the record type expected for this pattern. Remove it"),
+                                    });
+                                }
                             }
                         }
                         SyntaxRecordPart::Spread {
@@ -12036,15 +12145,24 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                                 place_pattern_type_diff_errors(
                                     errors,
                                     patterns.item(record),
-                                    &TypeDiff::Record(
-                                        type_diff_fields
+                                    &TypeDiff::Record {
+                                        fields: type_diff_fields
                                             .iter()
                                             .filter(|field_type_diff| {
                                                 spread_field_names.contains(&field_type_diff.name)
                                             })
                                             .cloned()
                                             .collect(),
-                                    ),
+                                        actual_missing_fields: vec![],
+                                        actual_extraneous_fields: actual_extraneous_fields
+                                            .iter()
+                                            .filter(|actual_extraneous_field_name| {
+                                                spread_field_names
+                                                    .contains(actual_extraneous_field_name)
+                                            })
+                                            .cloned()
+                                            .collect(),
+                                    },
                                     patterns,
                                     types,
                                     checked_spread_records,
@@ -12054,11 +12172,7 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                     }
                 }
             }
-            TypeDiff::Conflict { .. }
-            | TypeDiff::Variable(_)
-            | TypeDiff::Origin(_)
-            | TypeDiff::CoreConstruct { .. }
-            | TypeDiff::Choice(_) => {
+            TypeDiff::Conflict { .. } | TypeDiff::CoreConstruct { .. } | TypeDiff::Choice(_) => {
                 errors.push(ErrorNode {
                     range: pattern_range(pattern, patterns, types),
                     message: type_diff_error_message(&type_diff).into_boxed_str(),
