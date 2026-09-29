@@ -9597,7 +9597,7 @@ If there should only ever by one variant, using a record with a single field is 
                             // only this case uses this pattern variable, not the first case
                             errors.push(ErrorNode {
                                 range: name_range(WithStartPosition { value: pattern_variable, start: pattern_variable_origin.origin_start }),
-                                message: format!("this query case pattern variable is not used in the result of the first case starting at {}.
+                                message: format!("this pattern variable is not used in the result of the first case starting at {}.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
 If you do not need to use this variable in that case, use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
                                     position_to_string(expression_start(case0_result))
@@ -9612,7 +9612,7 @@ If you do not need to use this variable in that case, use any of the -rid functi
                             errors.push(ErrorNode {
                                 range: name_range(WithStartPosition { value: pattern_variable, start: pattern_variable_origin.origin_start }),
                                 message: format!(
-                                    "this query case pattern variable is not used in the result of the {} case starting at {}.
+                                    "this pattern variable is not used in the result of the {} case starting at {}.
 This is problematic because accidentally not handling a value in one branch could lead to leaked memory (or worse).
 If you do not need to use this variable in that case, use any of the -rid functions to scrap it, like ? U32-rid your-variable [.] ..your existing case result..",
                                     index_to_th(case_index),
