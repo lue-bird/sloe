@@ -232,7 +232,7 @@ fn Json-get-field-value
             ? Buf-remove .buf jsons .slot value
             [.item value .buf jsons]
             ? Str-dup name-to-get [.a name-to-get-use .b name-to-get]
-            ? Buf-opt-span-starts-with-str .buf chars .span name .str name-to-get-use
+            ? Buf-opt-span-equal-to-str-chars .buf chars .span name .str name-to-get-use
             [.buf chars .span name .matches 'no .] (
                 ? Buf-opt-span-rid .buf chars .span name .item-rid [c char] Char-rid c
                 [chars]
@@ -814,7 +814,7 @@ fn Buf-item-dup
     [.. buf-slot .out item-duped]
     .. buf-slot .item item-duped
 
-fn Buf-opt-span-starts-with-str
+fn Buf-opt-span-equal-to-str-chars
     .buf buf Buf _origin, char
     .span span Opt Span _origin
     .str str str
