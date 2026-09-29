@@ -17336,6 +17336,7 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     Origin {
         name: &'a Name,
         use_start: lsp_types::Position,
+        // TODO remove origin_unique_name as it's always equal to name
         origin_unique_name: &'a Name,
         origin: OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
     },
@@ -19008,7 +19009,16 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             }
         }
         SyntaxType::ConstructWithoutArguments(name) => {
-            if let &SyntaxSymbol::ProjectTypeOrUnknown {
+            if let &SyntaxSymbol::Origin {
+                name: symbol_name,
+                use_start: _,
+                origin_unique_name: _,
+                origin: _,
+            } = symbol
+                && &name.value == symbol_name
+            {
+                uses.push(name_range(with_start_position_as_ref(name)));
+            } else if let &SyntaxSymbol::ProjectTypeOrUnknown {
                 name: symbol_name,
                 construct_info: _,
                 origins: _,
