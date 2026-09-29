@@ -9685,7 +9685,7 @@ If not, add patterns for the cases above"
                             start: *caret_key_symbol_start,
                             end: symbol_end(*caret_key_symbol_start, "^"),
                         },
-                        message: Box::from("missing origin name after ^..here.."),
+                        message: Box::from("missing origin name after ^ ..here.."),
                     },
                     Some(last_part) => ErrorNode {
                         range: lsp_types::Range {
@@ -15279,7 +15279,7 @@ fn U32-max .a a u32 .b b u32 : u32 =
 Origins can not be arbitrary values because values like `u32` could be duplicated leading to different collections with the same origin type.
 This is not possible for values of type `Origin`.
 
-When you create an `Origin` with `^some-origin expression`,
+When you create an `Origin` with `^ some-origin  expression-that-uses-the-origin-variable`,
 `some-origin` will be of type `Origin some-origin, .`.
 The first type uniquely identifies the `Origin` with type `some-origin`.
 The second type here specifies that there are no `Origin` values with the same unique origin type (explained later).
@@ -15287,6 +15287,11 @@ The second type here specifies that there are no `Origin` values with the same u
 An `Origin` type will also be present in `Slot`, `Span`, `Buf`, as the first type argument.
 For example `Slot Origin some-origin, .`
 refers to an index in a `Buf (Origin some-origin, .), char`.
+
+Btw if you're wondering how to name origins:
+I recommend using the same name you're using for the collection variable.
+For example if you have a `Buf` of type `text`, create it with an origin named `text`
+(works because the original `text` variable is consumed before the new `text` buf variable comes into scope).
 
 There is a second way to create origins by listing parts
 which all have the same unique origin type.
@@ -15333,12 +15338,12 @@ Can be used to for example create Bufs containing Bufs without having inner inco
 An `Origin-erased` value can be turned back into a proper value with a new specific origin on demand with `Origin-unerase`.
 If none of this sounded useful to you, you don't need this (yet).
 ```sloe
-^outer
+^ outer
 ? Buf-empty{Origin-erased .buf Buf-origin-erased ., u32 .slot Slot erased} outer
 [buf-outer]
 
 ? (
-    ^inner
+    ^ inner
     ? Buf-empty{u32} inner [buf-inner]
     ? Buf-add .buf buf-inner .new 0 u32 [.buf buf-inner .slot slot-inner]
     ? Slot-origin-isolate slot-inner [slot-isolated]
@@ -15356,7 +15361,7 @@ If none of this sounded useful to you, you don't need this (yet).
 [erased-inner0]
 
 ? (
-    ^inner
+    ^ inner
     ? Buf-empty{u32} inner1 [buf-inner1]
     ? Buf-add .buf buf-inner1 .new 0 u32 [.buf buf-inner1 .slot slot-inner1]
     ? ..do the same as in Origin-erase for slot0..
@@ -15367,7 +15372,7 @@ If none of this sounded useful to you, you don't need this (yet).
 Buf-add-array .buf buf-outer .new ; erased-inner0 ; erased-inner1
 
 # example of how to recover an erased value
-^inner
+^ inner
 Origin-unerase
 .erased erased-inner
 .origin inner
@@ -15441,7 +15446,7 @@ See `Origin-erased`, `Slot-origin-unerase`, `Span-origin-unerase`, `Opt-span-ori
 Has constant time access and update and constant time add.
 ```sloe
 fn Use-a-buf . : u32 =
-    ^my-items-origin
+    ^ my-items-origin
     ? Buf-empty{u32} my-items-origin [my-items]
     ? Buf-add .buf my-items .item 609 u32
     [.buf my-items .slot first-item-slot]
@@ -16552,9 +16557,8 @@ fn syntax_expression_unparenthesized_format<Expressions, Patterns, Types>(
             name,
             result,
         } => {
-            formatted.push('^');
+            formatted.push_str("^ ");
             if let Some((part0, part1_up)) = parts.split_first() {
-                formatted.push(' ');
                 formatted.push('.');
                 if let Some(part_name0) = &part0.value {
                     formatted.push_str(part_name0);

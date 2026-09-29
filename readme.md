@@ -62,7 +62,7 @@ A value whose type contains an origin can't escape the scope of it's origin.
 This is checked at compile-time for the expression following origin creation but you'll likely realize it before then:
 ```sloe
 fn Some-buf . : Buf ??origin cannot even be annotated??, u32 =
-    ^buf-origin
+    ^ buf-origin
     ? Buf-empty{u32} buf-origin [buf]
     ? Buf-add .buf buf .new 123 u32 [.buf buf .slot slot]
     ...
@@ -88,12 +88,12 @@ fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
 
 ## examples
 ### creating new origins, slots and spans
-`^some-origin-name` creates a new variable of type `Origin` and a unique local type that's only valid in the current scope.
+`^ some-origin-name` creates a new variable of type `Origin` and a unique local type that's only valid in the current scope.
 Like every other sloe value, an origin type can only be used once, so only for one collection.
 ```sloe
 # use a temporary collection contained within a scope
 fn Use-buf . : u32 =
-    ^buf-origin
+    ^ buf-origin
     # create a buffer that can hold u32 items and give it the name buf
   	? Buf-empty{u32} buf-origin [buf]
     # insert 123, destructure the resulting record
@@ -111,10 +111,10 @@ fn Use-opt opt Opt u32 : ... =
     ? (
         ? opt
         ['no .]
-            ^buf-origin
+            ^ buf-origin
             Buf-empty{u32} buf-origin
         ['yes number] (
-            ^buf-origin
+            ^ buf-origin
             ? Buf-one .origin buf-origin .item number [.buf buf .slot slot]
             ...
             buf
@@ -122,7 +122,7 @@ fn Use-opt opt Opt u32 : ... =
     )
     [buf]
     # this will compile:
-    ^buf-origin
+    ^ buf-origin
     ? (
         :opt
         ['no .]
@@ -248,7 +248,7 @@ some-variable some-type
 # introduce a new origin (describes which collection slots and spans point into).
 # The given name can be used as a variable and its unique local type.
 # Below will create a variable `new-origin-name` of type `Origin new-origin-name, .`
-^new-origin-name  expression-that uses new-origin-name
+^ new-origin-name  expression-that uses new-origin-name
 
 # introduce multiple new origins with the same unique local type but different part names.
 # Below will create a variable view-origin of type
@@ -552,7 +552,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       .consume-origin consume-origin Origin _consume-origin, .
       .result-origin result-origin _result-origin
   : Buf _result-origin, u32 =
-      ^local-origin
+      ^ local-origin
       ? Buf-empty{u32} consume-origin [temporary]
       ? Recurse local-origin result-origin [result]
       ? Buf-add .buf temporary .new 1 u32 [.slot slot .buf temporary]
@@ -640,7 +640,7 @@ It also makes initial_state much easier to call from the rust side (though we ne
   Its structure _must_ be created at compile-time. Dynamically this doesn't fly: `Buf origin = { bucket: Map<for type_byte_size: { key: type_byte_size, value: Buf<type_byte_size> }> }`.
   However, really providing this in sloe would require sloe to add _some_ kind of "type variable must be record" constraint:
   ```sloe
-  ^buf-origin
+  ^ buf-origin
   ? Buf-empty{.expression expression .pattern Pattern buf-origin} buf-origin [buf]
   ? Buf-add .buf buf .new some-expression [.buf buf slot some-expression-slot]
   ? Buf-add .buf buf .new some-pattern  [.buf buf .slot some-pattern-slot]
@@ -809,7 +809,16 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- finish io smuggling example
+- figure out why sometimes obvious errors are not reported (when multi-line query with .. exists for example).
+  Maybe related to a place_type_diff not arriving anywhere (for patterns)?
+
+- when expected type is ., spread record says "type mismatch: ." which is confusing. It should list extra fields
+
+- get working and publish io smuggling example
+
+- add `Buf-(opt-)span-alter-and-map` which can be used to explicitly dup a Span into a new Buf (thus requires a new origin).
+
+- only output _ = @TypeOf when variables have not been used
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 

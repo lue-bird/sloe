@@ -1068,7 +1068,7 @@ To learn about empty choice types, go to `Choice-empty-to`",
             name: "Buf & array",
             source: r#"
 fn Number-buffer-sum . : u32 =
-    ^example-origin
+    ^ example-origin
     ? Buf-empty{u32} example-origin [buf]
     ? Buf-add .buf buf .new 1234 u32 [.buf buf .slot slot]
     ? Slot-to-span slot [span]
@@ -1123,7 +1123,7 @@ and the indexes&ranges it gives out.
 - `Buf _origin, _item`: the resizable array on the heap, marked with _origin
 - `Slot _origin` an index into the `Buf` with the same origin
 - `Span _origin` a range (start index + length) into the `Buf` with the same origin
-Unique new origins can be created with `^new-origin`;
+Unique new origins can be created with `^ new-origin`;
 the expression after that will be able to make use of it (and never thereafter).
 Of course origins can not be duplicated. That's the whole trick!
 

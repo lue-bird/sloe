@@ -1476,7 +1476,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                                     label: origin_name.to_string(),
                                     kind: Some(lsp_types::CompletionItemKind::Struct),
                                     documentation: Some(lsp_documentation_markdown(format!(
-                                        "```sloe\n^{}\n```",
+                                        "```sloe\n^ {}\n```",
                                         origin_name
                                     ))),
                                     ..lsp_types::CompletionItem::default()
