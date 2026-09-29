@@ -1637,29 +1637,23 @@ pub fn span_step(
 ) error{OutOfMemory}!@"%State" {
     return @"%".span.step(@"%allocator", @"%".direction, @"%".state, @"%".step);
 }
-pub fn done(@"%Done": type, @"%Going": type, @"%done": @"%Done") @"'done'going"(@"%Done", @"%Going") {
-    return .{ .done = @"%done" };
-}
-pub fn going(@"%Done": type, @"%Going": type, @"%going": @"%Going") @"'done'going"(@"%Done", @"%Going") {
-    return .{ .going = @"%going" };
-}
 pub fn opt_span_step_while(
     @"%Done": type,
-    @"%Going": type,
     @"%Origin": type,
+    @"%State": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
         direction: @"'down'up"(void, void),
         span: Opt(Span(@"%Origin")),
-        state: @"%Going",
+        state: @"%State",
         step: Fn(
-            Record(struct { slot: Slot(@"%Origin"), state: @"%Going" }),
-            @"'done'going"(@"%Done", @"%Going"),
+            Record(struct { slot: Slot(@"%Origin"), state: @"%State" }),
+            @"'done'going"(@"%Done", @"%State"),
         ),
     }),
 ) error{OutOfMemory}!@"'done'going"(
     Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
-    @"%Going",
+    @"%State",
 ) {
     return switch (@"%".span) {
         .no => .{ .going = @"%".state },
@@ -1668,21 +1662,21 @@ pub fn opt_span_step_while(
 }
 pub fn span_step_while(
     @"%Done": type,
-    @"%Going": type,
     @"%Origin": type,
+    @"%State": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
         direction: @"'down'up"(void, void),
         span: Span(@"%Origin"),
-        state: @"%Going",
+        state: @"%State",
         step: Fn(
-            Record(struct { slot: Slot(@"%Origin"), state: @"%Going" }),
-            @"'done'going"(@"%Done", @"%Going"),
+            Record(struct { slot: Slot(@"%Origin"), state: @"%State" }),
+            @"'done'going"(@"%Done", @"%State"),
         ),
     }),
 ) error{OutOfMemory}!@"'done'going"(
     Record(struct { done: @"%Done", rest: Opt(Span(@"%Origin")) }),
-    @"%Going",
+    @"%State",
 ) {
     return @"%".span.step_while(@"%Done", @"%allocator", @"%".direction, @"%".state, @"%".step);
 }
