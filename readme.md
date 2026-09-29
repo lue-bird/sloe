@@ -809,9 +809,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- when renaming type parameters, include the leading underscore in the name to indicate that not providing an underscore will substitute it to a non-variable.
-  Also correctly handle project type parameters, which currently always prepend _
-
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
 - add `Buf-(opt-)span-sort` (issue: how to implement in rust and js?).

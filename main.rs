@@ -1105,17 +1105,17 @@ fn respond_to_hover<Expressions, Patterns, Types>(
         }),
         sloe::SyntaxSymbol::TypeVariable {
             name,
-            use_start,
+            use_underscore_start,
             scope: _,
         } => Some(lsp_types::Hover {
             contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: "type variable".to_string(),
             }),
-            range: Some(sloe::name_range(sloe::WithStartPosition {
-                start: use_start,
-                value: name,
-            })),
+            range: Some(lsp_types::Range {
+                start: use_underscore_start,
+                end: lsp_position_add_characters(use_underscore_start, (name.len() + 1) as u32),
+            }),
         }),
         sloe::SyntaxSymbol::VariantOrUnknown(_) => None,
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
@@ -1238,12 +1238,12 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
         })),
         sloe::SyntaxSymbol::TypeVariable {
             name,
-            use_start,
+            use_underscore_start,
             scope: _,
-        } => Some(sloe::name_range(sloe::WithStartPosition {
-            value: name,
-            start: use_start,
-        })),
+        } => Some(lsp_types::Range {
+            start: use_underscore_start,
+            end: lsp_position_add_characters(use_underscore_start, (name.len() + 1) as u32),
+        }),
         sloe::SyntaxSymbol::VariantOrUnknown(name) => Some(sloe::name_range(name)),
         sloe::SyntaxSymbol::ProjectFnOrUnknown {
             name,
@@ -1560,7 +1560,7 @@ fn respond_to_completion<Expressions, Patterns, Types>(
         },
         sloe::SyntaxSymbol::TypeVariable {
             name: _,
-            use_start,
+            use_underscore_start: use_start,
             scope,
         } => {
             let mut available_existing_variables = std::collections::HashSet::new();

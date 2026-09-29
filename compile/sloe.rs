@@ -17329,7 +17329,7 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     },
     TypeVariable {
         name: &'a Name,
-        use_start: lsp_types::Position,
+        use_underscore_start: lsp_types::Position,
         scope: &'a SyntaxProjectItem<Expressions, Patterns, Types>,
     },
     VariantOrUnknown(WithStartPosition<&'a Name>),
@@ -17450,7 +17450,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                         ) {
                             Some(SyntaxSymbol::TypeVariable {
                                 name: parameter_name,
-                                use_start: position_add_characters(underscore_start, 1),
+                                use_underscore_start: underscore_start,
                                 scope: item,
                             })
                         } else {
@@ -17509,7 +17509,7 @@ pub fn project_symbol_at_position<'a, Expressions, Patterns, Types>(
                     ) {
                         Some(SyntaxSymbol::TypeVariable {
                             name: parameter_name,
-                            use_start: position_add_characters(underscore_start, 1),
+                            use_underscore_start: underscore_start,
                             scope: item,
                         })
                     } else {
@@ -18437,7 +18437,7 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             ) {
                 Some(SyntaxSymbol::TypeVariable {
                     name: name,
-                    use_start: position_add_characters(*underscore_start, 1),
+                    use_underscore_start: *underscore_start,
                     scope: scope,
                 })
             } else {
@@ -18600,7 +18600,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
         }
         &SyntaxSymbol::TypeVariable {
             name: symbol_name,
-            use_start: _,
+            use_underscore_start: _,
             scope,
         } => match scope {
             SyntaxProjectItem::TypeAlias {
@@ -18622,7 +18622,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 .find_map(|(underscore_start, name)| {
                     if name == symbol_name {
                         Some(lsp_types::Range {
-                            start: position_add_characters(underscore_start, 1),
+                            start: underscore_start,
                             end: position_add_characters(underscore_start, 1 + name.len() as u32),
                         })
                     } else {
@@ -18650,7 +18650,7 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
                 .find_map(|(underscore_start, name)| {
                     if name == symbol_name {
                         Some(lsp_types::Range {
-                            start: position_add_characters(underscore_start, 1),
+                            start: underscore_start,
                             end: position_add_characters(underscore_start, 1 + name.len() as u32),
                         })
                     } else {
@@ -18698,7 +18698,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
     patterns: &core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
 ) -> Vec<lsp_types::Range> {
-    let mut uses = Vec::new();
+    let mut uses = Vec::with_capacity(2);
     match symbol {
         SyntaxSymbol::Origin {
             name: _,
@@ -18721,7 +18721,7 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
         }
         SyntaxSymbol::TypeVariable {
             name: _,
-            use_start: _,
+            use_underscore_start: _,
             scope,
         } => match scope {
             SyntaxProjectItem::TypeAlias {
@@ -18956,7 +18956,7 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
         } => {
             if let &SyntaxSymbol::TypeVariable {
                 name: symbol_name,
-                use_start: _,
+                use_underscore_start: _,
                 scope: _,
             } = symbol
                 && name == symbol_name
