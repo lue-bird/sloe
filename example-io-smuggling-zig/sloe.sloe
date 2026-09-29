@@ -1,0 +1,898 @@
+# one way to perform effects from sloe:
+# pass in effectful functions from the host language.
+# While I personally don't love this approach
+# (sloe code execution won't be guaranteed to be effect-free anymore),
+# it is inarguably convenient and intuitive
+# A small difference compared to zigs virtual dispatch Io:
+# The internal io state is parameterized, so sloe functions
+# can work with whatever implementation-specific data you feed it
+
+fn Print-random-quote
+    .io io _io
+    .http-get (
+        http-get
+        Fn .io _io .url str
+        ,
+        .response Origin-erased opt-char-span-erased
+        .io _io
+    )
+    .stdout-write-char-span (
+        stdout-write-char-span
+        Fn (.io _io .char-span Origin-erased opt-char-span-erased)
+        ,
+        .io _io .char-span Origin-erased opt-char-span-erased
+    )
+    .stdout-flush
+    stdout-flush Fn _io, _io
+: _io =
+    ? Call .fn http-get .in (.io io .url "https://dummyjson.com/quotes/random" str)
+    [.io io .response quote-resopnse-erased]
+    ^ chars
+    ^ jsons
+    ^ json-names
+    ? Buf-empty{Json (Origin chars, .), (Origin jsons, .), Origin json-names, .} jsons [jsons]
+    ? Buf-empty{Opt Span Origin chars, .} json-names [json-names]
+    ? Opt-char-span-unerase .erased quote-resopnse-erased .origin chars
+    [.chars chars .span quote-resopnse]
+    ?
+        Json-parse
+        .chars chars
+        .jsons jsons
+        .json-names json-names
+        .span quote-resopnse
+    [.json json .span span-after-json .chars chars .jsons jsons .json-names json-names]
+    ? Buf-opt-span-rid .buf chars .span span-after-json .item-rid [c char] Char-rid c
+    [chars]
+    ?
+        Json-get-field-value
+        .json json
+        .name "quote" str
+        .. (.chars chars .jsons jsons .json-names json-names)
+    [.json 'no . .chars chars .jsons jsons .json-names json-names] (
+        ? .. Buf-rid jsons .. Buf-rid json-names [.]
+        ? Buf-add-str-chars .buf chars .new "failed to find a field named .quote in the response json\n" str
+        [.buf chars .span to-write]
+        ?
+            Call
+            .fn stdout-write-char-span
+            .in (.io io .char-span (Opt-char-span-erase .chars chars .span 'yes{'no .} to-write))
+        [.char-span char-span .io io]
+        ^ chars-to-remove
+        ? Opt-char-span-unerase .erased char-span .origin chars-to-remove
+        [.chars chars .span char-span]
+        ? Buf-rid Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c [.]
+        Call .fn stdout-flush .in io
+    )
+    [.json 'yes quote-json .chars chars .jsons jsons .json-names json-names]
+    ? Json-to-string quote-json
+    ['no quote-json-not-string] (
+        ?
+            Json-rid
+            .json quote-json-not-string
+            .. (.chars chars .jsons jsons .json-names json-names)
+        [.chars chars .jsons jsons .json-names json-names]
+        ? .. Buf-rid jsons .. Buf-rid json-names [.]
+        ? Buf-add-str-chars .buf chars .new "failed to parse field .quote as a string in the response json\n" str
+        [.buf chars .span to-write]
+        ?
+            Call
+            .fn stdout-write-char-span
+            .in (.io io .char-span (Opt-char-span-erase .chars chars .span 'yes{'no .} to-write))
+        [.char-span char-span .io io]
+        ^ chars-to-remove
+        ? Opt-char-span-unerase .erased char-span .origin chars-to-remove
+        [.chars chars .span char-span]
+        ? Buf-rid Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c [.]
+        Call .fn stdout-flush .in io
+    )
+    ['yes quote]
+    ? .. Buf-rid jsons .. Buf-rid json-names [.]
+    ?
+        Buf-opt-span-add-str-chars
+        .buf chars
+        .span 'no{Opt Span Origin chars, .} .
+        .new "Corporate quote of the day: \"" str
+    [.buf chars .span to-write]
+    ? Buf-span-add-own-opt-span .buf chars .start to-write .end quote
+    [.buf chars .span to-write]
+    ? Buf-span-add-str-chars .buf chars .span to-write .new "\"\n" str
+    [.buf chars .span to-write]
+    ?
+        Call
+        .fn stdout-write-char-span
+        .in
+        .io io
+        .char-span (Opt-char-span-erase .chars chars .span 'yes{'no .} to-write)
+    [.char-span char-span .io io]
+    ^ chars-to-remove
+    ? Opt-char-span-unerase .erased char-span .origin chars-to-remove
+    [.chars chars .span char-span]
+    ? Buf-rid Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c [.]
+    Call .fn stdout-flush .in io
+
+ty opt-char-span-erased
+    .chars Buf-origin-erased ., char
+    .span Opt Span Origin erased, .
+
+fn Opt-char-span-erase
+    .chars chars Buf (Origin _origin, .), char
+    .span span Opt Span Origin _origin, .
+: Origin-erased opt-char-span-erased =
+    Origin-erase
+    Origin-isolated-map
+    .isolated (
+        Origin-isolated-merge
+        .a Opt-span-origin-isolate span
+        .b
+        Buf-origin-isolate
+        .buf chars
+        .item-isolate [c char] Char-origin-isolate{_origin} c
+    )
+    .change
+    [
+        .a span Opt Span Origin erased, .
+        .b chars Buf-origin-erased ., char
+    ]
+    .chars chars .span span
+
+fn Opt-char-span-unerase
+    .origin origin Origin _origin, .
+    .erased erased Origin-erased opt-char-span-erased
+:
+    .chars Buf (Origin _origin, .), char
+    .span Opt Span Origin _origin, .
+=
+    Origin-unerase
+    .erased erased
+    .origin origin
+    .unerase
+    [
+        .erased quote-response opt-char-span-erased
+        .uneraser uneraser Origin-uneraser _origin
+    ]
+    ? quote-response [.chars chars .span span]
+    ? Opt-span-origin-unerase .span span .uneraser uneraser
+    [.span span .uneraser uneraser]
+    ? Buf-origin-unerase-keep-items .buf chars .uneraser uneraser
+    [.buf chars .uneraser uneraser]
+    .unerased (.chars chars .span span) .uneraser uneraser
+
+# the rest of the file only contains super basic json parsing,
+# which is irrelevant for showcasing the IO side.
+# 
+# None of it is complicated but it's wordy
+
+ty Json _chars, _jsons, _json-names
+# deliberately incomplete. It's just an example
+    'string Opt Span _chars
+    'number Span _chars
+    'object
+        .names Opt Span _json-names
+        .values Opt Span _jsons
+    'failed .
+
+fn Json-get-field-value
+    .json json Json _chars, _jsons, _json-names
+    .name name-to-get str
+    .chars chars Buf _chars, char
+    .jsons jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names json-names Buf _json-names, Opt Span _chars
+:
+    .json Opt Json _chars, _jsons, _json-names
+    .chars Buf _chars, char
+    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names Buf _json-names, Opt Span _chars
+# scraps all json values not at that field value
+=
+    ? json
+    ['object .names names .values values] (
+        ? (
+            Opt-span-step-while
+            .span names
+            .direction 'up{'down .} .
+            .state (
+                .name-to-get name-to-get
+                .values values
+                .. (.chars chars .jsons jsons .json-names json-names)
+            )
+            .step
+            [
+                .slot name Slot _json-names
+                .state (
+                    .name-to-get name-to-get str
+                    .values values Opt Span _jsons
+                    .chars chars Buf _chars, char
+                    .jsons jsons Buf _jsons, Json _chars, _jsons, _json-names
+                    .json-names json-names Buf _json-names, Opt Span _chars
+                )
+            ]
+            ? Buf-remove .buf json-names .slot name
+            [.item name .buf json-names]
+            ? values
+            ['no .] (
+                ? Str-rid name-to-get [.]
+                ? Buf-opt-span-rid .buf chars .span name .item-rid [c char] Char-rid c
+                [chars]
+                'done{
+                    'going
+                    .name-to-get str
+                    .values Opt Span _jsons
+                    .chars Buf _chars, char
+                    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+                    .json-names Buf _json-names, Opt Span _chars
+                }
+                .json 'no{Opt Json _chars, _jsons, _json-names} .
+                .values-after 'no{Opt Span _jsons} .
+                .chars chars
+                .jsons jsons
+                .json-names json-names
+            )
+            ['yes values]
+            ? Span-start values [.start value .after values-after]
+            ? Buf-remove .buf jsons .slot value
+            [.item value .buf jsons]
+            ? Str-dup name-to-get [.a name-to-get-use .b name-to-get]
+            ? Buf-opt-span-starts-with-str .buf chars .span name .str name-to-get-use
+            [.buf chars .span name .matches 'no .] (
+                ? Buf-opt-span-rid .buf chars .span name .item-rid [c char] Char-rid c
+                [chars]
+                ? Json-rid .json value .chars chars .jsons jsons .json-names json-names [bufs]
+                'going{
+                    'done
+                    .json Opt Json _chars, _jsons, _json-names
+                    .values-after Opt Span _jsons
+                    .chars Buf _chars, char
+                    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+                    .json-names Buf _json-names, Opt Span _chars
+                }
+                .name-to-get name-to-get .values values-after .. bufs
+            )
+            [.buf chars .span name .matches 'yes .] (
+                ? Str-rid name-to-get [.]
+                ? Buf-opt-span-rid .buf chars .span name .item-rid [c char] Char-rid c
+                [chars]
+                'done{
+                    'going
+                    .name-to-get str
+                    .values Opt Span _jsons
+                    .chars Buf _chars, char
+                    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+                    .json-names Buf _json-names, Opt Span _chars
+                }
+                .json 'yes{'no .} value
+                .values-after values-after
+                .chars chars
+                .jsons jsons
+                .json-names json-names
+            )
+        )
+        ['going .name-to-get name-to-get .values values-after .. bufs] (
+            ? Str-rid name-to-get [.]
+            .json 'no{Opt Json _chars, _jsons, _json-names} .
+            .. (
+                Json-rid
+                .json (
+                    'object{Json _chars, _jsons, _json-names}
+                    .names 'no{Opt Span _json-names} .
+                    .values values-after
+                )
+                .. bufs
+            )
+        )
+        ['done .done (.json json .values-after values-after .. bufs) .rest names-rest] (
+            .json json
+            .. (
+                Json-rid
+                .json (
+                    'object{Json _chars, _jsons, _json-names}
+                    .names names-rest
+                    .values values-after
+                )
+                .. bufs
+            )
+        )
+    )
+    [json] (
+        ? Str-rid name-to-get [.]
+        .json 'no{Opt Json _chars, _jsons, _json-names} .
+        .. (Json-rid .json json .chars chars .jsons jsons .json-names json-names)
+    )
+
+fn Json-to-string
+    json Json _chars, _jsons, _json-names
+:
+    'yes Opt Span _chars
+    'no Json _chars, _jsons, _json-names
+=
+    ? json
+    ['string char-span] 'yes{'no Json _chars, _jsons, _json-names} char-span
+    [json] 'no{'yes Opt Span _chars} json
+
+fn Json-rid
+    .json json Json _chars, _jsons, _json-names
+    .chars chars Buf _chars, char
+    .jsons jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names json-names Buf _json-names, Opt Span _chars
+:
+    .chars Buf _chars, char
+    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names Buf _json-names, Opt Span _chars
+=
+    ? json
+    ['failed .] .chars chars .jsons jsons .json-names json-names
+    ['string char-span] (
+        ? Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c
+        [chars]
+        .chars chars .jsons jsons .json-names json-names
+    )
+    ['number char-span] (
+        ? Buf-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c
+        [chars]
+        .chars chars .jsons jsons .json-names json-names
+    )
+    ['object .names names .values values] (
+        ? (
+            Opt-span-step
+            .span names
+            .direction 'down{'up .} .
+            .state (.chars chars .jsons jsons .json-names json-names)
+            .step (
+                [
+                    .slot name Slot _json-names
+                    .state (
+                        .chars chars Buf _chars, char
+                        .jsons jsons Buf _jsons, Json _chars, _jsons, _json-names
+                        .json-names json-names Buf _json-names, Opt Span _chars
+                    )
+                ]
+                ? Buf-remove .buf json-names .slot name
+                [.item name .buf json-names]
+                ? Buf-opt-span-rid .buf chars .span name .item-rid [c char] Char-rid c
+                [chars]
+                .chars chars .jsons jsons .json-names json-names
+            )
+        )
+        [bufs]
+        Opt-span-step
+        .span values
+        .direction 'down{'up .} .
+        .state bufs
+        .step (
+            [
+                .slot json Slot _jsons
+                .state (
+                    .chars chars Buf _chars, char
+                    .jsons jsons Buf _jsons, Json _chars, _jsons, _json-names
+                    .json-names json-names Buf _json-names, Opt Span _chars
+                )
+            ]
+            ? Buf-remove .buf jsons .slot json
+            [.item json .buf jsons] (
+                Json-rid .json json .chars chars .jsons jsons .json-names json-names
+            )
+        )
+    )
+
+fn Json-parse
+    .chars chars Buf _chars, char
+    .jsons jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names json-names Buf _json-names, Opt Span _chars
+    .span span Opt Span _chars
+:
+    .json Json _chars, _jsons, _json-names
+    .chars Buf _chars, char
+    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names Buf _json-names, Opt Span _chars
+    .span Opt Span _chars
+=
+    ? Opt-span-start span
+    [.start 'no . .after span] (
+        .json 'failed{Json _chars, _jsons, _json-names} .
+        .chars chars
+        .jsons jsons
+        .json-names json-names
+        .span span
+    )
+    [.start 'yes next-slot .after span-after]
+    ? Chars-dup .buf chars .slot next-slot
+    [.buf chars .item next-char .slot next-slot]
+    ? Char-equal .char next-char .to "{" char
+    ['yes .] (
+        ? Chars-slot-rid .chars chars .slot next-slot [chars]
+        ?
+            Chars-opt-span-parse-json-object-after-opening-brace
+            .chars chars .span span-after .jsons jsons .json-names json-names
+        [.. char-span .names names .values values .jsons jsons .json-names json-names]
+        .json ('object{Json _chars, _jsons, _json-names} .names names .values values)
+        .jsons jsons
+        .json-names json-names
+        .. char-span
+    )
+    ['no next-char]
+    ? Char-equal .char next-char .to "\"" char
+    ['yes .] (
+        ? Chars-slot-rid .chars chars .slot next-slot [chars]
+        ?
+            Chars-opt-span-parse-json-string-after-opening-quote
+            .chars chars .span span-after
+        [.. char-span .content-span content-span]
+        .json 'string{Json _chars, _jsons, _json-names} content-span
+        .jsons jsons
+        .json-names json-names
+        .. char-span
+    )
+    ['no next-char]
+    ? Char-is-digit next-char
+    ['yes .] (
+        ?
+            Chars-opt-span-keep-while
+            .chars chars
+            .span span-after
+            .keep [c char] Char-is-digit c
+        [.chars chars .span span-after .keep-span number-after]
+        ?
+            Buf-span-add-own-opt-span
+            .buf chars .start Slot-to-span next-slot .end number-after
+        [.buf chars .span number-span]
+        .json 'number{Json _chars, _jsons, _json-names} number-span
+        .jsons jsons
+        .json-names json-names
+        .chars chars
+        .span span-after
+    )
+    ['no next-char-use]
+    ? Char-rid next-char-use [.]
+    ?
+        Buf-span-add-own-opt-span
+        .buf chars .start Slot-to-span next-slot .end span-after
+    [.buf chars .span span]
+    .json 'failed{Json _chars, _jsons, _json-names} .
+    .jsons jsons
+    .json-names json-names
+    .chars chars
+    .span 'yes{'no .} span
+
+fn Chars-opt-span-parse-json-object-after-opening-brace
+    config
+    .chars Buf _chars, char
+    .span Opt Span _chars
+    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names Buf _json-names, Opt Span _chars
+:
+    .chars Buf _chars, char
+    .span Opt Span _chars
+    .names Opt Span _json-names
+    .values Opt Span _jsons
+    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names Buf _json-names, Opt Span _chars
+=
+    ?
+        Chars-opt-span-parse-json-object-rest
+        .. config
+        .names 'no{Opt Span _json-names} .
+        .values 'no{Opt Span _jsons} .
+    [.. char-span .jsons jsons .json-names json-names .names names .values values]
+    ? Buf-opt-span-reverse .buf jsons .span values [.buf jsons .span values]
+    ? Buf-opt-span-reverse .buf json-names .span names [.buf json-names .span names]
+    .. char-span
+    .jsons jsons
+    .json-names json-names
+    .names names
+    .values values
+
+fn Chars-opt-span-parse-json-object-rest
+    .. (
+        char-span
+        .chars Buf _chars, char
+        .span Opt Span _chars
+    )
+    .names names Opt Span _json-names
+    .values values Opt Span _jsons
+    .jsons jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names json-names Buf _json-names, Opt Span _chars
+:
+    .chars Buf _chars, char
+    .span Opt Span _chars
+    .names Opt Span _json-names
+    .values Opt Span _jsons
+    .jsons Buf _jsons, Json _chars, _jsons, _json-names
+    .json-names Buf _json-names, Opt Span _chars
+# Important: resulting names and values will be reversed
+=
+    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
+    ? Chars-opt-span-rid-start-if .. char-span .keep ([c char] Char-equal .char c .to "}" char)
+    [.. char-span .keep 'yes .] (
+        .. char-span
+        .names names
+        .values values
+        .jsons jsons
+        .json-names json-names
+    )
+    [.. char-span .keep 'no .]
+    ? Chars-opt-span-parse-json-string char-span
+    [.name-span field-name-span .. char-span]
+    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
+    ?
+        Chars-opt-span-rid-start-if
+        .. char-span .keep ([c char] Char-equal .char c .to ":" char)
+    [.. char-span .keep keep]
+    ? Bool-rid keep [.]
+    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
+    ? Json-parse .jsons jsons .json-names json-names .. char-span
+    [.json field-value .jsons jsons .json-names json-names .. char-span]
+    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
+    ?
+        Chars-opt-span-rid-start-if
+        .. char-span .keep ([c char] Char-equal .char c .to "," char)
+    [.. char-span .keep keep]
+    ? Bool-rid keep [.]
+    ?
+        Chars-opt-span-parse-json-object-rest
+        .. char-span .jsons jsons .json-names json-names .names names .values values
+    [.. char-span .jsons jsons .json-names json-names .names names .values values]
+    ? Buf-opt-span-add .buf json-names .span names .new field-name-span
+    [.buf json-names .span names]
+    ? Buf-opt-span-add .buf jsons .span values .new field-value
+    [.buf jsons .span values]
+    .. char-span
+    .names 'yes{'no .} names
+    .values 'yes{'no .} values
+    .jsons jsons
+    .json-names json-names
+
+fn Chars-opt-span-parse-json-string-after-opening-quote
+    .chars chars Buf _origin, char
+    .span span Opt Span _origin
+:
+    .chars Buf _origin, char
+    .content-span Opt Span _origin
+    .span Opt Span _origin
+=
+    # escapes are not handled for brevity
+    ? (
+        Opt-span-step-while
+        .span span
+        .direction 'up{'down .} .
+        .state (.chars chars .content-span 'no{Opt Span _origin} .)
+        .step
+        [
+            .state (.chars chars Buf _origin, char .content-span content-span Opt Span _origin)
+            .slot slot Slot _origin
+        ]
+        ? Chars-dup .buf chars .slot slot
+        [.buf chars .item char .slot slot]
+        ? Char-equal .char char .to "\"" char
+        ['yes .] (
+            ? Chars-slot-rid .chars chars .slot slot [chars]
+            'done{'going .chars Buf _origin, char .content-span Opt Span _origin}
+            .chars chars .content-span content-span
+        )
+        ['no char] (
+            ? Char-rid char [.]
+            ? Buf-opt-span-add-own-span .buf chars .start content-span .end Slot-to-span slot
+            [.buf chars .span content-span]
+            'going{'done .chars Buf _origin, char .content-span Opt Span _origin}
+            .chars chars .content-span 'yes{'no .} content-span
+        )
+    )
+    ['done .done parsed .rest after] .. parsed .span after
+    ['going parsed] .. parsed .span 'no{Opt Span _origin} .
+
+fn Chars-opt-span-rid-start-while-whitespace
+    char-span .chars Buf _origin, char .span Opt Span _origin
+: .chars Buf _origin, char .span Opt Span _origin =
+    Chars-opt-span-rid-start-while
+    .. char-span .keep ([c char] Char-equal .char c .to " " char)
+
+fn Chars-opt-span-parse-json-string
+    .chars chars Buf _origin, char
+    .span span Opt Span _origin
+:
+    .chars Buf _origin, char
+    .name-span Opt Span _origin
+    .span Opt Span _origin
+=
+    ? Opt-span-start span
+    [.start 'no . .after span] (
+        .name-span 'no{Opt Span _origin} .
+        .chars chars
+        .span span
+    )
+    [.start 'yes next-slot .after span-after]
+    ? Chars-dup .buf chars .slot next-slot
+    [.buf chars .item next-char .slot next-slot]
+    ? Char-equal .char next-char .to "\"" char
+    ['yes .] (
+        ? Chars-slot-rid .chars chars .slot next-slot [chars]
+        ?
+            Chars-opt-span-parse-json-string-after-opening-quote
+            .chars chars .span span-after
+        [.. char-span .content-span content-span]
+        .name-span content-span
+        .. char-span
+    )
+    ['no next-char] (
+        ? Char-rid next-char [.]
+        ?
+            Buf-span-add-own-opt-span
+            .buf chars
+            .start Slot-to-span next-slot
+            .end span-after
+        [.buf chars .span span]
+        .name-span 'no{Opt Span _chars} .
+        .chars chars
+        .span 'yes{'no .} span
+    )
+
+fn Opt-span-start
+    span Opt Span _origin
+:
+    .start Opt Slot _origin
+    .after Opt Span _origin
+=
+    ? span
+    ['no .] (
+        .start 'no{Opt Slot _origin} . .after 'no{Opt Span _origin} .
+    )
+    ['yes span] (
+        ? Span-start span [.start start .after span-after]
+        .start 'yes{'no .} start .after span-after
+    )
+
+fn Chars-opt-span-rid-start-if
+    .chars chars Buf _origin, char
+    .span span Opt Span _origin
+    .keep keep Fn char, 'yes . 'no char
+:
+    .chars Buf _origin, char
+    .span Opt Span _origin
+    .keep 'yes . 'no .
+=
+    ? Opt-span-start span
+    [.start 'no . .after span] (
+        ? Fn-rid keep [.]
+        .chars chars .span span .keep 'no{'yes .} .
+    )
+    [.start 'yes start .after span-after] (
+        ? Chars-dup .buf chars .slot start
+        [.buf chars .item char .slot slot]
+        ? Call .fn keep .in char
+        ['yes .] (
+            ? Chars-slot-rid .chars chars .slot slot [chars]
+            .chars chars .span span-after .keep 'yes{'no .} .
+        )
+        ['no char] (
+            ? Char-rid char [.]
+            ?
+                Buf-span-add-own-opt-span
+                .buf chars .start Slot-to-span slot .end span-after
+            [.buf chars .span span]
+            .chars chars .span 'yes{'no .} span .keep 'no{'yes .} .
+        )
+    )
+
+fn Chars-opt-span-keep-start-if
+    .chars chars Buf _origin, char
+    .span span Opt Span _origin
+    .keep keep Fn char, 'yes . 'no char
+:
+    .chars Buf _origin, char
+    .keep Opt Slot _origin
+    .span Opt Span _origin
+=
+    ? Opt-span-start span
+    [.start 'no . .after span] (
+        ? Fn-rid keep [.]
+        .chars chars .span span .keep 'no{Opt Slot _origin} .
+    )
+    [.start 'yes start .after span-after] (
+        ? Chars-dup .buf chars .slot start
+        [.buf chars .item char .slot slot]
+        ? Call .fn keep .in char
+        ['yes .] (
+            .chars chars .keep 'yes{'no .} slot .span span-after
+        )
+        ['no char] (
+            ? Char-rid char [.]
+            ?
+                Buf-span-add-own-opt-span
+                .buf chars .start Slot-to-span slot .end span-after
+            [.buf chars .span span]
+            .chars chars .keep 'no{Opt Slot _origin} . .span 'yes{'no .} span
+        )
+    )
+
+fn Chars-opt-span-rid-start-while
+    .chars chars Buf _origin, char
+    .span span Opt Span _origin
+    .keep keep Fn char, 'yes . 'no char
+:
+    .chars Buf _origin, char
+    .span Opt Span _origin
+=
+    ?
+        Chars-opt-span-keep-while
+        .chars chars
+        .span span
+        .keep keep
+    [.keep-span keep-span .chars chars .span span-after]
+    ? Buf-opt-span-rid .buf chars .span keep-span .item-rid [c char] Char-rid c [chars]
+    .chars chars .span span-after
+
+fn Chars-opt-span-keep-while
+    .chars chars Buf _origin, char
+    .span span Opt Span _origin
+    .keep keep Fn char, 'yes . 'no char
+:
+    .chars Buf _origin, char
+    .keep-span Opt Span _origin
+    .span Opt Span _origin
+=
+    ? (
+        Opt-span-step-while
+        .span span
+        .direction 'up{'down .} .
+        .state (.keep keep .chars chars .keep-span 'no{Opt Span _origin} .)
+        .step
+        [
+            .state (
+                .keep keep Fn char, 'yes . 'no char
+                .chars chars Buf _origin, char
+                .keep-span keep-span Opt Span _origin
+            )
+            .slot slot Slot _origin
+        ]
+        ? Chars-dup .buf chars .slot slot
+        [.buf chars .item char .slot slot]
+        ? Fn-dup keep [.a keep-use .b keep]
+        ? Call .fn keep-use .in char
+        ['yes .] (
+            ? Buf-opt-span-add-own-span .buf chars .start keep-span .end Slot-to-span slot
+            [.buf chars .span keep-span]
+            'going{'done .chars Buf _origin, char .keep-span Opt Span _origin .slot-after Slot _origin}
+            .keep keep .chars chars .keep-span 'yes{'no .} keep-span
+        )
+        ['no char] (
+            # a fun trick to quickly scrap multiple values
+            ? .. Fn-rid keep .. Char-rid char [.]
+            'done{
+                'going
+                .keep Fn char, 'yes . 'no char
+                .chars Buf _origin, char
+                .keep-span Opt Span _origin
+            }
+            .chars chars .keep-span keep-span .slot-after slot
+        )
+    )
+    ['done .done (.chars chars .keep-span keep-span .slot-after slot-after) .rest after] (
+        ? Buf-span-add-own-opt-span .buf chars .start Slot-to-span slot-after .end after
+        [.buf chars .span after]
+        .chars chars .keep-span keep-span .span 'yes{'no .} after
+    )
+    ['going .keep keep .. rest] (
+        ? Fn-rid keep [.]
+        .. rest .span 'no{Opt Span _origin} .
+    )
+
+fn Chars-slot-rid
+    .chars chars Buf _origin, char
+    .slot slot Slot _origin
+: Buf _origin, char =
+    ? Buf-remove .buf chars .slot slot [.buf chars .item next-char]
+    ? Char-rid next-char [.]
+    chars
+
+fn Chars-dup
+    .buf buf Buf _origin, char
+    .slot slot Slot _origin
+:
+    .buf Buf _origin, char
+    .slot Slot _origin
+    .item char
+=
+    Buf-item-dup .buf buf .slot slot .dup [c char] Char-dup c
+
+fn Buf-item-dup
+    .buf buf Buf _origin, _item
+    .slot slot Slot _origin
+    .dup (dup Fn _item, .a _item .b _item)
+:
+    .buf Buf _origin, _item
+    .slot Slot _origin
+    .item _item
+=
+    ? (
+        Buf-item-step
+        .buf buf
+        .slot slot
+        .in dup
+        .step
+        [.in (dup Fn _item, .a _item .b _item) .item item _item]
+        ? Call .fn dup .in item [.a item .b item-duped]
+        .item item .out item-duped
+    )
+    [.. buf-slot .out item-duped]
+    .. buf-slot .item item-duped
+
+fn Buf-opt-span-starts-with-str
+    .buf buf Buf _origin, char
+    .span span Opt Span _origin
+    .str str str
+: .buf Buf _origin, char .span Opt Span _origin .matches Opt . =
+    ? (
+        Buf-opt-span-step-while
+        .buf buf
+        .span span
+        .direction 'up{'down .} .
+        .state str
+        .step
+        [.item char char .state str str]
+        ? Char-dup char [.a char .b char-use]
+        ? Str-start str [.start str-first-char .after str-after-first]
+        ? Char-equal .char char-use .to str-first-char
+        ['no char-use] (
+            ? .. Char-rid char-use .. Opt-str-rid str-after-first [.]
+            .item char .state 'done{'going str} 'no{Opt .} .
+        )
+        ['yes .] (
+            ? str-after-first
+            ['yes str-after-first] (
+                .item char .state 'going{'done Opt .} str-after-first
+            )
+            ['no .] (
+                .item char .state 'done{'going str} 'yes{Opt .} .
+            )
+        )
+    )
+    [.. buf-span .state 'going remaining] (
+        # this is a little silly. Instead of ? Str-rid remaining [.]
+        # we can also spread it into the result record
+        .. Str-rid remaining .. buf-span .matches 'no{Opt .} .
+    )
+    [.. buf-span .state 'done matches] (
+        .. buf-span .matches matches
+    )
+
+fn Opt-str-rid opt-str Opt str : . =
+    ? opt-str
+    ['no .] .
+    ['yes str] Str-rid str
+
+fn Char-is-ascii-letter char char : 'yes . 'no char =
+    ? Char-dup char [.a char .b char-use]
+    ? U32-order .left Char-to-u32 char-use .right Char-to-u32 "A" char
+    ['equal .] (? Char-rid char [.] 'yes{'no char} .)
+    ['less .] 'no{'yes .} char
+    ['greater .] (
+        ? Char-dup char [.a char .b char-use]
+        ? U32-order .left Char-to-u32 char-use .right Char-to-u32 "z" char
+        ['equal .] (? Char-rid char [.] 'yes{'no char} .)
+        ['less .] (? Char-rid char [.] 'yes{'no char} .)
+        ['greater .] 'no{'yes .} char
+    )
+
+fn Char-is-digit char char : 'yes . 'no char =
+    ? Char-dup char [.a char .b char-use]
+    ? U32-order .left Char-to-u32 char-use .right Char-to-u32 "0" char
+    ['equal .] (? Char-rid char [.] 'yes{'no char} .)
+    ['less .] 'no{'yes .} char
+    ['greater .] (
+        ? Char-dup char [.a char .b char-use]
+        ? U32-order .left Char-to-u32 char-use .right Char-to-u32 "9" char
+        ['equal .] (? Char-rid char [.] 'yes{'no char} .)
+        ['less .] (? Char-rid char [.] 'yes{'no char} .)
+        ['greater .] 'no{'yes .} char
+    )
+
+fn Char-equal .char char char .to to char : 'yes . 'no char =
+    ? Char-dup char [.a char .b char-use]
+    ? U32-order .left Char-to-u32 char-use .right Char-to-u32 to
+    ['equal .] (
+        ? Char-rid char [.]
+        'yes{'no char} .
+    )
+    ['less .] 'no{'yes .} char
+    ['greater .] 'no{'yes .} char
+
+fn Bool-rid bool 'yes . 'no . : . =
+    ? bool ['no .] . ['yes .] .
