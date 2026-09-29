@@ -805,18 +805,11 @@ Being easy to transpile is an explicit goal of sloe, enabled by its very limited
 
 ## why write the compiler and tooling in rust?
 It did that before and it does it's job.
-I imagine the current style leaves some performance on the table but I'd be surprised if it was too slow for its temporary only potential user, the human reading this (<3).
+I imagine the current style leaves some performance on the table but I'd be surprised if it was too slow for its only potential temporary user, the human reading this (<3).
 
 # TODO
 
-- figure out why sometimes obvious errors are not reported (when multi-line query with .. exists for example).
-  Maybe related to a place_type_diff not arriving anywhere (for patterns)?
-
-- when expected type is ., spread record says "type mismatch: ." which is confusing. It should list extra fields
-
 - get working and publish io smuggling example
-
-- add `Buf-(opt-)span-alter-and-map` which can be used to explicitly dup a Span into a new Buf (thus requires a new origin).
 
 - only output _ = @TypeOf when variables have not been used
 

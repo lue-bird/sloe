@@ -4839,158 +4839,141 @@ fn syntax_query_case_pattern_check<'a, Patterns, Types>(
                 });
             }
         },
-        SyntaxPattern::Record { part0, part1_up } => {
-            let mut type_fields: Vec<TypeField> = Vec::with_capacity(1 + part1_up.len());
-            match expected_type {
-                Type::Record(expected_type_record) => {
-                    let mut contains_spread = false;
-                    for part in std::iter::once(part0).chain(part1_up) {
-                        match part {
-                            SyntaxRecordPart::Field { name, value } => {
-                                let Some(field_name_value) = &name.value else {
-                                    errors.push(ErrorNode {
-                                        range: symbol_range(name.start, "."),
-                                        message: Box::from("missing field name after this dot ."),
-                                    });
-                                    return;
-                                };
-                                let Some(value) = value else {
-                                    errors.push(ErrorNode {
-                                        range: field_name_range(WithStartPosition {
-                                            start: name.start,
-                                            value: field_name_value,
-                                        }),
-                                        message: Box::from(
-                                            "missing field value after this field name",
-                                        ),
-                                    });
-                                    return;
-                                };
-                                if type_fields
-                                    .iter()
-                                    .any(|type_field| &type_field.name == field_name_value)
-                                {
-                                    errors.push(ErrorNode {
-                                        range: field_name_range(WithStartPosition {
-                                            start: name.start,
-                                            value: field_name_value,
-                                        }),
-                                        message: Box::from(
-                                            "a field with this name already exists in the record pattern",
-                                        ),
-                                    });
-                                    return;
-                                }
-                                let Some(expected_type_field) =
-                                    expected_type_record.iter().find(|expected_field| {
-                                        &expected_field.name == field_name_value
-                                    })
-                                else {
-                                    let error_message: String = format!(
-                                            "This pattern matches a record with the field .{} but the expected record type here only expects these fields
+        SyntaxPattern::Record { part0, part1_up } => match expected_type {
+            Type::Record(expected_type_record_fields) => {
+                let mut remaining_expected_type_fields = expected_type_record_fields.clone();
+                let mut first_spread = None;
+                for part in std::iter::once(part0).chain(part1_up) {
+                    match part {
+                        SyntaxRecordPart::Field { name, value } => {
+                            let Some(field_name_value) = &name.value else {
+                                errors.push(ErrorNode {
+                                    range: symbol_range(name.start, "."),
+                                    message: Box::from("missing field name after this dot ."),
+                                });
+                                return;
+                            };
+                            let Some(value) = value else {
+                                errors.push(ErrorNode {
+                                    range: field_name_range(WithStartPosition {
+                                        start: name.start,
+                                        value: field_name_value,
+                                    }),
+                                    message: Box::from("missing field value after this field name"),
+                                });
+                                return;
+                            };
+                            let Some(expected_type_field) = remaining_expected_type_fields
+                                .iter()
+                                .position(|expected_field| &expected_field.name == field_name_value)
+                                .map(|p| remaining_expected_type_fields.swap_remove(p))
+                            else {
+                                let error_message: String = format!(
+                                    "This pattern matches a record with the field .{} but the expected record type here only expects these fields
 .{}
-You might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases",
-                                                field_name_value,
-                                                expected_type_record.iter().map(|expected_type_field| expected_type_field.name.as_str()).collect::<Vec<_>>().join(" .")
-                                            );
-                                    errors.push(ErrorNode {
-                                        range: pattern_range(pattern, patterns, types),
-                                        message: error_message.into_boxed_str(),
-                                    });
-                                    return;
-                                };
-                                syntax_query_case_pattern_check(
-                                    patterns.item(value),
-                                    &expected_type_field.value,
-                                    errors,
-                                    introduced_variables,
-                                    type_aliases,
-                                    patterns,
-                                    types,
-                                    origins,
-                                    existing_local_variables,
-                                    checked_spread_records,
-                                    records_used,
-                                    choices_used,
+Are there duplicate fields?
+Otherwise, you might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases",
+                                        field_name_value,
+                                        expected_type_record_fields.iter().map(|expected_type_field| expected_type_field.name.as_str()).collect::<Vec<_>>().join(" .")
                                 );
+                                errors.push(ErrorNode {
+                                    range: pattern_range(pattern, patterns, types),
+                                    message: error_message.into_boxed_str(),
+                                });
+                                return;
+                            };
+                            syntax_query_case_pattern_check(
+                                patterns.item(value),
+                                &expected_type_field.value,
+                                errors,
+                                introduced_variables,
+                                type_aliases,
+                                patterns,
+                                types,
+                                origins,
+                                existing_local_variables,
+                                checked_spread_records,
+                                records_used,
+                                choices_used,
+                            );
+                        }
+                        SyntaxRecordPart::Spread {
+                            dot_dot_start,
+                            record,
+                        } => {
+                            let Some(record) = record else {
+                                errors.push(ErrorNode {
+                                    range: symbol_range(*dot_dot_start, ".."),
+                                    message: Box::from("missing pattern to spread into the record after this .. syntax. An example of a record spread pattern is .. variable its-record-type")
+                                });
+                                return;
+                            };
+                            if let Some((first_spread_dot_dot, _)) = first_spread {
+                                errors.push(ErrorNode {
+                                    range: symbol_range(*dot_dot_start, ".."),
+                                    message: format!(
+                                        "multiple record spreads .. in query case pattern (first .. at {}).
+This is not allowed because it can be ambiguous which specific fields are contained in what spread (think ? .a . .b . .c . [.a ..b ..c]: what fields should b and c match?).
+Switch to matching all fields explicitly for either spread",
+                                        position_to_string(first_spread_dot_dot)
+                                    ).into_boxed_str()
+                                });
+                                return;
                             }
-                            SyntaxRecordPart::Spread {
-                                dot_dot_start,
-                                record,
-                            } => {
-                                let Some(record) = record else {
-                                    errors.push(ErrorNode {
-                                        range: symbol_range(*dot_dot_start, ".."),
-                                        message: Box::from("missing pattern to spread into the record after this .. syntax. An example of a record spread pattern is .. variable its-record-type")
-                                    });
-                                    return;
-                                };
-                                if contains_spread {
-                                    errors.push(ErrorNode {
-                                        range: symbol_range(*dot_dot_start, ".."),
-                                        message: Box::from("multiple record spreads .. are not allowed in query case patterns as it can be ambiguous which specific fields are contained in what spread (think ? .a . .b . .c . [.a ..b ..c]: what fields should b and c match?).
-Switch to matching all fields explicitly for at leas one of these spreads")
-                                    });
-                                    return;
-                                }
-                                contains_spread = true;
-                                let mut spread_field_types = expected_type_record.clone();
-                                // n^2. okay since query field count is almost always relatively small
-                                for potential_field in std::iter::once(part0).chain(part1_up) {
-                                    match potential_field {
-                                        SyntaxRecordPart::Field { name, value: _ } => {
-                                            if let Some(name) = &name.value
-                                                && let Some(expected_field_to_exclude_index) =
-                                                    spread_field_types.iter().position(
-                                                        |expected_field| {
-                                                            &expected_field.name == name
-                                                        },
-                                                    )
-                                            {
-                                                spread_field_types
-                                                    .swap_remove(expected_field_to_exclude_index);
-                                            }
-                                        }
-                                        SyntaxRecordPart::Spread { .. } => {}
-                                    }
-                                }
-                                let spread_field_names: Vec<Name> = spread_field_types
-                                    .iter()
-                                    .map(|field| field.name.clone())
-                                    .collect();
-                                syntax_query_case_pattern_check(
-                                    patterns.item(record),
-                                    &Type::Record(spread_field_types),
-                                    errors,
-                                    introduced_variables,
-                                    type_aliases,
-                                    patterns,
-                                    types,
-                                    origins,
-                                    existing_local_variables,
-                                    checked_spread_records,
-                                    records_used,
-                                    choices_used,
-                                );
-                                checked_spread_records.insert(*dot_dot_start, spread_field_names);
-                            }
+                            first_spread = Some((*dot_dot_start, record))
                         }
                     }
-                    type_fields.clone_from(expected_type_record);
                 }
-                _ => {
-                    let mut error_message: String = String::from(
-                        "This pattern matches a record but the expected type here is\n",
-                    );
-                    type_format(&mut error_message, 0, expected_type);
-                    error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
-                    errors.push(ErrorNode {
-                        range: pattern_range(pattern, patterns, types),
-                        message: error_message.into_boxed_str(),
-                    });
+                match first_spread {
+                    Some((dot_dot_start, record)) => {
+                        let spread_field_names: Vec<Name> = remaining_expected_type_fields
+                            .iter()
+                            .map(|field| field.name.clone())
+                            .collect();
+                        syntax_query_case_pattern_check(
+                            patterns.item(record),
+                            &Type::Record(remaining_expected_type_fields),
+                            errors,
+                            introduced_variables,
+                            type_aliases,
+                            patterns,
+                            types,
+                            origins,
+                            existing_local_variables,
+                            checked_spread_records,
+                            records_used,
+                            choices_used,
+                        );
+                        checked_spread_records.insert(dot_dot_start, spread_field_names);
+                    }
+                    None => {
+                        if !remaining_expected_type_fields.is_empty() {
+                            let mut error_message = String::from("missing fields:\n");
+                            type_format(
+                                &mut error_message,
+                                0,
+                                &Type::Record(remaining_expected_type_fields),
+                            );
+                            error_message.push_str("\nAdd them to the case pattern or use a spread like .. rest to catch the remaining fields");
+                            errors.push(ErrorNode {
+                                range: symbol_range(expression_record_part_start(part0), "."),
+                                message: error_message.into_boxed_str(),
+                            });
+                        }
+                    }
                 }
             }
-        }
+            _ => {
+                let mut error_message: String =
+                    String::from("This pattern matches a record but the expected type here is\n");
+                type_format(&mut error_message, 0, expected_type);
+                error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
+                errors.push(ErrorNode {
+                    range: pattern_range(pattern, patterns, types),
+                    message: error_message.into_boxed_str(),
+                });
+            }
+        },
         SyntaxPattern::Parenthesized {
             open_paren_start,
             inner,
