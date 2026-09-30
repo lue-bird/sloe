@@ -363,7 +363,7 @@ test "span_step down" {
 test "span_step_while up, never |done" {
     const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
-    const index_sum = try core.opt_span_step_while(core.Choice, u32, ExampleOrigin, std.testing.allocator, .{
+    const index_sum = try core.opt_span_step_while(core.Choice, ExampleOrigin, u32, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
         .state = 0,
@@ -381,7 +381,7 @@ test "span_step_while up, never |done" {
 test "span_step_while up, ending in |done" {
     const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
-    const index_sum = try core.opt_span_step_while(void, u32, ExampleOrigin, std.testing.allocator, .{
+    const index_sum = try core.opt_span_step_while(void, ExampleOrigin, u32, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .up = {} },
         .state = 0,
@@ -402,7 +402,7 @@ test "span_step_while up, ending in |done" {
 test "span_step_while down, ending in |done" {
     const ExampleOrigin = enum {};
     const span4_to_13 = core.Span(ExampleOrigin){ .start = 4, .length = core.P32.fromComptime(10) };
-    const index_sum = try core.opt_span_step_while(void, u32, ExampleOrigin, std.testing.allocator, .{
+    const index_sum = try core.opt_span_step_while(void, ExampleOrigin, u32, std.testing.allocator, .{
         .span = core.Opt(core.Span(ExampleOrigin)){ .yes = span4_to_13 },
         .direction = .{ .down = {} },
         .state = 0,
@@ -792,6 +792,32 @@ test "buf span reverse" {
     try std.testing.expectEqual(span, span_reversed);
     try std.testing.expectEqualSlices(u32, &.{ 6, 5, 4, 3, 2, 1 }, buf.optSpanSlice(span_reversed));
     buf.rid(allocator);
+}
+test "buf span sort" {
+    const allocator = std.testing.allocator;
+    const BufOrigin = enum {};
+    const origin: core.Origin(BufOrigin, void) = .{};
+    var buf = core.buf_empty(u32, BufOrigin, void, origin);
+    const span = try buf.addSlice(allocator, &.{ 1, 6, 3, 4, 5, 6 });
+    const sorted = try core.buf_opt_span_sort(u32, @TypeOf(origin), std.testing.allocator, .{
+        .buf = buf,
+        .span = span,
+        .order = struct {
+            fn f(_: std.mem.Allocator, sides: core.Record(struct {
+                left: u32,
+                right: u32,
+            })) error{OutOfMemory}!core.Record(struct {
+                left: u32,
+                order: core.Order,
+                right: u32,
+            }) {
+                return .{ .left = sides.left, .right = sides.right, .order = core.u32_order(sides) };
+            }
+        }.f,
+    });
+    try std.testing.expectEqual(span, sorted.span);
+    try std.testing.expectEqualSlices(u32, &.{ 1, 3, 4, 5, 6, 6 }, sorted.buf.optSpanSlice(sorted.span));
+    sorted.buf.rid(allocator);
 }
 test "buf add remove stress test" {
     const allocator = std.testing.allocator;

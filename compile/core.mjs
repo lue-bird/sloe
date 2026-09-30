@@ -16,14 +16,14 @@
 /** @template $Origin, $ValueErased @typedef {$ValueErased & { readonly origin_isolated?: $Origin }} Origin_isolated */
 /** @template $ValueErased @typedef {$ValueErased & { readonly origin_erased?: void }} Origin_erased */
 /** @template $Origin @typedef {{} & { readonly uneraser_origin?: $Origin }} Origin_uneraser */
-/** @type{Symbol}
+/** @type{unique symbol}
  * Originally this was simply set to null but this prevented values
  * passed in from js (which can be null) to be handled correctly.
  */
 const SYMBOL$UNSET = Symbol();
-/** @template $Origin, $Item @typedef {(SYMBOL$UNSET | $Item)[] & { readonly origin?: $Origin }} Buf */
+/** @template $Origin, $Item @typedef {(typeof SYMBOL$UNSET | $Item)[] & { readonly origin?: $Origin }} Buf */
 /** @template $Part, $Item @typedef {Buf<Origin<Erased, $Part>, $Item> & { readonly origin_erased?: void }} Buf_origin_erased */
-/** @template $Item @typedef {(SYMBOL$UNSET | $Item)[]} Unset_slice
+/** @template $Item @typedef {(typeof SYMBOL$UNSET | $Item)[]} Unset_slice
  * Assumed to contain an empty array (with spare capacity)
  */
 /** @template $Origin @typedef {U32 & { readonly origin?: $Origin }} Slot */
@@ -382,7 +382,7 @@ export function str_utf8_length(str) {
 }
 /** @param {Str} str @returns {{ start: Char, after: Opt<Str>, }} */
 export function str_start(str) {
-  let first = str.charAt(0);
+  const first = str.charAt(0);
   return {
     start: first,
     after:
@@ -1110,6 +1110,47 @@ export function buf_opt_span_reverse(reverse) {
   reverse.buf.splice(span.start, span.length, ...slice);
   return reverse;
 }
+/** @template $Item, $Origin
+ * @param {{
+ *     buf: Buf<$Origin, $Item>,
+ *     span: Span<$Origin>,
+ *     order: Fn<{ left: $Item, right: $Item }, { left: $Item, right: $Item, order: Order }>,
+ * }} sort
+ * @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }} */
+export function buf_span_sort(sort) {
+  const span_indexes = Array.from(sort.span, (_, i) => sort.span.start + i);
+  span_indexes.sort((left, right) => {
+    const ordered = sort.order({
+      left: /** @type $Item */ (sort.buf[left]),
+      right: /** @type $Item */ (sort.buf[right]),
+    });
+    sort.buf[left] = ordered.left;
+    sort.buf[right] = ordered.right;
+    return "less" in sort.order ? -1 : "greater" in sort.order ? 1 : 0;
+  });
+  span_indexes.forEach((buf_index_sorted, old_offset_within_span) => {
+    if (sort.span.start + old_offset_within_span < buf_index_sorted) {
+      // swap
+      const old = sort.buf[sort.span.start + old_offset_within_span];
+      sort.buf[sort.span.start + old_offset_within_span] = sort.buf[buf_index_sorted];
+      sort.buf[buf_index_sorted] = old;
+    }
+  });
+  return sort;
+}
+/** @template $Item, $Origin
+ * @param {{
+ *     buf: Buf<$Origin, $Item>,
+ *     span: Opt<Span<$Origin>>,
+ *     order: Fn<{ left: $Item, right: $Item }, { left: $Item, right: $Item, order: Order }>,
+ * }} sort
+ * @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>>, }} */
+export function buf_opt_span_sort(sort) {
+  if ("yes" in sort.span) {
+    buf_span_sort({ buf: sort.buf, span: sort.span.yes, order: sort.order });
+  }
+  return sort;
+}
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, start: Span<$Origin>, end: Span<$Origin>, }} add @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, }}} */
 export function buf_span_add_own_span(add) {
   if (add.start.start + add.start.length === add.end.start) {
@@ -1310,5 +1351,5 @@ export function unset_slice_allocate_length(length) {
 /** @template $Item, $New_item @param {Unset_slice<$Item>} unset_slice @returns {Unset_slice<$New_item>} */
 export function unset_slice_cast_or_rid_and_allocate(unset_slice) {
   // for once equal type sizes come in clutch
-  return /** @type ($New_item | SYMBOL$UNSET)[] */ (unset_slice);
+  return /** @type ($New_item | typeof SYMBOL$UNSET)[] */ (unset_slice);
 }

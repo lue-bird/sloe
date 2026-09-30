@@ -30,6 +30,12 @@ pub struct Record·left·right<Left, Right> {
     pub right: Right,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·left·order·right<Left, Order, Right> {
+    pub left: Left,
+    pub order: Order,
+    pub right: Right,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·i·u<I, U> {
     pub i: I,
     pub u: U,
@@ -263,6 +269,12 @@ pub struct Record·buf·index·new<Buf, Index, New> {
 #[derive(Clone, Copy, Debug)]
 pub struct Record·buf·span<Buf, Span> {
     pub buf: Buf,
+    pub span: Span,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·buf·order·span<Buf, Order, Span> {
+    pub buf: Buf,
+    pub order: Order,
     pub span: Span,
 }
 #[derive(Clone, Copy, Debug)]
@@ -2838,6 +2850,87 @@ pub fn buf_span_reverse<Item, Origin>(
     Record·buf·span {
         buf: buf,
         span: span,
+    }
+}
+pub fn buf_span_sort<Item, Origin>(
+    Record·buf·order·span {
+        mut buf,
+        order,
+        mut span,
+    }: Record·buf·order·span<
+        Buf<Origin, Item>,
+        Fn<
+            Record·left·right<Item, Item>,
+            Record·left·order·right<
+                Item,
+                Choice·Equal·Greater·Less<Record, Record, Record>,
+                Item,
+            >,
+        >,
+        Span<Origin>,
+    >,
+) -> Record·buf·span<Buf<Origin, Item>, Span<Origin>> {
+    let mut span_slice_indexes: std::vec::Vec<u32> =
+        std::iter::Iterator::collect(std::iter::IntoIterator::into_iter(0..(span.length.get())));
+    let slice = buf.span_slice_option_mut(&mut span);
+    span_slice_indexes.sort_by(|left, right| {
+        let [left_option_mut, right_option_mut] =
+            unsafe { slice.get_disjoint_unchecked_mut([*left as usize, *right as usize]) };
+        let ordered = order(unsafe {
+            Record·left·right {
+                left: left_option_mut.take().unwrap_unchecked(),
+                right: right_option_mut.take().unwrap_unchecked(),
+            }
+        });
+        _ = left_option_mut.insert(ordered.left);
+        _ = right_option_mut.insert(ordered.right);
+        ordered.order.to_ordering()
+    });
+    for (span_slice_index, sorted_span_slice_index) in
+        std::iter::Iterator::enumerate(std::iter::IntoIterator::into_iter(span_slice_indexes))
+    {
+        if (span_slice_index as u32) < sorted_span_slice_index {
+            slice.swap(span_slice_index, sorted_span_slice_index as usize);
+        }
+    }
+    Record·buf·span {
+        buf: buf,
+        span: span,
+    }
+}
+pub fn buf_opt_span_sort<Item, Origin>(
+    Record·buf·order·span { buf, order, span }: Record·buf·order·span<
+        Buf<Origin, Item>,
+        Fn<
+            Record·left·right<Item, Item>,
+            Record·left·order·right<
+                Item,
+                Choice·Equal·Greater·Less<Record, Record, Record>,
+                Item,
+            >,
+        >,
+        Opt<Span<Origin>>,
+    >,
+) -> Record·buf·span<Buf<Origin, Item>, Opt<Span<Origin>>> {
+    match span {
+        Opt::No(()) => Record·buf·span {
+            buf: buf,
+            span: span,
+        },
+        Opt::Yes(span) => {
+            let Record·buf·span {
+                buf: buf,
+                span: span,
+            } = buf_span_sort(Record·buf·order·span {
+                buf: buf,
+                span: span,
+                order: order,
+            });
+            Record·buf·span {
+                buf: buf,
+                span: Opt::Yes(span),
+            }
+        }
     }
 }
 

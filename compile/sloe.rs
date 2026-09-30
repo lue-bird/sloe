@@ -14225,6 +14225,80 @@ and return their `Opt Span` back to the `Buf` for potential future reuse by func
                 ]),
             },
             CoreFnInfo {
+                name: "Buf-span-sort",
+                documentation: r#"Order the referenced items, less before greater according to a given function.
+Items whose comparison returns `'equal .` are ordered according to their original position in the Span ("stable sort").
+While this function allows the compared items to be altered, I strongly recommend against doing so
+as for example the new altered items may violate the expected ordering at that point.
+Do no rely on a specific order of when items are compared."#,
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                    (
+                        "order",
+                        type_fn(
+                            type_record([
+                                ("left", type_variable("item")),
+                                ("right", type_variable("item")),
+                            ]),
+                            type_record([
+                                ("left", type_variable("item")),
+                                ("right", type_variable("item")),
+                                ("order", type_order()),
+                            ])
+                        )
+                    )
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_span(type_variable("origin"))),
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-opt-span-sort",
+                documentation: r#"Order the referenced items, less before greater according to a given function.
+Items whose comparison returns `'equal .` are ordered according to their original position in the Span ("stable sort").
+While this function allows the compared items to be altered, I strongly recommend against doing so
+as for example the new altered items may violate the expected ordering at that point.
+Do no rely on a specific order of when items are compared."#,
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                    (
+                        "order",
+                        type_fn(
+                            type_record([
+                                ("left", type_variable("item")),
+                                ("right", type_variable("item")),
+                            ]),
+                            type_record([
+                                ("left", type_variable("item")),
+                                ("right", type_variable("item")),
+                                ("order", type_order()),
+                            ])
+                        )
+                    )
+                ]),
+                result_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("span", type_opt(type_span(type_variable("origin")))),
+                ]),
+            },
+            CoreFnInfo {
                 name: "Buf-span-alter",
                 documentation: "Change every item referenced by the given Span with a given function to a new item of the same type.
 If your change function needs extra context from the outside, use `Buf-span-step` instead",
@@ -15626,6 +15700,8 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Buf-item-step"
         | "Buf-origin-isolate"
         | "Buf-origin-unerase"
+        | "Buf-opt-span-sort"
+        | "Buf-span-sort"
         | "Buf-opt-span-rid"
         | "Buf-span-rid"
         | "Buf-opt-span-alter"

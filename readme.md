@@ -369,7 +369,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Also, how would this work with existing buf APIs? Something like `Buf2-opt-span-add`
 - minor: sometimes, you really own all the items of a buf in one place (especially when the buf items can be trivially copied).
   Splitting it into `Opt Span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0)
-- by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 6 usize-wide and you may pass a bunch of them).
+- by default, most passed arguments are quite fat on the stack (e.g. `Buf` is ~6~ 3.5 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_type-variable` and `minus-dash-hyphen`
 - the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
@@ -612,6 +612,24 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 # rejected ideas (some may be outdated)
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas
 
+- temporary, unrestricted sharing.
+  One might imagine that this could be implemented in API land with something like
+  ```sloe
+  ty Immutable _origin, _value
+  ty Shared _origin, _value
+  fn To-immutable .origin Origin _origin, _part .value _value
+  : Immutable (Origin _origin, _part) _value
+  fn Immutable-share Immutable _origin, _value
+  : .immutable Immutable _origin, _value .shared Shared _origin, _value
+  fn Shared-dup Shared _origin, _value
+  fn Shared-rid Shared _origin, _value : .
+  fn To-mutable Immutable _origin, _value : _value
+  ```
+  combined with various APIs to e.g. `Shared-span-length` which take and give back `Immutable`.
+  However, this is horrible!
+    - Shared is entirely useless (since it isn't possible to e.g. define map, merge etc.). The only vaguely plausible utility of `Immutable` is preventing mutation
+    - it doesn't mix at all with non-shared functions and types
+    - wrapping and unwrapping Shared types is a giant pain
 - allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, 'variant{} and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there
 - add special syntax `fn-once` that automatically assembles the environment from the used local variables.
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
@@ -811,8 +829,7 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - add `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 
-- add `Buf-(opt-)span-sort` (issue: how to implement in rust and js?).
-  Then consider adding `Buf-(opt-)span-binary-search` (maybe interpolation search)
+- consider adding `Buf-(opt-)span-binary-search` (maybe interpolation search)
 
 - again try to may make proper unerase viable (unlikely).
   If successful add

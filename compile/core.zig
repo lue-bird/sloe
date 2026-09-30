@@ -2532,6 +2532,110 @@ pub fn buf_opt_span_reverse(
     const @"%reversed_span" = @"%".buf.optSpanReverse(@"%".span);
     return .{ .buf = @"%".buf, .span = @"%reversed_span" };
 }
+pub fn buf_span_sort(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        order: Fn(
+            Record(struct { left: @"%Item", right: @"%Item" }),
+            Record(struct { left: @"%Item", order: Order, right: @"%Item" }),
+        ),
+        span: Span(@"%Origin"),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Span(@"%Origin"),
+}) {
+    const @"%SortState" = struct {
+        buf_items: []@"%Item",
+        order: @TypeOf(@"%".order),
+        allocator: std.mem.Allocator,
+        is_out_of_memory: *bool,
+    };
+    const @"%span_slice_offsets" = try @"%allocator".alloc(usize, @"%".span.length.positive);
+    for (@"%span_slice_offsets", 0..) |*@"%span_slice_offset_ptr", @"%offset"| {
+        @"%span_slice_offset_ptr".* = @"%offset";
+    }
+    var @"%is_out_of_memory" = false;
+    std.sort.block(
+        usize,
+        @"%span_slice_offsets",
+        @"%SortState"{
+            .buf_items = @"%".buf.items.items,
+            .order = @"%".order,
+            .allocator = @"%allocator",
+            .is_out_of_memory = &@"%is_out_of_memory",
+        },
+        struct {
+            fn f(@"%state": @"%SortState", @"%left_offset": usize, @"%right_offset": usize) bool {
+                const @"%left" = &@"%state".buf_items[@"%left_offset"];
+                const @"%right" = &@"%state".buf_items[@"%right_offset"];
+                const @"%ordered" = @"%state".order(
+                    @"%state".allocator,
+                    .{ .left = @"%left".*, .right = @"%right".* },
+                ) catch {
+                    @"%state".is_out_of_memory.* = true;
+                    // returning false would fail an invariant of std.sort.block
+                    return @"%left_offset" < @"%right_offset";
+                };
+                @"%left".* = @"%ordered".left;
+                @"%right".* = @"%ordered".right;
+                return switch (@"%ordered".order) {
+                    .less => true,
+                    else => false,
+                };
+            }
+        }.f,
+    );
+    if (@"%is_out_of_memory") {
+        @"%allocator".free(@"%span_slice_offsets");
+        return error.OutOfMemory;
+    }
+    const @"%span_slice" = @"%".buf.spanSlice(@"%".span);
+    for (@"%span_slice_offsets", 0..) |@"%sorted_offset", @"%offset"| {
+        if (@"%sorted_offset" > @"%offset") {
+            std.mem.swap(
+                @"%Item",
+                &@"%span_slice"[@"%offset"],
+                &@"%span_slice"[@"%sorted_offset"],
+            );
+        }
+    }
+    @"%allocator".free(@"%span_slice_offsets");
+    return .{ .buf = @"%".buf, .span = @"%".span };
+}
+pub fn buf_opt_span_sort(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        buf: Buf(@"%Origin", @"%Item"),
+        order: Fn(
+            Record(struct { left: @"%Item", right: @"%Item" }),
+            Record(struct { left: @"%Item", order: Order, right: @"%Item" }),
+        ),
+        span: Opt(Span(@"%Origin")),
+    }),
+) error{OutOfMemory}!Record(struct {
+    buf: Buf(@"%Origin", @"%Item"),
+    span: Opt(Span(@"%Origin")),
+}) {
+    switch (@"%".span) {
+        .no => {
+            return .{ .buf = @"%".buf, .span = .{ .no = {} } };
+        },
+        .yes => |@"%span"| {
+            _ = try buf_span_sort(@"%Item", @"%Origin", @"%allocator", .{
+                .buf = @"%".buf,
+                .span = @"%span",
+                .order = @"%".order,
+            });
+            return .{ .buf = @"%".buf, .span = @"%".span };
+        },
+    }
+}
 pub fn buf_to_unset(
     @"%Item": type,
     @"%Origin": type,
