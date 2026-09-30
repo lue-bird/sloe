@@ -827,52 +827,40 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- again try to may make proper unerase viable (unlikely).
+- make proper unerase viable.
   The idea is to provide
   ```sloe
   fn Origin-unerase
       .erased Origin-erased _erased .origin Origin _origin, .
   : Origin-isolated _origin, _erased
 
+  ty Origin-uneraser _origin
+  # If anyone could call `Origin-unisolated` with any origin,
+  # you would be able to e.g. convert a `Slot (Origin erased, .)` to a Slot with any origin which is unsound.
+  ty Origin-unisolated _origin, _unisolated
+  
+  fn Origin-unisolated-map
+      .unisolated Origin-unisolated _origin, _unisolated
+      .change Fn _unisolated, _unisolated-changed
+  : Origin-unisolated _origin, _unisolated-changed      
+  fn Origin-unisolated .uneraser Origin-uneraser _origin .erased _erased
+  : Origin-unisolated _origin, (Origin-isolated _origin, _erased)
+  
+  fn Origin-unisolate
+      .isolated Origin-isolated _origin, _erased
+      .unisolate
+      Fn (.erased _erased .unisolater Origin-unisolater _origin),
+      Origin-unisolated _origin, _unisolated
+  : _unisolated
   ```
-  along with the inverse operations of `*-origin-isolate`, like
+  along replacing the current unerase functions with the inverse operations of `*-origin-isolate`, like
   ```sloe
   fn U32-origin-unisolate Origin-isolated _origin, u32 : u32
   fn Slot-origin-unisolate Origin-isolated _origin, Slot Origin erased, _part
   : Slot _origin, _part
-  fn Origin-isolated-split Origin-isolated _origin, .a _a .b _b
-  : .a Origin-isolated _origin, _a .b Origin-isolated _origin, _b
   ```
-  The neuraligic question is whether choice works:
-  ```sloe
-  fn Origin-isolated-either Origin-isolated _origin, 'a _a, 'b _b
-  : 'a Origin-isolated _origin, _a .b Origin-isolated _origin, _b
-  ```
-  used as
-  ```sloe
-  ty color 'red . 'green . 'blue .
-  fn Color-origin-unisolate color Origin-isolated color : color =
-      ? (
-          Origin-isolated-either
-          Origin-isolated-either
-          Origin-isolated-map
-          .isolated color
-          .change
-          [color color]
-          ? color
-          ['red .] 'a{'b 'a . 'b .} .
-          ['red .] 'b{'a .} 'a{'b .} .
-          ['red .] 'b{'a .} 'b{'a .} .
-      )
-      ['a red] 'red Origin-isolated-rid .isolated red .rid [.] .
-      ['b 'a green] 'red Origin-isolated-rid .isolated green .rid [.] .
-      ['a blue] 'blue Origin-isolated-rid .isolated blue .rid [.] .
-  ```
-  Yeah... it works but:
-    - quadratic variant value type spell-out
-    - tedious
+  usage:
   
-  Preferably we'd have some way to restrict programs to
   ```sloe
   ty color 'red . 'green . 'blue .
   fn Color-origin-unisolate color Origin-isolated _origin, color : color =
@@ -880,27 +868,27 @@ I imagine the current style leaves some performance on the table but I'd be surp
           Origin-unisolate
           .isolated color
           .unisolate
-          [color color]
+          [.erased color color .. unisolater Origin-unisolater _origin]
           ? color
           ['red .] (
               Origin-unisolated-map
               .change [v Origin-isolated _origin, .] 'red v
-              .unisolated (Origin-unisolated{_origin} .)
+              .unisolated (Origin-unisolated .erased . .. unisolater)
           )
           ['green .] (
               Origin-unisolated-map
               .change [v Origin-isolated _origin, .] 'green v
-              .unisolated (Origin-unisolated{_origin} .)
+              .unisolated (Origin-unisolated .erased . .. unisolater)
           )
           ['blue .] (
               Origin-unisolated-map
               .change [v Origin-isolated _origin, .] 'blue v
-              .unisolated (Origin-unisolated{_origin} .)
+              .unisolated (Origin-unisolated .erased . .. unisolater)
           )
       )
-      ['a red] 'red Origin-isolated-rid .isolated red .rid [.] .
-      ['b 'a green] 'red Origin-isolated-rid .isolated green .rid [.] .
-      ['a blue] 'blue Origin-isolated-rid .isolated blue .rid [.] .
+      ['red red] 'red Origin-isolated-rid .isolated red .rid [.] .
+      ['green green] 'red Origin-isolated-rid .isolated green .rid [.] .
+      ['blue blue] 'blue Origin-isolated-rid .isolated blue .rid [.] .
   ```
   or even better with nested origin-unisolate:
   ```sloe
@@ -909,42 +897,25 @@ I imagine the current style leaves some performance on the table but I'd be surp
       Origin-unisolate
       .isolated color
       .unisolate
-      [color color]
+      [.erased color color .. unisolater .unisolater Origin-unisolater _origin]
       ? color
       ['red .] (
           Origin-unisolated-map
           .change [v Origin-isolated _origin, .] 'red Origin-isolated-rid .isolated v .rid [.] .
-          .unisolated (Origin-unisolated{_origin} .)
+          .unisolated (Origin-unisolated .erased . .. unisolater)
       )
       ['green .] (
           Origin-unisolated-map
           .change [v Origin-isolated _origin, .] 'green Origin-isolated-rid .isolated v .rid [.] .
-          .unisolated (Origin-unisolated{_origin} .)
+          .unisolated (Origin-unisolated .erased . .. unisolater)
       )
       ['blue .] (
           Origin-unisolated-map
           .change [v Origin-isolated _origin, .] 'blue Origin-isolated-rid .isolated v .rid [.] .
-          .unisolated (Origin-unisolated{_origin} .)
+          .unisolated (Origin-unisolated .erased . .. unisolater)
       )
   ```
-  with
-  ```sloe
-  ty Origin-unisolated _origin, _unisolated
   
-  fn Origin-unisolated-map
-      .unisolated Origin-unisolated _origin, _unisolated
-      .change Fn _unisolated, _unisolated-changed
-  : Origin-unisolated _origin, _unisolated-changed      
-  fn Origin-unisolated{_origin} _erased
-  : Origin-unisolated _origin, (Origin-isolated _origin, _erased)
-  
-  fn Origin-unisolate
-      .isolated Origin-isolated _origin, _erased
-      .unisolate Fn _erased, Origin-unisolated _origin, _unisolated
-  : _unisolated
-  ```
-  Ain't no way I acually figured it out.
-  Feels goood, yo.
   
   Then remove `Buf-origin-erased` in favor of `Buf erased`, consider adding `Origin-isolated-rid` and
   ```sloe
