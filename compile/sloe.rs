@@ -11495,40 +11495,43 @@ fn type_diff_format(formatted: &mut String, indent: usize, type_diff: &TypeDiff)
             fields,
             actual_missing_fields,
             actual_extraneous_fields,
-        } => match fields.split_first() {
-            None => {
-                formatted.push('.');
-            }
-            Some((field0, field1_up)) => {
-                type_diff_field_format(formatted, indent, field0);
-                let line_span: LineSpan =
-                    if actual_missing_fields.is_empty() && actual_extraneous_fields.is_empty() {
+        } => {
+            match fields.split_first() {
+                None => {
+                    formatted.push('.');
+                }
+                Some((field0, field1_up)) => {
+                    type_diff_field_format(formatted, indent, field0);
+                    let line_span: LineSpan = if actual_missing_fields.is_empty()
+                        && actual_extraneous_fields.is_empty()
+                    {
                         type_diff_line_span(type_diff)
                     } else {
                         LineSpan::Multiple
                     };
-                for field in field1_up {
-                    space_or_linebreak_indented_into(formatted, line_span, indent);
-                    type_diff_field_format(formatted, indent, field);
-                }
-                if !actual_missing_fields.is_empty() {
-                    linebreak_indented_into(formatted, indent);
-                    formatted.push_str("missing fields:");
-                    for actual_missing_field_name in actual_missing_fields {
-                        formatted.push_str(" .");
-                        formatted.push_str(actual_missing_field_name);
-                    }
-                }
-                if !actual_extraneous_fields.is_empty() {
-                    linebreak_indented_into(formatted, indent);
-                    formatted.push_str("extraneous fields:");
-                    for actual_extraneous_field_name in actual_extraneous_fields {
-                        formatted.push_str(" .");
-                        formatted.push_str(actual_extraneous_field_name);
+                    for field in field1_up {
+                        space_or_linebreak_indented_into(formatted, line_span, indent);
+                        type_diff_field_format(formatted, indent, field);
                     }
                 }
             }
-        },
+            if !actual_missing_fields.is_empty() {
+                linebreak_indented_into(formatted, indent);
+                formatted.push_str("missing fields:");
+                for actual_missing_field_name in actual_missing_fields {
+                    formatted.push_str(" .");
+                    formatted.push_str(actual_missing_field_name);
+                }
+            }
+            if !actual_extraneous_fields.is_empty() {
+                linebreak_indented_into(formatted, indent);
+                formatted.push_str("extraneous fields:");
+                for actual_extraneous_field_name in actual_extraneous_fields {
+                    formatted.push_str(" .");
+                    formatted.push_str(actual_extraneous_field_name);
+                }
+            }
+        }
         TypeDiff::Choice(variants) => match variants.split_first() {
             None => {
                 formatted.push('\'');

@@ -830,8 +830,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 - disallow sloe names `type-name` and `Type-name` to coexist.
   Major reason is confusingly disambiguated names in codegen.
   Official reason: This can be confusing when mixing up casing and will lead to conflicts of the count of type parameters changes on either of those types. Rename it.
-
-- when creating type mismatch where no fields overlap, it's shown as `(.\n)`. There's either a bug in type_diff_format or type_diff for records
   
 - add `Origin-isolated-rid` and
   ```sloe
