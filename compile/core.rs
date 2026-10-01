@@ -87,10 +87,9 @@ pub struct Record·buf·item_isolate<Buf, Item_isolate> {
     pub item_isolate: Item_isolate,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·buf·item_unerase·uneraser<Buf, Item_unerase, Uneraser> {
+pub struct Record·buf·item_unisolate<Buf, Item_unisolate> {
     pub buf: Buf,
-    pub item_unerase: Item_unerase,
-    pub uneraser: Uneraser,
+    pub item_unisolate: Item_unisolate,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·erase·value<Erase, Value> {
@@ -98,10 +97,20 @@ pub struct Record·erase·value<Erase, Value> {
     pub value: Value,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·erased·origin·unerase<Erased, Origin, Unerase> {
+pub struct Record·erased·origin<Erased, Origin> {
     pub erased: Erased,
     pub origin: Origin,
-    pub unerase: Unerase,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·erased·unisolate·unisolater<Erased, Unisolate, Unisolater> {
+    pub erased: Erased,
+    pub unisolate: Unisolate,
+    pub unisolater: Unisolater,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Record·isolated·unisolate<Isolated, Unisolate> {
+    pub isolated: Isolated,
+    pub unisolate: Unisolate,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·erased·rid<Erased, Rid> {
@@ -109,24 +118,9 @@ pub struct Record·erased·rid<Erased, Rid> {
     pub rid: Rid,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·erased·uneraser<Erased, Uneraser> {
+pub struct Record·erased·unisolater<Erased, Unisolater> {
     pub erased: Erased,
-    pub uneraser: Uneraser,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Record·unerased·uneraser<Unerased, Uneraser> {
-    pub unerased: Unerased,
-    pub uneraser: Uneraser,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Record·slot·uneraser<Slot, Uneraser> {
-    pub slot: Slot,
-    pub uneraser: Uneraser,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Record·span·uneraser<Span, Uneraser> {
-    pub span: Span,
-    pub uneraser: Uneraser,
+    pub unisolater: Unisolater,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·item·in<Item, In> {
@@ -137,11 +131,6 @@ pub struct Record·item·in<Item, In> {
 pub struct Record·item·state<Item, State> {
     pub item: Item,
     pub state: State,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Record·item·uneraser<Item, Uneraser> {
-    pub item: Item,
-    pub uneraser: Uneraser,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Record·item·slot<Item, Slot> {
@@ -330,11 +319,6 @@ pub struct Record·buf·item<Buf, Item> {
     pub item: Item,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Record·buf·uneraser<Buf, Uneraser> {
-    pub buf: Buf,
-    pub uneraser: Uneraser,
-}
-#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·item·slot<Buf, Item, Slot> {
     pub buf: Buf,
     pub item: Item,
@@ -459,17 +443,15 @@ pub struct Origin_isolated<Origin, Value_erased> {
 }
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct Origin_uneraser<Origin>(std::marker::PhantomData<Origin>);
+pub struct Origin_unisolater<Origin>(std::marker::PhantomData<Origin>);
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct Origin_unisolated<Unisolated>(Unisolated);
 
 pub struct Unset_slice<Item>(
     // invariant: .len() == 0
     std::vec::Vec<std::option::Option<Item>>,
 );
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct Buf_origin_erased<Part, Item> {
-    erased: Buf<Origin<Erased, Part>, Item>,
-}
 #[derive(Debug)]
 pub struct Buf<Origin, Item> {
     // invariant: the last item in .items is Some(_)
@@ -1543,52 +1525,19 @@ impl<Item, LocalOrigin, Part> Buf<Origin<LocalOrigin, Part>, Item> {
     pub fn origin_isolate<ItemErased>(
         self,
         item_erase: impl std::ops::Fn(Item) -> Origin_isolated<LocalOrigin, ItemErased>,
-    ) -> Origin_isolated<LocalOrigin, Buf_origin_erased<Part, ItemErased>> {
+    ) -> Origin_isolated<LocalOrigin, Buf<Origin<Erased, Part>, ItemErased>> {
         Origin_isolated {
             origin: std::marker::PhantomData::<LocalOrigin>,
-            value_erased: Buf_origin_erased {
-                erased: Buf {
-                    origin: std::marker::PhantomData::<Origin<Erased, Part>>,
-                    // the optimizer should be able to figure out that the atual memory does not change here
-                    // when the `item_erase` really justs erases origins
-                    items: std::iter::Iterator::collect(std::iter::Iterator::map(
-                        std::iter::IntoIterator::into_iter(self.items),
-                        |item| item.map(|item| item_erase(item).value_erased),
-                    )),
-                    first_unset_index: self.first_unset_index,
-                },
+            value_erased: Buf {
+                origin: std::marker::PhantomData::<Origin<Erased, Part>>,
+                // the optimizer should be able to figure out that the atual memory does not change here
+                // when the `item_erase` really justs erases origins
+                items: std::iter::Iterator::collect(std::iter::Iterator::map(
+                    std::iter::IntoIterator::into_iter(self.items),
+                    |item| item.map(|item| item_erase(item).value_erased),
+                )),
+                first_unset_index: self.first_unset_index,
             },
-        }
-    }
-}
-impl<Item, Part> Buf<Origin<Erased, Part>, Item> {
-    pub fn origin_unerase_keep_items<LocalOrigin>(
-        self,
-        _: &Origin_uneraser<LocalOrigin>,
-    ) -> Buf<Origin<LocalOrigin, Part>, Item> {
-        Buf {
-            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
-            items: self.items,
-            first_unset_index: self.first_unset_index,
-        }
-    }
-    pub fn origin_unerase<LocalOrigin, ItemUnerased>(
-        self,
-        uneraser: &Origin_uneraser<LocalOrigin>,
-        item_unerase: impl std::ops::Fn(
-            Item,
-            Origin_uneraser<LocalOrigin>,
-        ) -> (ItemUnerased, Origin_uneraser<LocalOrigin>),
-    ) -> Buf<Origin<LocalOrigin, Part>, ItemUnerased> {
-        Buf {
-            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
-            // the optimizer should be able to figure out that the atual memory does not change here
-            // when the `item_unerase` really justs unerases origins
-            items: std::iter::Iterator::collect(std::iter::Iterator::map(
-                std::iter::IntoIterator::into_iter(self.items),
-                |item| item.map(|item| item_unerase(item, Origin_uneraser(uneraser.0)).0),
-            )),
-            first_unset_index: self.first_unset_index,
         }
     }
 }
@@ -1614,17 +1563,6 @@ impl<LocalOrigin, Part> Slot<Origin<LocalOrigin, Part>> {
         Origin_isolated {
             origin: std::marker::PhantomData::<LocalOrigin>,
             value_erased: Slot::<Origin<Erased, Part>>::from_index(self.index),
-        }
-    }
-}
-impl<Part> Slot<Origin<Erased, Part>> {
-    pub fn origin_unerase<LocalOrigin>(
-        self,
-        _: &Origin_uneraser<LocalOrigin>,
-    ) -> Slot<Origin<LocalOrigin, Part>> {
-        Slot {
-            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
-            index: self.index,
         }
     }
 }
@@ -1720,17 +1658,6 @@ impl<LocalOrigin, Part> Span<Origin<LocalOrigin, Part>> {
         }
     }
 }
-impl<Part> Span<Origin<Erased, Part>> {
-    pub fn origin_unerase<LocalOrigin>(
-        self,
-        uneraser: &Origin_uneraser<LocalOrigin>,
-    ) -> Span<Origin<LocalOrigin, Part>> {
-        Span {
-            start: self.start.origin_unerase(uneraser),
-            length: self.length,
-        }
-    }
-}
 
 impl<Origin> Opt<&Span<Origin>> {
     pub fn to_range(self) -> std::ops::Range<usize> {
@@ -1757,17 +1684,6 @@ impl<LocalOrigin, Part> Opt<Span<Origin<LocalOrigin, Part>>> {
         match self {
             Opt::No(()) => Origin_isolated::constant(Opt::No),
             Opt::Yes(span) => span.origin_isolate().map(Opt::Yes),
-        }
-    }
-}
-impl<Part> Opt<Span<Origin<Erased, Part>>> {
-    pub fn origin_unerase<LocalOrigin>(
-        self,
-        uneraser: &Origin_uneraser<LocalOrigin>,
-    ) -> Opt<Span<Origin<LocalOrigin, Part>>> {
-        match self {
-            Opt::No(()) => Opt::No(()),
-            Opt::Yes(span) => Opt::Yes(span.origin_unerase(uneraser)),
         }
     }
 }
@@ -1809,14 +1725,81 @@ impl<LocalOrigin, ValueErased> Origin_isolated<LocalOrigin, ValueErased> {
         self,
         unisolate: impl std::ops::Fn(
             ValueErased,
-            Origin_uneraser<LocalOrigin>,
-        ) -> (Value, Origin_uneraser<LocalOrigin>),
+            Origin_unisolater<LocalOrigin>,
+        ) -> Origin_unisolated<Value>,
     ) -> Value {
         unisolate(
             self.value_erased,
-            Origin_uneraser(std::marker::PhantomData::<LocalOrigin>),
+            Origin_unisolater(std::marker::PhantomData::<LocalOrigin>),
         )
         .0
+    }
+}
+impl<Origin, A, B> Origin_isolated<Origin, Record·a·b<A, B>> {
+    pub fn split(self) -> Record·a·b<Origin_isolated<Origin, A>, Origin_isolated<Origin, B>> {
+        Record·a·b {
+            a: Origin_isolated {
+                origin: std::marker::PhantomData::<Origin>,
+                value_erased: self.value_erased.a,
+            },
+            b: Origin_isolated {
+                origin: std::marker::PhantomData::<Origin>,
+                value_erased: self.value_erased.b,
+            },
+        }
+    }
+}
+impl<LocalOrigin, Part> Origin_isolated<LocalOrigin, Slot<Origin<Erased, Part>>> {
+    pub fn origin_unisolate(self) -> Slot<Origin<LocalOrigin, Part>> {
+        Slot::<Origin<LocalOrigin, Part>>::from_index(self.value_erased.index)
+    }
+}
+impl<LocalOrigin, Part> Origin_isolated<LocalOrigin, Span<Origin<Erased, Part>>> {
+    pub fn origin_unisolate(self) -> Span<Origin<LocalOrigin, Part>> {
+        Span {
+            start: Slot::<Origin<LocalOrigin, Part>>::from_index(self.value_erased.start.index),
+            length: self.value_erased.length,
+        }
+    }
+}
+impl<LocalOrigin, Part> Origin_isolated<LocalOrigin, Opt<Span<Origin<Erased, Part>>>> {
+    pub fn origin_unisolate(self) -> Opt<Span<Origin<LocalOrigin, Part>>> {
+        match self.value_erased {
+            Opt::No(()) => Opt::No(()),
+            Opt::Yes(span) => Opt::Yes(
+                Origin_isolated {
+                    origin: std::marker::PhantomData::<LocalOrigin>,
+                    value_erased: span,
+                }
+                .origin_unisolate(),
+            ),
+        }
+    }
+}
+impl<ItemErased, LocalOrigin, Part>
+    Origin_isolated<LocalOrigin, Buf<Origin<Erased, Part>, ItemErased>>
+{
+    pub fn origin_unisolate<ItemUnisolated>(
+        self,
+        item_unisolate: impl std::ops::Fn(Origin_isolated<LocalOrigin, ItemErased>) -> ItemUnisolated,
+    ) -> Buf<Origin<LocalOrigin, Part>, ItemUnisolated> {
+        Buf {
+            origin: std::marker::PhantomData::<Origin<LocalOrigin, Part>>,
+            // the optimizer should be able to figure out that the atual memory does not change here
+            // when the `item_unisolate` really just unisolates origins
+            items: std::iter::Iterator::collect(std::iter::Iterator::map(
+                std::iter::IntoIterator::into_iter(self.value_erased.items),
+                |item| {
+                    item.map(|item| {
+                        item_unisolate(Origin_isolated {
+                            origin: std::marker::PhantomData::<LocalOrigin>,
+                            value_erased: item,
+                        })
+                    })
+                },
+            )),
+            first_unset_index: self.value_erased.first_unset_index,
+        }
     }
 }
 impl<ValueErased> Origin_erased<ValueErased> {
@@ -1828,6 +1811,18 @@ impl<ValueErased> Origin_erased<ValueErased> {
             origin: std::marker::PhantomData::<LocalOrigin>,
             value_erased: self.value_erased,
         }
+    }
+}
+impl<Unisolated> Origin_unisolated<Unisolated> {
+    pub fn from_erased<Erased, Origin>(
+        erased: Erased,
+        _: Origin_unisolater<Origin>,
+        unisolate: impl std::ops::FnOnce(Origin_isolated<Origin, Erased>) -> Unisolated,
+    ) -> Origin_unisolated<Unisolated> {
+        Origin_unisolated(unisolate(Origin_isolated {
+            origin: std::marker::PhantomData::<Origin>,
+            value_erased: erased,
+        }))
     }
 }
 
@@ -1855,6 +1850,9 @@ pub fn p32_origin_isolate<Origin>(n: P32) -> Origin_isolated<Origin, P32> {
         origin: std::marker::PhantomData::<Origin>,
         value_erased: n,
     }
+}
+pub fn p32_origin_unisolate<Origin>(isolated: Origin_isolated<Origin, P32>) -> P32 {
+    isolated.value_erased
 }
 pub fn u32_to_p32(n: U32) -> Opt<P32> {
     Opt::from_option(P32::new(n))
@@ -1922,6 +1920,9 @@ pub fn u32_origin_isolate<Origin>(n: U32) -> Origin_isolated<Origin, U32> {
         value_erased: n,
     }
 }
+pub fn u32_origin_unisolate<Origin>(isolated: Origin_isolated<Origin, U32>) -> U32 {
+    isolated.value_erased
+}
 pub fn i32_dup(n: I32) -> Record·a·b<I32, I32> {
     Record·a·b { a: n, b: n }
 }
@@ -1974,6 +1975,9 @@ pub fn i32_origin_isolate<Origin>(n: I32) -> Origin_isolated<Origin, I32> {
         origin: std::marker::PhantomData::<Origin>,
         value_erased: n,
     }
+}
+pub fn i32_origin_unisolate<Origin>(isolated: Origin_isolated<Origin, I32>) -> I32 {
+    isolated.value_erased
 }
 pub fn f32_dup(n: F32) -> Record·a·b<F32, F32> {
     Record·a·b { a: n, b: n }
@@ -2105,6 +2109,9 @@ pub fn f32_origin_isolate<Origin>(n: F32) -> Origin_isolated<Origin, F32> {
         value_erased: n,
     }
 }
+pub fn f32_origin_unisolate<Origin>(isolated: Origin_isolated<Origin, F32>) -> F32 {
+    isolated.value_erased
+}
 
 pub fn fn_dup<In, Out>(fn_: Fn<In, Out>) -> Record·a·b<Fn<In, Out>, Fn<In, Out>> {
     Record·a·b { a: fn_, b: fn_ }
@@ -2122,6 +2129,11 @@ pub fn fn_origin_isolate<In, Origin, Out>(
         value_erased: function,
     }
 }
+pub fn fn_origin_unisolate<In, Origin, Out>(
+    isolated: Origin_isolated<Origin, Fn<In, Out>>,
+) -> Fn<In, Out> {
+    isolated.value_erased
+}
 
 pub fn char_dup(char: Char) -> Record·a·b<Char, Char> {
     Record·a·b { a: char, b: char }
@@ -2138,6 +2150,9 @@ pub fn char_origin_isolate<Origin>(c: Char) -> Origin_isolated<Origin, Char> {
         origin: std::marker::PhantomData::<Origin>,
         value_erased: c,
     }
+}
+pub fn char_origin_unisolate<Origin>(isolated: Origin_isolated<Origin, Char>) -> Char {
+    isolated.value_erased
 }
 
 pub fn str_dup(str: Str) -> Record·a·b<Str, Str> {
@@ -2238,6 +2253,9 @@ pub fn str_origin_isolate<Origin>(s: Str) -> Origin_isolated<Origin, Str> {
         value_erased: s,
     }
 }
+pub fn str_origin_unisolate<Origin>(isolated: Origin_isolated<Origin, Str>) -> Str {
+    isolated.value_erased
+}
 
 pub fn opt_yes<Yes>(yes: Yes) -> Opt<Yes> {
     Opt::Yes(yes)
@@ -2258,17 +2276,10 @@ pub fn slot_origin_isolate<LocalOrigin, Part>(
 ) -> Origin_isolated<LocalOrigin, Slot<Origin<Erased, Part>>> {
     slot.origin_isolate()
 }
-pub fn slot_origin_unerase<LocalOrigin, Part>(
-    Record·slot·uneraser { slot, uneraser }: Record·slot·uneraser<
-        Slot<Origin<Erased, Part>>,
-        Origin_uneraser<LocalOrigin>,
-    >,
-) -> Record·slot·uneraser<Slot<Origin<LocalOrigin, Part>>, Origin_uneraser<LocalOrigin>> {
-    let slot = slot.origin_unerase(&uneraser);
-    Record·slot·uneraser {
-        slot: slot,
-        uneraser: uneraser,
-    }
+pub fn slot_origin_unisolate<LocalOrigin, Part>(
+    isolated: Origin_isolated<LocalOrigin, Slot<Origin<Erased, Part>>>,
+) -> Slot<Origin<LocalOrigin, Part>> {
+    isolated.origin_unisolate()
 }
 pub fn slot_to_span<Origin>(slot: Slot<Origin>) -> Span<Origin> {
     slot.to_span()
@@ -2447,34 +2458,20 @@ pub fn span_origin_isolate<LocalOrigin, Part>(
         },
     }
 }
-pub fn span_origin_unerase<LocalOrigin, Part>(
-    Record·span·uneraser { span, uneraser }: Record·span·uneraser<
-        Span<Origin<Erased, Part>>,
-        Origin_uneraser<LocalOrigin>,
-    >,
-) -> Record·span·uneraser<Span<Origin<LocalOrigin, Part>>, Origin_uneraser<LocalOrigin>> {
-    let span = span.origin_unerase(&uneraser);
-    Record·span·uneraser {
-        span: span,
-        uneraser: uneraser,
-    }
+pub fn span_origin_unisolate<LocalOrigin, Part>(
+    span: Origin_isolated<LocalOrigin, Span<Origin<Erased, Part>>>,
+) -> Span<Origin<LocalOrigin, Part>> {
+    span.origin_unisolate()
 }
 pub fn opt_span_origin_isolate<LocalOrigin, Part>(
     span: Opt<Span<Origin<LocalOrigin, Part>>>,
 ) -> Origin_isolated<LocalOrigin, Opt<Span<Origin<Erased, Part>>>> {
     span.origin_isolate()
 }
-pub fn opt_span_origin_unerase<LocalOrigin, Part>(
-    Record·span·uneraser { span, uneraser }: Record·span·uneraser<
-        Opt<Span<Origin<Erased, Part>>>,
-        Origin_uneraser<LocalOrigin>,
-    >,
-) -> Record·span·uneraser<Opt<Span<Origin<LocalOrigin, Part>>>, Origin_uneraser<LocalOrigin>> {
-    let span = span.origin_unerase(&uneraser);
-    Record·span·uneraser {
-        span: span,
-        uneraser: uneraser,
-    }
+pub fn opt_span_origin_unisolate<LocalOrigin, Part>(
+    span: Origin_isolated<LocalOrigin, Opt<Span<Origin<Erased, Part>>>>,
+) -> Opt<Span<Origin<LocalOrigin, Part>>> {
+    span.origin_unisolate()
 }
 
 pub fn origin_rid<LocalOrigin, Part>(_: Origin<LocalOrigin, Part>) -> Record {}
@@ -2500,6 +2497,11 @@ pub fn origin_isolated_merge<A, B, LocalOrigin>(
 ) -> Origin_isolated<LocalOrigin, Record·a·b<A, B>> {
     a.merge(b)
 }
+pub fn origin_isolated_split<A, B, Origin>(
+    ab: Origin_isolated<Origin, Record·a·b<A, B>>,
+) -> Record·a·b<Origin_isolated<Origin, A>, Origin_isolated<Origin, B>> {
+    ab.split()
+}
 pub fn origin_erase<Origin, ValueErased>(
     isolated: Origin_isolated<Origin, ValueErased>,
 ) -> Origin_erased<ValueErased> {
@@ -2513,27 +2515,45 @@ pub fn origin_erased_rid<ValueErased>(
 ) -> Record {
     rid(erased.value_erased);
 }
-pub fn origin_unerase<LocalOrigin, Value, ValueErased>(
-    Record·erased·origin·unerase {
-        erased,
-        origin,
-        unerase,
-    }: Record·erased·origin·unerase<
+pub fn origin_unerase<LocalOrigin, ValueErased>(
+    Record·erased·origin { erased, origin }: Record·erased·origin<
         Origin_erased<ValueErased>,
         Origin<LocalOrigin, Record>,
+    >,
+) -> Origin_isolated<LocalOrigin, ValueErased> {
+    erased.unerase(origin)
+}
+pub fn origin_unisolate<LocalOrigin, Value, ValueErased>(
+    Record·isolated·unisolate {
+        isolated,
+        unisolate,
+    }: Record·isolated·unisolate<
+        Origin_isolated<LocalOrigin, ValueErased>,
         Fn<
-            Record·erased·uneraser<ValueErased, Origin_uneraser<LocalOrigin>>,
-            Record·unerased·uneraser<Value, Origin_uneraser<LocalOrigin>>,
+            Record·erased·unisolater<ValueErased, Origin_unisolater<LocalOrigin>>,
+            Origin_unisolated<Value>,
         >,
     >,
 ) -> Value {
-    erased.unerase(origin).unisolate(|erased, uneraser| {
-        let Record·unerased·uneraser { unerased, uneraser } = unerase(Record·erased·uneraser {
+    isolated.unisolate(|erased, unisolater| {
+        unisolate(Record·erased·unisolater {
             erased: erased,
-            uneraser: uneraser,
-        });
-        (unerased, uneraser)
+            unisolater: unisolater,
+        })
     })
+}
+pub fn origin_erased_unisolate<LocalOrigin, Value, ValueErased>(
+    Record·erased·unisolate·unisolater {
+        erased,
+        unisolate,
+        unisolater,
+    }: Record·erased·unisolate·unisolater<
+        ValueErased,
+        Fn<Origin_isolated<LocalOrigin, ValueErased>, Value>,
+        Origin_unisolater<LocalOrigin>,
+    >,
+) -> Origin_unisolated<Value> {
+    Origin_unisolated::from_erased(erased, unisolater, unisolate)
 }
 
 pub fn buf_empty<Item, LocalOrigin, Part>(
@@ -3325,49 +3345,19 @@ fn buf_origin_isolate<Item, ItemErased, LocalOrigin, Part>(
         Buf<Origin<LocalOrigin, Part>, Item>,
         Fn<Item, Origin_isolated<LocalOrigin, ItemErased>>,
     >,
-) -> Origin_isolated<LocalOrigin, Buf_origin_erased<Part, ItemErased>> {
+) -> Origin_isolated<LocalOrigin, Buf<Origin<Erased, Part>, ItemErased>> {
     buf.origin_isolate(item_isolate)
 }
-pub fn buf_origin_unerase_keep_items<Item, LocalOrigin, Part>(
-    Record·buf·uneraser { buf, uneraser }: Record·buf·uneraser<
-        Buf_origin_erased<Part, Item>,
-        Origin_uneraser<LocalOrigin>,
-    >,
-) -> Record·buf·uneraser<Buf<Origin<LocalOrigin, Part>, Item>, Origin_uneraser<LocalOrigin>> {
-    let buf_unerased = buf.erased.origin_unerase_keep_items(&uneraser);
-    Record·buf·uneraser {
-        buf: buf_unerased,
-        uneraser: uneraser,
-    }
-}
-pub fn buf_origin_unerase<Item, ItemErased, LocalOrigin, Part>(
-    Record·buf·item_unerase·uneraser {
+pub fn buf_origin_unisolate<Item, ItemErased, LocalOrigin, Part>(
+    Record·buf·item_unisolate {
         buf,
-        item_unerase,
-        uneraser,
-    }: Record·buf·item_unerase·uneraser<
-        Buf_origin_erased<Part, ItemErased>,
-        Fn<
-            Record·item·uneraser<ItemErased, Origin_uneraser<LocalOrigin>>,
-            Record·item·uneraser<Item, Origin_uneraser<LocalOrigin>>,
-        >,
-        Origin_uneraser<LocalOrigin>,
+        item_unisolate,
+    }: Record·buf·item_unisolate<
+        Origin_isolated<LocalOrigin, Buf<Origin<Erased, Part>, ItemErased>>,
+        Fn<Origin_isolated<LocalOrigin, ItemErased>, Item>,
     >,
-) -> Record·buf·uneraser<Buf<Origin<LocalOrigin, Part>, Item>, Origin_uneraser<LocalOrigin>> {
-    let buf_unerased = buf.erased.origin_unerase(&uneraser, |item, uneraser| {
-        let Record·item·uneraser {
-            item: item_erased,
-            uneraser: eraser,
-        } = item_unerase(Record·item·uneraser {
-            item: item,
-            uneraser: uneraser,
-        });
-        (item_erased, eraser)
-    });
-    Record·buf·uneraser {
-        buf: buf_unerased,
-        uneraser: uneraser,
-    }
+) -> Buf<Origin<LocalOrigin, Part>, Item> {
+    buf.origin_unisolate(item_unisolate)
 }
 
 pub fn unset_slice_rid<Item>(_: Unset_slice<Item>) -> Record {}

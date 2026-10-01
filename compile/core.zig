@@ -222,7 +222,7 @@ pub const Erased = struct {};
 pub fn Origin_erased(@"%ValueErased": type) type {
     return struct {
         erased: @"%ValueErased",
-        pub fn unerase(@"%Origin": type, @"%origin_erased": @This(), _: Origin(@"%Origin", void)) Origin_isolated(@"%Origin", @"%ValueErased") {
+        pub fn unerase(@"%origin_erased": @This(), @"%Origin": type, _: Origin(@"%Origin", void)) Origin_isolated(@"%Origin", @"%ValueErased") {
             return .{ .erased = @"%origin_erased".erased };
         }
     };
@@ -236,9 +236,14 @@ pub fn Origin_isolated(@"%Origin": type, @"%ValueErased": type) type {
         }
     };
 }
-pub fn Origin_uneraser(@"%Origin": type) type {
+pub fn Origin_unisolater(@"%Origin": type) type {
     return struct {
         pub const origin = @"%Origin";
+    };
+}
+pub fn Origin_unisolated(@"%Unisolated": type) type {
+    return struct {
+        unisolated: @"%Unisolated",
     };
 }
 pub fn Slot(@"%Origin": type) type {
@@ -468,9 +473,6 @@ pub fn Unset_slice(@"%Item": type) type {
             return @"%allocator".free(@"%unset_slice".undefined_items);
         }
     };
-}
-pub fn Buf_origin_erased(@"%Part": type, @"%Item": type) type {
-    return struct { erased: Buf(Origin(Erased, @"%Part"), @"%Item") };
 }
 const Range = struct {
     start: u32,
@@ -1162,6 +1164,12 @@ pub fn p32_origin_isolate(
 ) Origin_isolated(@"%Origin", P32) {
     return .{ .erased = @"%n" };
 }
+pub fn p32_origin_unisolate(
+    @"%Origin": type,
+    @"%isolated": Origin_isolated(@"%Origin", P32),
+) P32 {
+    return @"%isolated".erased;
+}
 
 pub fn u32_rid(_: U32) void {}
 pub fn u32_dup(@"%n": U32) Record(struct { a: U32, b: U32 }) {
@@ -1204,6 +1212,12 @@ pub fn u32_origin_isolate(
 ) Origin_isolated(@"%Origin", U32) {
     return .{ .erased = @"%n" };
 }
+pub fn u32_origin_unisolate(
+    @"%Origin": type,
+    @"%isolated": Origin_isolated(@"%Origin", U32),
+) U32 {
+    return @"%isolated".erased;
+}
 
 pub fn i32_rid(_: I32) void {}
 pub fn i32_dup(@"%n": I32) Record(struct { a: I32, b: I32 }) {
@@ -1243,6 +1257,12 @@ pub fn i32_origin_isolate(
     @"%n": I32,
 ) Origin_isolated(@"%Origin", I32) {
     return .{ .erased = @"%n" };
+}
+pub fn i32_origin_unisolate(
+    @"%Origin": type,
+    @"%isolated": Origin_isolated(@"%Origin", I32),
+) I32 {
+    return @"%isolated".erased;
 }
 
 pub fn f32_rid(_: F32) void {}
@@ -1367,6 +1387,12 @@ pub fn f32_origin_isolate(
 ) Origin_isolated(@"%Origin", F32) {
     return .{ .erased = @"%n" };
 }
+pub fn f32_origin_unisolate(
+    @"%Origin": type,
+    @"%isolated": Origin_isolated(@"%Origin", F32),
+) F32 {
+    return @"%isolated".erased;
+}
 
 pub fn char_rid(_: Char) void {}
 pub fn char_to_u32(@"%char": Char) U32 {
@@ -1380,6 +1406,12 @@ pub fn char_origin_isolate(
     @"%char": Char,
 ) Origin_isolated(@"%Origin", Char) {
     return .{ .erased = @"%char" };
+}
+pub fn char_origin_unisolate(
+    @"%Origin": type,
+    @"%isolated": Origin_isolated(@"%Origin", Char),
+) Char {
+    return @"%isolated".erased;
 }
 
 pub fn str_rid(_: Str) void {}
@@ -1412,6 +1444,12 @@ pub fn str_origin_isolate(
 ) Origin_isolated(@"%Origin", Str) {
     return .{ .erased = @"%str" };
 }
+pub fn str_origin_unisolate(
+    @"%Origin": type,
+    @"%isolated": Origin_isolated(@"%Origin", Str),
+) Str {
+    return @"%isolated".erased;
+}
 
 pub fn fn_rid(@"%In": type, @"%Out": type, _: Fn(@"%In", @"%Out")) void {}
 pub fn fn_dup(
@@ -1436,6 +1474,14 @@ pub fn fn_origin_isolate(
     @"%fn": Fn(@"%In", @"%Out"),
 ) Origin_isolated(@"%Origin", Fn(@"%In", @"%Out")) {
     return .{ .erased = @"%fn" };
+}
+pub fn fn_origin_unisolate(
+    @"%In": type,
+    @"%Origin": type,
+    @"%Out": type,
+    @"%isolated": Origin_isolated(@"%Origin", Fn(@"%In", @"%Out")),
+) Fn(@"%In", @"%Out") {
+    return @"%isolated".erased;
 }
 
 pub fn choice_empty_to(
@@ -1470,6 +1516,20 @@ pub fn origin_isolated_merge(
 ) Origin_isolated(@"%Origin", Record(struct { a: @"%A", b: @"%B" })) {
     return .{ .erased = .{ .a = @"%".a.erased, .b = @"%".b.erased } };
 }
+pub fn origin_isolated_split(
+    @"%A": type,
+    @"%B": type,
+    @"%Origin": type,
+    @"%": Origin_isolated(@"%Origin", Record(struct { a: @"%A", b: @"%B" })),
+) Record(struct {
+    a: Origin_isolated(@"%Origin", @"%A"),
+    b: Origin_isolated(@"%Origin", @"%B"),
+}) {
+    return .{
+        .a = .{ .erased = @"%".erased.a },
+        .b = .{ .erased = @"%".erased.b },
+    };
+}
 pub fn origin_isolated_map(
     @"%Erased": type,
     @"%NewErased": type,
@@ -1481,6 +1541,43 @@ pub fn origin_isolated_map(
     }),
 ) error{OutOfMemory}!Origin_isolated(@"%Origin", @"%NewErased") {
     return .{ .erased = try @"%".change(@"%allocator", @"%".isolated.erased) };
+}
+pub fn origin_unisolate(
+    @"%Erased": type,
+    @"%Origin": type,
+    @"%Unisolated": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        isolated: Origin_isolated(@"%Origin", @"%Erased"),
+        unisolate: Fn(
+            Record(struct {
+                erased: @"%Erased",
+                unisolater: Origin_unisolater(@"%Origin"),
+            }),
+            Origin_unisolated(@"%Unisolated"),
+        ),
+    }),
+) error{OutOfMemory}!@"%Unisolated" {
+    return (try @"%".unisolate(
+        @"%allocator",
+        .{ .erased = @"%".isolated.erased, .unisolater = .{} },
+    )).unisolated;
+}
+pub fn origin_erased_unisolate(
+    @"%Erased": type,
+    @"%Origin": type,
+    @"%Unisolated": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        erased: @"%Erased",
+        unisolate: Fn(
+            Origin_isolated(@"%Origin", @"%Erased"),
+            @"%Unisolated",
+        ),
+        unisolater: Origin_unisolater(@"%Origin"),
+    }),
+) error{OutOfMemory}!Origin_unisolated(@"%Unisolated") {
+    return .{ .unisolated = try @"%".unisolate(@"%allocator", .{ .erased = @"%".erased }) };
 }
 pub fn origin_erase(
     @"%Origin": type,
@@ -1501,28 +1598,13 @@ pub fn origin_erased_rid(
 }
 pub fn origin_unerase(
     @"%Origin": type,
-    @"%Value": type,
     @"%ValueErased": type,
-    @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
         erased: Origin_erased(@"%ValueErased"),
         origin: Origin(@"%Origin", void),
-        unerase: Fn(
-            Record(struct {
-                erased: @"%ValueErased",
-                uneraser: Origin_uneraser(@"%Origin"),
-            }),
-            Record(struct {
-                unerased: @"%Value",
-                uneraser: Origin_uneraser(@"%Origin"),
-            }),
-        ),
     }),
-) error{OutOfMemory}!@"%Value" {
-    return (try @"%".unerase(@"%allocator", .{
-        .uneraser = .{},
-        .erased = @"%".erased.erased,
-    })).unerased;
+) Origin_isolated(@"%Origin", @"%ValueErased") {
+    return .{ .erased = @"%".erased.erased };
 }
 
 pub fn slot_index(
@@ -1541,17 +1623,15 @@ pub fn slot_origin_isolate(
 ) Origin_isolated(@"%Origin", Slot(Origin(Erased, @"%Part"))) {
     return .{ .erased = .{ .index = @"%slot".index } };
 }
-pub fn slot_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    slot: Slot(Origin(Erased, @"%Part")),
-    uneraser: Origin_uneraser(@"%Origin"),
-})) Record(struct {
-    slot: Slot(Origin(@"%Origin", @"%Part")),
-    uneraser: Origin_uneraser(@"%Origin"),
-}) {
-    return .{
-        .slot = .{ .index = @"%".slot.index },
-        .uneraser = @"%".uneraser,
-    };
+pub fn slot_origin_unisolate(
+    @"%Origin": type,
+    @"%Part": type,
+    @"%isolated": Origin_isolated(
+        @"%Origin",
+        Slot(Origin(Erased, @"%Part")),
+    ),
+) Slot(Origin(@"%Origin", @"%Part")) {
+    return .{ .index = @"%isolated".erased.index };
 }
 
 pub fn span_start_index(
@@ -1700,34 +1780,33 @@ pub fn opt_span_origin_isolate(
         } },
     } };
 }
-pub fn span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    span: Span(Origin(Erased, @"%Part")),
-    uneraser: Origin_uneraser(@"%Origin"),
-})) Record(struct {
-    span: Span(Origin(@"%Origin", @"%Part")),
-    uneraser: Origin_uneraser(@"%Origin"),
-}) {
+pub fn span_origin_unisolate(
+    @"%Origin": type,
+    @"%Part": type,
+    @"%isolated": Origin_isolated(
+        @"%Origin",
+        Span(Origin(Erased, @"%Part")),
+    ),
+) Span(Origin(@"%Origin", @"%Part")) {
     return .{
-        .span = .{ .start = @"%".span.start, .length = @"%".span.length },
-        .uneraser = @"%".uneraser,
+        .start = @"%isolated".erased.start,
+        .length = @"%isolated".erased.length,
     };
 }
-pub fn opt_span_origin_unerase(@"%Origin": type, @"%Part": type, @"%": Record(struct {
-    span: Opt(Span(Origin(Erased, @"%Part"))),
-    uneraser: Origin_uneraser(@"%Origin"),
-})) Record(struct {
-    span: Opt(Span(Origin(@"%Origin", @"%Part"))),
-    uneraser: Origin_uneraser(@"%Origin"),
-}) {
-    return .{
-        .uneraser = @"%".uneraser,
-        .span = switch (@"%".span) {
-            .no => .{ .no = {} },
-            .yes => |@"%span"| .{ .yes = .{
-                .start = @"%span".start,
-                .length = @"%span".length,
-            } },
-        },
+pub fn opt_span_origin_unisolate(
+    @"%Origin": type,
+    @"%Part": type,
+    @"%isolated": Origin_isolated(
+        @"%Origin",
+        Opt(Span(Origin(Erased, @"%Part"))),
+    ),
+) Opt(Span(Origin(@"%Origin", @"%Part"))) {
+    return switch (@"%isolated".erased) {
+        .no => .{ .no = {} },
+        .yes => |@"%span"| .{ .yes = .{
+            .start = @"%span".start,
+            .length = @"%span".length,
+        } },
     };
 }
 
@@ -2662,7 +2741,7 @@ pub fn buf_origin_isolate(
         buf: Buf(Origin(@"%Origin", @"%Part"), @"%Item"),
         item_isolate: Fn(@"%Item", Origin_isolated(@"%Origin", @"%ItemErased")),
     }),
-) error{OutOfMemory}!Origin_isolated(@"%Origin", Buf_origin_erased(@"%Part", @"%ItemErased")) {
+) error{OutOfMemory}!Origin_isolated(@"%Origin", Buf(Origin(Erased, @"%Part"), @"%ItemErased")) {
     const items_erased: std.ArrayList(@"%ItemErased") = @"%items_erased": {
         if (comptime @"%can_reuse": {
             break :@"%can_reuse" (@sizeOf(@"%Item") == @sizeOf(@"%ItemErased")) and
@@ -2690,67 +2769,33 @@ pub fn buf_origin_isolate(
             break :@"%items_erased" @"%items_erased";
         }
     };
-    return .{ .erased = .{ .erased = .{
+    return .{ .erased = .{
         .unset_masks = @"%".buf.unset_masks,
         .first_unset_index = @"%".buf.first_unset_index,
         .items = items_erased,
-    } } };
+    } };
 }
-pub fn buf_origin_unerase_keep_items(
-    @"%Item": type,
-    @"%Origin": type,
-    @"%Part": type,
-    @"%": Record(struct {
-        buf: Buf_origin_erased(@"%Part", @"%Item"),
-        uneraser: Origin_uneraser(@"%Origin"),
-    }),
-) Record(struct {
-    buf: Buf(Origin(@"%Origin", @"%Part"), @"%Item"),
-    uneraser: Origin_uneraser(@"%Origin"),
-}) {
-    return .{
-        .buf = .{
-            .items = @"%".buf.erased.items,
-            .unset_masks = @"%".buf.erased.unset_masks,
-            .first_unset_index = @"%".buf.erased.first_unset_index,
-        },
-        .uneraser = @"%".uneraser,
-    };
-}
-pub fn buf_origin_unerase(
+pub fn buf_origin_unisolate(
     @"%Item": type,
     @"%ItemErased": type,
     @"%Origin": type,
     @"%Part": type,
     @"%allocator": std.mem.Allocator,
     @"%": Record(struct {
-        buf: Buf_origin_erased(@"%Part", @"%ItemErased"),
-        item_unerase: Fn(
-            Record(struct {
-                item: @"%ItemErased",
-                uneraser: Origin_uneraser(@"%Origin"),
-            }),
-            Record(struct {
-                item: @"%Item",
-                uneraser: Origin_uneraser(@"%Origin"),
-            }),
+        buf: Origin_isolated(@"%Origin", Buf(Origin(Erased, @"%Part"), @"%ItemErased")),
+        item_unisolate: Fn(
+            Origin_isolated(@"%Origin", @"%ItemErased"),
+            @"%Item",
         ),
-        uneraser: Origin_uneraser(@"%Origin"),
     }),
-) error{OutOfMemory}!Record(struct {
-    buf: Buf(Origin(@"%Origin", @"%Part"), @"%Item"),
-    uneraser: Origin_uneraser(@"%Origin"),
-}) {
+) error{OutOfMemory}!Buf(Origin(@"%Origin", @"%Part"), @"%Item") {
     const @"%items_erased": std.ArrayList(@"%Item") = @"%items_erased": {
         if (comptime @"%can_reuse": {
             break :@"%can_reuse" (@sizeOf(@"%Item") == @sizeOf(@"%ItemErased")) and
                 (@alignOf(@"%Item") == @alignOf(@"%ItemErased"));
         }) {
-            for (@"%".buf.erased.items.items) |*item| {
-                item.* = @bitCast((try @"%".item_unerase(@"%allocator", .{
-                    .item = item.*,
-                    .uneraser = @"%".uneraser,
-                })).item);
+            for (@"%".buf.erased.items.items) |*@"%item"| {
+                @"%item".* = @bitCast(try @"%".item_unisolate(@"%allocator", .{ .erased = @"%item".* }));
             }
             break :@"%items_erased" .{
                 .pointer_stability = @"%".buf.erased.items.pointer_stability,
@@ -2764,10 +2809,7 @@ pub fn buf_origin_unerase(
                 @"%".buf.erased.items.items.len,
             );
             for (@"%".buf.erased.items.items, 0..) |@"%item", @"%i"| {
-                @"%items_erased".items[@"%i"] = (try @"%".item_unerase(@"%allocator", .{
-                    .item = @"%item",
-                    .uneraser = @"%".uneraser,
-                })).item;
+                @"%items_erased".items[@"%i"] = try @"%".item_unisolate(@"%allocator", .{ .erased = @"%item" });
             }
             var @"%items" = @"%".buf.erased.items;
             @"%items".deinit(@"%allocator");
@@ -2775,12 +2817,9 @@ pub fn buf_origin_unerase(
         }
     };
     return .{
-        .buf = .{
-            .items = @"%items_erased",
-            .unset_masks = @"%".buf.erased.unset_masks,
-            .first_unset_index = @"%".buf.erased.first_unset_index,
-        },
-        .uneraser = @"%".uneraser,
+        .items = @"%items_erased",
+        .unset_masks = @"%".buf.erased.unset_masks,
+        .first_unset_index = @"%".buf.erased.first_unset_index,
     };
 }
 

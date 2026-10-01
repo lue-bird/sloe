@@ -12618,9 +12618,15 @@ fn type_origin_isolated(origin: Type, value_erased: Type) -> Type {
         arguments: vec![origin, value_erased],
     }
 }
-fn type_origin_uneraser(origin: Type) -> Type {
+fn type_origin_unisolated(unisolated: Type) -> Type {
     Type::CoreConstruct {
-        name: Name::from_static("Origin-uneraser"),
+        name: Name::from_static("Origin-unisolated"),
+        arguments: vec![unisolated],
+    }
+}
+fn type_origin_unisolater(origin: Type) -> Type {
+    Type::CoreConstruct {
+        name: Name::from_static("Origin-unisolater"),
         arguments: vec![origin],
     }
 }
@@ -12628,12 +12634,6 @@ fn type_buf(origin: Type, item: Type) -> Type {
     Type::CoreConstruct {
         name: Name::from_static("Buf"),
         arguments: vec![origin, item],
-    }
-}
-fn type_buf_origin_erased(part: Type, item: Type) -> Type {
-    Type::CoreConstruct {
-        name: Name::from_static("Buf-origin-erased"),
-        arguments: vec![part, item],
     }
 }
 fn type_slot(origin: Type) -> Type {
@@ -12720,6 +12720,13 @@ pub static core_fns: std::sync::LazyLock<std::collections::HashMap<Name, Checked
                 type_parameters: vec![Name::from_static("origin")],
                 parameter_type:  type_p32,
                 result_type: type_origin_isolated(type_variable("origin"), type_p32),
+            },
+            CoreFnInfo {
+                name: "P32-origin-unisolate",
+                documentation: "Extract this value from an `Origin-isolated`. The inverse of `P32-origin-isolate`",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(type_variable("origin"), type_p32),
+                result_type: type_p32,
             },
             CoreFnInfo {
                 name: "U32-dup",
@@ -12816,6 +12823,13 @@ or performance is critical.",
                 result_type: type_origin_isolated(type_variable("origin"), type_u32),
             },
             CoreFnInfo {
+                name: "U32-origin-unisolate",
+                documentation: "Extract this value from an `Origin-isolated`. The inverse of `U32-origin-isolate`",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(type_variable("origin"), type_u32),
+                result_type: type_u32,
+            },
+            CoreFnInfo {
                 name: "I32-dup",
                 documentation: "Split the i32 in two values with the same content",
                 type_parameters: vec![],
@@ -12892,6 +12906,13 @@ Chooses the closest f32 representation, breaking exact ties towards the even sig
                 type_parameters: vec![Name::from_static("origin")],
                 parameter_type:  type_i32,
                 result_type: type_origin_isolated(type_variable("origin"), type_i32),
+            },
+            CoreFnInfo {
+                name: "I32-origin-unisolate",
+                documentation: "Extract this value from an `Origin-isolated`. The inverse of `I32-origin-isolate`",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(type_variable("origin"), type_i32),
+                result_type: type_i32,
             },
             CoreFnInfo {
                 name: "F32-dup",
@@ -13157,6 +13178,13 @@ fn Age . : f32 =
                 result_type: type_origin_isolated(type_variable("origin"), type_f32),
             },
             CoreFnInfo {
+                name: "F32-origin-unisolate",
+                documentation: "Extract this value from an `Origin-isolated`. The inverse of `F32-origin-isolate`",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(type_variable("origin"), type_f32),
+                result_type: type_f32,
+            },
+            CoreFnInfo {
                 name: "Char-dup",
                 documentation: "Split the char in two values with the same content",
                 type_parameters: vec![],
@@ -13183,6 +13211,13 @@ fn Age . : f32 =
                 type_parameters: vec![Name::from_static("origin")],
                 parameter_type:  type_char,
                 result_type: type_origin_isolated(type_variable("origin"), type_char),
+            },
+            CoreFnInfo {
+                name: "Char-origin-unisolate",
+                documentation: "Extract this value from an `Origin-isolated`. The inverse of `Char-origin-isolate`",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(type_variable("origin"), type_char),
+                result_type: type_char,
             },
             CoreFnInfo {
                 name: "Str-dup",
@@ -13236,6 +13271,13 @@ This is usually done to scrap some function byproduct or to decompose some tempo
                 result_type: type_origin_isolated(type_variable("origin"), type_str),
             },
             CoreFnInfo {
+                name: "Str-origin-unisolate",
+                documentation: "Extract this value from an `Origin-isolated`. The inverse of `Str-origin-isolate`",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(type_variable("origin"), type_str),
+                result_type: type_str,
+            },
+            CoreFnInfo {
                 name: "Fn-dup",
                 documentation: "Split the fn in two values with the same content",
                 type_parameters: vec![],
@@ -13275,6 +13317,13 @@ fn Three . : . =
                 type_parameters: vec![Name::from_static("origin")],
                 parameter_type:  type_fn(type_variable("in"), type_variable("out")),
                 result_type: type_origin_isolated(type_variable("origin"), type_fn(type_variable("in"), type_variable("out"))),
+            },
+            CoreFnInfo {
+                name: "Fn-origin-unisolate",
+                documentation: "Extract this value from an `Origin-isolated`. The inverse of `Fn-origin-isolate`",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(type_variable("origin"), type_fn(type_variable("in"), type_variable("out"))),
+                result_type: type_fn(type_variable("in"), type_variable("out")),
             },
             CoreFnInfo {
                 name: "Choice-empty-to",
@@ -13370,6 +13419,21 @@ To convert an `Origin-erased` value into a normal value with an origin again, us
                 result_type: type_origin_erased(type_variable("value-erased"))
             },
             CoreFnInfo {
+                name: "Origin-unerase",
+                documentation: "Take an `Origin-erased` value
+and convert it to an `Origin-isolated` with a new origin.
+This is basically the inverse of `Origin-erase`.
+That `Origin-isolated` can then be manually unpacked with e.g.
+`Slot-origin-unisolate`, `Origin-isolated-split`, `Origin-unisolate`.
+See `Origin-erased` for an example.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("erased", type_origin_erased(type_variable("value-erased"))),
+                    ("origin", type_origin(type_variable("origin"), type_record_empty)),
+                ]),
+                result_type: type_origin_isolated(type_variable("origin"), type_variable("value-erased"))
+            },
+            CoreFnInfo {
                 name: "Origin-isolate-constant",
                 documentation: "Isolate a value that can be created from nothing.
 ```sloe
@@ -13427,6 +13491,53 @@ Check out `Origin-isolated-map` and `Origin-isolate-constant` for how to convert
                 ),
             },
             CoreFnInfo {
+                name: "Origin-isolated-split",
+                documentation: "Open an `Origin-isolated` pair into a pair of Origin-isolated parts.
+This is the inverse of `Origin-isolated-merge`.
+The isolated value needs `.a` and `.b` field names
+so you may need `Origin-isolated-map` to map them from more descriptive names.
+```sloe
+ty Color _origin
+    .red Slot Origin _origin, .
+    .green Slot Origin _origin, .
+    .blue Slot Origin _origin, .
+
+fn Color-origin-unisolate
+    color-isolated Origin-isolated _origin, Color erased
+: Color _origin
+=
+    ? (
+        Origin-isolated-map
+        .isolated color-isolated
+        .change
+        [color Color erased]
+        ? color [.red red .green green .blue blue]
+        .a red .b .a green .b blue
+    )
+    [rgb]
+    ? Origin-isolated-split rgb [.a red .b gb]
+    ? Origin-isolated-split gb [.a green .b blue]
+    .red Slot-origin-isolate red
+    .green Slot-origin-unisolate green
+    .blue Slot-origin-unisolate blue
+```
+A bit wordy, I'm sorry :/ (If you have another API idea, open an issue)
+
+Check out `Origin-unisolate` for how to unisolate variants",
+                type_parameters: vec![],
+                parameter_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_record([
+                        ("a", type_variable("a-erased")),
+                        ("b", type_variable("b-erased")),
+                    ])
+                ),
+                result_type: type_record([
+                    ("a", type_origin_isolated(type_variable("origin"), type_variable("a-erased"))),
+                    ("b", type_origin_isolated(type_variable("origin"), type_variable("b-erased"))),
+                ]),
+            },
+            CoreFnInfo {
                 name: "Origin-isolated-map",
                 documentation: "Do something inside the `Origin-isolated` value.
 
@@ -13459,9 +13570,85 @@ Isn't that nice.",
                 result_type: type_origin_isolated(type_variable("origin"), type_variable("new-erased")),
             },
             CoreFnInfo {
+                name: "Origin-unisolate",
+                documentation: "Un-isolate a choice type.
+```sloe
+ty color 'red . 'green . 'blue .
+fn Color-origin-unisolate color Origin-isolated _origin, color : color =
+    Origin-unisolate
+    .isolated color
+    .unisolate
+    [.erased color color .unisolater unisolater Origin-unisolater _origin]
+    ? color
+    ['red .] (
+        Origin-erased-unisolate
+        .unisolater unisolater
+        .erased .
+        .unisolate
+        [v Origin-isolated _origin, .]
+        ? Origin-isolated-rid .isolated v .rid [.] . [.]
+        'red{color} .
+    )
+    ['green .] (
+        Origin-erased-unisolate
+        .unisolater unisolater
+        .erased .
+        .unisolate
+        [v Origin-isolated _origin, .]
+        ? Origin-isolated-rid .isolated v .rid [.] . [.]
+        'green{color} .
+    )
+    ['blue .] (
+        Origin-erased-unisolate
+        .unisolater unisolater
+        .erased .
+        .unisolate
+        [v Origin-isolated _origin, .]
+        ? Origin-isolated-rid .isolated v .rid [.] . [.]
+        'blue{color} .
+    )
+```
+`Origin-unisolate`'s `.unisolate` requires returning a `Origin-unisolated`
+value, which means we need to call `Origin-erased-unisolate` to wrap each variant value.
+It's quite cool that this works if you ask me.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("isolated", type_origin_isolated(type_variable("origin"), type_variable("erased"))),
+                    (
+                        "unisolate",
+                        type_fn(
+                            type_record([
+                                ("erased", type_variable("erased")),
+                                ("unisolater", type_origin_unisolater(type_variable("origin"))),
+                            ]),
+                            type_origin_unisolated(type_variable("unisolated"))
+                        )
+                    ),
+                ]),
+                result_type: type_variable("unisolated"),
+            },
+            CoreFnInfo {
+                name: "Origin-erased-unisolate",
+                documentation: "Used for `Origin-unisolate`.
+Un-isolate an erased variant value by mapping its Origin-isolated representation.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("erased", type_variable("erased")),
+                    ("unisolater", type_origin_unisolater(type_variable("origin"))),
+                    (
+                        "unisolate",
+                        type_fn(
+                            type_origin_isolated(type_variable("origin"), type_variable("erased")),
+                            type_origin_unisolated(type_variable("unisolated"))
+                        )
+                    ),
+                ]),
+                result_type: type_origin_unisolated(type_variable("new-erased")),
+            },
+            CoreFnInfo {
                 name: "Origin-erased-rid",
                 documentation: r#"Mark an `Origin-erased` value as "won't be used anymore".
-The effect is the same as calling `Origin-unerase`, then scrapping the unerased value.
+The effect is the same as calling `Origin-unerase`, un-isolating, then scrapping it.
 It may also be more performant on some host languages.
 
 Note that this convenient helper is quite simplistic (and incomplete).
@@ -13473,37 +13660,6 @@ please open an issue."#,
                     ("rid", type_fn(type_variable("value-erased"), type_record_empty))
                 ]),
                 result_type: type_record_empty
-            },
-            CoreFnInfo {
-                name: "Origin-unerase",
-                documentation: "Take an `Origin-erased` value created with `Origin-erase`
-and manually replace erased origins in that value with new given origin.
-See `Origin-erased` for an example.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("erased", type_origin_erased(type_variable("value-erased"))),
-                    ("origin", type_origin(type_variable("origin"), type_record_empty)),
-                    (
-                        "unerase",
-                        type_fn(
-                            type_record([
-                                ("erased", type_variable("value-erased")),
-                                (
-                                    "uneraser",
-                                    type_origin_uneraser(type_variable("origin")),
-                                )
-                            ]),
-                            type_record([
-                                ("unerased", type_variable("value")),
-                                (
-                                    "uneraser",
-                                    type_origin_uneraser(type_variable("origin")),
-                                )
-                            ]),
-                        )
-                    )
-                ]),
-                result_type: type_variable("value")
             },
             CoreFnInfo {
                 name: "Slot-index",
@@ -13535,17 +13691,14 @@ For example, the second item in a Buf is at index 1",
                 ),
             },
             CoreFnInfo {
-                name: "Slot-origin-unerase",
-                documentation: "Replace its origin type by `erased`",
+                name: "Slot-origin-unisolate",
+                documentation: "Replace its origin type by `erased`. The inverse of `Slot-origin-isolate`",
                 type_parameters: vec![],
-                parameter_type: type_record([
-                    ("slot", type_slot(type_origin(type_erased, type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
-                result_type: type_record([
-                    ("slot", type_slot(type_origin(type_variable("origin"), type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
+                parameter_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_slot(type_origin(type_erased, type_variable("part")))
+                ),
+                result_type: type_slot(type_origin(type_variable("origin"), type_variable("part")))
             },
             CoreFnInfo {
                 name: "Span-start-index",
@@ -13828,30 +13981,24 @@ Note that `.rest` does not include any Slot given to the step function, even the
                 ),
             },
             CoreFnInfo {
-                name: "Span-origin-unerase",
-                documentation: "Replace its origin type from `erased`",
+                name: "Span-origin-unisolate",
+                documentation: "Replace its origin type from `erased`. The inverse of `Span-origin-isolate`",
                 type_parameters: vec![],
-                parameter_type: type_record([
-                    ("span", type_span(type_origin(type_erased, type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
-                result_type: type_record([
-                    ("span", type_span(type_origin(type_variable("origin"), type_variable("part")))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
+                parameter_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_span(type_origin(type_erased, type_variable("part"))),
+                ),
+                result_type: type_span(type_origin(type_variable("origin"), type_variable("part"))),
             },
             CoreFnInfo {
-                name: "Opt-span-origin-unerase",
-                documentation: "Replace its origin type from `erased`",
+                name: "Opt-span-origin-unisolate",
+                documentation: "Replace its origin type from `erased`. The inverse of `Opt-span-origin-isolate`",
                 type_parameters: vec![],
-                parameter_type: type_record([
-                    ("span", type_opt(type_span(type_origin(type_erased, type_variable("part"))))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
-                result_type: type_record([
-                    ("span", type_opt(type_span(type_origin(type_variable("origin"), type_variable("part"))))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
+                parameter_type: type_origin_isolated(
+                    type_variable("origin"),
+                    type_opt(type_span(type_origin(type_erased, type_variable("part")))),
+                ),
+                result_type: type_opt(type_span(type_origin(type_variable("origin"), type_variable("part")))),
             },
             CoreFnInfo {
                 name: "Buf-empty",
@@ -15010,53 +15157,25 @@ Changing an item that is referenced by an outside slot/span etc. may be unexpect
                 ]),
                 result_type: type_origin_isolated(
                     type_variable("origin"),
-                    type_buf_origin_erased(type_variable("part"), type_variable("item-erased"))
+                    type_buf(type_origin(type_erased, type_variable("part")), type_variable("item-erased"))
                 ),
             },
             CoreFnInfo {
-                name: "Buf-origin-unerase-keep-items",
-                documentation: "Replace its origin type from `erased`.
-Use instead of `Buf-origin-unerase` when the items don't reference an origin.",
-                type_parameters: vec![],
-                parameter_type: type_record([
-                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("item"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(
-                            type_origin(type_variable("origin"), type_variable("part")),
-                            type_variable("item")
-                        )
-                    ),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
-            },
-            CoreFnInfo {
-                name: "Buf-origin-unerase",
+                name: "Buf-origin-unisolate",
                 documentation: "Replace its origin type from `erased`,
 along with un-erasing the origin in its items.
-Use `Buf-origin-unerase` instead when the items don't reference an origin.
 ```sloe
-fn Example-unerase
-    .buf buf-inner Buf (Origin erased, .), Opt Span Origin erased, .
-    .uneraser uneraser Origin-uneraser Origin _inner, .
-    :
-    .buf Buf (Origin _inner, .), Opt Span Origin _inner, .
-    .uneraser Origin-uneraser Origin _inner, .
-    =
-    Buf-origin-unerase
+fn Example-unisolate
+    buf-inner
+    Origin-isolated _origin, Buf (Origin erased, .), Opt Span Origin erased, .
+:
+    Buf (Origin _inner, .), Opt Span Origin _inner, .
+=
+    Buf-origin-unisolate
     .buf buf-inner
-    .uneraser uneraser
-    .item-unerase
-    [
-        .item item Opt Span Origin erased, .
-        .uneraser uneraser Origin-uneraser Origin _inner, .
-    ]
-    ? Opt-span-origin-unerase .span item .uneraser uneraser
-    [.span item-unerased .uneraser uneraser]
-    .item item-unerased .uneraser uneraser
+    .item-unisolate
+    [item Origin-isolated _inner, Opt Span Origin erased, .]
+    Opt-span-origin-unisolate item
 ```
 Small warning: while the function type allows completely changing the contents of each item,
 I strongly recommend against it.
@@ -15066,32 +15185,24 @@ For two, this may be seen as spooky action at a distance (albeit not that great 
 Changing an item that is referenced by an outside slot/span etc. may be unexpected.",
                 type_parameters: vec![],
                 parameter_type: type_record([
-                    ("buf", type_buf_origin_erased(type_variable("part"), type_variable("item-erased"))),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
                     (
-                        "item-unerase",
+                        "buf",
+                        type_origin_isolated(
+                            type_variable("origin"),
+                            type_buf(type_origin(type_erased, type_variable("part")), type_variable("item-erased"))),
+                        ),
+                    (
+                        "item-unisolate",
                         type_fn(
-                            type_record([
-                                ("item", type_variable("item-erased")),
-                                ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                            ]),
-                            type_record([
-                                ("item", type_variable("item")),
-                                ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                            ]),
+                            type_origin_isolated(type_variable("origin"), type_variable("item-erased")),
+                            type_variable("item"),
                         )
                     )
                 ]),
-                result_type: type_record([
-                    (
-                        "buf",
-                        type_buf(
-                            type_origin(type_variable("origin"), type_variable("part")),
-                            type_variable("item")
-                        )
-                    ),
-                    ("uneraser", type_origin_uneraser(type_variable("origin"))),
-                ]),
+                result_type: type_buf(
+                    type_origin(type_variable("origin"), type_variable("part")),
+                    type_variable("item")
+                )
             },
             CoreFnInfo {
                 name: "Buf-to-unset",
@@ -15391,12 +15502,13 @@ It's also extremely important for `Origin-isolated`"
                 name_range: None,
                 documentation: Some(Box::from(
                     "Self-contained value where each part had the same unique origin.
-Can be used to for example create Bufs containing Bufs without having inner incompatible origin types between items.
-An `Origin-erased` value can be turned back into a proper value with a new specific origin on demand with `Origin-unerase`.
+Can be used to for example create Bufs containing Bufs without having incompatible origin types between items.
+An `Origin-erased` value can be turned back into an `Origin-isolated` on demand with `Origin-unerase`,
+which can be turned into a proper value with a new specific origin.
 If none of this sounded useful to you, you don't need this (yet).
 ```sloe
 ^ outer
-? Buf-empty{Origin-erased .buf Buf-origin-erased ., u32 .slot Slot erased} outer
+? Buf-empty{Origin-erased .buf Buf (Origin erased .), u32 .slot Slot Origin erased, .} outer
 [buf-outer]
 
 ? (
@@ -15429,21 +15541,23 @@ If none of this sounded useful to you, you don't need this (yet).
 Buf-add-array .buf buf-outer .new ; erased-inner0 ; erased-inner1
 
 # example of how to recover an erased value
-^ inner
-Origin-unerase
-.erased erased-inner
-.origin inner
-.unerase
-[
-    .erased (.buf buf-erased Buf-origin-erased ., u32 .slot slot-erased Slot (Origin erased, .))
-    .uneraser uneraser Origin-uneraser inner
-]
-? Slot-origin-unerase .slot slot-erased .uneraser uneraser
-[.slot slot-inner0 .uneraser uneraser]
-? Buf-origin-unerase-keep-items .buf buf-erased .uneraser uneraser
-[.buf buf-inner0 .uneraser uneraser]
-.unerased (.buf buf-inner0 .slot slot-inner0)
-.uneraser uneraser
+^ inner0
+? (
+    Origin-isolated-split
+    Origin-isolated-map
+    .isolated (Origin-unerase .erased erased-inner0 .origin inner)
+    .change
+    [.buf buf Buf (Origin erased, .), u32 .slot slot Slot (Origin erased, .)]
+    .a buf .b slot
+)
+[.a buf Buf (Origin erased, .), u32 .b slot Slot (Origin erased, .)]
+? Slot-origin-unisolate slot [slot]
+?
+    Buf-origin-unisolate
+    .buf buf
+    .item-unisolate [u Origin-isolated inner0, u32] U32-origin-unisolate u
+[buf]
+.buf buf .slot slot
 ```
 As juicy as this may look, avoid this if you can.
 Nesting always means more segmented memory. We don't want that.
@@ -15481,17 +15595,29 @@ See `Origin-erased`, `Slot-origin-isolate`, `Span-origin-isolate`, `Opt-span-ori
             },
         ),
         (
-            Name::from_static("Origin-uneraser"),
+            Name::from_static("Origin-unisolater"),
             CheckedTypeAlias {
                 name_range: None,
                 documentation: Some(Box::from(
-                    "Able to change the origin of collections, slots and spans from `erased`
-to the `_origin` in `Origin-eraser _origin`.
-See `Origin-erased`, `Slot-origin-unerase`, `Span-origin-unerase`, `Opt-span-origin-unerase`,
-`Buf-origin-unerase`"
+                    "See `Origin-unisolate`. This wrapper is just permission to call `Origin-erased-unisolate` with this specific origin.
+If anyone could call `Origin-erased-unisolate` with any origin,
+you would be able to e.g. convert a `Slot (Origin erased, .)` to a Slot with any origin which is unsound."
                 )),
                 parameters: vec![Name::from_static("origin")],
-                type_: Some(type_origin_uneraser(type_variable("origin"))),
+                type_: Some(type_origin_unisolater(type_variable("origin"))),
+            },
+        ),
+        (
+            Name::from_static("Origin-unisolated"),
+            CheckedTypeAlias {
+                name_range: None,
+                documentation: Some(Box::from(
+                    "See `Origin-unisolate`.
+This wrapper is just proof that this value was created with `Origin-erased-unisolate`,
+making it safe to extract knowing that no erased value is directly accessible."
+                )),
+                parameters: vec![Name::from_static("unisolated")],
+                type_: Some(type_origin_unisolated(type_variable("unisolated"))),
             },
         ),
         (
@@ -15515,22 +15641,6 @@ fn Use-a-buf . : u32 =
                 )),
                 parameters: vec![Name::from_static("origin"), Name::from_static("item")],
                 type_: Some(type_buf(type_variable("origin"), type_variable("item"))),
-            },
-        ),
-        (
-            Name::from_static("Buf-origin-erased"),
-            CheckedTypeAlias {
-                name_range: None,
-                documentation: Some(Box::from(
-                    "`Buf` with its origin type erased
-(the first parameter is the part name of the original origin).
-As such, it cannot be interacted with at all, except for unerasing it in `Origin-unerase`.
-
-This restriction is necessary because unerase can leave bufs with unerased origins erased.
-One could for example access an origin erased Buf with an origin erased slot pointing into a different buf."
-                )),
-                parameters: vec![Name::from_static("part"), Name::from_static("item")],
-                type_: Some(type_buf_origin_erased(type_variable("part"), type_variable("item"))),
             },
         ),
         (
@@ -15690,7 +15800,8 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Origin-isolated-map"
         | "Origin-isolate-constant"
         | "Origin-erased-rid"
-        | "Origin-unerase"
+        | "Origin-unisolate"
+        | "Origin-erased-unisolate"
         | "Span-step"
         | "Opt-span-step"
         | "Span-step-while"
@@ -15699,7 +15810,7 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Unset-slice-allocate-length"
         | "Buf-item-step"
         | "Buf-origin-isolate"
-        | "Buf-origin-unerase"
+        | "Buf-origin-unisolate"
         | "Buf-opt-span-sort"
         | "Buf-span-sort"
         | "Buf-opt-span-rid"

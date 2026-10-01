@@ -13,14 +13,14 @@ fn Print-random-quote
         http-get
         Fn .io _io .url str
         ,
-        .response Origin-erased opt-char-span-erased
+        .response Origin-erased Opt-char-slice Origin erased, .
         .io _io
     )
-    .stdout-write-char-span (
-        stdout-write-char-span
-        Fn (.io _io .char-span Origin-erased opt-char-span-erased)
+    .stdout-write-char-slice (
+        stdout-write-char-slice
+        Fn (.io _io .char-slice Origin-erased Opt-char-slice Origin erased, .)
         ,
-        .io _io .char-span Origin-erased opt-char-span-erased
+        .io _io .char-slice Origin-erased Opt-char-slice Origin erased, .
     )
     .stdout-flush
     stdout-flush Fn _io, _io
@@ -32,7 +32,7 @@ fn Print-random-quote
     ^ json-names
     ? Buf-empty{Json (Origin chars, .), (Origin jsons, .), Origin json-names, .} jsons [jsons]
     ? Buf-empty{Opt Span Origin chars, .} json-names [json-names]
-    ? Opt-char-span-unerase .erased quote-resopnse-erased .origin chars
+    ? Opt-char-slice-unerase .erased quote-resopnse-erased .origin chars
     [.chars chars .span quote-resopnse]
     ?
         Json-parse
@@ -54,13 +54,13 @@ fn Print-random-quote
         [.buf chars .span to-write]
         ?
             Call
-            .fn stdout-write-char-span
-            .in (.io io .char-span (Opt-char-span-erase .chars chars .span 'yes{'no .} to-write))
-        [.char-span char-span .io io]
+            .fn stdout-write-char-slice
+            .in (.io io .char-slice (Opt-char-slice-erase .chars chars .span 'yes{'no .} to-write))
+        [.char-slice char-slice .io io]
         ^ chars-to-remove
-        ? Opt-char-span-unerase .erased char-span .origin chars-to-remove
-        [.chars chars .span char-span]
-        ? Buf-rid Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c [.]
+        ? Opt-char-slice-unerase .erased char-slice .origin chars-to-remove
+        [.chars chars .span char-slice]
+        ? Buf-rid Buf-opt-span-rid .buf chars .span char-slice .item-rid [c char] Char-rid c [.]
         Call .fn stdout-flush .in io
     )
     [.json 'yes quote-json .chars chars .jsons jsons .json-names json-names]
@@ -76,13 +76,13 @@ fn Print-random-quote
         [.buf chars .span to-write]
         ?
             Call
-            .fn stdout-write-char-span
-            .in (.io io .char-span (Opt-char-span-erase .chars chars .span 'yes{'no .} to-write))
-        [.char-span char-span .io io]
+            .fn stdout-write-char-slice
+            .in (.io io .char-slice (Opt-char-slice-erase .chars chars .span 'yes{'no .} to-write))
+        [.char-slice char-slice .io io]
         ^ chars-to-remove
-        ? Opt-char-span-unerase .erased char-span .origin chars-to-remove
-        [.chars chars .span char-span]
-        ? Buf-rid Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c [.]
+        ? Opt-char-slice-unerase .erased char-slice .origin chars-to-remove
+        [.chars chars .span char-slice]
+        ? Buf-rid Buf-opt-span-rid .buf chars .span char-slice .item-rid [c char] Char-rid c [.]
         Call .fn stdout-flush .in io
     )
     ['yes quote]
@@ -99,25 +99,25 @@ fn Print-random-quote
     [.buf chars .span to-write]
     ?
         Call
-        .fn stdout-write-char-span
+        .fn stdout-write-char-slice
         .in
         .io io
-        .char-span (Opt-char-span-erase .chars chars .span 'yes{'no .} to-write)
-    [.char-span char-span .io io]
+        .char-slice (Opt-char-slice-erase .chars chars .span 'yes{'no .} to-write)
+    [.char-slice char-slice .io io]
     ^ chars-to-remove
-    ? Opt-char-span-unerase .erased char-span .origin chars-to-remove
-    [.chars chars .span char-span]
-    ? Buf-rid Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c [.]
+    ? Opt-char-slice-unerase .erased char-slice .origin chars-to-remove
+    [.chars chars .span char-slice]
+    ? Buf-rid Buf-opt-span-rid .buf chars .span char-slice .item-rid [c char] Char-rid c [.]
     Call .fn stdout-flush .in io
 
-ty opt-char-span-erased
-    .chars Buf-origin-erased ., char
-    .span Opt Span Origin erased, .
+ty Opt-char-slice _origin
+    .chars Buf _origin, char
+    .span Opt Span _origin
 
-fn Opt-char-span-erase
+fn Opt-char-slice-erase
     .chars chars Buf (Origin _origin, .), char
     .span span Opt Span Origin _origin, .
-: Origin-erased opt-char-span-erased =
+: Origin-erased Opt-char-slice Origin erased, . =
     Origin-erase
     Origin-isolated-map
     .isolated (
@@ -131,31 +131,29 @@ fn Opt-char-span-erase
     .change
     [
         .a span Opt Span Origin erased, .
-        .b chars Buf-origin-erased ., char
+        .b chars Buf (Origin erased, .), char
     ]
     .chars chars .span span
 
-fn Opt-char-span-unerase
+fn Opt-char-slice-unerase
     .origin origin Origin _origin, .
-    .erased erased Origin-erased opt-char-span-erased
-:
-    .chars Buf (Origin _origin, .), char
-    .span Opt Span Origin _origin, .
-=
-    Origin-unerase
-    .erased erased
-    .origin origin
-    .unerase
-    [
-        .erased quote-response opt-char-span-erased
-        .uneraser uneraser Origin-uneraser _origin
-    ]
-    ? quote-response [.chars chars .span span]
-    ? Opt-span-origin-unerase .span span .uneraser uneraser
-    [.span span .uneraser uneraser]
-    ? Buf-origin-unerase-keep-items .buf chars .uneraser uneraser
-    [.buf chars .uneraser uneraser]
-    .unerased (.chars chars .span span) .uneraser uneraser
+    .erased erased Origin-erased Opt-char-slice Origin erased, .
+: Opt-char-slice Origin _origin, . =
+    ? (
+        Origin-isolated-split
+        Origin-isolated-map
+        .isolated (Origin-unerase .erased erased .origin origin)
+        .change
+        [erased Opt-char-slice Origin erased, .]
+        ? erased [.chars chars .span span]
+        .a chars .b span
+    )
+    [.a chars .b span]
+    .span Opt-span-origin-unisolate span
+    .chars
+    Buf-origin-unisolate
+    .buf chars
+    .item-unisolate [c Origin-isolated _origin, char] Char-origin-unisolate c
 
 # the rest of the file only contains super basic json parsing,
 # which is irrelevant for showcasing the IO side.
@@ -305,7 +303,7 @@ fn Json-to-string
     'no Json _chars, _jsons, _json-names
 =
     ? json
-    ['string char-span] 'yes{'no Json _chars, _jsons, _json-names} char-span
+    ['string char-slice] 'yes{'no Json _chars, _jsons, _json-names} char-slice
     [json] 'no{'yes Opt Span _chars} json
 
 fn Json-rid
@@ -320,13 +318,13 @@ fn Json-rid
 =
     ? json
     ['failed .] .chars chars .jsons jsons .json-names json-names
-    ['string char-span] (
-        ? Buf-opt-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c
+    ['string char-slice] (
+        ? Buf-opt-span-rid .buf chars .span char-slice .item-rid [c char] Char-rid c
         [chars]
         .chars chars .jsons jsons .json-names json-names
     )
-    ['number char-span] (
-        ? Buf-span-rid .buf chars .span char-span .item-rid [c char] Char-rid c
+    ['number char-slice] (
+        ? Buf-span-rid .buf chars .span char-slice .item-rid [c char] Char-rid c
         [chars]
         .chars chars .jsons jsons .json-names json-names
     )
@@ -402,11 +400,11 @@ fn Json-parse
         ?
             Chars-opt-span-parse-json-object-after-opening-brace
             .chars chars .span span-after .jsons jsons .json-names json-names
-        [.. char-span .names names .values values .jsons jsons .json-names json-names]
+        [.. char-slice .names names .values values .jsons jsons .json-names json-names]
         .json ('object{Json _chars, _jsons, _json-names} .names names .values values)
         .jsons jsons
         .json-names json-names
-        .. char-span
+        .. char-slice
     )
     ['no next-char]
     ? Char-equal .char next-char .to "\"" char
@@ -415,11 +413,11 @@ fn Json-parse
         ?
             Chars-opt-span-parse-json-string-after-opening-quote
             .chars chars .span span-after
-        [.. char-span .content-span content-span]
+        [.. char-slice .content-span content-span]
         .json 'string{Json _chars, _jsons, _json-names} content-span
         .jsons jsons
         .json-names json-names
-        .. char-span
+        .. char-slice
     )
     ['no next-char]
     ? Char-is-digit next-char
@@ -471,10 +469,10 @@ fn Chars-opt-span-parse-json-object-after-opening-brace
         .. config
         .names 'no{Opt Span _json-names} .
         .values 'no{Opt Span _jsons} .
-    [.. char-span .jsons jsons .json-names json-names .names names .values values]
+    [.. char-slice .jsons jsons .json-names json-names .names names .values values]
     ? Buf-opt-span-reverse .buf jsons .span values [.buf jsons .span values]
     ? Buf-opt-span-reverse .buf json-names .span names [.buf json-names .span names]
-    .. char-span
+    .. char-slice
     .jsons jsons
     .json-names json-names
     .names names
@@ -482,7 +480,7 @@ fn Chars-opt-span-parse-json-object-after-opening-brace
 
 fn Chars-opt-span-parse-json-object-rest
     .. (
-        char-span
+        char-slice
         .chars Buf _chars, char
         .span Opt Span _chars
     )
@@ -499,42 +497,42 @@ fn Chars-opt-span-parse-json-object-rest
     .json-names Buf _json-names, Opt Span _chars
 # Important: resulting names and values will be reversed
 =
-    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
-    ? Chars-opt-span-rid-start-if .. char-span .keep ([c char] Char-equal .char c .to "}" char)
-    [.. char-span .keep 'yes .] (
-        .. char-span
+    ? Chars-opt-span-rid-start-while-whitespace char-slice [char-slice]
+    ? Chars-opt-span-rid-start-if .. char-slice .keep ([c char] Char-equal .char c .to "}" char)
+    [.. char-slice .keep 'yes .] (
+        .. char-slice
         .names names
         .values values
         .jsons jsons
         .json-names json-names
     )
-    [.. char-span .keep 'no .]
-    ? Chars-opt-span-parse-json-string char-span
-    [.name-span field-name-span .. char-span]
-    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
+    [.. char-slice .keep 'no .]
+    ? Chars-opt-span-parse-json-string char-slice
+    [.name-span field-name-span .. char-slice]
+    ? Chars-opt-span-rid-start-while-whitespace char-slice [char-slice]
     ?
         Chars-opt-span-rid-start-if
-        .. char-span .keep ([c char] Char-equal .char c .to ":" char)
-    [.. char-span .keep keep]
+        .. char-slice .keep ([c char] Char-equal .char c .to ":" char)
+    [.. char-slice .keep keep]
     ? Bool-rid keep [.]
-    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
-    ? Json-parse .jsons jsons .json-names json-names .. char-span
-    [.json field-value .jsons jsons .json-names json-names .. char-span]
-    ? Chars-opt-span-rid-start-while-whitespace char-span [char-span]
+    ? Chars-opt-span-rid-start-while-whitespace char-slice [char-slice]
+    ? Json-parse .jsons jsons .json-names json-names .. char-slice
+    [.json field-value .jsons jsons .json-names json-names .. char-slice]
+    ? Chars-opt-span-rid-start-while-whitespace char-slice [char-slice]
     ?
         Chars-opt-span-rid-start-if
-        .. char-span .keep ([c char] Char-equal .char c .to "," char)
-    [.. char-span .keep keep]
+        .. char-slice .keep ([c char] Char-equal .char c .to "," char)
+    [.. char-slice .keep keep]
     ? Bool-rid keep [.]
     ?
         Chars-opt-span-parse-json-object-rest
-        .. char-span .jsons jsons .json-names json-names .names names .values values
-    [.. char-span .jsons jsons .json-names json-names .names names .values values]
+        .. char-slice .jsons jsons .json-names json-names .names names .values values
+    [.. char-slice .jsons jsons .json-names json-names .names names .values values]
     ? Buf-opt-span-add .buf json-names .span names .new field-name-span
     [.buf json-names .span names]
     ? Buf-opt-span-add .buf jsons .span values .new field-value
     [.buf jsons .span values]
-    .. char-span
+    .. char-slice
     .names 'yes{'no .} names
     .values 'yes{'no .} values
     .jsons jsons
@@ -579,10 +577,10 @@ fn Chars-opt-span-parse-json-string-after-opening-quote
     ['going parsed] .. parsed .span 'no{Opt Span _origin} .
 
 fn Chars-opt-span-rid-start-while-whitespace
-    char-span .chars Buf _origin, char .span Opt Span _origin
+    char-slice .chars Buf _origin, char .span Opt Span _origin
 : .chars Buf _origin, char .span Opt Span _origin =
     Chars-opt-span-rid-start-while
-    .. char-span .keep ([c char] Char-equal .char c .to " " char)
+    .. char-slice .keep ([c char] Char-equal .char c .to " " char)
 
 fn Chars-opt-span-parse-json-string
     .chars chars Buf _origin, char
@@ -607,9 +605,9 @@ fn Chars-opt-span-parse-json-string
         ?
             Chars-opt-span-parse-json-string-after-opening-quote
             .chars chars .span span-after
-        [.. char-span .content-span content-span]
+        [.. char-slice .content-span content-span]
         .name-span content-span
-        .. char-span
+        .. char-slice
     )
     ['no next-char] (
         ? Char-rid next-char [.]

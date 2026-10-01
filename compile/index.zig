@@ -963,13 +963,13 @@ test "slot origin erase, then unerase" {
     );
     try std.testing.expectEqual(slot.index, slot_erased.erased.index);
     const NewOrigin = enum { origin };
-    const uneraser = core.Origin_uneraser(NewOrigin){};
-    const slot_unerased = core.slot_origin_unerase(
+    const new_origin: core.Origin(NewOrigin, void) = .{};
+    const slot_unerased = core.slot_origin_unisolate(NewOrigin, void, core.origin_unerase(
         NewOrigin,
-        void,
-        .{ .slot = slot_erased.erased, .uneraser = uneraser },
-    );
-    try std.testing.expectEqual(slot_erased.erased.index, slot_unerased.slot.index);
+        core.Slot(core.Origin(core.Erased, void)),
+        .{ .erased = slot_erased, .origin = new_origin },
+    ));
+    try std.testing.expectEqual(slot_erased.erased.index, slot_unerased.index);
 }
 test "span origin erase, then unerase" {
     const Origin = enum { origin };
@@ -985,46 +985,13 @@ test "span origin erase, then unerase" {
     );
     try std.testing.expectEqual(span.endIndex(), span_erased.erased.endIndex());
     const NewOrigin = enum { origin };
-    const uneraser = core.Origin_uneraser(NewOrigin){};
-    const span_unerased = core.span_origin_unerase(
+    const new_origin: core.Origin(NewOrigin, void) = .{};
+    const span_unerased = core.span_origin_unisolate(NewOrigin, void, core.origin_unerase(
         NewOrigin,
-        void,
-        .{ .span = span_erased.erased, .uneraser = uneraser },
-    );
-    try std.testing.expectEqual(span_erased.erased.endIndex(), span_unerased.span.endIndex());
-}
-test "buf origin erase with items, keeping items" {
-    const Origin = enum { origin };
-    const origin: core.Origin(Origin, void) = .{};
-    var buf = core.buf_empty(u32, Origin, void, origin);
-    _ = try buf.add(std.testing.allocator, 60);
-    const buf_isolated = try core.buf_origin_isolate(
-        u32,
-        u32,
-        Origin,
-        void,
-        std.testing.allocator,
-        .{
-            .buf = buf,
-            .item_isolate = struct {
-                pub fn f(_: std.mem.Allocator, item: u32) error{OutOfMemory}!core.Origin_isolated(Origin, u32) {
-                    return core.u32_origin_isolate(Origin, item);
-                }
-            }.f,
-        },
-    );
-    const buf_erased = core.origin_erase(Origin, core.Buf_origin_erased(void, u32), buf_isolated);
-    try std.testing.expectEqual(1, buf_erased.erased.erased.items.items.len);
-    const uneraser = core.Origin_uneraser(Origin){};
-    const buf_unerased = core.buf_origin_unerase_keep_items(
-        u32,
-        Origin,
-        void,
-        .{ .buf = buf_erased.erased, .uneraser = uneraser },
-    );
-    try std.testing.expectEqual(1, buf_unerased.buf.items.items.len);
-    // scrap the original buf, showing that the allocation is the same as for buf_unerased
-    buf.rid(std.testing.allocator);
+        core.Span(core.Origin(core.Erased, void)),
+        .{ .erased = span_erased, .origin = new_origin },
+    ));
+    try std.testing.expectEqual(span_erased.erased.endIndex(), span_unerased.endIndex());
 }
 test "buf origin erase with items, same size and alignment" {
     const Origin = enum { origin };
@@ -1046,32 +1013,29 @@ test "buf origin erase with items, same size and alignment" {
             }.f,
         },
     );
-    const buf_erased = core.origin_erase(Origin, core.Buf_origin_erased(void, u32), buf_isolated);
-    try std.testing.expectEqual(1, buf_erased.erased.erased.items.items.len);
-    const uneraser = core.Origin_uneraser(Origin){};
-    const buf_unerased = try core.buf_origin_unerase(
-        u32,
-        u32,
-        Origin,
-        void,
-        std.testing.allocator,
-        .{
-            .buf = buf_erased.erased,
-            .uneraser = uneraser,
-            .item_unerase = struct {
-                pub fn f(_: std.mem.Allocator, unerase: core.Record(struct {
-                    item: u32,
-                    uneraser: core.Origin_uneraser(Origin),
-                })) error{OutOfMemory}!core.Record(struct {
-                    item: u32,
-                    uneraser: core.Origin_uneraser(Origin),
-                }) {
-                    return .{ .item = unerase.item, .uneraser = unerase.uneraser };
-                }
-            }.f,
-        },
-    );
-    try std.testing.expectEqual(1, buf_unerased.buf.items.items.len);
+    const buf_erased = core.origin_erase(Origin, core.Buf(core.Origin(core.Erased, void), u32), buf_isolated);
+    try std.testing.expectEqual(1, buf_erased.erased.items.items.len);
+    const buf_unerased =
+        try core.buf_origin_unisolate(
+            u32,
+            u32,
+            Origin,
+            void,
+            std.testing.allocator,
+            .{
+                .buf = core.origin_unerase(
+                    Origin,
+                    core.Buf(core.Origin(core.Erased, void), u32),
+                    .{ .erased = buf_erased, .origin = origin },
+                ),
+                .item_unisolate = struct {
+                    pub fn f(_: std.mem.Allocator, item: core.Origin_isolated(Origin, u32)) error{OutOfMemory}!u32 {
+                        return core.u32_origin_unisolate(Origin, item);
+                    }
+                }.f,
+            },
+        );
+    try std.testing.expectEqual(1, buf_unerased.items.items.len);
     // scrap the original buf, showing that the allocation is the same as for buf_unerased
     buf.rid(std.testing.allocator);
 }
@@ -1095,36 +1059,30 @@ test "buf origin erase with items, different size and alignment" {
             }.f,
         },
     );
-    const buf_erased = core.origin_erase(Origin, core.Buf_origin_erased(void, u64), buf_isolated);
-    try std.testing.expectEqual(1, buf_erased.erased.erased.items.items.len);
-    const uneraser = core.Origin_uneraser(Origin){};
-    const buf_unerased = try core.buf_origin_unerase(
+    const buf_erased = core.origin_erase(Origin, core.Buf(core.Origin(core.Erased, void), u64), buf_isolated);
+    try std.testing.expectEqual(1, buf_erased.erased.items.items.len);
+    const buf_unerased_isolated = core.origin_unerase(
+        Origin,
+        core.Buf(core.Origin(core.Erased, void), u64),
+        .{ .origin = origin, .erased = buf_erased },
+    );
+    const buf_unerased = try core.buf_origin_unisolate(
         u32,
         u64,
         Origin,
         void,
         std.testing.allocator,
         .{
-            .buf = buf_erased.erased,
-            .uneraser = uneraser,
-            .item_unerase = struct {
-                pub fn f(_: std.mem.Allocator, unerase: core.Record(struct {
-                    item: u64,
-                    uneraser: core.Origin_uneraser(Origin),
-                })) error{OutOfMemory}!core.Record(struct {
-                    item: u32,
-                    uneraser: core.Origin_uneraser(Origin),
-                }) {
-                    return .{
-                        .item = std.math.lossyCast(u32, unerase.item),
-                        .uneraser = unerase.uneraser,
-                    };
+            .buf = buf_unerased_isolated,
+            .item_unisolate = struct {
+                pub fn f(_: std.mem.Allocator, item: core.Origin_isolated(Origin, u64)) error{OutOfMemory}!u32 {
+                    return std.math.lossyCast(u32, item.erased);
                 }
             }.f,
         },
     );
-    try std.testing.expectEqual(1, buf_unerased.buf.items.items.len);
-    buf_unerased.buf.rid(std.testing.allocator);
+    try std.testing.expectEqual(1, buf_unerased.items.items.len);
+    buf_unerased.rid(std.testing.allocator);
 }
 test "origin_erase span + buf, then origin_unerase" {
     const Origin = enum { origin };
@@ -1148,84 +1106,103 @@ test "origin_erase span + buf, then origin_unerase" {
         },
     );
     const isolated = core.origin_isolated_merge(
-        core.Buf_origin_erased(void, u32),
+        core.Buf(core.Origin(core.Erased, void), u32),
         core.Span(core.Origin(core.Erased, void)),
         Origin,
         .{ .a = buf_isolated, .b = span_isolated },
     );
     const erased = core.origin_erase(Origin, core.Record(struct {
-        a: core.Buf_origin_erased(void, u32),
+        a: core.Buf(core.Origin(core.Erased, void), u32),
         b: core.Span(core.Origin(core.Erased, void)),
     }), isolated);
     try std.testing.expectEqual(0, erased.erased.b.endIndex());
     const NewOrigin = enum { origin };
     const new_origin: core.Origin(NewOrigin, void) = .{};
-    const unerased = try core.origin_unerase(
+    const unerased_isolated = core.origin_unerase(
         NewOrigin,
-        struct {
-            core.Buf(@TypeOf(new_origin), u32),
-            core.Span(@TypeOf(new_origin)),
-        },
         core.Record(struct {
-            a: core.Buf_origin_erased(void, u32),
+            a: core.Buf(core.Origin(core.Erased, void), u32),
             b: core.Span(core.Origin(core.Erased, void)),
         }),
+        .{ .erased = erased, .origin = new_origin },
+    );
+    const span_unerased = core.span_origin_unisolate(
+        NewOrigin,
+        void,
+        .{ .erased = unerased_isolated.erased.b },
+    );
+    const buf_unerased = try core.buf_origin_unisolate(
+        u32,
+        u32,
+        NewOrigin,
+        void,
         std.testing.allocator,
         .{
-            .erased = erased,
-            .origin = new_origin,
-            .unerase = struct {
-                pub fn f(_: std.mem.Allocator, unerase: core.Record(struct {
-                    erased: core.Record(struct {
-                        a: core.Buf_origin_erased(void, u32),
-                        b: core.Span(core.Origin(core.Erased, void)),
-                    }),
-                    uneraser: core.Origin_uneraser(NewOrigin),
-                })) error{OutOfMemory}!core.Record(struct {
-                    unerased: struct {
-                        core.Buf(@TypeOf(new_origin), u32),
-                        core.Span(@TypeOf(new_origin)),
-                    },
-                    uneraser: core.Origin_uneraser(NewOrigin),
-                }) {
-                    const span_unerased = core.span_origin_unerase(
-                        NewOrigin,
-                        void,
-                        .{ .span = unerase.erased.b, .uneraser = unerase.uneraser },
-                    );
-                    const buf_unerased = try core.buf_origin_unerase(
-                        u32,
-                        u32,
-                        NewOrigin,
-                        void,
-                        std.testing.allocator,
-                        .{
-                            .buf = unerase.erased.a,
-                            .uneraser = span_unerased.uneraser,
-                            .item_unerase = struct {
-                                pub fn f(_: std.mem.Allocator, item_unerase: core.Record(struct {
-                                    item: u32,
-                                    uneraser: core.Origin_uneraser(NewOrigin),
-                                })) error{OutOfMemory}!core.Record(struct {
-                                    item: u32,
-                                    uneraser: core.Origin_uneraser(NewOrigin),
-                                }) {
-                                    return .{ .item = item_unerase.item, .uneraser = item_unerase.uneraser };
-                                }
-                            }.f,
-                        },
-                    );
-                    return .{
-                        .unerased = .{ buf_unerased.buf, span_unerased.span },
-                        .uneraser = buf_unerased.uneraser,
-                    };
+            .buf = .{ .erased = unerased_isolated.erased.a },
+            .item_unisolate = struct {
+                pub fn f(
+                    _: std.mem.Allocator,
+                    item: core.Origin_isolated(NewOrigin, u32),
+                ) error{OutOfMemory}!u32 {
+                    return core.u32_origin_unisolate(NewOrigin, item);
                 }
             }.f,
         },
     );
-    try std.testing.expectEqual(0, unerased.@"1".endIndex());
-    // scrap the original buf, showing that the allocation is the same as for unerased.buf
+    try std.testing.expectEqual(span.length, span_unerased.length);
+    try std.testing.expectEqualSlices(u32, buf.items.items, buf_unerased.items.items);
+    // scrap the original buf, showing that the allocation is the same as for buf_unerased
     buf.rid(std.testing.allocator);
+}
+test "origin_unisolate" {
+    const Origin = enum { origin };
+    const ExampleEnum = enum { wibble, wobble };
+    const unisolated = core.origin_unisolate(ExampleEnum, Origin, ExampleEnum, std.testing.allocator, .{
+        .isolated = .{ .erased = ExampleEnum.wobble },
+        .unisolate = struct {
+            pub fn f(
+                _: std.mem.Allocator,
+                to_unisolate: core.Record(struct {
+                    erased: ExampleEnum,
+                    unisolater: core.Origin_unisolater(Origin),
+                }),
+            ) error{OutOfMemory}!core.Origin_unisolated(ExampleEnum) {
+                return switch (to_unisolate.erased) {
+                    .wibble => core.origin_erased_unisolate(
+                        void,
+                        Origin,
+                        ExampleEnum,
+                        std.testing.allocator,
+                        .{
+                            .unisolater = to_unisolate.unisolater,
+                            .erased = {},
+                            .unisolate = struct {
+                                pub fn f(_: std.mem.Allocator, _: core.Origin_isolated(Origin, void)) error{OutOfMemory}!ExampleEnum {
+                                    return ExampleEnum.wibble;
+                                }
+                            }.f,
+                        },
+                    ),
+                    .wobble => core.origin_erased_unisolate(
+                        void,
+                        Origin,
+                        ExampleEnum,
+                        std.testing.allocator,
+                        .{
+                            .unisolater = to_unisolate.unisolater,
+                            .erased = {},
+                            .unisolate = struct {
+                                pub fn f(_: std.mem.Allocator, _: core.Origin_isolated(Origin, void)) error{OutOfMemory}!ExampleEnum {
+                                    return ExampleEnum.wobble;
+                                }
+                            }.f,
+                        },
+                    ),
+                };
+            }
+        }.f,
+    });
+    try std.testing.expectEqual(ExampleEnum.wobble, unisolated);
 }
 test "origin_erase span + buf, then origin_erased_rid" {
     const Origin = enum { origin };
@@ -1249,18 +1226,18 @@ test "origin_erase span + buf, then origin_erased_rid" {
         },
     );
     const isolated = core.origin_isolated_merge(
-        core.Buf_origin_erased(void, u32),
+        core.Buf(core.Origin(core.Erased, void), u32),
         core.Span(core.Origin(core.Erased, void)),
         Origin,
         .{ .a = buf_isolated, .b = span_isolated },
     );
     const erased = core.origin_erase(Origin, core.Record(struct {
-        a: core.Buf_origin_erased(void, u32),
+        a: core.Buf(core.Origin(core.Erased, void), u32),
         b: core.Span(core.Origin(core.Erased, void)),
     }), isolated);
     try core.origin_erased_rid(
         core.Record(struct {
-            a: core.Buf_origin_erased(void, u32),
+            a: core.Buf(core.Origin(core.Erased, void), u32),
             b: core.Span(core.Origin(core.Erased, void)),
         }),
         std.testing.allocator,
@@ -1268,11 +1245,11 @@ test "origin_erase span + buf, then origin_erased_rid" {
             .erased = erased,
             .rid = struct {
                 pub fn f(allocator: std.mem.Allocator, value_erased: core.Record(struct {
-                    a: core.Buf_origin_erased(void, u32),
+                    a: core.Buf(core.Origin(core.Erased, void), u32),
                     b: core.Span(core.Origin(core.Erased, void)),
                 })) error{OutOfMemory}!void {
                     // in real code we would remove span
-                    value_erased.a.erased.rid(allocator);
+                    value_erased.a.rid(allocator);
                 }
             }.f,
         },

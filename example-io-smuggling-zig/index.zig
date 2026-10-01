@@ -12,7 +12,7 @@ pub fn main(init: std.process.Init) !void {
     _ = try sloe.print_random_quote(IoState, init.arena.allocator(), .{
         .io = IoState{ .io = init.io, .writer = writer },
         .stdout_flush = stdout_flush,
-        .stdout_write_char_span = stdout_write_char_span,
+        .stdout_write_char_slice = stdout_write_char_slice,
         .http_get = http_get,
     });
 }
@@ -21,19 +21,19 @@ fn stdout_flush(_: std.mem.Allocator, io: IoState) error{OutOfMemory}!IoState {
     writer.flush() catch {};
     return .{ .io = io.io, .writer = writer };
 }
-fn stdout_write_char_span(_: std.mem.Allocator, in: sloe.Record(struct {
-    char_span: sloe.Origin_erased(sloe.Opt_char_span_erased),
+fn stdout_write_char_slice(_: std.mem.Allocator, in: sloe.Record(struct {
+    char_slice: sloe.Origin_erased(sloe.Opt_char_slice(sloe.Origin(sloe.Erased, void))),
     io: IoState,
 })) error{OutOfMemory}!sloe.Record(struct {
-    char_span: sloe.Origin_erased(sloe.Opt_char_span_erased),
+    char_slice: sloe.Origin_erased(sloe.Opt_char_slice(sloe.Origin(sloe.Erased, void))),
     io: IoState,
 }) {
     var writer = in.io.writer;
-    for (in.char_span.erased.chars.erased.optSpanSlice(in.char_span.erased.span)) |char| {
+    for (in.char_slice.erased.chars.optSpanSlice(in.char_slice.erased.span)) |char| {
         writer.interface.print("{u}", .{char}) catch {};
     }
     return .{
-        .char_span = in.char_span,
+        .char_slice = in.char_slice,
         .io = .{ .io = in.io.io, .writer = writer },
     };
 }
@@ -42,7 +42,7 @@ fn http_get(allocator: std.mem.Allocator, in: sloe.Record(struct {
     url: sloe.Str,
 })) error{OutOfMemory}!sloe.Record(struct {
     io: IoState,
-    response: sloe.Origin_erased(sloe.Opt_char_span_erased),
+    response: sloe.Origin_erased(sloe.Opt_char_slice(sloe.Origin(sloe.Erased, void))),
 }) {
     var chars = sloe.buf_empty(sloe.Char, sloe.Erased, void, sloe.Origin(sloe.Erased, void){});
     if (http_get_request(in.io.io, allocator, in.url.utf8.bytes)) |http_response_body| {
@@ -54,7 +54,7 @@ fn http_get(allocator: std.mem.Allocator, in: sloe.Record(struct {
         return .{
             .io = in.io,
             .response = .{
-                .erased = .{ .chars = .{ .erased = chars }, .span = span },
+                .erased = .{ .chars = chars, .span = span },
             },
         };
     } else |err| {
@@ -62,7 +62,7 @@ fn http_get(allocator: std.mem.Allocator, in: sloe.Record(struct {
         return .{
             .io = in.io,
             .response = .{
-                .erased = .{ .chars = .{ .erased = chars }, .span = .{ .no = {} } },
+                .erased = .{ .chars = chars, .span = .{ .no = {} } },
             },
         };
     }

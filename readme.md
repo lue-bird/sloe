@@ -827,97 +827,13 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- make proper unerase viable.
-  The idea is to provide
-  ```sloe
-  fn Origin-unerase
-      .erased Origin-erased _erased .origin Origin _origin, .
-  : Origin-isolated _origin, _erased
+- disallow sloe names `type-name` and `Type-name` to coexist.
+  Major reason is confusingly disambiguated names in codegen.
+  Official reason: This can be confusing when mixing up casing and will lead to conflicts of the count of type parameters changes on either of those types. Rename it.
 
-  ty Origin-uneraser _origin
-  # If anyone could call `Origin-unisolated` with any origin,
-  # you would be able to e.g. convert a `Slot (Origin erased, .)` to a Slot with any origin which is unsound.
-  ty Origin-unisolated _origin, _unisolated
+- when creating type mismatch where no fields overlap, it's shown as `(.\n)`. There's either a bug in type_diff_format or type_diff for records
   
-  fn Origin-unisolated-map
-      .unisolated Origin-unisolated _origin, _unisolated
-      .change Fn _unisolated, _unisolated-changed
-  : Origin-unisolated _origin, _unisolated-changed      
-  fn Origin-unisolated .uneraser Origin-uneraser _origin .erased _erased
-  : Origin-unisolated _origin, (Origin-isolated _origin, _erased)
-  
-  fn Origin-unisolate
-      .isolated Origin-isolated _origin, _erased
-      .unisolate
-      Fn (.erased _erased .unisolater Origin-unisolater _origin),
-      Origin-unisolated _origin, _unisolated
-  : _unisolated
-  ```
-  along replacing the current unerase functions with the inverse operations of `*-origin-isolate`, like
-  ```sloe
-  fn U32-origin-unisolate Origin-isolated _origin, u32 : u32
-  fn Slot-origin-unisolate Origin-isolated _origin, Slot Origin erased, _part
-  : Slot _origin, _part
-  ```
-  usage:
-  
-  ```sloe
-  ty color 'red . 'green . 'blue .
-  fn Color-origin-unisolate color Origin-isolated _origin, color : color =
-      ? (
-          Origin-unisolate
-          .isolated color
-          .unisolate
-          [.erased color color .. unisolater Origin-unisolater _origin]
-          ? color
-          ['red .] (
-              Origin-unisolated-map
-              .change [v Origin-isolated _origin, .] 'red v
-              .unisolated (Origin-unisolated .erased . .. unisolater)
-          )
-          ['green .] (
-              Origin-unisolated-map
-              .change [v Origin-isolated _origin, .] 'green v
-              .unisolated (Origin-unisolated .erased . .. unisolater)
-          )
-          ['blue .] (
-              Origin-unisolated-map
-              .change [v Origin-isolated _origin, .] 'blue v
-              .unisolated (Origin-unisolated .erased . .. unisolater)
-          )
-      )
-      ['red red] 'red Origin-isolated-rid .isolated red .rid [.] .
-      ['green green] 'red Origin-isolated-rid .isolated green .rid [.] .
-      ['blue blue] 'blue Origin-isolated-rid .isolated blue .rid [.] .
-  ```
-  or even better with nested origin-unisolate:
-  ```sloe
-  ty color 'red . 'green . 'blue .
-  fn Color-origin-unisolate color Origin-isolated _origin, color : color =
-      Origin-unisolate
-      .isolated color
-      .unisolate
-      [.erased color color .. unisolater .unisolater Origin-unisolater _origin]
-      ? color
-      ['red .] (
-          Origin-unisolated-map
-          .change [v Origin-isolated _origin, .] 'red Origin-isolated-rid .isolated v .rid [.] .
-          .unisolated (Origin-unisolated .erased . .. unisolater)
-      )
-      ['green .] (
-          Origin-unisolated-map
-          .change [v Origin-isolated _origin, .] 'green Origin-isolated-rid .isolated v .rid [.] .
-          .unisolated (Origin-unisolated .erased . .. unisolater)
-      )
-      ['blue .] (
-          Origin-unisolated-map
-          .change [v Origin-isolated _origin, .] 'blue Origin-isolated-rid .isolated v .rid [.] .
-          .unisolated (Origin-unisolated .erased . .. unisolater)
-      )
-  ```
-  
-  
-  Then remove `Buf-origin-erased` in favor of `Buf erased`, consider adding `Origin-isolated-rid` and
+- add `Origin-isolated-rid` and
   ```sloe
   fn Origin-erased-map
       .erased Origin-erased _value-erased

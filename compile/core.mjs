@@ -14,15 +14,15 @@
 /** @template $Origin, $Part @typedef {{} & { readonly origin?: $Origin, readonly part?: $Part }} Origin */
 /** @typedef {{ erased: never }} Erased */
 /** @template $Origin, $ValueErased @typedef {$ValueErased & { readonly origin_isolated?: $Origin }} Origin_isolated */
+/** @template $Origin @typedef {{} & { readonly origin_unisolater?: $Origin }} Origin_unisolater */
+/** @template $Unisolated @typedef {$Unisolated & { readonly origin_unisolated?: void }} Origin_unisolated */
 /** @template $ValueErased @typedef {$ValueErased & { readonly origin_erased?: void }} Origin_erased */
-/** @template $Origin @typedef {{} & { readonly uneraser_origin?: $Origin }} Origin_uneraser */
 /** @type{unique symbol}
  * Originally this was simply set to null but this prevented values
  * passed in from js (which can be null) to be handled correctly.
  */
 const SYMBOL$UNSET = Symbol();
 /** @template $Origin, $Item @typedef {(typeof SYMBOL$UNSET | $Item)[] & { readonly origin?: $Origin }} Buf */
-/** @template $Part, $Item @typedef {Buf<Origin<Erased, $Part>, $Item> & { readonly origin_erased?: void }} Buf_origin_erased */
 /** @template $Item @typedef {(typeof SYMBOL$UNSET | $Item)[]} Unset_slice
  * Assumed to contain an empty array (with spare capacity)
  */
@@ -94,6 +94,10 @@ export function p32_add_clamp(add) {
 export function p32_origin_isolate(n) {
   return n;
 }
+/** @template $Origin @param {Origin_isolated<$Origin, P32>} n @returns {P32} */
+export function p32_origin_unisolate(n) {
+  return n;
+}
 /** @param {U32} _ @returns {void} */
 export function u32_rid(_) {}
 /** @param {U32} u @returns {{ a: U32, b: U32, }} */
@@ -150,6 +154,10 @@ export function u32_to_i32_clamp(u) {
 export function u32_origin_isolate(n) {
   return n;
 }
+/** @template $Origin @param {Origin_isolated<$Origin, U32>} n @returns {U32} */
+export function u32_origin_unisolate(n) {
+  return n;
+}
 
 /** @param {I32} _ @returns {void} */
 export function i32_rid(_) {}
@@ -195,6 +203,10 @@ export function i32_pow_clamp(power) {
 }
 /** @template $Origin @param {I32} n @returns {Origin_isolated<$Origin, I32>} */
 export function i32_origin_isolate(n) {
+  return n;
+}
+/** @template $Origin @param {Origin_isolated<$Origin, I32>} n @returns {I32} */
+export function i32_origin_unisolate(n) {
   return n;
 }
 /** @param {F32} _ @returns {void} */
@@ -344,6 +356,10 @@ export function f32_order(sides) {
 export function f32_origin_isolate(n) {
   return n;
 }
+/** @template $Origin @param {Origin_isolated<$Origin, F32>} n @returns {F32} */
+export function f32_origin_unisolate(n) {
+  return n;
+}
 
 /** @param {Char} _ @returns {void} */
 export function char_rid(_) {}
@@ -357,6 +373,10 @@ export function char_to_u32(char) {
 }
 /** @template $Origin @param {Char} c @returns {Origin_isolated<$Origin, Char>} */
 export function char_origin_isolate(c) {
+  return c;
+}
+/** @template $Origin @param {Origin_isolated<$Origin, Char>} c @returns {Char} */
+export function char_origin_unisolate(c) {
   return c;
 }
 
@@ -408,6 +428,10 @@ export function str_end(str) {
 export function str_origin_isolate(s) {
   return s;
 }
+/** @template $Origin @param {Origin_isolated<$Origin, Str>} c @returns {Str} */
+export function str_origin_unisolate(c) {
+  return c;
+}
 
 /** @template $Yes @param {$Yes} yes @returns {Opt<$Yes>} */
 export function opt_yes(yes) {
@@ -433,6 +457,10 @@ export function call(call) {
 export function fn_origin_isolate(f) {
   return f;
 }
+/** @template $In, $Origin, $Out @param {Origin_isolated<$Origin, Fn<$In, $Out>>} c @returns {Fn<$In, $Out>} */
+export function fn_origin_unisolate(c) {
+  return c;
+}
 
 /** @template $Origin, $Part @param {Origin<$Origin, $Part>} _ @returns {void} */
 export function origin_rid(_) {}
@@ -449,15 +477,50 @@ export function origin_isolated_map(map) {
 export function origin_isolated_merge(ab) {
   return ab;
 }
+/** @template $Origin, $A, $B
+ * @param {Origin_isolated<$Origin, { a: $A, b: $B }>} ab
+ * @returns {{ a: Origin_isolated<$Origin, $A>, b: Origin_isolated<$Origin, $B>, }} */
+export function origin_isolated_split(ab) {
+  return /** @type {{ a: Origin_isolated<$Origin, $A>, b: Origin_isolated<$Origin, $B>, }} */ (
+    ab
+  );
+}
 /** @template $Origin, $Value_erased @param {Origin_isolated<$Origin, $Value_erased>} erase @returns {Origin_erased<$Value_erased>} */
 export function origin_erase(erase) {
   return erase;
 }
-/** @template $Value_erased @param {{ erased: Origin_erased<$Value_erased>, rid: Fn<$Value_erased, void>, }} _ @returns {void} */
-export function origin_erased_rid(_) {}
-/** @template $Origin, $Value, $Value_erased @param {{ erased: Origin_erased<$Value_erased>, origin: Origin<$Origin, void>, unerase: Fn<{ erased: $Value_erased, uneraser: Origin_uneraser<$Origin>, }, { unerased: $Value, uneraser: Origin_uneraser<$Origin>, }>, }} unerase @returns {$Value} */
+/** @template $Origin, $Value_erased
+ * @param {{ erased: Origin_erased<$Value_erased>, origin: Origin<$Origin, void>, }} unerase
+ * @returns {Origin_isolated<$Origin, $Value_erased>} */
 export function origin_unerase(unerase) {
-  return unerase.unerase({ erased: unerase.erased, uneraser: {} }).unerased;
+  return unerase.erased;
+}
+/** @template $Value_erased @param {{ erased: Origin_erased<$Value_erased>, rid: Fn<$Value_erased, void>, }} rid @returns {void} */
+export function origin_erased_rid(rid) {
+  rid.rid(rid.erased);
+}
+/** @template $Origin, $Value, $Value_erased
+ * @param {{
+ *     isolated: Origin_isolated<$Origin, $Value_erased>,
+ *     unisolate: Fn<{ erased: $Value_erased, unisolater: Origin_unisolater<$Origin> }, Origin_unisolated<$Value>>,
+ * }} unisolate
+ * @returns {$Value} */
+export function origin_unisolate(unisolate) {
+  return unisolate.unisolate({ erased: unisolate.isolated, unisolater: {} });
+}
+/** @template $Origin, $Value, $Value_erased
+ * @param {{
+ *     erased: $Value_erased,
+ *     unisolater: Origin_unisolater<$Origin>,
+ *     unisolate: Fn<Origin_isolated<$Origin, $Value_erased>, $Value>,
+ * }} unisolate
+ * @returns {Origin_unisolated<$Value>} */
+export function origin_erased_unisolate(unisolate) {
+  return /** @type Origin_unisolated<$Value> */ (
+    unisolate.unisolate(
+      /** @type Origin_isolated<$Origin, $Value_erased> */ (unisolate.erased),
+    )
+  );
 }
 
 /** @template $Origin @param {Slot<$Origin>} slot @returns {{ slot: Slot<$Origin>, index: U32 }} */
@@ -472,11 +535,11 @@ export function slot_to_span(slot) {
 export function slot_origin_isolate(slot) {
   return /** @type Origin_isolated<$Origin, Slot<Origin<Erased, $Part>>> */ (slot);
 }
-/** @template $Origin, $Part @param {{ slot: Slot<Origin<Erased, $Part>>, uneraser: Origin_uneraser<$Origin>, }} unerase @returns {{ slot: Slot<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin>, }} */
-export function slot_origin_unerase(unerase) {
-  return /** @type {{ slot: Slot<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin> }} */ (
-    unerase
-  );
+/** @template $Origin, $Part
+ * @param {Origin_isolated<$Origin, Slot<Origin<Erased, $Part>>>} isolated
+ * @returns {Slot<Origin<$Origin, $Part>>} */
+export function slot_origin_unisolate(isolated) {
+  return /** @type {Slot<Origin<$Origin, $Part>>} */ (isolated);
 }
 
 /** @template $Origin, $Part @param {Span<Origin<$Origin, $Part>>} span @returns {Origin_isolated<$Origin, Span<Origin<Erased, $Part>>>} */
@@ -487,17 +550,17 @@ export function span_origin_isolate(span) {
 export function opt_span_origin_isolate(span) {
   return /** @type Opt<Span<Origin<Erased, $Part>>> */ (span);
 }
-/** @template $Origin, $Part @param {{ span: Span<Origin<Erased, $Part>>, uneraser: Origin_uneraser<$Origin>, }} span @returns {{ span: Span<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin>, }} */
-export function span_origin_unerase(span) {
-  return /** @type {{ span: Span<Origin<$Origin, $Part>>, uneraser: Origin_uneraser<$Origin> }} */ (
-    span
-  );
+/** @template $Origin, $Part
+ * @param {Origin_isolated<$Origin, Span<Origin<Erased, $Part>>>} isolated
+ * @returns {Span<Origin<$Origin, $Part>>} */
+export function span_origin_unisolate(isolated) {
+  return /** @type {Span<Origin<$Origin, $Part>>} */ (isolated);
 }
-/** @template $Origin, $Part @param {{ span: Opt<Span<Origin<Erased, $Part>>>, uneraser: Origin_uneraser<$Origin>, }} span @returns {{ span: Opt<Span<Origin<$Origin, $Part>>>, uneraser: Origin_uneraser<$Origin>, }} */
-export function opt_span_origin_unerase(span) {
-  return /** @type {{ span: Opt<Span<Origin<$Origin, $Part>>>, uneraser: Origin_uneraser<$Origin> }} */ (
-    span
-  );
+/** @template $Origin, $Part
+ * @param {Origin_isolated<$Origin, Opt<Span<Origin<Erased, $Part>>>>} isolated
+ * @returns {Opt<Span<Origin<$Origin, $Part>>>} */
+export function opt_span_origin_unisolate(isolated) {
+  return /** @type {Opt<Span<Origin<$Origin, $Part>>>} */ (isolated);
 }
 /** @template $Origin @param {Span<$Origin>} span @returns {{ span: Span<$Origin>, index: U32, }} */
 export function span_start_index(span) {
@@ -685,32 +748,28 @@ export function buf_rid(_) {}
 export function buf_pre_allocation_rid(buf) {
   return buf;
 }
-/** @template $Item, $Item_erased, $Origin, $Part @param {{ buf: Buf<Origin<$Origin, $Part>, $Item>, item_isolate: Fn<$Item, Origin_isolated<$Origin, $Item_erased>>, }} erase @returns {Buf_origin_erased<$Part, $Item_erased>} */
+/** @template $Item, $Item_erased, $Origin, $Part
+ * @param {{ buf: Buf<Origin<$Origin, $Part>, $Item>, item_isolate: Fn<$Item, Origin_isolated<$Origin, $Item_erased>>, }} erase
+ * @returns {Buf<Origin<Erased, $Part>, $Item_erased>} */
 export function buf_origin_isolate(erase) {
   return erase.buf.map((item) =>
     item === SYMBOL$UNSET ? SYMBOL$UNSET : erase.item_isolate(/** @type $Item */ (item)),
   );
 }
-/** @template $Item, $Origin, $Part @param {{ buf: Buf_origin_erased<$Part, $Item>, uneraser: Origin_uneraser<$Origin>, }} unerase @returns {{ buf: Buf<Origin<$Origin, $Part>, $Item>, uneraser: Origin_uneraser<$Origin>, }} */
-export function buf_origin_unerase_keep_items(unerase) {
-  return {
-    buf: /** @type Buf<Origin<$Origin, $Part>, $Item> */ (unerase.buf),
-    uneraser: unerase.uneraser,
-  };
-}
-/** @template $Item, $Item_erased, $Origin, $Part @param {{ buf: Buf_origin_erased<$Part, $Item_erased>, uneraser: Origin_uneraser<$Origin>, item_unerase: Fn<{ item: $Item_erased, uneraser: Origin_uneraser<$Origin>, }, { item: $Item, uneraser: Origin_uneraser<$Origin>, }>, }} unerase @returns {{ buf: Buf<Origin<$Origin, $Part>, $Item>, uneraser: Origin_uneraser<$Origin>, }} */
-export function buf_origin_unerase(unerase) {
-  return {
-    buf: unerase.buf.map((item) =>
-      item === SYMBOL$UNSET
-        ? SYMBOL$UNSET
-        : unerase.item_unerase({
-            item: /** @type $Item_erased */ (item),
-            uneraser: unerase.uneraser,
-          }).item,
-    ),
-    uneraser: unerase.uneraser,
-  };
+/** @template $Item, $Item_erased, $Origin, $Part
+ * @param {{
+ *     buf: Origin_isolated<$Origin, Buf<Origin<Erased, $Part>, $Item_erased>>,
+ *     item_unisolate: Fn<Origin_isolated<$Origin, $Item_erased>, $Item>,
+ * }} unisolate
+ * @returns {Buf<Origin<$Origin, $Part>, $Item>} */
+export function buf_origin_unisolate(unisolate) {
+  return unisolate.buf.map((item) =>
+    item === SYMBOL$UNSET
+      ? SYMBOL$UNSET
+      : unisolate.item_unisolate(
+          /** @type Origin_isolated<$Origin, $Item_erased> */ (item),
+        ),
+  );
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, item_rid: Fn<$Item, void>, span: Span<$Origin>, }} unset @returns {Buf<$Origin, $Item>} */
 export function buf_span_rid(unset) {

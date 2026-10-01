@@ -3,22 +3,18 @@ ty state
     .count u32
     .mouse-x u32
     .mouse-y u32
-    .mouse-trail Origin-erased Mouse-trail-origin-erased .
+    .mouse-trail Origin-erased Mouse-trail Origin erased, .
 
 ty Mouse-trail _origin
     .buf (Buf _origin, .x u32 .y u32)
     .span Opt Span _origin
-
-ty Mouse-trail-origin-erased _part
-    .buf (Buf-origin-erased _part, .x u32 .y u32)
-    .span Opt Span Origin erased, _part
 
 ty event
     'counter-clicked .
     'mouse-moved .x u32 .y u32
 
 fn Initial-state . : state =
-    ^mouse-trail-origin
+    ^ mouse-trail-origin
     .count 0 u32
     .mouse-x 0 u32
     .mouse-y 0 u32
@@ -31,11 +27,14 @@ fn Initial-state . : state =
 
 fn Mouse-trail-origin-isolate
     mouse-trail Mouse-trail Origin _origin, _part
-: Origin-isolated _origin, Mouse-trail-origin-erased _part =
+: Origin-isolated _origin, Mouse-trail Origin erased, _part =
     ? mouse-trail [.buf buf .span span]
     Origin-isolated-map
     .change (
-        [.a (buf Buf-origin-erased _part, .x u32 .y u32) .b span Opt Span Origin erased, _part]
+        [
+            .a (buf Buf (Origin erased, _part), .x u32 .y u32)
+            .b span Opt Span Origin erased, _part
+        ]
         .buf buf .span span
     )
     .isolated
@@ -54,19 +53,32 @@ fn Mouse-trail-origin-isolate
     )
     .b Opt-span-origin-isolate span
 
-fn Mouse-trail-origin-unerase
-    .erased erased Mouse-trail-origin-erased _part
-    .uneraser uneraser Origin-uneraser _origin
-:
-    .unerased Mouse-trail Origin _origin, _part
-    .uneraser Origin-uneraser _origin
-=
-    ? erased [.buf buf .span span]
-    ? Buf-origin-unerase-keep-items .buf buf .uneraser uneraser
-    [.buf buf .uneraser uneraser]
-    ? Opt-span-origin-unerase .span span .uneraser uneraser
-    [.span span .uneraser uneraser]
-    .unerased (.buf buf .span span) .uneraser uneraser
+fn Mouse-trail-origin-unisolate
+    isolated Origin-isolated _origin, Mouse-trail Origin erased, _part
+: Mouse-trail Origin _origin, _part =
+    ? (
+        Origin-isolated-split
+        Origin-isolated-map
+        .isolated isolated
+        .change
+        [erased Mouse-trail Origin erased, _part]
+        ? erased [.buf buf .span span]
+        .a buf .b span
+    )
+    [.a buf .b span]
+    .span Opt-span-origin-unisolate span
+    .buf
+    Buf-origin-unisolate
+    .buf buf
+    .item-unisolate
+    [xy Origin-isolated _origin, .x u32 .y u32]
+    ?
+        Origin-isolated-split
+        Origin-isolated-map
+        .isolated xy
+        .change ([.x x u32 .y y u32] .a x .b y)
+    [.a x .b y]
+    .x U32-origin-unisolate x .y U32-origin-unisolate y
 
 fn Update
     .state state state
@@ -82,17 +94,10 @@ fn Update
     )
     ['mouse-moved .x new-mouse-x .y new-mouse-y] (
         ? state [.count count .mouse-x old-mouse-x .mouse-y old-mouse-y .mouse-trail mouse-trail]
-        ^mouse-trail-origin
+        ^ mouse-trail-origin
         ?
-            Origin-unerase
-            .erased mouse-trail
-            .origin mouse-trail-origin
-            .unerase
-            [
-                .erased mouse-trail Mouse-trail-origin-erased .
-                .uneraser uneraser Origin-uneraser mouse-trail-origin
-            ]
-            Mouse-trail-origin-unerase .erased mouse-trail .uneraser uneraser
+            Mouse-trail-origin-unisolate
+            Origin-unerase .erased mouse-trail .origin mouse-trail-origin
         [mouse-trail]
         ?
             Buf-opt-span-add
