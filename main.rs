@@ -38,7 +38,8 @@ fn main_or_err() -> Result<(), ()> {
             }
             "build" | "make" | "compile" | "transpile" | "b" | "m" => {
                 println!(
-                    "To compile a file to a specific target language, use e.g. sloe zig.
+                    "To compile a file to a specific target language, use sloe <language>.
+To for example compile a sloe.sloe file to a sloe.zig file, use sloe zig.
 
 Full help:
 {command_help}"
@@ -118,13 +119,9 @@ const command_help: &str = "\
 To compile to a rust file: sloe rs [input-file.sloe [output-file.rs]]
 To compile to a zig file: sloe zig [input-file.sloe [output-file.zig]]
 To compile to a javascript module: sloe js [input-file.sloe [output-file.mjs]]
-To copy the rust hello-world project setup into the current directory: sloe init
 To start the language server: sloe lsp
 To print core declaration documentation: sloe core-docs
 To print this help message: sloe help
-
-To run a rust project: cargo run
-To compile a rust project into an executable: cargo build --release
 
 See the source code, see the full documentation, report bugs or leave any kind of feedback at https://codeberg.org/lue-bird/sloe";
 
