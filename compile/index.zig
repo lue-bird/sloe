@@ -1204,8 +1204,19 @@ test "origin_unisolate" {
     });
     try std.testing.expectEqual(ExampleEnum.wobble, unisolated);
 }
+test "origin_isolated_rid" {
+    const Origin = enum {};
+    try std.testing.expectEqual({}, try core.origin_isolated_rid(u32, Origin, std.testing.allocator, .{
+        .isolated = .{ .erased = @as(u32, 1) },
+        .rid = struct {
+            pub fn f(_: std.mem.Allocator, n: u32) error{OutOfMemory}!void {
+                core.u32_rid(n);
+            }
+        }.f,
+    }));
+}
 test "origin_erase span + buf, then origin_erased_rid" {
-    const Origin = enum { origin };
+    const Origin = enum {};
     const origin: core.Origin(Origin, void) = .{};
     var buf = core.buf_empty(u32, Origin, void, origin);
     const span = (try buf.add(std.testing.allocator, 1)).toSpan();

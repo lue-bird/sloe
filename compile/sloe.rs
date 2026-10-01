@@ -13573,6 +13573,33 @@ Isn't that nice.",
                 result_type: type_origin_isolated(type_variable("origin"), type_variable("new-erased")),
             },
             CoreFnInfo {
+                name: "Origin-isolated-rid",
+                documentation: "Scrap the origin-erased value inside `Origin-isolated`.
+The effect is the same as un-isolating, then scrapping it.
+It may also be more performant on some host languages.
+```sloe
+ty Slice-char _origin
+    .buf Buf _origin, char
+    .span Span _origin
+
+fn Slice-char-origin-isolated-rid
+    slice Origin-isolated _origin, Slice-char Origin erased, .
+: . =
+    Origin-isolated-rid
+    .isolated slice
+    .rid
+    [slice Slice Origin erased, .]
+    Buf-rid Buf-span-rid .. slice .item-rid [c char] Char-rid c
+```
+Similar: `Origin-erased-rid`",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("isolated", type_origin_isolated(type_variable("origin"), type_variable("erased"))),
+                    ("rid", type_fn(type_variable("erased"), type_record_empty)),
+                ]),
+                result_type: type_record_empty,
+            },
+            CoreFnInfo {
                 name: "Origin-unisolate",
                 documentation: "Un-isolate a choice type.
 ```sloe
@@ -13653,10 +13680,21 @@ Un-isolate an erased variant value by mapping its Origin-isolated representation
                 documentation: r#"Mark an `Origin-erased` value as "won't be used anymore".
 The effect is the same as calling `Origin-unerase`, un-isolating, then scrapping it.
 It may also be more performant on some host languages.
+```sloe
+ty Slice-char _origin
+    .buf Buf _origin, char
+    .span Span _origin
 
-Note that this convenient helper is quite simplistic (and incomplete).
-If you have a concrete use-case where you _must_ pass state in to the rid function,
-please open an issue."#,
+fn Slice-char-origin-erased-rid
+    slice Origin-erased Slice-char Origin erased, .
+: . =
+    Origin-erased-rid
+    .erased slice
+    .rid
+    [slice Slice Origin erased, .]
+    Buf-rid Buf-span-rid .. slice .item-rid [c char] Char-rid c
+```
+Similar: `Origin-isolated-rid`."#,
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("erased", type_origin_erased(type_variable("value-erased"))),
@@ -15801,6 +15839,7 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
     match fn_name {
         "Call"
         | "Origin-isolated-map"
+        | "Origin-isolated-rid"
         | "Origin-isolate-constant"
         | "Origin-erased-rid"
         | "Origin-unisolate"

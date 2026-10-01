@@ -369,7 +369,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Also, how would this work with existing buf APIs? Something like `Buf2-opt-span-add`
 - minor: sometimes, you really own all the items of a buf in one place (especially when the buf items can be trivially copied).
   Splitting it into `Opt Span`+`Buf` is annoying and wastes a bit of space (length is carried twice and start is always 0)
-- by default, most passed arguments are quite fat on the stack (e.g. `Buf` is ~6~ 3.5 usize-wide and you may pass a bunch of them).
+- by default, most passed arguments are quite fat on the stack (e.g. `Buf` is 3-4.5 usize-wide and you may pass a bunch of them).
   Pointers are much thinner. This can in some parts be optimized by the target language compiler
 - currently syntax is not full-word-search friendly. Think `_type-variable` and `minus-dash-hyphen`
 - the language is very sequential by design which disqualifies it from running fast on much of parallel computing e.g. GPUs, threads that share memory etc.
@@ -831,7 +831,7 @@ I imagine the current style leaves some performance on the table but I'd be surp
   Major reason is confusingly disambiguated names in codegen.
   Official reason: This can be confusing when mixing up casing and will lead to conflicts of the count of type parameters changes on either of those types. Rename it.
   
-- add `Origin-isolated-rid` and
+- add
   ```sloe
   fn Origin-erased-map
       .erased Origin-erased _value-erased

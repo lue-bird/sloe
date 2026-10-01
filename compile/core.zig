@@ -1542,6 +1542,17 @@ pub fn origin_isolated_map(
 ) error{OutOfMemory}!Origin_isolated(@"%Origin", @"%NewErased") {
     return .{ .erased = try @"%".change(@"%allocator", @"%".isolated.erased) };
 }
+pub fn origin_isolated_rid(
+    @"%Erased": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        isolated: Origin_isolated(@"%Origin", @"%Erased"),
+        rid: Fn(@"%Erased", void),
+    }),
+) error{OutOfMemory}!void {
+    return @"%".rid(@"%allocator", @"%".isolated.erased);
+}
 pub fn origin_unisolate(
     @"%Erased": type,
     @"%Origin": type,

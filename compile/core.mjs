@@ -473,6 +473,12 @@ export function origin_isolate_constant(erase) {
 export function origin_isolated_map(map) {
   return /** @type Origin_isolated<$Origin, $B> */ (map.change(map.isolated));
 }
+/** @template $Erased, $Origin
+ * @param {{ isolated: Origin_isolated<$Origin, $Erased>, rid: Fn<$Erased, void>, }} rid
+ * @returns {void} */
+export function origin_isolated_rid(rid) {
+  rid.rid(rid.isolated);
+}
 /** @template $Origin, $A, $B @param {{ a: Origin_isolated<$Origin, $A>, b: Origin_isolated<$Origin, $B>, }} ab @returns {Origin_isolated<$Origin, { a: $A, b: $B }>} */
 export function origin_isolated_merge(ab) {
   return ab;

@@ -82,6 +82,11 @@ pub struct Record·change·isolated<Change, Isolated> {
     pub isolated: Isolated,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·isolated·rid<Isolated, Rid> {
+    pub isolated: Isolated,
+    pub rid: Rid,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·item_isolate<Buf, Item_isolate> {
     pub buf: Buf,
     pub item_isolate: Item_isolate,
@@ -2488,6 +2493,14 @@ pub fn origin_isolated_map<Erased, NewErased, LocalOrigin>(
     >,
 ) -> Origin_isolated<LocalOrigin, NewErased> {
     isolated.map(change)
+}
+pub fn origin_isolated_rid<Erased, LocalOrigin>(
+    Record·isolated·rid { isolated, rid }: Record·isolated·rid<
+        Origin_isolated<LocalOrigin, Erased>,
+        Fn<Erased, Record>,
+    >,
+) -> Record {
+    rid(isolated.value_erased)
 }
 pub fn origin_isolated_merge<A, B, LocalOrigin>(
     Record·a·b { a, b }: Record·a·b<
