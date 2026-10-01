@@ -123,6 +123,11 @@ pub struct Record·erased·rid<Erased, Rid> {
     pub rid: Rid,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·change·erased<Change, Erased> {
+    pub change: Change,
+    pub erased: Erased,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·erased·unisolater<Erased, Unisolater> {
     pub erased: Erased,
     pub unisolater: Unisolater,
@@ -1808,6 +1813,14 @@ impl<ItemErased, LocalOrigin, Part>
     }
 }
 impl<ValueErased> Origin_erased<ValueErased> {
+    pub fn map<NewValueUnerased>(
+        self,
+        change: impl std::ops::FnOnce(ValueErased) -> NewValueUnerased,
+    ) -> Origin_erased<NewValueUnerased> {
+        Origin_erased {
+            value_erased: change(self.value_erased),
+        }
+    }
     pub fn unerase<LocalOrigin>(
         self,
         _: Origin<LocalOrigin, Record>,
@@ -2519,6 +2532,14 @@ pub fn origin_erase<Origin, ValueErased>(
     isolated: Origin_isolated<Origin, ValueErased>,
 ) -> Origin_erased<ValueErased> {
     isolated.erase()
+}
+pub fn origin_erased_map<NewValueErased, ValueErased>(
+    Record·change·erased { erased, change }: Record·change·erased<
+        Fn<ValueErased, NewValueErased>,
+        Origin_erased<ValueErased>,
+    >,
+) -> Origin_erased<NewValueErased> {
+    erased.map(change)
 }
 pub fn origin_erased_rid<ValueErased>(
     Record·erased·rid { erased, rid }: Record·erased·rid<

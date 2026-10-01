@@ -501,6 +501,12 @@ export function origin_erase(erase) {
 export function origin_unerase(unerase) {
   return unerase.erased;
 }
+/** @template $NewValueErased, $ValueErased
+ * @param {{ erased: Origin_erased<$ValueErased>, change: Fn<$ValueErased, $NewValueErased>, }} map
+ * @returns {Origin_erased<$NewValueErased>} */
+export function origin_erased_map(map) {
+  return /** @type Origin_erased<$NewValueErased> */ (map.change(map.erased));
+}
 /** @template $Value_erased @param {{ erased: Origin_erased<$Value_erased>, rid: Fn<$Value_erased, void>, }} rid @returns {void} */
 export function origin_erased_rid(rid) {
   rid.rid(rid.erased);

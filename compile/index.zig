@@ -1215,6 +1215,19 @@ test "origin_isolated_rid" {
         }.f,
     }));
 }
+test "origin_isolated_map" {
+    try std.testing.expectEqual(
+        core.Origin_erased(u64){ .erased = 2 },
+        try core.origin_erased_map(u64, u32, std.testing.allocator, .{
+            .erased = .{ .erased = @as(u32, 2) },
+            .change = struct {
+                pub fn f(_: std.mem.Allocator, n: u32) error{OutOfMemory}!u64 {
+                    return @as(u64, n);
+                }
+            }.f,
+        }),
+    );
+}
 test "origin_erase span + buf, then origin_erased_rid" {
     const Origin = enum {};
     const origin: core.Origin(Origin, void) = .{};

@@ -830,15 +830,6 @@ I imagine the current style leaves some performance on the table but I'd be surp
 - disallow sloe names `type-name` and `Type-name` to coexist.
   Major reason is confusingly disambiguated names in codegen.
   Official reason: This can be confusing when mixing up casing and will lead to conflicts of the count of type parameters changes on either of those types. Rename it.
-  
-- add
-  ```sloe
-  fn Origin-erased-map
-      .erased Origin-erased _value-erased
-      .change Fn _value-erased, _value-erased-new
-  :
-      Origin-erased _value-erased-new
-  ```
 
 - consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
 

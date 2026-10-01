@@ -13676,6 +13676,17 @@ Un-isolate an erased variant value by mapping its Origin-isolated representation
                 result_type: type_origin_unisolated(type_variable("new-erased")),
             },
             CoreFnInfo {
+                name: "Origin-erased-map",
+                documentation: r#"Do something inside the `Origin-erased` value.
+Rarely useful. Similar: `Origin-isolated-map`."#,
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    ("erased", type_origin_erased(type_variable("value-erased"))),
+                    ("change", type_fn(type_variable("value-erased"), type_variable("new-value-erased")))
+                ]),
+                result_type: type_origin_erased(type_variable("new-value-erased"))
+            },
+            CoreFnInfo {
                 name: "Origin-erased-rid",
                 documentation: r#"Mark an `Origin-erased` value as "won't be used anymore".
 The effect is the same as calling `Origin-unerase`, un-isolating, then scrapping it.
@@ -15841,6 +15852,7 @@ pub fn is_core_fn_that_can_run_out_of_memory_in_zig(fn_name: &str) -> bool {
         | "Origin-isolated-map"
         | "Origin-isolated-rid"
         | "Origin-isolate-constant"
+        | "Origin-erased-map"
         | "Origin-erased-rid"
         | "Origin-unisolate"
         | "Origin-erased-unisolate"

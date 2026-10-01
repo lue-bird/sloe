@@ -1607,6 +1607,17 @@ pub fn origin_erased_rid(
 ) error{OutOfMemory}!void {
     return @"%".rid(@"%allocator", @"%".erased.erased);
 }
+pub fn origin_erased_map(
+    @"%NewValueErased": type,
+    @"%ValueErased": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct {
+        change: Fn(@"%ValueErased", @"%NewValueErased"),
+        erased: Origin_erased(@"%ValueErased"),
+    }),
+) error{OutOfMemory}!Origin_erased(@"%NewValueErased") {
+    return .{ .erased = try @"%".change(@"%allocator", @"%".erased.erased) };
+}
 pub fn origin_unerase(
     @"%Origin": type,
     @"%ValueErased": type,
