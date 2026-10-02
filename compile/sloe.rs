@@ -3748,10 +3748,8 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
     let compiled_parameter = match syntax_parameter_pattern_to_rust(
         syntax_parameter,
         &mut parameter_introduced_variables,
-        type_aliases,
         checked_spread_records,
         patterns,
-        types,
         &std::collections::HashMap::new(),
         &mut rust_statements,
     ) {
@@ -3812,7 +3810,7 @@ fn syntax_project_fn_to_rust<Expressions, Patterns, Types>(
         }),
     })
 }
-/// only use if you know `syntax_type` has already been called on it before
+/// only use if you know `syntax_type_check` has already been called on it before
 pub fn syntax_type_to_type<Types, OriginInfo>(
     type_: &SyntaxType<Types>,
     type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
@@ -4725,14 +4723,10 @@ fn syntax_query_case_pattern_check<'a, Patterns, Types>(
     expected_type: &Type,
     errors: &mut Vec<ErrorNode>,
     introduced_variables: &mut std::collections::HashMap<&'a Name, CheckedLocalVariable>,
-    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &core::Buf<Types, SyntaxType<Types>>,
-    origins: &std::collections::HashMap<&Name, CheckedOrigin>,
     existing_local_variables: &std::collections::HashMap<&Name, CheckedLocalVariable>,
     checked_spread_records: &mut std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-    records_used: &mut std::collections::HashSet<Vec<Name>>,
-    choices_used: &mut std::collections::HashSet<Vec<Name>>,
 ) {
     match pattern {
         SyntaxPattern::Variable { name, type_ } => {
@@ -4828,14 +4822,10 @@ fn syntax_query_case_pattern_check<'a, Patterns, Types>(
                 expected_value_type,
                 errors,
                 introduced_variables,
-                type_aliases,
                 patterns,
                 types,
-                origins,
                 existing_local_variables,
                 checked_spread_records,
-                records_used,
-                choices_used,
             );
         }
         SyntaxPattern::RecordEmpty { dot_start: _ } => match expected_type {
@@ -4900,14 +4890,10 @@ Otherwise, you might have intended this pattern to belong to a different query. 
                                 &expected_type_field.value,
                                 errors,
                                 introduced_variables,
-                                type_aliases,
                                 patterns,
                                 types,
-                                origins,
                                 existing_local_variables,
                                 checked_spread_records,
-                                records_used,
-                                choices_used,
                             );
                         }
                         SyntaxRecordPart::Spread {
@@ -4948,14 +4934,10 @@ Switch to matching all fields explicitly for either spread",
                             &Type::Record(remaining_expected_type_fields),
                             errors,
                             introduced_variables,
-                            type_aliases,
                             patterns,
                             types,
-                            origins,
                             existing_local_variables,
                             checked_spread_records,
-                            records_used,
-                            choices_used,
                         );
                         checked_spread_records.insert(dot_dot_start, spread_field_names);
                     }
@@ -5008,14 +4990,10 @@ Switch to matching all fields explicitly for either spread",
                 expected_type,
                 errors,
                 introduced_variables,
-                type_aliases,
                 patterns,
                 types,
-                origins,
                 existing_local_variables,
                 checked_spread_records,
-                records_used,
-                choices_used,
             ),
         },
     }
@@ -5291,10 +5269,8 @@ fn syntax_query_case_pattern_to_rust<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     expected_type: &Type,
     introduced_variables: &mut std::collections::HashSet<&'a Name>,
-    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
     recombine_statements: &mut Vec<syn::Stmt>,
 ) -> Option<syn::Pat> {
@@ -5337,10 +5313,8 @@ fn syntax_query_case_pattern_to_rust<'a, Patterns, Types>(
                 patterns.item(value),
                 expected_value_type,
                 introduced_variables,
-                type_aliases,
                 checked_spread_records,
                 patterns,
-                types,
                 origins,
                 recombine_statements,
             ) else {
@@ -5397,10 +5371,8 @@ fn syntax_query_case_pattern_to_rust<'a, Patterns, Types>(
                             patterns.item(value),
                             expected_field_value_type,
                             introduced_variables,
-                            type_aliases,
                             checked_spread_records,
                             patterns,
-                            types,
                             origins,
                             recombine_statements,
                         ) else {
@@ -5443,10 +5415,8 @@ fn syntax_query_case_pattern_to_rust<'a, Patterns, Types>(
                                     .collect(),
                             ),
                             introduced_variables,
-                            type_aliases,
                             checked_spread_records,
                             patterns,
-                            types,
                             origins,
                             recombine_statements,
                         ) else {
@@ -5547,10 +5517,8 @@ fn syntax_query_case_pattern_to_rust<'a, Patterns, Types>(
                 patterns.item(inner),
                 expected_type,
                 introduced_variables,
-                type_aliases,
                 checked_spread_records,
                 patterns,
-                types,
                 origins,
                 recombine_statements,
             ),
@@ -5560,10 +5528,8 @@ fn syntax_query_case_pattern_to_rust<'a, Patterns, Types>(
 fn syntax_parameter_pattern_to_rust<'a, Patterns, Types>(
     pattern: &'a SyntaxPattern<Patterns, Types>,
     introduced_variables: &mut std::collections::HashSet<&'a Name>,
-    type_aliases: &std::collections::HashMap<Name, CheckedTypeAlias>,
     checked_spread_records: &std::collections::HashMap<lsp_types::Position, Vec<Name>>,
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
-    types: &core::Buf<Types, SyntaxType<Types>>,
     origins: &std::collections::HashMap<&Name, CheckedOrigin>,
     recombine_statements: &mut Vec<syn::Stmt>,
 ) -> Option<syn::Pat> {
@@ -5597,10 +5563,8 @@ fn syntax_parameter_pattern_to_rust<'a, Patterns, Types>(
             let Some(compiled_value) = syntax_parameter_pattern_to_rust(
                 patterns.item(value),
                 introduced_variables,
-                type_aliases,
                 checked_spread_records,
                 patterns,
-                types,
                 origins,
                 recombine_statements,
             ) else {
@@ -5640,10 +5604,8 @@ fn syntax_parameter_pattern_to_rust<'a, Patterns, Types>(
                         let Some(compiled_field_value) = syntax_parameter_pattern_to_rust(
                             patterns.item(value),
                             introduced_variables,
-                            type_aliases,
                             checked_spread_records,
                             patterns,
-                            types,
                             origins,
                             recombine_statements,
                         ) else {
@@ -5674,10 +5636,8 @@ fn syntax_parameter_pattern_to_rust<'a, Patterns, Types>(
                         let Some(compiled_record) = syntax_parameter_pattern_to_rust(
                             patterns.item(record),
                             introduced_variables,
-                            type_aliases,
                             checked_spread_records,
                             patterns,
-                            types,
                             origins,
                             recombine_statements,
                         ) else {
@@ -5777,10 +5737,8 @@ fn syntax_parameter_pattern_to_rust<'a, Patterns, Types>(
             Some(inner) => syntax_parameter_pattern_to_rust(
                 patterns.item(inner),
                 introduced_variables,
-                type_aliases,
                 checked_spread_records,
                 patterns,
-                types,
                 origins,
                 recombine_statements,
             ),
@@ -9420,14 +9378,10 @@ If there should only ever by one variant, using a record with a single field is 
                 &checked_queried_type,
                 errors,
                 &mut case0_pattern_introduced_variables,
-                type_aliases,
                 patterns,
                 types,
-                origins,
                 local_variables,
                 checked_spread_records,
-                records_used,
-                choices_used,
             );
             let mut remaining_specific_pattern_catch_possibilities = Vec::new();
             type_to_possible_specific_pattern_catches(
@@ -9502,14 +9456,10 @@ If there should only ever by one variant, using a record with a single field is 
                     &checked_queried_type,
                     errors,
                     &mut case_pattern_introduced_variables,
-                    type_aliases,
                     patterns,
                     types,
-                    origins,
                     local_variables,
                     checked_spread_records,
-                    records_used,
-                    choices_used,
                 );
                 let remaining_specific_pattern_catch_possibilities_count_before_case =
                     remaining_specific_pattern_catch_possibilities.len();
@@ -10178,10 +10128,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
             let Some(compiled_parameter) = syntax_parameter_pattern_to_rust(
                 parameter,
                 &mut parameter_introduced_variables,
-                type_aliases,
                 checked_spread_records,
                 patterns,
-                types,
                 origins,
                 &mut fn_result_statements,
             ) else {
@@ -10775,10 +10723,8 @@ fn syntax_expression_to_rust<'a, Expressions, Patterns, Types>(
                     case_pattern,
                     &checked_query.queried_type,
                     &mut case_local_variables,
-                    type_aliases,
                     checked_spread_records,
                     patterns,
-                    types,
                     origins,
                     &mut case_statements,
                 ) else {
