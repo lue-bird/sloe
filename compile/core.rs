@@ -2513,7 +2513,7 @@ pub fn origin_isolated_rid<Erased, LocalOrigin>(
         Fn<Erased, Record>,
     >,
 ) -> Record {
-    rid(isolated.value_erased)
+    rid(isolated.value_erased);
 }
 pub fn origin_isolated_merge<A, B, LocalOrigin>(
     Record·a·b { a, b }: Record·a·b<

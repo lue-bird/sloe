@@ -4933,7 +4933,7 @@ Switch to matching all fields explicitly for either spread",
                                 });
                                 return;
                             }
-                            first_spread = Some((*dot_dot_start, record))
+                            first_spread = Some((*dot_dot_start, record));
                         }
                     }
                 }
@@ -5576,16 +5576,16 @@ fn syntax_parameter_pattern_to_rust<'a, Patterns, Types>(
             if !no_existing_variable_with_the_same_name || origins.contains_key(&name.value) {
                 return None;
             }
-            match syntax_type {
-                None => None,
-                Some(_) => Some(syn::Pat::Ident(syn::PatIdent {
-                    attrs: vec![],
-                    by_ref: None,
-                    mutability: None,
-                    ident: syn_ident(&name_to_lowercase_rust(&name.value)),
-                    subpat: None,
-                })),
+            if syntax_type.is_none() {
+                return None;
             }
+            Some(syn::Pat::Ident(syn::PatIdent {
+                attrs: vec![],
+                by_ref: None,
+                mutability: None,
+                ident: syn_ident(&name_to_lowercase_rust(&name.value)),
+                subpat: None,
+            }))
         }
         SyntaxPattern::Variant { name, value } => {
             let Some(name_value) = &name.value else {
@@ -11374,20 +11374,18 @@ fn type_diff<'a>(expected_type: &'a Type, actual_type: &'a Type) -> Option<TypeD
                     actual_missing_fields: expected_fields
                         .iter()
                         .filter(|expected_field| {
-                            actual_fields
+                            !actual_fields
                                 .iter()
-                                .find(|actual_field| actual_field.name == expected_field.name)
-                                .is_none()
+                                .any(|actual_field| actual_field.name == expected_field.name)
                         })
                         .map(|expected_field| &expected_field.name)
                         .collect(),
                     actual_extraneous_fields: actual_fields
                         .iter()
                         .filter(|expected_field| {
-                            expected_fields
+                            !expected_fields
                                 .iter()
-                                .find(|actual_field| actual_field.name == expected_field.name)
-                                .is_none()
+                                .any(|actual_field| actual_field.name == expected_field.name)
                         })
                         .map(|actual_field| &actual_field.name)
                         .collect(),
@@ -11607,7 +11605,7 @@ fn type_diff_parenthesized_if_open_ended_into(
 }
 fn type_diff_field_format(formatted: &mut String, indent: usize, type_diff_field: &TypeDiffField) {
     formatted.push('.');
-    formatted.push_str(&type_diff_field.name);
+    formatted.push_str(type_diff_field.name);
     space_or_linebreak_indented_into(
         formatted,
         option_type_diff_line_span(type_diff_field.value.as_ref()),
@@ -11625,7 +11623,7 @@ fn type_diff_variant_format(
     type_diff_variant: &TypeDiffVariant,
 ) {
     formatted.push('\'');
-    formatted.push_str(&type_diff_variant.name);
+    formatted.push_str(type_diff_variant.name);
     space_or_linebreak_indented_into(
         formatted,
         option_type_diff_line_span(type_diff_variant.value.as_ref()),
@@ -11714,25 +11712,25 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
         SyntaxExpression::Number { .. } => {
             errors.push(ErrorNode {
                 range: expression_range(expression, expressions, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                message: type_diff_error_message(type_diff).into_boxed_str(),
             });
         }
         SyntaxExpression::Text { .. } => {
             errors.push(ErrorNode {
                 range: expression_range(expression, expressions, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                message: type_diff_error_message(type_diff).into_boxed_str(),
             });
         }
         SyntaxExpression::Variable(_) => {
             errors.push(ErrorNode {
                 range: expression_range(expression, expressions, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                message: type_diff_error_message(type_diff).into_boxed_str(),
             });
         }
         SyntaxExpression::Call { .. } => {
             errors.push(ErrorNode {
                 range: expression_range(expression, expressions, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                message: type_diff_error_message(type_diff).into_boxed_str(),
             });
         }
         SyntaxExpression::Variant {
@@ -11775,14 +11773,14 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                 | TypeDiff::Record { .. } => {
                     errors.push(ErrorNode {
                         range: expression_range(expression, expressions, patterns, types),
-                        message: type_diff_error_message(&type_diff).into_boxed_str(),
+                        message: type_diff_error_message(type_diff).into_boxed_str(),
                     });
                 }
             },
             None => {
                 errors.push(ErrorNode {
                     range: expression_range(expression, expressions, patterns, types),
-                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    message: type_diff_error_message(type_diff).into_boxed_str(),
                 });
             }
         },
@@ -11826,14 +11824,14 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
             TypeDiff::Record { .. } | TypeDiff::Conflict { .. } | TypeDiff::Choice(_) => {
                 errors.push(ErrorNode {
                     range: expression_range(expression, expressions, patterns, types),
-                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    message: type_diff_error_message(type_diff).into_boxed_str(),
                 });
             }
         },
         SyntaxExpression::RecordEmpty { .. } => {
             errors.push(ErrorNode {
                 range: expression_range(expression, expressions, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                message: type_diff_error_message(type_diff).into_boxed_str(),
             });
         }
         SyntaxExpression::Record { part0, part1_up } => match type_diff {
@@ -11899,7 +11897,7 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                                     },
                                 ) || type_diff_fields.iter().any(|field_type_diff| {
                                     field_type_diff.value.is_some()
-                                        && spread_field_names.contains(&field_type_diff.name)
+                                        && spread_field_names.contains(field_type_diff.name)
                                 }))
                             {
                                 place_expression_type_diff_errors(
@@ -11909,18 +11907,18 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                                         fields: type_diff_fields
                                             .iter()
                                             .filter(|field_type_diff| {
-                                                spread_field_names.contains(&field_type_diff.name)
+                                                spread_field_names.contains(field_type_diff.name)
                                             })
                                             .cloned()
                                             .collect(),
                                         actual_missing_fields: vec![],
                                         actual_extraneous_fields: actual_extraneous_fields
                                             .iter()
+                                            .copied()
                                             .filter(|actual_extraneous_field_name| {
                                                 spread_field_names
                                                     .contains(actual_extraneous_field_name)
                                             })
-                                            .cloned()
                                             .collect(),
                                     },
                                     expressions,
@@ -11936,7 +11934,7 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
             TypeDiff::Conflict { .. } | TypeDiff::CoreConstruct { .. } | TypeDiff::Choice(_) => {
                 errors.push(ErrorNode {
                     range: expression_range(expression, expressions, patterns, types),
-                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    message: type_diff_error_message(type_diff).into_boxed_str(),
                 });
             }
         },
@@ -11962,23 +11960,23 @@ fn place_expression_type_diff_errors<Expressions, Patterns, Types>(
                             checked_spread_records,
                         );
                     }
-                    if let Some(_) = length_type_diff {
+                    if length_type_diff.is_some() {
                         errors.push(ErrorNode {
                             range: symbol_range(*semicolon_start, ";"),
-                            message: type_diff_error_message(&type_diff).into_boxed_str(),
+                            message: type_diff_error_message(type_diff).into_boxed_str(),
                         });
                     }
                 } else {
                     errors.push(ErrorNode {
                         range: expression_range(expression, expressions, patterns, types),
-                        message: type_diff_error_message(&type_diff).into_boxed_str(),
+                        message: type_diff_error_message(type_diff).into_boxed_str(),
                     });
                 }
             }
             TypeDiff::Conflict { .. } | TypeDiff::Record { .. } | TypeDiff::Choice(_) => {
                 errors.push(ErrorNode {
                     range: expression_range(expression, expressions, patterns, types),
-                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    message: type_diff_error_message(type_diff).into_boxed_str(),
                 });
             }
         },
@@ -12071,7 +12069,7 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
         SyntaxPattern::Variable { .. } => {
             errors.push(ErrorNode {
                 range: pattern_range(pattern, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                message: type_diff_error_message(type_diff).into_boxed_str(),
             });
         }
         SyntaxPattern::Variant { name, value } => match &name.value {
@@ -12098,7 +12096,7 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                         None => {
                             errors.push(ErrorNode {
                                 range: pattern_range(pattern, patterns, types),
-                                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                                message: type_diff_error_message(type_diff).into_boxed_str(),
                             });
                         }
                     }
@@ -12108,21 +12106,21 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                 | TypeDiff::Record { .. } => {
                     errors.push(ErrorNode {
                         range: pattern_range(pattern, patterns, types),
-                        message: type_diff_error_message(&type_diff).into_boxed_str(),
+                        message: type_diff_error_message(type_diff).into_boxed_str(),
                     });
                 }
             },
             None => {
                 errors.push(ErrorNode {
                     range: pattern_range(pattern, patterns, types),
-                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    message: type_diff_error_message(type_diff).into_boxed_str(),
                 });
             }
         },
         SyntaxPattern::RecordEmpty { .. } => {
             errors.push(ErrorNode {
                 range: pattern_range(pattern, patterns, types),
-                message: type_diff_error_message(&type_diff).into_boxed_str(),
+                message: type_diff_error_message(type_diff).into_boxed_str(),
             });
         }
         SyntaxPattern::Record { part0, part1_up } => match type_diff {
@@ -12187,7 +12185,7 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                                     },
                                 ) || type_diff_fields.iter().any(|field_type_diff| {
                                     field_type_diff.value.is_some()
-                                        && spread_field_names.contains(&field_type_diff.name)
+                                        && spread_field_names.contains(field_type_diff.name)
                                 }))
                             {
                                 place_pattern_type_diff_errors(
@@ -12197,18 +12195,18 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
                                         fields: type_diff_fields
                                             .iter()
                                             .filter(|field_type_diff| {
-                                                spread_field_names.contains(&field_type_diff.name)
+                                                spread_field_names.contains(field_type_diff.name)
                                             })
                                             .cloned()
                                             .collect(),
                                         actual_missing_fields: vec![],
                                         actual_extraneous_fields: actual_extraneous_fields
                                             .iter()
+                                            .copied()
                                             .filter(|actual_extraneous_field_name| {
                                                 spread_field_names
                                                     .contains(actual_extraneous_field_name)
                                             })
-                                            .cloned()
                                             .collect(),
                                     },
                                     patterns,
@@ -12223,7 +12221,7 @@ fn place_pattern_type_diff_errors<Patterns, Types>(
             TypeDiff::Conflict { .. } | TypeDiff::CoreConstruct { .. } | TypeDiff::Choice(_) => {
                 errors.push(ErrorNode {
                     range: pattern_range(pattern, patterns, types),
-                    message: type_diff_error_message(&type_diff).into_boxed_str(),
+                    message: type_diff_error_message(type_diff).into_boxed_str(),
                 });
             }
         },
@@ -13702,8 +13700,8 @@ Un-isolate an erased variant value by mapping its Origin-isolated representation
             },
             CoreFnInfo {
                 name: "Origin-erased-map",
-                documentation: r#"Do something inside the `Origin-erased` value.
-Rarely useful. Similar: `Origin-isolated-map`."#,
+                documentation: "Do something inside the `Origin-erased` value.
+Rarely useful. Similar: `Origin-isolated-map`.",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     ("erased", type_origin_erased(type_variable("value-erased"))),
