@@ -116,9 +116,9 @@ Full help:
     }
 }
 const command_help: &str = "\
-To compile to a rust file: sloe rs [input-file.sloe [output-file.rs]]
-To compile to a zig file: sloe zig [input-file.sloe [output-file.zig]]
-To compile to a javascript module: sloe js [input-file.sloe [output-file.mjs]]
+To compile to a rust 1.98.0 file: sloe rs [input-file.sloe [output-file.rs]]
+To compile to a zig 0.17.0 file: sloe zig [input-file.sloe [output-file.zig]]
+To compile to a javascript es2020 module: sloe js [input-file.sloe [output-file.mjs]]
 To start the language server: sloe lsp
 To print core declaration documentation: sloe core-docs
 To print this help message: sloe help
