@@ -15558,8 +15558,8 @@ This gives you a way to for example just pass one origin to a type alias and
 inside of the type alias use the .a ., .b . or .c . to choose the part you want.
 It's also extremely important for `Origin-isolated`"
                 )),
-                parameters: vec![Name::from_static("origin"), Name::from_static("part")],
-                type_: Some(type_origin(type_variable("origin"), type_variable("part"))),
+                parameters: vec![Name::from_static("region"), Name::from_static("part")],
+                type_: Some(type_origin(type_variable("region"), type_variable("part"))),
             },
         ),
         (
@@ -17589,8 +17589,6 @@ pub enum SyntaxSymbol<'a, Expressions, Patterns, Types> {
     Origin {
         name: &'a Name,
         use_start: lsp_types::Position,
-        // TODO remove origin_unique_name as it's always equal to name
-        origin_unique_name: &'a Name,
         origin: OriginDeclarationInfo<'a, Expressions, Patterns, Types>,
     },
     TypeVariable {
@@ -17903,29 +17901,6 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     use_start: name.start,
                     origin: local_variable,
                 })
-                .or_else(|| {
-                    origins
-                        .get(&name.value)
-                        .map(|origin_info| (&name.value, origin_info))
-                        .or_else(|| {
-                            origins
-                                .iter()
-                                .find(|(_, origin)| {
-                                    origin.parts.iter().any(|part| {
-                                        part.value
-                                            .as_ref()
-                                            .is_some_and(|part_name| part_name == &name.value)
-                                    })
-                                })
-                                .map(|(&name, origin)| (name, origin))
-                        })
-                        .map(|(origin_unique_name, &origin_info)| SyntaxSymbol::Origin {
-                            name: &name.value,
-                            use_start: name.start,
-                            origin_unique_name: origin_unique_name,
-                            origin: origin_info,
-                        })
-                })
                 .unwrap_or_else(|| SyntaxSymbol::VariableUnknown {
                     local_variables: std::mem::take(local_variables),
                     origins: std::mem::take(origins),
@@ -18227,7 +18202,6 @@ fn expression_symbol_at_position<'a, Expressions, Patterns, Types>(
                     return Some(SyntaxSymbol::Origin {
                         name: &name.value,
                         use_start: name.start,
-                        origin_unique_name: &name.value,
                         origin: origin_declaration_info,
                     });
                 }
@@ -18714,7 +18688,6 @@ fn type_symbol_at_position<'a, Expressions, Patterns, Types>(
             Some(&origin_info) => SyntaxSymbol::Origin {
                 name: &name.value,
                 use_start: name.start,
-                origin_unique_name: &name.value,
                 origin: origin_info,
             },
             None => SyntaxSymbol::ProjectTypeOrUnknown {
@@ -18839,7 +18812,6 @@ pub fn syntax_project_symbol_origin_range<Expressions, Patterns, Types>(
         SyntaxSymbol::Origin {
             name,
             use_start: _,
-            origin_unique_name: _,
             origin,
         } => {
             if origin.parts.is_empty() {
@@ -18969,7 +18941,6 @@ pub fn syntax_project_symbol_uses<Expressions, Patterns, Types>(
         SyntaxSymbol::Origin {
             name: _,
             use_start: _,
-            origin_unique_name: _,
             origin,
         } => {
             if let Some(origin_scope) = origin.scope {
@@ -19265,7 +19236,6 @@ fn syntax_type_symbol_uses_into<Expressions, Patterns, Types>(
             if let &SyntaxSymbol::Origin {
                 name: symbol_name,
                 use_start: _,
-                origin_unique_name: _,
                 origin: _,
             } = symbol
                 && &name.value == symbol_name
@@ -19440,7 +19410,6 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
             SyntaxSymbol::Origin {
                 name: symbol_name,
                 use_start: _,
-                origin_unique_name: _,
                 origin: _,
             }
             | SyntaxSymbol::LocalVariable {
@@ -19705,7 +19674,6 @@ fn syntax_expression_symbol_uses_into<Expressions, Patterns, Types>(
                     if let SyntaxSymbol::Origin {
                         name: symbol_name,
                         use_start: _,
-                        origin_unique_name: _,
                         origin: _,
                     }
                     | SyntaxSymbol::LocalVariable {

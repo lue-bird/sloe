@@ -297,44 +297,24 @@ fn present_local_variable_markdown(type_: Option<&sloe::Type>) -> String {
         }
     }
 }
-fn present_full_origin_markdown(origin_variable_name: &sloe::Name) -> String {
-    format!(
-        "An origin. It's associated variable is of type
-```sloe
-Origin {origin_variable_name}, .
-```
-The first argument is a unique, local type with the same name as the variable.
-The second argument is an empty record here which signifies that there are no other origin variables with the same unique local type.
-This is is necessary for the `Origin-erased` API.
-See `Origin` for examples of when the second argument is not ."
-      )
-}
-fn present_full_origin_variable_markdown(origin_variable_name: &sloe::Name) -> String {
-    format!(
-        "origin variable of type
-```sloe
-Origin {origin_variable_name}, .
-```
-The first argument is a unique, local type with the same name as the variable.
-The second argument is an empty record here which signifies that there are no other origin variables with the same unique local type.
-This is is necessary for the `Origin-erased` API.
-See `Origin` for examples of when the second argument is not ."
-      )
-}
-fn present_part_origin_variable_markdown(
+fn present_origin_markdown(
     origin_variable_name: &sloe::Name,
-    origin_unique_name: &sloe::Name,
+    parts: &[sloe::WithStartPosition<Option<sloe::Name>>],
 ) -> String {
-    format!(
-        "origin variable of type
+    if parts.is_empty() {
+        format!(
+            "An origin. It's associated variable is of type
 ```sloe
-Origin {origin_unique_name}, .{origin_variable_name} .
+Origin {origin_variable_name}, .
 ```
-The first argument is a unique, local type.
-The second argument is record with a single field which
-allows this variable to have the same unique local type as other origin variables.
-This is useful for reducing the amount of type variables and is necessary for the `Origin-erased` API"
+The first argument is a unique, local type with the same name as the variable.
+The second argument is an empty record here which signifies that there are no other origin variables with the same unique local type.
+This is is necessary for the `Origin-erased` API.
+See `Origin` for examples of when the second argument is not ."
       )
+    } else {
+        "unique local origin type".to_string()
+    }
 }
 fn default_output_file_path_for_sloe_input_file_path(
     input_file_path: &std::path::Path,
@@ -1082,18 +1062,11 @@ fn respond_to_hover<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::Origin {
             name,
             use_start,
-            origin_unique_name,
             origin,
         } => Some(lsp_types::Hover {
             contents: lsp_types::Contents::MarkupContent(lsp_types::MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
-                value: if origin.parts.is_empty() {
-                    present_full_origin_markdown(name)
-                } else if name == origin_unique_name {
-                    "unique local origin type".to_string()
-                } else {
-                    present_part_origin_variable_markdown(name, origin_unique_name)
-                },
+                value: present_origin_markdown(name, origin.parts),
             }),
             range: Some(sloe::name_range(sloe::WithStartPosition {
                 start: use_start,
@@ -1227,7 +1200,6 @@ fn respond_to_prepare_rename<Expressions, Patterns, Types>(
         sloe::SyntaxSymbol::Origin {
             name,
             use_start,
-            origin_unique_name: _,
             origin: _,
         } => Some(sloe::name_range(sloe::WithStartPosition {
             value: name,
@@ -1795,39 +1767,14 @@ fn respond_to_completion<Expressions, Patterns, Types>(
                 .chain(
                     origins
                         .iter()
-                        .filter(|(_, info)| info.parts.is_empty())
-                        .map(|(origin_name, _)| lsp_types::CompletionItem {
+                        .map(|(origin_name, origin_info)| lsp_types::CompletionItem {
                             label: origin_name.to_string(),
                             kind: Some(lsp_types::CompletionItemKind::Variable),
                             documentation: Some(lsp_documentation_markdown(
-                                present_full_origin_variable_markdown(origin_name),
+                                present_origin_markdown(origin_name, origin_info.parts),
                             )),
                             ..lsp_types::CompletionItem::default()
                         }),
-                )
-                .chain(
-                    origins
-                        .iter()
-                        .flat_map(|(&origin_unique_name, info)| {
-                            info.parts.iter().filter_map(move |part| {
-                                part.value
-                                    .as_ref()
-                                    .map(|part_name| (origin_unique_name, part_name))
-                            })
-                        })
-                        .map(
-                            |(origin_unique_name, part_name)| lsp_types::CompletionItem {
-                                label: origin_unique_name.to_string(),
-                                kind: Some(lsp_types::CompletionItemKind::Variable),
-                                documentation: Some(lsp_documentation_markdown(
-                                    present_part_origin_variable_markdown(
-                                        origin_unique_name,
-                                        part_name,
-                                    ),
-                                )),
-                                ..lsp_types::CompletionItem::default()
-                            },
-                        ),
                 )
                 .collect(),
         )),
