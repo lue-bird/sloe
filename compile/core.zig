@@ -573,7 +573,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                     return @"%buf".add(@"%allocator", @"%new_item");
                 },
                 _ => |@"%first_unset_index_enum"| {
-                    const @"%first_unset_index" = @intFromEnum(@"%first_unset_index_enum");
+                    const @"%first_unset_index" = @backingInt(@"%first_unset_index_enum");
                     @"%buf".items.items[@"%first_unset_index"] = @"%new_item";
                     var @"%unset_bit_set" = @"%buf".unsetBitSet();
                     @"%unset_bit_set".unset(@"%first_unset_index");
@@ -598,7 +598,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
             }
             @"%buf".items.items[@"%index"] = @"%new_item";
             @"%unset_bit_set".unset(@"%index");
-            if (@"%buf".first_unset_index == @as(UnsetIndexOrNone, @enumFromInt(@"%index"))) {
+            if (@"%buf".first_unset_index == @as(UnsetIndexOrNone, @fromBackingInt(@"%index"))) {
                 @"%buf".first_unset_index = @"%buf".firstUnsetIndexStartSearchFrom(@"%index" + 1);
             }
             return Slot(@"%Origin"){ .index = @"%index" };
@@ -612,7 +612,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                 .bit_length = @"%buf".items.items.len - (@"%unset_bit_mask_index_to_start_search" * @bitSizeOf(std.bit_set.Dynamic.MaskInt)),
             };
             return if (@"%unset_bit_set_after_unset_index".findFirstSet()) |@"%new_first_unset_index"|
-                @enumFromInt(@as(u32, @intCast(@"%new_first_unset_index")))
+                @fromBackingInt(@as(u32, @intCast(@"%new_first_unset_index")))
             else
                 .none_unset;
         }
@@ -835,7 +835,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                     },
                     true,
                 );
-                @"%buf".first_unset_index = @enumFromInt(@min(@intFromEnum(@"%buf".first_unset_index), @"%span_to_unset".start));
+                @"%buf".first_unset_index = @fromBackingInt(@min(@backingInt(@"%buf".first_unset_index), @"%span_to_unset".start));
             } else {
                 // span is at the end
                 @"%buf".endUnsetSpanRid(@"%span_to_unset".length);
@@ -847,7 +847,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
         ) void {
             var @"%unset_bit_set" = @"%buf".unsetBitSet();
             // can be optimized a bit
-            var @"%length_to_keep" = @"%buf".items.items.len - @"%length_to_unset".positive;
+            var @"%length_to_keep" = @as(u32, @intCast(@"%buf".items.items.len)) - @"%length_to_unset".positive;
             while (@"%length_to_keep" >= 1) {
                 @"%length_to_keep" -= 1;
                 if (!@"%unset_bit_set".isSet(@"%length_to_keep")) {
@@ -860,7 +860,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                         },
                         false,
                     );
-                    if (@"%buf".first_unset_index == @as(UnsetIndexOrNone, @enumFromInt(@"%length_to_keep"))) {
+                    if (@"%buf".first_unset_index == @as(UnsetIndexOrNone, @fromBackingInt(@"%length_to_keep"))) {
                         @"%buf".first_unset_index = .none_unset;
                     }
                     return;
@@ -940,7 +940,7 @@ pub fn Buf(@"%Origin": type, @"%Item": type) type {
                     return null;
                 },
                 _ => |@"%first_unset_index_enum"| {
-                    const @"%first_unset_index" = @intFromEnum(@"%first_unset_index_enum");
+                    const @"%first_unset_index" = @backingInt(@"%first_unset_index_enum");
                     // can be optimized
                     const @"%unset_bit_mask_index_to_start_search" = @"%first_unset_index" / @bitSizeOf(std.bit_set.Dynamic.MaskInt);
                     var @"%unset_iterator" = (std.bit_set.Dynamic{
