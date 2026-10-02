@@ -2463,11 +2463,24 @@ If you were trying to start a type variable, no type was expected here. Maybe yo
                             type_: type_,
                         },
                     );
+                    // allocating a string here just to check hurts
                     if existing_type_with_same_name.is_some() {
                         errors.push(ErrorNode {
                             range: name_range(with_start_position_as_ref(name_node)),
                             message: Box::from(
                                 "a type with this name is already declared. Choose a different ty name",
+                            ),
+                        });
+                    } else if type_graph_node_by_name.contains_key(
+                        name_toggle_case_of_first_ascii(name_node.value.to_string()).as_str(),
+                    ) {
+                        errors.push(ErrorNode {
+                            range: name_range(with_start_position_as_ref(name_node)),
+                            message: Box::from(
+                                "a type with the same name (with a different case of the first letter) is already declared.
+This can be confusing and will lead to conflicts if the number of type parameters changes on either of those types.
+(It will also generate uglier, harder to find names in the compiled output).
+Choose a different ty name.",
                             ),
                         });
                     }
@@ -5056,22 +5069,22 @@ fn syntax_parameter_pattern_check<'a, Patterns, Types>(
                 maybe_existing_variable_with_the_same_name
             {
                 errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: Box::from(
-                            "a pattern variable with this name already exists in the surrounding pattern. Rename either variable",
-                        ),
-                    });
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: Box::from(
+                        "a pattern variable with this name already exists in the surrounding pattern. Rename either variable",
+                    ),
+                });
                 return None;
             } else if let Some(existing_variable_with_the_same_name) =
                 existing_local_variables.get(&name.value)
             {
                 errors.push(ErrorNode {
-                        range: name_range(with_start_position_as_ref(name)),
-                        message: format!(
-                            "a local variable with this name already exists (intruduced at {}). Rename either variable",
-                            position_to_string(existing_variable_with_the_same_name.origin_start)
-                        ).into_boxed_str(),
-                    });
+                    range: name_range(with_start_position_as_ref(name)),
+                    message: format!(
+                        "a local variable with this name already exists (intruduced at {}). Rename either variable",
+                        position_to_string(existing_variable_with_the_same_name.origin_start)
+                    ).into_boxed_str(),
+                });
                 return None;
             }
             maybe_checked_variable
@@ -12240,6 +12253,18 @@ fn syn_spread_expr_block_into_stmts(syn_expr: syn::Expr) -> Vec<syn::Stmt> {
     }
 }
 
+fn name_toggle_case_of_first_ascii(mut name: String) -> String {
+    if let Some(first) = name.chars().next()
+        && let Some(first_mut) = name.get_mut(0..=0)
+    {
+        if first.is_ascii_uppercase() {
+            first_mut.make_ascii_lowercase();
+        } else {
+            first_mut.make_ascii_uppercase();
+        }
+    }
+    name
+}
 fn name_to_uppercase_rust(name: &str) -> String {
     let mut sanitized: String = name.replace("-", "_");
     if let Some(first) = sanitized.get_mut(0..=0) {

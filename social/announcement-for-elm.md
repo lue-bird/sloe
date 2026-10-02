@@ -23,7 +23,7 @@ greet { name, buf } =
 [online repl with more examples](https://lue-bird.github.io/sloe/)
 
 why?
-- memory safe without gc, rc or lifetimes
+- memory safe without gc, rc or borrow checking
 - mutation without reference semantics
 - express tree structures without memory being scattered and without using raw indexes
 - express collections that can store multiple of such trees

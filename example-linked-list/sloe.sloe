@@ -71,7 +71,7 @@ fn Stack-fold
     .state items-nodes
 
 fn Example . : u32 =
-    ^example-origin
+    ^ example-origin
     ?
         .nodes Buf-empty{Stack (Origin example-origin, .), u32} example-origin
         .stack 'empty{Stack (Origin example-origin, .), u32} .
