@@ -25,7 +25,7 @@ greet { name, buf } =
 why?
 - memory safe without gc, rc or borrow checking
 - mutation without reference semantics
-- express tree structures without memory being scattered and without using raw indexes
+- express tree structures without memory being scattered and without using plain indexes
 - express collections that can store multiple of such trees
 
 >>> thread
@@ -39,5 +39,7 @@ Language nerd description:
 - types go bottom up. This means every expression has itself a known type that's independent from the context it is in (excluding pattern variables and locally unique types)
 - if functions are called with pure funcitons as inputs, they are pure. Passing impure functions from the platform language will make the called function impure
 - every syntax is open-ended. For example in a record, the last field value never needs to be parenthesized and there are no closing parens or similar. This means you get things like short-cutting case-of for free and avoid unnecessary indentation
+- local functions are 
 
-Vaguely similar languages (although all are more ambitious): austral, rust, carbon, hylo (, swift, valen, dada)
+Vaguely similar languages (although all are more ambitious): austral, rust, carbon, hylo (, swift, valen, vale, dada).
+Much of the core terminology even matches: origin, isolate, region, slot, buf
