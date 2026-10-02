@@ -630,7 +630,21 @@ As a hobby language that deliberately cannot by itself interface with the operat
     - Shared is entirely useless (since it isn't possible to e.g. define map, merge etc.). The only vaguely plausible utility of `Immutable` is preventing mutation
     - it doesn't mix at all with non-shared functions and types
     - wrapping and unwrapping Shared types is a giant pain
-- allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, 'variant{} and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there
+- rename `Origin-isolated _origin, _value` to `In _origin, _value` for brevity.
+  Then change (while keeping all existing operations) for consistency
+    - `Origin _origin, _part` to ``
+    - `Slot Origin _origin, _part` to `In _origin, Slot _part`
+    - `Span Origin _origin, _part` to `In _origin, Span _part`
+    - `Buf (Origin _origin, _part), _item` to `In _origin, Buf _part, _item`
+  
+  However, this currently does not work because e.g. most Array operations parameterize the whole origin (which includes the part).
+  If sloe didn't have an origin part system, this could be much simpler.
+  The part system is only used for Origin-isolate (where e.g. A buf could store Slots to different origins). If it was possible to get the same functionality with other API means, I'd be all for it.
+  However, I think this is straight impossible because it would be impossible* to find out e.g. what Origin a Slot was initially referencing into :/
+  
+  * I think it _is_ vaguely possible by assigning part names like `.a .` and `.b .` when merging multiple `In`s with different origins. But this all seems very very hairy
+- (soft reject) allow expressions whose type is known (basically anything except inputs to queries) to omit extra type info (namely number, 'variant{} and project-fn{}). I'm a little torn because this makes construction inconsistent and increases the distance between the known type and expression. On the other hand this is already the case for query case patterns (deliberately so) but has a much higher convenience gain there.
+  All in all, I think e.g. only allowing types in the first query case result / first array item etc. is more trouble than is worth. But it's not a clear-cut call
 - add special syntax `fn-once` that automatically assembles the environment from the used local variables.
   Rejected in favor of more explicit construction with contextual names and potentially multiple fns.
   More info in "not coherently formulated thoughts"
@@ -683,6 +697,11 @@ It also makes initial_state much easier to call from the rust side (though we ne
   Not included currently for consistency and simplicity.
 - switch from error{OutOfMemory}! to anyerror! for ease of use with external functions.
   Rejected because zig errors should be explicitly handled by sloe
+- rename `Call` to `Run`. "call" only makes sense if you've already heard it in that context, no?
+
+  Hmm. Actually, considering literally all of programming uses "call", including for technical terms (call site, calling convention, tail-call elimination, etc.) users are way, way more likely to expect the name `Call`.
+  Providing both names is not an option for consistency.
+  Sloe is also not targetting absolute programming beginners, so... should be fine as is.
 
 ## why no `&mut`/`inout`
 While seemingly convenient and magnitudes better than regular mutable pointers,
@@ -827,7 +846,8 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful
+- consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful.
+  The only real reservation I have about this is that is is mutually exclusive to an `Unset-slot`/`Unset-span` API (which I have deliberately removed but it still hurts to have let it go).
 
 
 # not coherently formulated thoughts
