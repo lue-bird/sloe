@@ -7,8 +7,6 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 
-// TODO split _not_open_ended into versions for type arguments, fields, type variants and query cases
-
 export default grammar({
   name: "sloe",
   extras: ($) => [/\s/],
