@@ -14058,7 +14058,28 @@ fn Buf-recycle-empty
                 name: "Buf-pre-allocate-at-least",
                 documentation: "Reserves spare capacity for at least `.length` more items to be added.
 This can prevent frequent re-allocation of the underlying array.
-If you can guesstimate a lower bound of how many items are ultimately added, this is always worth it!",
+If you can guesstimate a lower bound of how many items are ultimately added, this is always worth it!
+
+If for example memory is limited and you want to handle out of memory errors more gracefully,
+use `Buf-try-pre-allocate-at-least` instead.",
+                type_parameters: vec![],
+                parameter_type: type_record([
+                    (
+                        "buf",
+                        type_buf(type_variable("origin"), type_variable("item")),
+                    ),
+                    ("length", type_u32),
+                ]),
+                result_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
+                    ("out-of-memory", type_opt(type_record_empty))
+                ]),
+            },
+            CoreFnInfo {
+                name: "Buf-try-pre-allocate-at-least",
+                documentation: "Reserves spare capacity for at least `.length` more items to be added
+and if not possible returns `.out-of-memory 'yes .` (if the output language target can detect this).
+A version which only checks for errors behind the scenes is `Buf-pre-allocate-at-least`",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (

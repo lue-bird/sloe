@@ -1868,21 +1868,33 @@ pub fn buf_pre_allocate_at_least(
     @"%Item": type,
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
-    @"%": Record(struct { buf: Buf(@"%Item", @"%Origin"), length: u32 }),
+    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), length: u32 }),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Item") {
     var @"%buf" = @"%".buf;
     try @"%buf".preAllocateAtLeast(@"%allocator", @"%".length);
     return @"%buf";
 }
+pub fn buf_try_pre_allocate_at_least(
+    @"%Item": type,
+    @"%Origin": type,
+    @"%allocator": std.mem.Allocator,
+    @"%": Record(struct { buf: Buf(@"%Origin", @"%Item"), length: u32 }),
+) Record(struct { buf: Buf(@"%Origin", @"%Item"), out_of_memory: Opt(void) }) {
+    var @"%buf" = @"%".buf;
+    @"%buf".preAllocateAtLeast(@"%allocator", @"%".length) catch {
+        return .{ .buf = @"%buf", .out_of_memory = .{ .yes = {} } };
+    };
+    return .{ .buf = @"%buf", .out_of_memory = .{ .no = {} } };
+}
 pub fn buf_pre_allocation_rid(
     @"%Item": type,
     @"%Origin": type,
     @"%allocator": std.mem.Allocator,
-    @"%": Buf(@"%Item", @"%Origin"),
+    @"%buf": Buf(@"%Origin", @"%Item"),
 ) error{OutOfMemory}!Buf(@"%Origin", @"%Item") {
-    var @"%buf" = @"%".buf;
-    try @"%buf".preAllocationRid(@"%allocator");
-    return @"%buf";
+    var @"%buf_mut" = @"%buf";
+    try @"%buf_mut".preAllocationRid(@"%allocator");
+    return @"%buf_mut";
 }
 pub fn buf_insert(
     @"%Item": type,

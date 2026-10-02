@@ -458,11 +458,17 @@ test "buf_span_rid" {
     const ExampleOrigin = enum {};
     const example_origin: core.Origin(ExampleOrigin, void) = .{};
     const example_buf = core.buf_empty(u32, ExampleOrigin, void, example_origin);
-    const with_array = try core.buf_opt_span_add_array(u32, @TypeOf(example_origin), core.Record(struct { e0: u32, e1: u32 }), std.testing.allocator, .{
-        .buf = example_buf,
-        .span = .{ .no = {} },
-        .new = .{ @as(u32, 0), @as(u32, 2) },
-    });
+    const with_array = try core.buf_opt_span_add_array(
+        u32,
+        @TypeOf(example_origin),
+        core.Record(struct { e0: u32, e1: u32 }),
+        std.testing.allocator,
+        .{
+            .buf = example_buf,
+            .span = .{ .no = {} },
+            .new = .{ @as(u32, 0), @as(u32, 2) },
+        },
+    );
     const cleared = try core.buf_span_rid(u32, @TypeOf(example_origin), std.testing.allocator, .{
         .buf = with_array.buf,
         .span = with_array.span,
@@ -607,56 +613,52 @@ test "buf_opt_span_step_while down" {
     core.buf_rid(u32, @TypeOf(example_origin), std.testing.allocator, stepped.buf);
 }
 test "unset_slice castOrRidAndAllocate working" {
-    const allocator = std.testing.allocator;
-    const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
-    const unset_slice_i32 = try unset_slice_u32.castOrRidAndAllocate(i32, allocator);
-    unset_slice_i32.rid(allocator);
+    const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(std.testing.allocator, 10);
+    const unset_slice_i32 = try unset_slice_u32.castOrRidAndAllocate(i32, std.testing.allocator);
+    unset_slice_i32.rid(std.testing.allocator);
 }
 test "unset_slice castOrRidAndAllocate fallback" {
-    const allocator = std.testing.allocator;
-    const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(allocator, 10);
-    const unset_slice_f128 = try unset_slice_u32.castOrRidAndAllocate(f128, allocator);
+    const unset_slice_u32 = try core.Unset_slice(u32).allocateLength(std.testing.allocator, 10);
+    const unset_slice_f128 = try unset_slice_u32.castOrRidAndAllocate(f128, std.testing.allocator);
     try std.testing.expect(@intFromPtr(unset_slice_u32.undefined_items.ptr) != @intFromPtr(unset_slice_f128.undefined_items.ptr));
-    unset_slice_f128.rid(allocator);
+    unset_slice_f128.rid(std.testing.allocator);
 }
 test "buf insert, add, take, setCount, rid" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
     try std.testing.expectEqual(0, buf.setCount());
-    const slot0 = try buf.add(allocator, 123);
-    const slot1 = try buf.add(allocator, 456);
+    const slot0 = try buf.add(std.testing.allocator, 123);
+    const slot1 = try buf.add(std.testing.allocator, 456);
     try std.testing.expectEqual(2, buf.setCount());
     try std.testing.expectEqual(123, buf.remove(slot0));
     try std.testing.expectEqual(1, buf.setCount());
-    const slot0_reused = try buf.insert(allocator, 789);
+    const slot0_reused = try buf.insert(std.testing.allocator, 789);
     try std.testing.expectEqual(0, slot0_reused.index);
     try std.testing.expectEqual(789, buf.remove(slot0_reused));
     try std.testing.expectEqual(1, buf.setCount());
     try std.testing.expectEqual(456, buf.remove(slot1));
     try std.testing.expectEqual(0, buf.setCount());
-    buf.rid(allocator);
+    buf.rid(std.testing.allocator);
 }
 test "buf set or insert" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(i32, BufOrigin, void, origin);
-    const slot0 = try buf.add(allocator, 123);
-    const slot1 = try buf.add(allocator, 456);
-    const slot2 = try buf.add(allocator, 789);
+    const slot0 = try buf.add(std.testing.allocator, 123);
+    const slot1 = try buf.add(std.testing.allocator, 456);
+    const slot2 = try buf.add(std.testing.allocator, 789);
     try std.testing.expectEqual(123, buf.remove(slot0));
     try std.testing.expectEqual(456, buf.remove(slot1));
-    const slot1_reused = try buf.setOrInsert(allocator, 1, -456);
-    const slot0_reused = try buf.insert(allocator, -123);
+    const slot1_reused = try buf.setOrInsert(std.testing.allocator, 1, -456);
+    const slot0_reused = try buf.insert(std.testing.allocator, -123);
     try std.testing.expectEqual(1, slot1_reused.index);
     try std.testing.expectEqual(0, slot0_reused.index);
     try std.testing.expectEqualSlices(i32, &.{ -123, -456, 789 }, buf.items.items[0..3]);
     try std.testing.expectEqual(-123, buf.remove(slot0_reused));
     try std.testing.expectEqual(-456, buf.remove(slot1_reused));
     try std.testing.expectEqual(789, buf.remove(slot2));
-    buf.rid(allocator);
+    buf.rid(std.testing.allocator);
 }
 test "buf_replace" {
     const BufOrigin = enum {};
@@ -709,40 +711,38 @@ test "buf_swap" {
     swapped.buf.rid(std.testing.allocator);
 }
 test "buf add to span" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
-    const span0 = try buf.optSpanAdd(allocator, core.Opt(core.Span(@TypeOf(origin))){ .no = {} }, 123);
-    const slot_causing_span_move_to_end = try buf.add(allocator, 4);
-    const span1 = try buf.spanAdd(allocator, span0, 567);
+    const span0 = try buf.optSpanAdd(std.testing.allocator, core.Opt(core.Span(@TypeOf(origin))){ .no = {} }, 123);
+    const slot_causing_span_move_to_end = try buf.add(std.testing.allocator, 4);
+    const span1 = try buf.spanAdd(std.testing.allocator, span0, 567);
     try std.testing.expectEqual(4, buf.remove(slot_causing_span_move_to_end));
     try std.testing.expectEqual(2, span1.start);
     try std.testing.expectEqual(2, span1.length.positive);
     const span1_moved = buf.spanMoveToUnset(span1);
     try std.testing.expectEqual(0, span1_moved.start);
     try std.testing.expectEqual(2, span1_moved.length.positive);
-    buf.rid(allocator);
+    buf.rid(std.testing.allocator);
 }
 test "buf add strs" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
     const with_digits = try core.buf_add_str_chars(
         @TypeOf(origin),
-        allocator,
+        std.testing.allocator,
         .{ .buf = buf, .new = core.Str.fromComptime("2468") },
     );
     const with_abcd = try core.buf_opt_span_add_str_chars(
         @TypeOf(origin),
-        allocator,
+        std.testing.allocator,
         .{ .buf = with_digits.buf, .span = .{ .no = {} }, .new = core.Str.fromComptime("abcd") },
     );
     try std.testing.expectEqual(4, with_abcd.span.length.positive);
     const with_wrenches = try core.buf_opt_span_add_str_chars(
         @TypeOf(origin),
-        allocator,
+        std.testing.allocator,
         .{ .buf = with_abcd.buf, .span = .{ .yes = with_abcd.span }, .new = core.Str.fromComptime("🔧🔧🔧") },
     );
     try std.testing.expectEqualSlices(
@@ -751,28 +751,27 @@ test "buf add strs" {
         with_wrenches.buf.spanSlice(with_wrenches.span),
     );
     try std.testing.expectEqual(7, with_wrenches.span.length.positive);
-    with_wrenches.buf.rid(allocator);
+    with_wrenches.buf.rid(std.testing.allocator);
 }
 test "buf char add numbers" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     const buf = core.buf_empty(core.Char, BufOrigin, void, origin);
     const with_u32 = try core.buf_opt_span_add_u32_chars(
         @TypeOf(origin),
-        allocator,
+        std.testing.allocator,
         .{ .buf = buf, .span = .{ .no = {} }, .new = 1234 },
     );
     try std.testing.expectEqual(4, with_u32.span.length.positive);
     const with_i32 = try core.buf_span_add_i32_chars(
         @TypeOf(origin),
-        allocator,
+        std.testing.allocator,
         .{ .buf = with_u32.buf, .span = with_u32.span, .new = -2 },
     );
     try std.testing.expectEqual(6, with_i32.span.length.positive);
     const with_f32 = try core.buf_span_add_f32_chars(
         @TypeOf(origin),
-        allocator,
+        std.testing.allocator,
         .{ .buf = with_i32.buf, .span = with_i32.span, .new = -0.1 },
     );
     try std.testing.expectEqualSlices(
@@ -780,25 +779,23 @@ test "buf char add numbers" {
         &.{ '1', '2', '3', '4', '-', '2', '-', '0', '.', '1' },
         with_f32.buf.spanSlice(with_f32.span),
     );
-    with_f32.buf.rid(allocator);
+    with_f32.buf.rid(std.testing.allocator);
 }
 test "buf span reverse" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
-    const span = try buf.addSlice(allocator, &.{ 1, 2, 3, 4, 5, 6 });
+    const span = try buf.addSlice(std.testing.allocator, &.{ 1, 2, 3, 4, 5, 6 });
     const span_reversed = buf.optSpanReverse(span);
     try std.testing.expectEqual(span, span_reversed);
     try std.testing.expectEqualSlices(u32, &.{ 6, 5, 4, 3, 2, 1 }, buf.optSpanSlice(span_reversed));
-    buf.rid(allocator);
+    buf.rid(std.testing.allocator);
 }
 test "buf span sort" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(u32, BufOrigin, void, origin);
-    const span = try buf.addSlice(allocator, &.{ 1, 6, 3, 4, 5, 6 });
+    const span = try buf.addSlice(std.testing.allocator, &.{ 1, 6, 3, 4, 5, 6 });
     const sorted = try core.buf_opt_span_sort(u32, @TypeOf(origin), std.testing.allocator, .{
         .buf = buf,
         .span = span,
@@ -817,16 +814,15 @@ test "buf span sort" {
     });
     try std.testing.expectEqual(span, sorted.span);
     try std.testing.expectEqualSlices(u32, &.{ 1, 3, 4, 5, 6, 6 }, sorted.buf.optSpanSlice(sorted.span));
-    sorted.buf.rid(allocator);
+    sorted.buf.rid(std.testing.allocator);
 }
 test "buf add remove stress test" {
-    const allocator = std.testing.allocator;
     const BufOrigin = enum {};
     const origin: core.Origin(BufOrigin, void) = .{};
     var buf = core.buf_empty(usize, BufOrigin, void, origin);
     var slots = std.ArrayList(core.Slot(@TypeOf(origin))).empty;
     for (0..100) |i| {
-        try slots.append(allocator, try buf.add(allocator, i));
+        try slots.append(std.testing.allocator, try buf.add(std.testing.allocator, i));
     }
     var rng = std.Random.DefaultPrng.init(std.testing.random_seed);
     var random = rng.random();
@@ -834,13 +830,12 @@ test "buf add remove stress test" {
     for (slots.items) |slot| {
         _ = buf.remove(slot);
     }
-    slots.deinit(allocator);
+    slots.deinit(std.testing.allocator);
     try std.testing.expectEqual(0, buf.unsetCount());
     try std.testing.expectEqual(0, buf.items.items.len);
-    buf.rid(allocator);
+    buf.rid(std.testing.allocator);
 }
 test "buf_span_add_buf_span" {
-    const allocator = std.testing.allocator;
     const AOrigin = enum { origin };
     const a_origin: core.Origin(AOrigin, void) = .{};
     var a_buf = core.buf_empty(usize, AOrigin, void, a_origin);
@@ -858,18 +853,54 @@ test "buf_span_add_buf_span" {
     try std.testing.expectEqual(0, a_with_b.source.items.items.len);
     try std.testing.expectEqual(2, a_with_b.buf.items.items.len);
     try std.testing.expectEqual(2, a_with_b.span.length.positive);
-    a_with_b.buf.rid(allocator);
-    a_with_b.source.rid(allocator);
+    a_with_b.buf.rid(std.testing.allocator);
+    a_with_b.source.rid(std.testing.allocator);
+}
+test "buf_pre_allocate_at_least" {
+    const Origin = enum { origin };
+    const origin: core.Origin(Origin, void) = .{};
+    const buf = core.buf_empty(usize, Origin, void, origin);
+    const pre_allocated = try core.buf_pre_allocate_at_least(
+        usize,
+        @TypeOf(origin),
+        std.testing.allocator,
+        .{ .buf = buf, .length = 123 },
+    );
+    const pre_allocation_rid = try core.buf_pre_allocation_rid(
+        usize,
+        @TypeOf(origin),
+        std.testing.allocator,
+        pre_allocated,
+    );
+    try std.testing.expectEqual(0, pre_allocation_rid.items.capacity);
+}
+test "buf_try_pre_allocate_at_least" {
+    const Origin = enum { origin };
+    const origin: core.Origin(Origin, void) = .{};
+    const buf = core.buf_empty(usize, Origin, void, origin);
+    const pre_allocated = core.buf_try_pre_allocate_at_least(
+        usize,
+        @TypeOf(origin),
+        std.testing.allocator,
+        .{ .buf = buf, .length = 123 },
+    );
+    try std.testing.expectEqual(core.Opt(void){ .no = {} }, pre_allocated.out_of_memory);
+    const pre_allocation_rid = try core.buf_pre_allocation_rid(
+        usize,
+        @TypeOf(origin),
+        std.testing.allocator,
+        pre_allocated.buf,
+    );
+    try std.testing.expectEqual(0, pre_allocation_rid.items.capacity);
 }
 test "buf into unset slice then reuse" {
-    const allocator = std.testing.allocator;
     const AOrigin = enum { origin };
     const a_origin: core.Origin(AOrigin, void) = .{};
     var a_buf = core.buf_empty(usize, AOrigin, void, a_origin);
-    try a_buf.preAllocateAtLeast(allocator, 20);
+    try a_buf.preAllocateAtLeast(std.testing.allocator, 20);
     const a_capacity = a_buf.items.capacity;
     try std.testing.expect(a_capacity >= 20);
-    const unset_slice = a_buf.intoUnsetSlice(allocator);
+    const unset_slice = a_buf.intoUnsetSlice(std.testing.allocator);
     const BOrigin = enum { origin };
     const b_origin: core.Origin(BOrigin, void) = .{};
     var b_buf = core.buf_reuse(
@@ -880,14 +911,13 @@ test "buf into unset slice then reuse" {
     );
     try std.testing.expectEqual(0, b_buf.items.items.len);
     try std.testing.expectEqual(a_capacity, b_buf.items.capacity);
-    b_buf.rid(allocator);
+    b_buf.rid(std.testing.allocator);
 }
 test "unset_slice_cast_or_rid_and_allocate u64 to i63" {
-    const allocator = std.testing.allocator;
-    const unset_slice_u64 = try core.unset_slice_allocate_length(u64, allocator, 20);
+    const unset_slice_u64 = try core.unset_slice_allocate_length(u64, std.testing.allocator, 20);
     const unset_slice_u64_length = unset_slice_u64.undefined_items.len;
     try std.testing.expect(unset_slice_u64_length >= 20);
-    const unset_slice_i63 = try core.unset_slice_cast_or_rid_and_allocate(u64, i63, allocator, unset_slice_u64);
+    const unset_slice_i63 = try core.unset_slice_cast_or_rid_and_allocate(u64, i63, std.testing.allocator, unset_slice_u64);
     // memory is reused, not re-allocated
     try std.testing.expectEqual(
         @intFromPtr(unset_slice_u64.undefined_items.ptr),
@@ -903,14 +933,18 @@ test "unset_slice_cast_or_rid_and_allocate u64 to i63" {
     );
     try std.testing.expectEqual(0, buf.items.items.len);
     try std.testing.expectEqual(unset_slice_u64_length, buf.items.capacity);
-    buf.rid(allocator);
+    buf.rid(std.testing.allocator);
 }
 test "unset_slice_cast_or_rid_and_allocate u64 to struct{u32,u16}" {
-    const allocator = std.testing.allocator;
-    const unset_slice_u64 = try core.unset_slice_allocate_length(u64, allocator, 20);
+    const unset_slice_u64 = try core.unset_slice_allocate_length(u64, std.testing.allocator, 20);
     const unset_slice_u64_length = unset_slice_u64.undefined_items.len;
     try std.testing.expect(unset_slice_u64_length >= 20);
-    const unset_slice_tuple_u32_u16 = try core.unset_slice_cast_or_rid_and_allocate(u64, struct { u32, u16 }, allocator, unset_slice_u64);
+    const unset_slice_tuple_u32_u16 = try core.unset_slice_cast_or_rid_and_allocate(
+        u64,
+        struct { u32, u16 },
+        std.testing.allocator,
+        unset_slice_u64,
+    );
     const Origin = enum { origin };
     const origin: core.Origin(Origin, void) = .{};
     var buf = core.buf_reuse(
@@ -921,7 +955,7 @@ test "unset_slice_cast_or_rid_and_allocate u64 to struct{u32,u16}" {
     );
     try std.testing.expectEqual(0, buf.items.items.len);
     try std.testing.expectEqual(unset_slice_u64_length, buf.items.capacity);
-    buf.rid(allocator);
+    buf.rid(std.testing.allocator);
 }
 test "origin with enums containing the same member name" {
     const AOrigin = enum { origin };

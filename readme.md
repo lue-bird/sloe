@@ -825,14 +825,11 @@ Don't be afraid to program in a language sloe compiles to for tasks sloe feels a
 E.g. I imagine writing a recursive file watcher in sloe is not fun, so just "outsource" it :)
 
 ## why do allocating functions not return an error?
-- sloe is already too tedious. I certainly would hate (if was the default)
+- you can use a style which prominently uses `Buf-pre-allocate-at-least` which cleanly fails.
+  I think this is a reasonable compromise because pre-allocating is a very useful and prevalent pattern anyway when running out of memory is possible.
+- sloe is already too tedious. I certainly would hate (if it was the default)
 - sloe's out of memory handling is already relatively graceful. E.g. when outputting zig, functions will return an explicit error.OutOfMemory. In rust, panicing on failed allocation is safe and the default.
 - output language targets like js do not support this anyway
-
-I will consider adding a version of pre-allocate which cleanly fails.
-I think this could be a reasonable compromise because pre-allocating
-is a very useful and prevalent pattern anyway when running out of memory is possible.
-Please open an issue if you'd like to see this added!
 
 ## why put work into transpiling to existing languages
 The best user experience interfacing with sloe code from existing (system-level) languages
@@ -846,7 +843,7 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 # TODO
 
-- consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`. They enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more data-oriented design and to make buf handling less painful.
+- consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`, `Buf-set-count`, maybe `Buf-combined-set-unset-length`. The first 2 enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more "data-oriented design" (less jumping around) and to make buf handling less painful.
   The only real reservation I have about this is that is is mutually exclusive to an `Unset-slot`/`Unset-span` API (which I have deliberately removed but it still hurts to have let it go).
 
 

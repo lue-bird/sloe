@@ -935,6 +935,15 @@ export function buf_pre_allocate_at_least(pre_allocate) {
   pre_allocate.buf.length -= pre_allocate.length;
   return pre_allocate.buf;
 }
+/** @template $Item, $Origin
+ * @param {{ buf: Buf<$Origin, $Item>, length: U32, }} pre_allocate
+ * @returns {{ buf: Buf<$Origin, $Item>, out_of_memory: Opt<void> }} */
+export function buf_try_pre_allocate_at_least(pre_allocate) {
+  return {
+    buf: buf_pre_allocate_at_least(pre_allocate),
+    out_of_memory: { no: undefined },
+  };
+}
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, newø: $Item, }} add @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, }} */
 export function buf_add(add) {
   const new_index = add.buf.length;

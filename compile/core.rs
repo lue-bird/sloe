@@ -213,6 +213,11 @@ pub struct Record·buf·length<Buf, Length> {
     pub length: Length,
 }
 #[derive(Clone, Copy, Debug)]
+pub struct Record·buf·out_of_memory<Buf, Out_of_memory> {
+    pub buf: Buf,
+    pub out_of_memory: Out_of_memory,
+}
+#[derive(Clone, Copy, Debug)]
 pub struct Record·buf·slot<Buf, Slot> {
     pub buf: Buf,
     pub slot: Slot,
@@ -790,6 +795,12 @@ impl<Item, LocalOrigin> Buf<LocalOrigin, Item> {
     }
     pub fn pre_allocate_at_least_usize(&mut self, min_pre_allocated_length: usize) {
         self.items.reserve(min_pre_allocated_length);
+    }
+    pub fn try_pre_allocate_at_least_usize(
+        &mut self,
+        min_pre_allocated_length: usize,
+    ) -> std::result::Result<(), std::collections::TryReserveError> {
+        self.items.try_reserve(min_pre_allocated_length)
     }
     pub fn pre_allocate_at_least(&mut self, min_pre_allocated_length: u32) {
         self.pre_allocate_at_least_usize(min_pre_allocated_length as usize);
@@ -2603,6 +2614,23 @@ pub fn buf_pre_allocate_at_least<Item, Origin>(
 ) -> Buf<Origin, Item> {
     buf.pre_allocate_at_least(min_pre_allocated_length);
     buf
+}
+pub fn buf_try_pre_allocate_at_least<Item, Origin>(
+    Record·buf·length {
+        mut buf,
+        length: min_pre_allocated_length,
+    }: Record·buf·length<Buf<Origin, Item>, u32>,
+) -> Record·buf·out_of_memory<Buf<Origin, Item>, Opt<Record>> {
+    match buf.try_pre_allocate_at_least_usize(min_pre_allocated_length as usize) {
+        std::result::Result::Ok(()) => Record·buf·out_of_memory {
+            buf: buf,
+            out_of_memory: Opt::No(()),
+        },
+        std::result::Result::Err(_) => Record·buf·out_of_memory {
+            buf: buf,
+            out_of_memory: Opt::Yes(()),
+        },
+    }
 }
 pub fn buf_pre_allocation_rid<Item, Origin>(mut buf: Buf<Origin, Item>) -> Buf<Origin, Item> {
     buf.pre_allocation_rid();
