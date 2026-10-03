@@ -88,7 +88,7 @@ fn Use-buf . : u32 =
   	? Buf-empty{u32} buf-origin [buf]
     # insert 123, destructure the resulting record
   	? Buf-add .buf buf .new 123 u32 [.buf buf .slot first-slot]
-    # withour new slot, the referenced item is ours to modify or pop
+    # without new slot, the referenced item is ours to modify or pop
   	? Buf-remove .buf buf .slot first-slot [.buf buf .item first]
     # Consecutive slots connect into a span
   	? Buf-add-array .buf buf .new ; 456 u32 ; 789 u32 [.buf buf .span after-first]
