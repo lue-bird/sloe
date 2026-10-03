@@ -9,6 +9,5 @@ path = "main.rs"
 
 [dependencies]
 sloe_compile = { path = "../compile/" }
-gen-lsp-types = "0.9.0"
-web-sys = "0.3.91"
+gen-lsp-types = "0.11.0"
 sauron = "0.70.0"

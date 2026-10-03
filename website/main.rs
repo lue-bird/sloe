@@ -1,6 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use gen_lsp_types as lsp_types;
+use sauron::web_sys;
 use sloe_compile as sloe;
 
 fn main() {
