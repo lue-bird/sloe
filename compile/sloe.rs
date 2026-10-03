@@ -2349,8 +2349,7 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
     patterns: &'a core::Buf<Patterns, SyntaxPattern<Patterns, Types>>,
     types: &'a core::Buf<Types, SyntaxType<Types>>,
 ) -> CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
-    let mut type_graph: strongly_connected_components::Graph =
-        strongly_connected_components::Graph::new();
+    let mut type_graph: strongly_connected_components::Neighbors = Vec::new();
     let mut type_graph_node_by_name: std::collections::HashMap<
         &str,
         strongly_connected_components::Vertex,
@@ -2360,8 +2359,7 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
         SyntaxProjectTypeInfo<Types>,
     > = std::collections::HashMap::new();
 
-    let mut project_fn_graph: strongly_connected_components::Graph =
-        strongly_connected_components::Graph::new();
+    let mut project_fn_graph: strongly_connected_components::Neighbors = Vec::new();
     let mut project_fn_graph_node_by_name: std::collections::HashMap<
         &Name,
         strongly_connected_components::Vertex,
@@ -2477,7 +2475,7 @@ Choose a different ty name.",
                     })
                     .or_insert_with(|| {
                         let type_alias_declaration_graph_node: strongly_connected_components::Vertex =
-                            type_graph.add_node();
+                            strongly_connected_components::neighbors_add_vertex(&mut type_graph);
                         project_type_by_graph_node.insert(
                             type_alias_declaration_graph_node,
                             SyntaxProjectTypeInfo {
@@ -2531,7 +2529,7 @@ Choose a different ty name.",
                     })
                     .or_insert_with(|| {
                         let project_fn_graph_node: strongly_connected_components::Vertex =
-                            project_fn_graph.add_node();
+                            strongly_connected_components::neighbors_add_vertex(&mut project_fn_graph);
                         project_fn_by_graph_node.insert(
                             project_fn_graph_node,
                             SyntaxProjectFnInfo {
@@ -2570,29 +2568,37 @@ Choose a different ty name.",
     }
     for (&type_declaration_graph_node, &type_declaration_info) in project_type_by_graph_node.iter()
     {
-        syntax_project_type_connect_type_names_in_graph_from(
-            type_declaration_graph_node,
-            &type_graph_node_by_name,
-            types,
-            type_declaration_info,
-            &mut type_graph,
-        );
+        if let Some(aliased_type) = &type_declaration_info.type_ {
+            let mut project_type_referenced_vertexes = std::collections::BTreeSet::new();
+            syntax_type_connect_type_names_in_graph_from(
+                &type_graph_node_by_name,
+                types,
+                aliased_type,
+                &mut project_type_referenced_vertexes,
+            );
+            type_graph[type_declaration_graph_node] = project_type_referenced_vertexes;
+        }
     }
     for (&project_fn_graph_node, project_fn_info) in project_fn_by_graph_node.iter() {
-        syntax_project_fn_connect_type_names_in_graph_from(
-            project_fn_graph_node,
-            &project_fn_graph_node_by_name,
-            expressions,
-            project_fn_info,
-            &mut project_fn_graph,
-        );
+        let project_fn_graph: &mut strongly_connected_components::Neighbors = &mut project_fn_graph;
+        if let Some(result_node) = project_fn_info.result {
+            let mut project_fn_referenced_vertexes = std::collections::BTreeSet::new();
+            syntax_expression_connect_fns_in_graph_from(
+                &project_fn_graph_node_by_name,
+                expressions,
+                result_node,
+                &mut project_fn_referenced_vertexes,
+            );
+            project_fn_graph[project_fn_graph_node] = project_fn_referenced_vertexes;
+        }
     }
 
     // maybe instead start from 0 instead of cloning every time?
     let mut checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias> =
         core_type_aliases.clone();
     checked_type_aliases.reserve(project_type_by_graph_node.len());
-    for project_type_strongly_connected_component in type_graph.find_strongly_connected_components()
+    for project_type_strongly_connected_component in
+        strongly_connected_components::find(&type_graph)
     {
         for project_type in project_type_strongly_connected_component
             .iter()
@@ -2628,7 +2634,7 @@ Choose a different ty name.",
     let mut checked_spread_records: std::collections::HashMap<lsp_types::Position, Vec<Name>> =
         std::collections::HashMap::new();
     for project_fn_strongly_connected_component in
-        project_fn_graph.find_strongly_connected_components()
+        strongly_connected_components::find(&project_fn_graph)
     {
         let project_fns_in_strongly_connected_component: Vec<
             SyntaxProjectFnInfo<Expressions, Patterns, Types>,
@@ -2693,12 +2699,12 @@ Choose a different ty name.",
     }
 }
 pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
-    pub type_graph: strongly_connected_components::Graph,
+    pub type_graph: strongly_connected_components::Neighbors,
     pub project_type_by_graph_node: std::collections::HashMap<
         strongly_connected_components::Vertex,
         SyntaxProjectTypeInfo<'a, Types>,
     >,
-    pub project_fn_graph: strongly_connected_components::Graph,
+    pub project_fn_graph: strongly_connected_components::Neighbors,
     pub project_fn_graph_node_by_name:
         std::collections::HashMap<&'a Name, strongly_connected_components::Vertex>,
     pub project_fn_by_graph_node: std::collections::HashMap<
@@ -2713,51 +2719,6 @@ pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     pub checked_local_fns: std::collections::HashMap<lsp_types::Position, CheckedLocalFn>,
     pub checked_queries: std::collections::HashMap<lsp_types::Position, CheckedQuery>,
     pub checked_spread_records: std::collections::HashMap<lsp_types::Position, Vec<Name>>,
-}
-fn syntax_project_type_connect_type_names_in_graph_from<Types>(
-    origin_project_type_graph_node: strongly_connected_components::Vertex,
-    type_graph_node_by_name: &std::collections::HashMap<
-        &str,
-        strongly_connected_components::Vertex,
-    >,
-    types: &core::Buf<Types, SyntaxType<Types>>,
-    project_type_info: SyntaxProjectTypeInfo<Types>,
-    type_graph: &mut strongly_connected_components::Graph,
-) {
-    if let Some(aliased_type) = &project_type_info.type_ {
-        let mut project_type_referenced_vertexes = std::collections::BTreeSet::new();
-        syntax_type_connect_type_names_in_graph_from(
-            type_graph_node_by_name,
-            types,
-            aliased_type,
-            &mut project_type_referenced_vertexes,
-        );
-        type_graph.set_edges(
-            origin_project_type_graph_node,
-            project_type_referenced_vertexes,
-        );
-    }
-}
-fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Types>(
-    project_fn_graph_node: strongly_connected_components::Vertex,
-    project_fn_graph_node_by_name: &std::collections::HashMap<
-        &Name,
-        strongly_connected_components::Vertex,
-    >,
-    expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
-    project_fn: &SyntaxProjectFnInfo<'_, Expressions, Patterns, Types>,
-    project_fn_graph: &mut strongly_connected_components::Graph,
-) {
-    if let Some(result_node) = project_fn.result {
-        let mut project_fn_referenced_vertexes = std::collections::BTreeSet::new();
-        syntax_expression_connect_fns_in_graph_from(
-            project_fn_graph_node_by_name,
-            expressions,
-            result_node,
-            &mut project_fn_referenced_vertexes,
-        );
-        project_fn_graph.set_edges(project_fn_graph_node, project_fn_referenced_vertexes);
-    }
 }
 fn syntax_type_connect_type_names_in_graph_from<Types>(
     type_graph_node_by_name: &std::collections::HashMap<
