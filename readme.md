@@ -38,22 +38,26 @@ The big advantage of this rule is how easy it is to understand and how much simp
 > Further reading if interested: "linear types", [nice short explainer in the austral language docs](https://austral-lang.org/linear-types), [article "must move types"](https://smallcultfollowing.com/babysteps/blog/2023/03/16/must-move-types/), ["mutable value semantics"](https://www.jot.fm/issues/issue_2022_02/article2.pdf).
 > Sloe once allowed values to be ignored ("leaked"/forgotten) making them "affine types", like rust owned values. This was changed as it was too easy to for example accidentally forget to handle a value in one query case but not the others. Better be safe and explicit.
 
-## concept: consecutive memory, stable index collection `Buf`
-A collection which can mark some ranges within itself as unset without moving existing items around (thus invalidating their indexes).
-This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-span-rid`.
-Note that this functionality is entirely optional and you can just use it for temporary builders etc. which never unset anything before they are scrapped.
+## concept: consecutive memory, stable indexes: `Buf`
+A collection which can mark its indexes as unset without moving existing items around (thus invalidating their indexes).
+This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-span-rid` for future reuse with for example `Buf-insert`.
+(This functionality is optional. You can use a `Buf` for builders etc. which never try to reuse unset indexes before they are scrapped.)
 
 > Further reading if interested: This concept is often called slot map, reusing memory.
 > In rust, a prominent example is [slab](https://docs.rs/crate/slab/latest). [Comparison of various kinds of similar rust collections](https://donsz.nl/blog/arenas/).
 > There are even fast general purpose allocators based on this concept, for example [zig's SmpAllocator](https://codeberg.org/ziglang/zig/src/commit/a85cb728775375825afe4ebd62c60ae0b361d1e9/lib/std/heap/SmpAllocator.zig) or [the rust crate "smmalloc"](https://crates.io/crates/smmalloc)
 
 ## concept: collections do not handle their items
-Similar to allocators, you cannot access, alter or iterate their contained values directly.
+Similar to allocators, you almost never access, alter or iterate their contained values directly.
 Collections are seen as storage into which you can add items, build slices etc.
 Whenever you do so, you'll get `Slot`s and `Span`s that assert your permission to access and alter the referenced items as well as your responsibility to announce their release at some point.
 
-> The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types. This is not uncommon in languages like rust.
-However, sloe's goal is to do better here and to not bind storage to ownership over its items. Instead, we store a big array buffer of each kind and point into it.
+> The alternative to this would be to make tiny allocations for every slot and small span and to allow recursive types. This is convenient and not uncommon in languages like rust.
+However, sloe's goal is to do better here and to not group together storage and ownership over its items. Instead, we store a big array buffer of each kind and point into it.
+>
+> I've heard this kind of decoupling being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
+> I really like this idea but understand that it cannot be implemented nicely in e.g. rust which needs to for example store its allocator in its value body to guarantee its content isn't scattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
+> In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
 
 ## concept: prevent mix-up between collections with an origin type parameter
 Every created collection has a unique origin.
@@ -74,16 +78,11 @@ fn Add-some-values buf Buf _origin, u32 : Buf _origin, u32 =
     buf
 ```
 
-> Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been described similarly in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04).
-> With the small difference that in sloe's case the unique origin types only exist at compile-time and can thus mark spans, slots, unset spans, unset slots, bufs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
+> Further reading if interested: The insight "marking origin-specific types specific to code unique paths" has been hinted at in ["The Unreasonable Effectiveness of Naming Integers"](https://ziglang.org/devlog/2024/#2024-11-04). In sloe's case the unique origin types only exist at compile-time and can thus mark spans, slots, unset spans, unset slots, bufs etc. generically. Additionally it is _checked_ that actually only one collection and its indexes are marked that way.
 >
-> The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 3 crates that successfully implement this: [compact_arena](https://docs.rs/compact_arena/0.5.0/compact_arena/index.html) (safe, pragmatic, simple but bare-bones), [indexing](https://docs.rs/indexing/0.4.1/indexing/) (safe, cumbersome, complicated) and [generativity](https://crates.io/crates/generativity)/[typetoken](https://crates.io/crates/typetoken) explained in ["the generativity pattern in rust"](https://arhan.sh/blog/the-generativity-pattern-in-rust/) (general-purpose but relies on lifetimes).
+> The idea of "fresh, distinct type instances by code" seems to generally be called "path-dependent types". In rust I know of 4 crates that implement this: [compact_arena](https://docs.rs/compact_arena/0.5.0/compact_arena/index.html) (safe, pragmatic, simple but bare-bones), [indexing](https://docs.rs/indexing/0.4.1/indexing/) (safe, cumbersome, complicated) and [generativity](https://crates.io/crates/generativity)/[typetoken](https://crates.io/crates/typetoken) explained in ["the generativity pattern in rust"](https://arhan.sh/blog/the-generativity-pattern-in-rust/) (general-purpose but relies on lifetimes).
 > The same idea but with runtime checking instead of compile-time checking can quite easily be implemented by storing an ID in each collection and the same id in each contained slot, and incrementing a global atomic variable (or similar) for the next available ID: [example](https://github.com/thomcc/handy/blob/master/src/lib.rs#L111-L126)
 > (apart from security this is hardly ever worth it for regular users, considering it is also slower).
->
-> I find it interesting that "storage" and "ownership over said storage" are decoupled. I've heard this being called ["call-site dependency injection"](https://matklad.github.io/2020/12/28/csdi.html) which also perfectly applies to the idea of passing allocator, interner, concurrency runtime etc. around.
-> I really like this idea but understand that it cannot be implemented in e.g. rust which needs to store its allocator in it's value body to guarantee its content isn't splattered across different inaccessible allocator memories (and to satisfy `Drop` and to keep most of the existing function interfaces as well as convenience). Sloe solves this dilemma by assigning this unique origin at the high cost of user convenience.
-> In my opinion this isn't quite a solved problem and if you have other ideas, I warmly encourage you to explore and share them.
 
 ## examples
 ### creating new origins, slots and spans
@@ -342,13 +341,13 @@ For other editors, there's usually a way to specify `sloe` as the language serve
 
 > As a user of sloe you can stop reading here. The rest is for developers and those interested in language design
 
-# dev setup
+## dev setup
 to re-compile
 ```bash
 cargo install --offline --debug --path . sloe
 ```
 
-# known limitations & design weaknesses
+## known limitations & design weaknesses
 What I'm unhappy with in the current design.
 Writing these down has already helped a lot in coming up with fixes (e.g. `Buf-span-add-own-span`, `Origin-erased` etc. did not exist at one point but were created in response to now deleted list items).
 And even if I'm unable to fix them, other people/teams might (in other projects)!
@@ -428,7 +427,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   Question: Should simple origin creation also produce `Origin unique, In . .` instead of `Origin unique, .`?
   The only reason I could see is that it would allow `Origin-unerase` to preserve the outer part of the given origin as the outer part of the unerased values. How would this work for sub-origins when isolating then?
 
-# potential improvements in the future
+## potential improvements in the future
 - IDE type and type diff error displays suck ass, mostly due to indentation being stripped. But markdown support seems to still be ways off for most editors for some reason. Anyone know a solution?
 - add `b8` type to represent a byte. Add `I32-2s-complement/U32/F32-to-b8s-decreasing/increasing-significance` and the other way around. Add `B8-xor`, `B8-complement`, `B8-and`, `B8-or`, `B8-reinterpret-as-U32`
 - add hashing primitives (or provide the means for users to implement them).
@@ -608,7 +607,7 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - look into `soa_derive` for rust, maybe this already does most of the useful work
 - (very out of scope but thinking never hurts) imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
 
-# rejected ideas (some may be outdated)
+## rejected ideas (some may be outdated)
 As a hobby language that deliberately cannot by itself interface with the operating system, C etc. we can afford to skip many complex features. First some smaller-scale rejected ideas
 
 - temporary, unrestricted sharing.
@@ -810,7 +809,7 @@ If you're looking to learn from sloe's central ideas, maybe do not learn from th
   So yeah, these aren't amazing either.
 
 
-# general questions you might have
+## general questions you might have
 
 ## does sloe fill any niche well enough to be worth it?
 I'd say domains where languages like performance-aware safe rust/C#/swift/go stand today:
@@ -840,13 +839,13 @@ Being easy to transpile is an explicit goal of sloe, enabled by its very limited
 It did that before and it does it's job.
 I imagine the current style leaves some performance on the table but I'd be surprised if it was too slow for its only potential temporary user, the human reading this (<3).
 
-# TODO
+## TODO
 
 - consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`, `Buf-set-count`, maybe `Buf-combined-set-unset-length`. The first 2 enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more "data-oriented design" (less jumping around) and to make buf handling less painful.
   The only real reservation I have about this is that is is mutually exclusive to an `Unset-slot`/`Unset-span` API (which I have deliberately removed but it still hurts to have let it go).
 
 
-# not coherently formulated thoughts
+## not coherently formulated thoughts
 
 ## on collections not owning items
 In rust, collections tend to own their item data, so safely keeping references reaching inside is tough.
