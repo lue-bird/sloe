@@ -29,7 +29,6 @@ Passing a value as an argument? Consumes it.
 Matching a value? Consumes it.
 Even variables holding plain numbers for example have to be explicitly duplicated when you need to use them in multiple places.
 
-With this:
 - values know when they aren't used anymore at compile time. Their memory is always explicitly reclaimed. No need for garbage collection or similar. Additionally, clean-up can be flexible, like a range of indexes freeing their memory by passing the containing collection
 - values can be mutated internally without mutation being detectable
 - guaranteeing properties like non-overlapping pointed memory regions can enable more optimizations, e.g. through [llvm's `noalias`](https://llvm.org/docs/LangRef.html#parameter-attributes)
@@ -47,14 +46,14 @@ A collection which can mark its indexes as unset without moving existing items a
 This can be used to "return" memory which has become outdated or useless, for example with `Buf-remove`, `Buf-span-rid` for future reuse with for example `Buf-insert`.
 (This functionality is optional. You can use a `Buf` for builders etc. which never try to reuse unset indexes before they are scrapped.)
 
-> Further reading if interested: ["memory-reusing slot map"](slot-map)
+> Further reading if interested: ["memory-reusing slot map"](#slot-map)
 
 ## 🧩 collections do not handle their items
 Similar to allocators, you almost never access, alter or iterate their contained values directly.
 Collections are seen as storage into which you can add items, build slices etc.
 Whenever you do so, you'll get `Slot`s and `Span`s that assert your permission to access and alter the referenced items as well as your responsibility to announce their release at some point.
 
-> Further reading if interested: ["storage is not responsibility"](storage-is-not-responsibility)
+> Further reading if interested: ["storage is not responsibility"](#storage-is-not-responsibility)
 
 ## 🧩 prevent mix-up between collections with a type parameter
 Every created collection has a unique origin.
