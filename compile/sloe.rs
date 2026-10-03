@@ -2,6 +2,7 @@
 
 use gen_lsp_types as lsp_types;
 pub mod core;
+mod strongly_connected_components;
 
 pub type Name = kstring::KString;
 #[derive(Clone, Copy, Debug)]
@@ -2352,10 +2353,10 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
         strongly_connected_components::Graph::new();
     let mut type_graph_node_by_name: std::collections::HashMap<
         &str,
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
     > = std::collections::HashMap::new();
     let mut project_type_by_graph_node: std::collections::HashMap<
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
         SyntaxProjectTypeInfo<Types>,
     > = std::collections::HashMap::new();
 
@@ -2363,10 +2364,10 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
         strongly_connected_components::Graph::new();
     let mut project_fn_graph_node_by_name: std::collections::HashMap<
         &Name,
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
     > = std::collections::HashMap::with_capacity(syntax_project.items.len());
     let mut project_fn_by_graph_node: std::collections::HashMap<
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
         SyntaxProjectFnInfo<Expressions, Patterns, Types>,
     > = std::collections::HashMap::with_capacity(syntax_project.items.len());
 
@@ -2449,11 +2450,12 @@ If you were trying to start a type variable, no type was expected here. Maybe yo
                     });
                 }
                 Some(name_node) => {
-                    let type_alias_declaration_graph_node: strongly_connected_components::Node =
-                        type_graph.new_node();
-                    let existing_type_with_same_name: Option<strongly_connected_components::Node> =
-                        type_graph_node_by_name
-                            .insert(&name_node.value, type_alias_declaration_graph_node);
+                    let type_alias_declaration_graph_node: strongly_connected_components::Vertex =
+                        type_graph.add_node();
+                    let existing_type_with_same_name: Option<
+                        strongly_connected_components::Vertex,
+                    > = type_graph_node_by_name
+                        .insert(&name_node.value, type_alias_declaration_graph_node);
                     project_type_by_graph_node.insert(
                         type_alias_declaration_graph_node,
                         SyntaxProjectTypeInfo {
@@ -2501,10 +2503,10 @@ Choose a different ty name.",
                     errors.push(ErrorNode { range: symbol_range(*fn_keyword_start, "fn"), message: Box::from("missing name. Function names start with an uppercase letter and only use ascii letters, digits and -") });
                 }
                 Some(name) => {
-                    let project_fn_graph_node: strongly_connected_components::Node =
-                        project_fn_graph.new_node();
+                    let project_fn_graph_node: strongly_connected_components::Vertex =
+                        project_fn_graph.add_node();
                     let existing_variable_with_same_name: Option<
-                        strongly_connected_components::Node,
+                        strongly_connected_components::Vertex,
                     > = project_fn_graph_node_by_name.insert(&name.value, project_fn_graph_node);
                     project_fn_by_graph_node.insert(
                         project_fn_graph_node,
@@ -2578,9 +2580,10 @@ Choose a different ty name.",
     let mut checked_type_aliases: std::collections::HashMap<Name, CheckedTypeAlias> =
         core_type_aliases.clone();
     checked_type_aliases.reserve(project_type_by_graph_node.len());
-    for project_type_strongly_connected_component in type_graph.find_sccs().iter_sccs() {
+    for project_type_strongly_connected_component in type_graph.find_strongly_connected_components()
+    {
         for project_type in project_type_strongly_connected_component
-            .iter_nodes()
+            .iter()
             .filter_map(|variable_declaration_graph_node| {
                 project_type_by_graph_node.get(&variable_declaration_graph_node)
             })
@@ -2612,11 +2615,13 @@ Choose a different ty name.",
         std::collections::HashMap::new();
     let mut checked_spread_records: std::collections::HashMap<lsp_types::Position, Vec<Name>> =
         std::collections::HashMap::new();
-    for project_fn_strongly_connected_component in project_fn_graph.find_sccs().iter_sccs() {
+    for project_fn_strongly_connected_component in
+        project_fn_graph.find_strongly_connected_components()
+    {
         let project_fns_in_strongly_connected_component: Vec<
             SyntaxProjectFnInfo<Expressions, Patterns, Types>,
         > = project_fn_strongly_connected_component
-            .iter_nodes()
+            .into_iter()
             .filter_map(|project_fn_graph_node| {
                 project_fn_by_graph_node.get(&project_fn_graph_node)
             })
@@ -2678,14 +2683,14 @@ Choose a different ty name.",
 pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     pub type_graph: strongly_connected_components::Graph,
     pub project_type_by_graph_node: std::collections::HashMap<
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
         SyntaxProjectTypeInfo<'a, Types>,
     >,
     pub project_fn_graph: strongly_connected_components::Graph,
     pub project_fn_graph_node_by_name:
-        std::collections::HashMap<&'a Name, strongly_connected_components::Node>,
+        std::collections::HashMap<&'a Name, strongly_connected_components::Vertex>,
     pub project_fn_by_graph_node: std::collections::HashMap<
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
         SyntaxProjectFnInfo<'a, Expressions, Patterns, Types>,
     >,
     pub records_used: std::collections::HashSet<Vec<Name>>,
@@ -2698,8 +2703,11 @@ pub struct CheckedSyntaxProject<'a, Expressions, Patterns, Types> {
     pub checked_spread_records: std::collections::HashMap<lsp_types::Position, Vec<Name>>,
 }
 fn syntax_project_type_connect_type_names_in_graph_from<Types>(
-    origin_project_type_graph_node: strongly_connected_components::Node,
-    type_graph_node_by_name: &std::collections::HashMap<&str, strongly_connected_components::Node>,
+    origin_project_type_graph_node: strongly_connected_components::Vertex,
+    type_graph_node_by_name: &std::collections::HashMap<
+        &str,
+        strongly_connected_components::Vertex,
+    >,
     types: &core::Buf<Types, SyntaxType<Types>>,
     project_type_info: SyntaxProjectTypeInfo<Types>,
     type_graph: &mut strongly_connected_components::Graph,
@@ -2715,10 +2723,10 @@ fn syntax_project_type_connect_type_names_in_graph_from<Types>(
     }
 }
 fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Types>(
-    project_fn_graph_node: strongly_connected_components::Node,
+    project_fn_graph_node: strongly_connected_components::Vertex,
     project_fn_graph_node_by_name: &std::collections::HashMap<
         &Name,
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
     >,
     expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     project_fn: &SyntaxProjectFnInfo<'_, Expressions, Patterns, Types>,
@@ -2735,8 +2743,11 @@ fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Typ
     }
 }
 fn syntax_type_connect_type_names_in_graph_from<Types>(
-    origin_type_declaration_graph_node: strongly_connected_components::Node,
-    type_graph_node_by_name: &std::collections::HashMap<&str, strongly_connected_components::Node>,
+    origin_type_declaration_graph_node: strongly_connected_components::Vertex,
+    type_graph_node_by_name: &std::collections::HashMap<
+        &str,
+        strongly_connected_components::Vertex,
+    >,
     types: &core::Buf<Types, SyntaxType<Types>>,
     type_: &SyntaxType<Types>,
     type_graph: &mut strongly_connected_components::Graph,
@@ -2747,7 +2758,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             if let Some(referenced_type_graph_node) =
                 type_graph_node_by_name.get(name.value.as_str()).copied()
             {
-                type_graph.new_edge(
+                type_graph.add_edge(
                     origin_type_declaration_graph_node,
                     referenced_type_graph_node,
                 );
@@ -2761,7 +2772,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             if let Some(referenced_type_graph_node) =
                 type_graph_node_by_name.get(name.value.as_str()).copied()
             {
-                type_graph.new_edge(
+                type_graph.add_edge(
                     origin_type_declaration_graph_node,
                     referenced_type_graph_node,
                 );
@@ -2856,10 +2867,10 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
     }
 }
 fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
-    origin_project_fn_graph_node: strongly_connected_components::Node,
+    origin_project_fn_graph_node: strongly_connected_components::Vertex,
     project_fn_graph_node_by_name: &std::collections::HashMap<
         &Name,
-        strongly_connected_components::Node,
+        strongly_connected_components::Vertex,
     >,
     expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
@@ -2877,7 +2888,7 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
             if let Some(referenced_fn_graph_node) =
                 project_fn_graph_node_by_name.get(&name.value).copied()
             {
-                project_fn_graph.new_edge(origin_project_fn_graph_node, referenced_fn_graph_node);
+                project_fn_graph.add_edge(origin_project_fn_graph_node, referenced_fn_graph_node);
             }
             if let Some(argument) = argument {
                 syntax_expression_connect_fns_in_graph_from(

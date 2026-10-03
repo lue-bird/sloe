@@ -143,11 +143,9 @@ name = "sloe"
 version = "0.1.0"
 dependencies = [
  "gen-lsp-types",
- "kstring",
  "lsp-server",
  "serde_json",
  "sloe_compile",
- "strongly-connected-components",
 ]
 
 [[package]]
@@ -158,9 +156,6 @@ dependencies = [
  "kstring",
  "prettyplease",
  "proc-macro2",
- "quote",
- "serde_json",
- "strongly-connected-components",
  "syn",
 ]
 
@@ -169,12 +164,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "strongly-connected-components"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3e37ded58fe17742af8c31ac460efb7c9fd266e3fbe12412510319d0e02ad60"
 
 [[package]]
 name = "syn"
