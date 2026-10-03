@@ -2376,7 +2376,7 @@ pub fn syntax_project_check<'a, Expressions, Patterns, Types>(
     let mut choices_used: std::collections::HashSet<Vec<Name>> =
         std::collections::HashSet::with_capacity(4);
 
-    for project_item in &syntax_project.items {
+    'building_graph_across_items: for project_item in &syntax_project.items {
         match project_item {
             SyntaxProjectItem::Comments(_) => {}
             SyntaxProjectItem::Unrecognized {
@@ -2442,52 +2442,54 @@ If you were trying to start a type variable, no type was expected here. Maybe yo
                 parameters,
                 documentation,
                 type_,
-            } => match maybe_name {
-                None => {
+            } => {
+                let Some(name_node) = maybe_name else {
                     errors.push(ErrorNode {
                         range: symbol_range(*ty_keyword_start, "ty"),
                         message: Box::from("missing name after ty. Type names start with a lowercase (when having no parameters) or uppercase (when having parameters) letter and only use ascii letters, digits and -")
                     });
-                }
-                Some(name_node) => {
-                    let type_alias_declaration_graph_node: strongly_connected_components::Vertex =
-                        type_graph.add_node();
-                    let existing_type_with_same_name: Option<
-                        strongly_connected_components::Vertex,
-                    > = type_graph_node_by_name
-                        .insert(&name_node.value, type_alias_declaration_graph_node);
-                    project_type_by_graph_node.insert(
-                        type_alias_declaration_graph_node,
-                        SyntaxProjectTypeInfo {
-                            documentation: documentation,
-                            name: name_node,
-                            parameters: parameters,
-                            type_: type_,
-                        },
-                    );
-                    // allocating a string here just to check hurts
-                    if existing_type_with_same_name.is_some() {
-                        errors.push(ErrorNode {
-                            range: name_range(with_start_position_as_ref(name_node)),
-                            message: Box::from(
-                                "a type with this name is already declared. Choose a different ty name",
-                            ),
-                        });
-                    } else if type_graph_node_by_name.contains_key(
-                        name_toggle_case_of_first_ascii(name_node.value.to_string()).as_str(),
-                    ) {
-                        errors.push(ErrorNode {
-                            range: name_range(with_start_position_as_ref(name_node)),
-                            message: Box::from(
-                                "a type with the same name (with a different case of the first letter) is already declared.
+                    continue 'building_graph_across_items;
+                };
+                // allocating a string here just to check hurts a little
+                if type_graph_node_by_name.contains_key(
+                    name_toggle_case_of_first_ascii(name_node.value.to_string()).as_str(),
+                ) {
+                    errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name_node)),
+                        message: Box::from(
+                            "a type with the same name (with a different case of the first letter) already exists.
 This can be confusing and will lead to conflicts if the number of type parameters changes on either of those types.
 (It will also generate uglier, harder to find names in the compiled output).
 Choose a different ty name.",
+                        ),
+                    });
+                    continue 'building_graph_across_items;
+                }
+                _ = type_graph_node_by_name
+                    .entry(&name_node.value)
+                    .and_modify(|_| {
+                        errors.push(ErrorNode {
+                            range: name_range(with_start_position_as_ref(name_node)),
+                            message: Box::from(
+                                "a type with this name already exists. Choose a different ty name",
                             ),
                         });
-                    }
-                }
-            },
+                    })
+                    .or_insert_with(|| {
+                        let type_alias_declaration_graph_node: strongly_connected_components::Vertex =
+                            type_graph.add_node();
+                        project_type_by_graph_node.insert(
+                            type_alias_declaration_graph_node,
+                            SyntaxProjectTypeInfo {
+                                documentation: documentation,
+                                name: name_node,
+                                parameters: parameters,
+                                type_: type_,
+                            },
+                        );
+                        type_alias_declaration_graph_node
+                    });
+            }
             SyntaxProjectItem::Fn {
                 fn_keyword_start,
                 name: maybe_name,
@@ -2498,62 +2500,72 @@ Choose a different ty name.",
                 equals_start: _,
                 documentation,
                 result: maybe_result,
-            } => match maybe_name {
-                None => {
-                    errors.push(ErrorNode { range: symbol_range(*fn_keyword_start, "fn"), message: Box::from("missing name. Function names start with an uppercase letter and only use ascii letters, digits and -") });
+            } => {
+                let Some(name) = maybe_name else {
+                    errors.push(ErrorNode {
+                        range: symbol_range(*fn_keyword_start, "fn"),
+                        message: Box::from(
+                            "missing name. Function names start with an uppercase letter and only use ascii letters, digits and -"
+                        )
+                    });
+                    continue 'building_graph_across_items;
+                };
+                if core_fns.contains_key(name.value.as_str()) {
+                    errors.push(ErrorNode {
+                        range: name_range(with_start_position_as_ref(name)),
+                        message: Box::from(
+                            "a function with this name is already part of core (which for example includes U32-add-clamp, Buf-empty etc.). Choose a different fn name"
+                        )
+                    });
+                    continue 'building_graph_across_items;
                 }
-                Some(name) => {
-                    let project_fn_graph_node: strongly_connected_components::Vertex =
-                        project_fn_graph.add_node();
-                    let existing_variable_with_same_name: Option<
-                        strongly_connected_components::Vertex,
-                    > = project_fn_graph_node_by_name.insert(&name.value, project_fn_graph_node);
-                    project_fn_by_graph_node.insert(
-                        project_fn_graph_node,
-                        SyntaxProjectFnInfo {
-                            range: lsp_types::Range {
-                                start: *fn_keyword_start,
-                                end: maybe_result
-                                    .as_ref()
-                                    .map(|result| {
-                                        expression_end(result, expressions, patterns, types)
-                                    })
-                                    .or_else(|| documentation.as_ref().map(comments_end))
-                                    .or_else(|| {
-                                        result_type
-                                            .as_ref()
-                                            .map(|result_type| type_end(result_type, types))
-                                    })
-                                    .or_else(|| {
-                                        parameter.as_ref().map(|parameter| {
-                                            pattern_end(parameter, patterns, types)
-                                        })
-                                    })
-                                    .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
-                            },
-                            name: name,
-                            type_parameters: type_parameters,
-                            parameter: parameter,
-                            result_type: result_type,
-                            documentation: documentation,
-                            result: maybe_result,
-                        },
-                    );
-                    if existing_variable_with_same_name.is_some() {
+                _ = project_fn_graph_node_by_name
+                    .entry(&name.value)
+                    .and_modify(|_| {
                         errors.push(ErrorNode {
                             range: name_range(with_start_position_as_ref(name)),
                             message: Box::from(
                                 "a project function with this name is already declared. Rename one of them",
                             ),
                         });
-                    } else if core_fns.contains_key(name.value.as_str()) {
-                        errors.push(ErrorNode {
-                            range: name_range(with_start_position_as_ref(name)),
-                            message: Box::from("a function with this name is already part of core (which for example includes U32-add-clamp, Buf-empty etc.). Choose a different fn name")
-                        });
-                    }
-                }
-            },
+                    })
+                    .or_insert_with(|| {
+                        let project_fn_graph_node: strongly_connected_components::Vertex =
+                            project_fn_graph.add_node();
+                        project_fn_by_graph_node.insert(
+                            project_fn_graph_node,
+                            SyntaxProjectFnInfo {
+                                range: lsp_types::Range {
+                                    start: *fn_keyword_start,
+                                    end: maybe_result
+                                        .as_ref()
+                                        .map(|result| {
+                                            expression_end(result, expressions, patterns, types)
+                                        })
+                                        .or_else(|| documentation.as_ref().map(comments_end))
+                                        .or_else(|| {
+                                            result_type
+                                                .as_ref()
+                                                .map(|result_type| type_end(result_type, types))
+                                        })
+                                        .or_else(|| {
+                                            parameter.as_ref().map(|parameter| {
+                                                pattern_end(parameter, patterns, types)
+                                            })
+                                        })
+                                        .unwrap_or_else(|| name_end(with_start_position_as_ref(name))),
+                                },
+                                name: name,
+                                type_parameters: type_parameters,
+                                parameter: parameter,
+                                result_type: result_type,
+                                documentation: documentation,
+                                result: maybe_result,
+                            },
+                        );
+                        project_fn_graph_node
+                    });
+            }
         }
     }
     for (&type_declaration_graph_node, &type_declaration_info) in project_type_by_graph_node.iter()
@@ -2713,12 +2725,16 @@ fn syntax_project_type_connect_type_names_in_graph_from<Types>(
     type_graph: &mut strongly_connected_components::Graph,
 ) {
     if let Some(aliased_type) = &project_type_info.type_ {
+        let mut project_type_referenced_vertexes = std::collections::BTreeSet::new();
         syntax_type_connect_type_names_in_graph_from(
-            origin_project_type_graph_node,
             type_graph_node_by_name,
             types,
             aliased_type,
-            type_graph,
+            &mut project_type_referenced_vertexes,
+        );
+        type_graph.set_edges(
+            origin_project_type_graph_node,
+            project_type_referenced_vertexes,
         );
     }
 }
@@ -2733,24 +2749,24 @@ fn syntax_project_fn_connect_type_names_in_graph_from<Expressions, Patterns, Typ
     project_fn_graph: &mut strongly_connected_components::Graph,
 ) {
     if let Some(result_node) = project_fn.result {
+        let mut project_fn_referenced_vertexes = std::collections::BTreeSet::new();
         syntax_expression_connect_fns_in_graph_from(
-            project_fn_graph_node,
             project_fn_graph_node_by_name,
             expressions,
             result_node,
-            project_fn_graph,
+            &mut project_fn_referenced_vertexes,
         );
+        project_fn_graph.set_edges(project_fn_graph_node, project_fn_referenced_vertexes);
     }
 }
 fn syntax_type_connect_type_names_in_graph_from<Types>(
-    origin_type_declaration_graph_node: strongly_connected_components::Vertex,
     type_graph_node_by_name: &std::collections::HashMap<
         &str,
         strongly_connected_components::Vertex,
     >,
     types: &core::Buf<Types, SyntaxType<Types>>,
     type_: &SyntaxType<Types>,
-    type_graph: &mut strongly_connected_components::Graph,
+    type_graph: &mut std::collections::BTreeSet<strongly_connected_components::Vertex>,
 ) {
     match type_ {
         SyntaxType::Variable { .. } => {}
@@ -2758,10 +2774,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             if let Some(referenced_type_graph_node) =
                 type_graph_node_by_name.get(name.value.as_str()).copied()
             {
-                type_graph.add_edge(
-                    origin_type_declaration_graph_node,
-                    referenced_type_graph_node,
-                );
+                type_graph.insert(referenced_type_graph_node);
             }
         }
         SyntaxType::ConstructWithArguments {
@@ -2772,10 +2785,7 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             if let Some(referenced_type_graph_node) =
                 type_graph_node_by_name.get(name.value.as_str()).copied()
             {
-                type_graph.add_edge(
-                    origin_type_declaration_graph_node,
-                    referenced_type_graph_node,
-                );
+                type_graph.insert(referenced_type_graph_node);
             }
             for argument in argument0
                 .iter()
@@ -2787,7 +2797,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
                 )
             {
                 syntax_type_connect_type_names_in_graph_from(
-                    origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     argument,
@@ -2802,7 +2811,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
         } => {
             if let Some(inner) = inner {
                 syntax_type_connect_type_names_in_graph_from(
-                    origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     types.item(inner),
@@ -2818,7 +2826,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
         } => {
             if let Some(field0_value) = field0_value {
                 syntax_type_connect_type_names_in_graph_from(
-                    origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     types.item(field0_value),
@@ -2828,7 +2835,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             for field in field1_up {
                 if let Some(value) = &field.value {
                     syntax_type_connect_type_names_in_graph_from(
-                        origin_type_declaration_graph_node,
                         type_graph_node_by_name,
                         types,
                         value,
@@ -2845,7 +2851,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
         } => {
             if let Some(variant0_value) = variant0_value {
                 syntax_type_connect_type_names_in_graph_from(
-                    origin_type_declaration_graph_node,
                     type_graph_node_by_name,
                     types,
                     types.item(variant0_value),
@@ -2855,7 +2860,6 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
             for variant in variant1_up {
                 if let Some(value) = &variant.value {
                     syntax_type_connect_type_names_in_graph_from(
-                        origin_type_declaration_graph_node,
                         type_graph_node_by_name,
                         types,
                         value,
@@ -2867,14 +2871,13 @@ fn syntax_type_connect_type_names_in_graph_from<Types>(
     }
 }
 fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
-    origin_project_fn_graph_node: strongly_connected_components::Vertex,
     project_fn_graph_node_by_name: &std::collections::HashMap<
         &Name,
         strongly_connected_components::Vertex,
     >,
     expressions: &core::Buf<Expressions, SyntaxExpression<Expressions, Patterns, Types>>,
     expression: &SyntaxExpression<Expressions, Patterns, Types>,
-    project_fn_graph: &mut strongly_connected_components::Graph,
+    project_fn_graph: &mut std::collections::BTreeSet<strongly_connected_components::Vertex>,
 ) {
     match expression {
         SyntaxExpression::Number { .. } => {}
@@ -2888,11 +2891,10 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
             if let Some(referenced_fn_graph_node) =
                 project_fn_graph_node_by_name.get(&name.value).copied()
             {
-                project_fn_graph.add_edge(origin_project_fn_graph_node, referenced_fn_graph_node);
+                project_fn_graph.insert(referenced_fn_graph_node);
             }
             if let Some(argument) = argument {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     expressions.item(argument),
@@ -2908,7 +2910,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
         } => {
             if let Some(value) = value {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     expressions.item(value),
@@ -2924,7 +2925,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
         } => {
             if let Some(result) = result {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     expressions.item(result),
@@ -2939,7 +2939,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
                     SyntaxRecordPart::Field { name: _, value } => {
                         if let Some(value) = value {
                             syntax_expression_connect_fns_in_graph_from(
-                                origin_project_fn_graph_node,
                                 project_fn_graph_node_by_name,
                                 expressions,
                                 expressions.item(value),
@@ -2953,7 +2952,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
                     } => {
                         if let Some(record) = record {
                             syntax_expression_connect_fns_in_graph_from(
-                                origin_project_fn_graph_node,
                                 project_fn_graph_node_by_name,
                                 expressions,
                                 expressions.item(record),
@@ -2975,7 +2973,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
                 .chain(item1_up.iter().filter_map(|item| item.item.as_ref()))
             {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     item,
@@ -2990,7 +2987,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
         } => {
             if let Some(inner) = inner {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     expressions.item(inner),
@@ -3004,7 +3000,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
         } => {
             if let Some(expression) = expression {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     expressions.item(expression),
@@ -3019,7 +3014,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
         } => {
             if let Some(queried) = queried {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     expressions.item(queried),
@@ -3029,7 +3023,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
             for case in cases {
                 if let Some(result) = &case.result {
                     syntax_expression_connect_fns_in_graph_from(
-                        origin_project_fn_graph_node,
                         project_fn_graph_node_by_name,
                         expressions,
                         result,
@@ -3046,7 +3039,6 @@ fn syntax_expression_connect_fns_in_graph_from<Expressions, Patterns, Types>(
         } => {
             if let Some(result) = result {
                 syntax_expression_connect_fns_in_graph_from(
-                    origin_project_fn_graph_node,
                     project_fn_graph_node_by_name,
                     expressions,
                     expressions.item(result),
