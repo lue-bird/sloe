@@ -46,5 +46,5 @@ Language nerd description:
 - if functions are called with pure funcitons as inputs, they are pure. Passing impure functions from the platform language will make the called function impure
 - all syntax is open-ended. For example in a record, the last field value never needs to be parenthesized and there are no closing parens or similar. This means you get things like short-cutting case-of for free and avoid unnecessary indentation
 
-Vaguely similar languages (although all are more ambitious): austral, rust, carbon, hylo (, swift, valen, vale, dada).
+Vaguely similar languages (although all are more ambitious): austral, rust, carbon, hylo (, swift, valen, vale, dada, ante).
 Much of the core terminology matches: origin, isolate, region, slot, buf

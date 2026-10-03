@@ -819,8 +819,7 @@ fn send_response_ok(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let response: lsp_server::Response = lsp_server::Response {
         id,
-        result: Some(result),
-        error: None,
+        response_result: Ok(result),
     };
     connection
         .sender
@@ -834,8 +833,7 @@ fn send_response_error(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let response: lsp_server::Response = lsp_server::Response {
         id,
-        result: None,
-        error: Some(error),
+        response_result: Err(error),
     };
     connection
         .sender

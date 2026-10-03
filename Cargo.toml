@@ -8,8 +8,8 @@ path = "main.rs"
 
 [dependencies]
 sloe_compile = { path = "./compile/" }
-lsp-server = { version = "0.7.9", default-features = false }
-gen-lsp-types = "0.9.0"
+lsp-server = { version = "0.10.0", default-features = false }
+gen-lsp-types = { version = "0.11.0", default-features = false }
 serde_json = { version = "1.0.149", default-features = false }
 
 [lints.rust]

@@ -6,7 +6,7 @@ edition = "2024"
 path = "sloe.rs"
 
 [dependencies]
-gen-lsp-types = "0.9.0"
+gen-lsp-types = { version = "0.11.0", default-features = false }
 # this one is a little silly and should probably be replaced by proper string interning.
 # The theory is that most names are short and thus fit perfectly in stack storage,
 # thus attempting to do (scattered) heap writes and reads will not beat it.
