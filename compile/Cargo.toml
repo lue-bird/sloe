@@ -7,7 +7,10 @@ path = "sloe.rs"
 
 [dependencies]
 gen-lsp-types = "0.9.0"
-kstring = { version = "2.0.4", features = ["max_inline"] }
+# this one is a little silly and should probably be replaced by proper string interning.
+# The theory is that most names are short and thus fit perfectly in stack storage,
+# thus attempting to do (scattered) heap writes and reads will not beat it.
+byteyarn = { version = "0.5.1", default-features = false }
 # rest is for nice rust code output
 syn = { version = "3.0.2", features = ["full", "printing"], default-features = false }
 proc-macro2 = { version = "1.0.106", default-features = false }

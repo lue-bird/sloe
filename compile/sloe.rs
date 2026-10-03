@@ -3,7 +3,7 @@
 use gen_lsp_types as lsp_types;
 pub mod core;
 
-pub type Name = kstring::KString;
+pub type Name = byteyarn::Yarn;
 #[derive(Clone, Copy, Debug)]
 pub struct WithStartPosition<Value> {
     pub value: Value,
@@ -1151,7 +1151,7 @@ fn parse_sloe_lowercase_name(state: &mut ParseState) -> Option<Name> {
         let parsed_str: &str = &state.source[state.offset_utf8..end_offset_utf8];
         state.offset_utf8 = end_offset_utf8;
         state.position.character += parsed_str.encode_utf16().count() as u32;
-        Some(Name::from_ref(parsed_str))
+        Some(Name::from_fmt(format_args!("{}", parsed_str)))
     } else {
         None
     }
@@ -1182,7 +1182,7 @@ fn parse_sloe_uppercase_name(state: &mut ParseState) -> Option<Name> {
         let parsed_str: &str = &state.source[state.offset_utf8..end_offset_utf8];
         state.offset_utf8 = end_offset_utf8;
         state.position.character += parsed_str.encode_utf16().count() as u32;
-        Some(Name::from_ref(parsed_str))
+        Some(Name::from_fmt(format_args!("{}", parsed_str)))
     } else {
         None
     }
@@ -1321,12 +1321,12 @@ fn parse_ty_parameters(state: &mut ParseState) -> Option<TyParameters> {
     let Some(parameter0_underscore_start) = parse_symbol_as_start(state, "_") else {
         return None;
     };
-    let parameter0 = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
+    let parameter0 = parse_sloe_lowercase_name(state).unwrap_or(Name::from_static(""));
     let mut parameter1_up = Vec::new();
     while let Some(comma_start) = parse_symbol_as_start(state, ",") {
         parse_sloe_whitespace(state);
         let underscore_start = parse_symbol_as_start(state, "_");
-        let name = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
+        let name = parse_sloe_lowercase_name(state).unwrap_or(Name::from_static(""));
         parameter1_up.push(SyntaxTrailingTypeParameter {
             comma_start: comma_start,
             underscore_start: underscore_start,
@@ -1346,7 +1346,7 @@ fn parse_braced_type_parameter(state: &mut ParseState) -> Option<SyntaxBracedTyp
     };
     parse_sloe_whitespace(state);
     let underscore_start = parse_symbol_as_start(state, "_");
-    let name = parse_sloe_lowercase_name(state).unwrap_or(Name::EMPTY);
+    let name = parse_sloe_lowercase_name(state).unwrap_or(Name::from_static(""));
     parse_sloe_whitespace(state);
     let closed_brace_start = parse_symbol_as_start(state, "}");
     Some(SyntaxBracedTypeParameter {
@@ -1725,7 +1725,7 @@ fn parse_type_variable<Types>(state: &mut ParseState) -> Option<SyntaxType<Types
     let name = parse_sloe_lowercase_name(state);
     Some(SyntaxType::Variable {
         underscore_start: underscore_start,
-        name: name.unwrap_or(Name::EMPTY),
+        name: name.unwrap_or(Name::from_static("")),
     })
 }
 fn parse_type_parenthesized<Types>(
