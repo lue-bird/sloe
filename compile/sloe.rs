@@ -13320,7 +13320,7 @@ fn Index-to-weak-slot{_origin} index u32 : Weak-slot _origin =
 
 fn Span-start-weak
     span Span _origin
-    : .weak Weak-slot _origin .slot Slot _origin =
+: .weak Weak-slot _origin .slot Slot _origin =
     ? Span-start-index slot [.span span .index index]
     .span span
     .weak Index-to-weak-slot{_origin} index
@@ -13762,11 +13762,11 @@ If the length is greater than the given span's length, .start will be the existi
 fn Span-slot-at
     .span span Span _origin
     .index index u32
-    :
+:
     .before Opt Span _origin
     .at Slot _origin
     .after Opt Span _origin
-    =
+=
     ?
         Span-start-of-length-positive
         .span span
@@ -13888,11 +13888,11 @@ by returning `'going` or exiting early with `'done` (like calling `break` in oth
 fn Next-non-space
     .chars chars Buf _origin, char
     .span span Opt Span _origin
-    :
+:
     .chars Buf _origin, char
     .non-space Opt char
     .after Opt Span _origin
-    =
+=
     ? (
         Opt-span-step-while
         .span span
@@ -14003,7 +14003,7 @@ This can be used to recycle `Buf` memory from one `Buf` with one origin into ano
 fn Buf-recycle-empty
     .new-origin new-origin Origin _new-origin, _new-part
     .old old Buf _old-origin, _item
-    : Buf (Origin _new-origin, _new-part), _item =
+: Buf (Origin _new-origin, _new-part), _item =
     ? Buf-to-unset old [unset-slice]
     Buf-reuse .origin new-origin .slice unset-slice
 ```",
@@ -14270,11 +14270,11 @@ fn Buf-item-dup
     .buf buf Buf _origin, _item
     .slot slot Slot _origin
     .dup (dup Fn _item, .a _item .b _item)
-    :
+:
     .buf Buf _origin, _item
     .slot Slot _origin
     .item _item
-    =
+=
     ? (
         Buf-item-step
         .buf buf
@@ -15030,10 +15030,10 @@ fn Buf-span-add
     .buf buf Buf _origin, _item
     .span span Span _origin
     .new new _item
-    :
+:
     .buf Buf _origin, _item
     .span Span _origin
-    =
+=
     # the first line is optional: it ensures that the new slot will actually be connected,
     # meaning the new item can stay at its position
     ? Buf-span-move-to-end .buf buf .span span [.buf buf .span .span]

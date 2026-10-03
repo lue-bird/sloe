@@ -1,8 +1,7 @@
 Small, fast programming language where indexes are valid and values can't be shared.
 
-It has an infallible, safe way to refer to items and slices stored in consecutive memory which for example enables representing tree-like data structures without segmented memory or plain indexes (along with the need to handle failure and generations for safety).
+It has an infallible, safe way to refer to items and slices stored in consecutive memory which for example enables representing tree-like data structures without segmented memory or plain indexes (which need to handle failure and generations for safety).
 
-Hello, world!
 ```sloe
 fn Greet
     .name name str .buf buf Buf _origin, char
@@ -11,8 +10,8 @@ fn Greet
     ? Buf-span-add-str-chars .. string .new name [string]
     Buf-span-add .. string .new "!" char
 ```
-A `Greet` function taking a name and a buffer to append the greeting to.
-It appends the name and other strings to the chars to form and return a message span.
+↑ a `Greet` function which takes a name and a buffer to append the greeting to.
+It appends the name and other strings to form and return a message span (range within the buffer).
 [explore examples in an online editor](https://lue-bird.github.io/sloe/) [skip to more examples](#examples) [skip to syntax overview](#syntax) or look into the `example-/` directories in this repo.
 
 Install with (requires having [rust installed](https://rust-lang.org/tools/install/))
@@ -124,7 +123,7 @@ fn Use-opt opt Opt u32 : ... =
     # this will compile:
     ^ buf-origin
     ? (
-        :opt
+        ? opt
         ['no .]
             Buf-empty{u32} buf-origin
         ['yes number] (
@@ -406,13 +405,13 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Origin-unerase
       .erased Origin-erased _erased
       .unerase Fn (... .uneraser Origin-uneraser _origin), ... .uneraser Origin-uneraser _origin
-      : ...
+  : ...
   fn Slot-origin-isolate
       Slot In _origin, _part
-      : Origin-isolated _origin (Slot In erased, _part)
+  : Origin-isolated _origin (Slot In erased, _part)
   fn Slot-origin-unerase
       .uneraser Origin-uneraser _origin .slot Slot (In erased _part)
-      : ... .slot Slot In _origin, _part
+  : ... .slot Slot In _origin, _part
   ```
   This means though that
     - we only unerase and erase 1 level deep (??). This must be addressed
@@ -453,11 +452,11 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   fn Buf-counting-slot-dup
       .buf Buf-counting _origin, _item
       .slot Slot _origin
-      :
+  :
       .buf Buf-counting _origin, _item
       .a Slot _origin
       .b Slot _origin
-      =
+  =
   # what about spans?
   ```
   In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `Set-counting`) etc.
