@@ -14033,10 +14033,7 @@ use `Buf-try-pre-allocate-at-least` instead.",
                     ),
                     ("length", type_u32),
                 ]),
-                result_type: type_record([
-                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
-                    ("out-of-memory", type_opt(type_record_empty))
-                ]),
+                result_type: type_buf(type_variable("origin"), type_variable("item")),
             },
             CoreFnInfo {
                 name: "Buf-try-pre-allocate-at-least",
@@ -14051,7 +14048,10 @@ A version which only checks for errors behind the scenes is `Buf-pre-allocate-at
                     ),
                     ("length", type_u32),
                 ]),
-                result_type: type_buf(type_variable("origin"), type_variable("item")),
+                result_type: type_record([
+                    ("buf", type_buf(type_variable("origin"), type_variable("item"))),
+                    ("out-of-memory", type_opt(type_record_empty))
+                ]),
             },
             CoreFnInfo {
                 name: "Buf-pre-allocation-rid",
