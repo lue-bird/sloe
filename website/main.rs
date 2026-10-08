@@ -29,6 +29,7 @@ struct State {
     sloe_core_declarations_html_static: sauron::Node<Event>,
 }
 enum Event {
+    None,
     TextAreaContentChanged(String),
     ExampleSelected(Example),
 }
@@ -39,6 +40,7 @@ impl sauron::Application for State {
     }
     fn update(&mut self, event: Event) -> sauron::Cmd<Self::MSG> {
         match event {
+            Event::None => sauron::Cmd::none(),
             Event::TextAreaContentChanged(new_text_area_content) => {
                 self.text_area_content = new_text_area_content;
                 sauron::Cmd::none()
@@ -188,8 +190,7 @@ left: -0.1em"#,
             sauron::attr("selectionStart", cursor_offset),
             sauron::attr("selectionEnd", cursor_offset + cursor_text.len() as u32),
             sauron::on_focus({
-                let s = text_area_content.to_string();
-                move |event: sauron::FocusEvent| {
+                |event: sauron::FocusEvent| {
                     web_sys::console::log_1(&"on focus".into());
                     if let Some(event_target) = event.target() {
                         // hacky:
@@ -218,7 +219,7 @@ if (event.key === 'Tab') {
                             ),
                         ));
                     };
-                    Event::TextAreaContentChanged(s.clone())
+                    Event::None
                 }
             }),
             sauron::on_input(move |event: sauron::InputEvent| {
@@ -833,7 +834,7 @@ fn Positive-integer . : p32 = 2 p32
             name: "text",
             source: r#"
 fn Single-character . : char = "a" char
-fn Escaped-quote . : char = "\'" char'
+fn Escaped-quote . : char = "\'" char
 fn Escaped-backslash . : char = "\\" char
 fn Escaped-tab . : char = "\t" char
 fn Escaped-linebreak . : char = "\n" char
@@ -894,7 +895,7 @@ fn Same-in-same-out anything _in : _in =
     anything
 
 fn Use-same-in-same-out . : str =
-    Same-in-same-out "oo ee oo"
+    Same-in-same-out "oo ee oo" str
 
 fn Function-returning-a-function . : Fn .a i32 .b i32, i32 =
     [.a a i32 .b b i32] I32-add-clamp .a a .b b
@@ -1044,7 +1045,7 @@ fn Type-span-rid
     .span span Span _types
     .buf buf Buf _types, Type-syntax _types
 : Buf _types, Type-syntax _types =
-    Span-fold
+    Span-step
     .direction 'up{'down .} .
     .span span
     .state buf
@@ -1090,7 +1091,7 @@ fn U32s-sum
     .sum u32
     .buf Buf _origin, u32
 =
-    Span-fold
+    Span-step
     .direction 'up{'down .} .
     .span span
     .state (.sum 0 u32 .buf buf)
