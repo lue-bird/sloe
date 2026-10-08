@@ -2100,7 +2100,7 @@ fn parse_text_content_char(state: &mut ParseState) -> Option<char> {
             parse_same_line_while(state, |c| c.is_ascii_hexdigit());
             let unicode_hex_str: &str =
                 &state.source[unicode_hex_start_offset_utf8..state.offset_utf8];
-            let _: bool = parse_symbol(state, "}");
+            let _: bool = parse_symbol(state, ")");
             let Ok(code_point) = u32::from_str_radix(unicode_hex_str, 16) else {
                 reset_parse_state(state);
                 return None;
