@@ -652,6 +652,14 @@ As a hobby language that deliberately cannot by itself interface with the operat
     - Shared is entirely useless (since it isn't possible to e.g. define map, merge etc.). The only vaguely plausible utility of `Immutable` is preventing mutation
     - it doesn't mix at all with non-shared functions and types
     - wrapping and unwrapping Shared types is a giant pain
+- (rejected because not useful enough) add `Outside _value`, `Origin-isolate` (which wraps into an `Outside`), `Outside-origin-unisolate` (which unwraps an `Outside`), `Outside` (which wraps into an `Outside`).
+  This API would allow _any_ value to be transported through the lifecycle of an `Origin-erased` (e.g. a large enum or complex copy-able record) without any hassle.
+  
+  Strictly speaking, this is less useful than just unisolating it value by value but it's also much more convenient.
+  
+  Optionally, it could be possible to construct, map, pair, unpair such a value in sloe
+  (also: read primitive values from it).
+  It just doesn't seem any useful.
 - rename `Origin-isolated _origin, _value` to `In _origin, _value` for brevity.
   Then change (while keeping all existing operations) for consistency
     - `Origin _origin, _part` to ``
@@ -864,6 +872,15 @@ It did that before and it does it's job.
 I imagine the current style leaves some performance on the table but I'd be surprised if it was too slow for its only potential temporary user, the human reading this (<3).
 
 ## TODO
+
+- consider renaming `Origin-isolated-merge` to `*-pair` and `*-split` to `*-unpair`
+
+- add `Opaque _value` (maybe should be "foreign" instead), `Opaque-origin-isolate`, `Opaque-origin-unisolate`.
+  `Opaque _value` is compiled to `_value` but is inaccessible in sloe.
+  
+  Important! opaque_origin_isolate/_unisolate should not be public in the output code as it's unsafe to use from the output language
+
+- another issue in this space: creating a partial Origin-erased with the erased value using `Origin erased, .` but from an origin that has a part, like `Origin some-origin, .some-part .`.
 
 - consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`, `Buf-set-count`, maybe `Buf-combined-set-unset-length`. The first 2 enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more "data-oriented design" (less jumping around) and to make buf handling less painful.
   The only real reservation I have about this is that is is mutually exclusive to an `Unset-slot`/`Unset-span` API (which I have deliberately removed but it still hurts to have let it go).
