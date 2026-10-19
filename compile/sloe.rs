@@ -14590,7 +14590,7 @@ fn Buf-span-last-negative-i32
         .direction 'down{'up .} .
         .state .
         .step
-        [.state . .item i]
+        [.state . .item i i32]
         ? I32-dup i [.a i-to-return .b i]
         .item i-to-return
         .state (
@@ -14601,7 +14601,7 @@ fn Buf-span-last-negative-i32
             ['greater .] ? I32-rid i [.] 'going{'done i32} .
         )
     [.. buf-span .state state]
-    .. buf-span .last-negative ? state ['going .] 'no . ['done i] i
+    .. buf-span .last-negative ? state ['going .] 'no{opt i32} . ['done i] 'yes{'no .} i
 ```
 If you want to step through all items instead, use `Buf-span-step`.
 If you need more control (for example accessing the given Buf during a step), use `Span-step-while` instead.
@@ -15423,9 +15423,9 @@ U32-order .left 12 u32 .right 20 u32
 
 fn U32-max .a a u32 .b b u32 : u32 =
     ? U32-order .left a .right b
-    ['less] (? U32-rid a [.] b)
-    ['equal] (? U32-rid a [.] b)
-    ['greater] (? U32-rid b [.] a)
+    ['less .] (? U32-rid a [.] b)
+    ['equal .] (? U32-rid a [.] b)
+    ['greater .] (? U32-rid b [.] a)
 ```",
                 )),
                 parameters: vec![],
