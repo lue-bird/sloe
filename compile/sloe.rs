@@ -4144,7 +4144,7 @@ An example of a valid type with arguments is Buf _origin, u32. Here _origin is t
                 errors.push(ErrorNode {
                     range: variant_name_range(with_start_position_as_ref(variant0_name)),
                     message: Box::from(
-                        "missing variant value after this first variant name |..variant-name.. here. Every variant has a value, even if just .",
+                        "missing variant value after this first variant name '..variant-name.. here. Every variant has a value, even if just .",
                     ),
                 });
                 return None;
@@ -4194,7 +4194,7 @@ An example of a valid type with arguments is Buf _origin, u32. Here _origin is t
                     errors.push(ErrorNode {
                         range: optional_variant_name_range(&syntax_variant.name),
                         message: Box::from(
-                            "missing variant value after this name ..Variant-name.. here. Every variant has a value, even if just .",
+                            "missing variant value after this name '..variant-name.. here. Every variant has a value, even if just .",
                         ),
                     });
                     return None;
