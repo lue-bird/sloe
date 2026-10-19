@@ -9287,7 +9287,7 @@ If there should only ever by one variant, using a record with a single field is 
             let Some(queried) = queried else {
                 errors.push(ErrorNode {
                     range: symbol_range(*question_mark_start, "?"),
-                    message: Box::from("missing queried expression after this colon. An example of a query is ? option ['yes n] n ['no .] 0 u32")
+                    message: Box::from("missing queried expression after this ?. An example of a query is ? option ['yes n] n ['no .] 0 u32")
                 });
                 return None;
             };
