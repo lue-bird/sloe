@@ -452,6 +452,51 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
   The only reason I could see is that it would allow `Origin-unerase` to preserve the outer part of the given origin as the outer part of the unerased values. How would this work for sub-origins when isolating then?
 
 ## potential improvements in the future
+- add `Buf-counted` which can reference a slot that is already in use:
+  ```Sloe
+  ty Buf-counted _origin, _item
+  
+  fn Buf-counted-slot-dup
+      .buf Buf-counted _origin, _item
+      .slot Slot _origin
+  :
+      .buf Buf-counted _origin, _item
+      .a Slot _origin
+      .b Slot _origin
+
+  fn Buf-counted-remove-or-slot-rid
+      .buf Buf-counted _origin, _item
+      .slot Slot _origin
+  :
+      .buf Buf-counted _origin, _item
+      .item Opt _item
+  # mention `Buf-counted-try-remove` for only removing if the last slot
+  
+  fn Buf-counted-try-remove
+      .buf Buf-counted _origin, _item
+      .slot Slot _origin
+  :
+      .buf Buf-counted _origin, _item
+      .removed 'yes _item 'no Slot _origin
+  # mention `Buf-counted-remove-or-slot-rid` for always discarding
+
+  fn Buf-counted-step
+  fn Buf-counted-add
+  fn Buf-counted-insert
+  ...
+  
+  fn Buf-to-counted Buf _origin, _item : Buf-counted _origin, _item
+  # document that it's O(n)
+  ```
+  When the slot count for an index goes to 0, it can be reused by e.g. `Buf-counted-insert`.
+  This enables graph structures, child-parent relations, doubly-linked lists, inlined string storage etc. (lovely innit)
+  
+  Slot counts are stored in a side array. This means the counts should be able to get optimized away when there are no queries (e.g. when the whole `Buf` is scrapped at once)
+  
+  Alternative name: `Buf-weak`. I like it because it's short and signals that un-referenced items will be unset.
+  But I think `Buf-counted` is more intuitive.
+  
+  The alternative would be to add `Slot-weak` and generational indexes. However, this is un-usable for e.g. inlined string storage and also comes with overhead and even less guarantees.
 - IDE type and type diff error displays suck ass, mostly due to indentation being stripped. But markdown support seems to still be ways off for most editors for some reason. Anyone know a solution?
 - add `b8` type to represent a byte. Add `I32-2s-complement/U32/F32-to-b8s-decreasing/increasing-significance` and the other way around. Add `B8-xor`, `B8-complement`, `B8-and`, `B8-or`, `B8-reinterpret-as-U32`
 - add hashing primitives (or provide the means for users to implement them).
@@ -468,54 +513,6 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
 - similarly, add "add remaining query cases" code action
 - suggest full parameter field patterns of existing project fns (just as rust does). This is super convenient, especially because stuff like `expressions Buf _expressions, Expression _expressions _patterns _types` doesn't exactly roll easily over one's keyboard
 - move collecting records and choice types to codegen phase, so that e.g. they are not unnecessarily collected for js or zig backend. Counter-argument: Most languages do not have a concept of structural composite types and repeating the job of collecting records for each one individually is error-prone and more work
-- add `Set _origin, _item` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _item` where key is derived from item) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
-  Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `Buf` is fast enough
-- consider adding `Buf-counting` and `slot` which can reference a slot that is already in use:
-  ```Sloe
-  fn Buf-counting-slot-dup
-      .buf Buf-counting _origin, _item
-      .slot Slot _origin
-  :
-      .buf Buf-counting _origin, _item
-      .a Slot _origin
-      .b Slot _origin
-  =
-  # what about spans?
-  ```
-  In theory, this would enable graph structures, child-parent relations, doubly-linked lists, inlined string storage (although that would need e.g. `Set-counting`) etc.
-  Things I dislike with this design:
-    - access via `Buf-counting-unset` which does not guarantee seems maybe too difficult (first un-occupy all known slots and even then there is no guarantee). `Buf-counting-update` should work nicely, especially for copiable types at the cost of: cannot access the buf at the same time and spooky action at a distance
-    - _every_ item is reference-counted. A slot to a known single-reference item cannot be represented. This is not a biggie because I don't know if there is a use for this
-    - maybe also -counting versions of map/set etc.
-  
-  The alternative is of course to do `Slot-weak` and generational indexes. However, this is un-usable for e.g. inlined string storage and also comes with overhead and even less guarantees.
-  
-  Open question of representation:
-    - `Buf<{ count: u32/16, item: Item }>`:
-      Finding unset slots takes linear time. Generally fast.
-      Takes the least space on the stack
-    - `{ items: Buf<Item>, counts: Buf<u32/16> }`:
-      Finding unset slots takes linear time. Generally fastest.
-      A bit more error-prone than single buf
-    - `{ items: Buf<Item>, unset: Buf<u32>, occoupied_counts: Buf<NonZeroU32/16> }`:
-      Finding unset slots takes constant time but doesn't feel deterministic.
-      Generally fastest but unsetting is more expensive.
-      More error-prone than single or double-buf.
-      Takes most space on the stack
-    - `{ items: Buf<Item>, counts: Buf<{ range: Range, count: u32/16 }>`:
-      Tough to handle and error-prone.
-      Inefficient for cases where slots are handled one by one (no spans exist).
-      Efficient for things like inline storage where spans are clearly defined.
-    - the above but with unset ranges and occupied counts split
-
-  I think I prefer not storing counts in ranges, as for example for string interning, you could store counted spans in separate collections:
-  ```sloe
-  chars # of type Buf _chars, char
-  names # of type Buf-counting _names, Span _chars
-  ..other bufs pointing into chars, e.g. for number literals..
-  ```
-  This is likely the better option anyway (even though it "hops twice")
-  as it makes searching for the right span possible (and reasonably fast)
 - introduce `ascii` (in rust backed by `std::ascii::Asci` which is currently experimental, in zig backed by `u7`), require char literals to be suffixed with a type, (optionally provide `ascii` as a choice type like [`std::ascii::Char`](https://doc.rust-lang.org/std/ascii/enum.Char.html)). Change `str` to `chars` and `ascii` to `asciis`. Preferably rust would support this directly, otherwise do transmutions or similar at some point. Also introduce `ascii-to-char`, `asciis-to-chars` and the inverse operations which return `opt`
 - add ascii operations like
   ```sloe
@@ -629,6 +626,11 @@ And even if I'm unable to fix them, other people/teams might (in other projects)
       .b Buf _b-origin, B
       ```
 - look into `soa_derive` for rust, maybe this already does most of the useful work
+- consider adding `Set _origin, _item` along with add something like `Map _origin, _key, _value` (or just `Map _origin, _item` where key is derived from item) which still gives out `Slot Origin`s for each entry but can be queried by key or similar. `Map-empty` will require providing an `.order (Fn .a _key .b _key, .a _key .b _key .order order) .dup (Fn _key, .a _key .b _key)` or similar.
+  
+  I'm currently very stubborn trying to avoid adding an API like this at any cost. It has a high complexity toll and doesn't seem to mesh well at all with the existing sloe idioms.
+  Currently, I'd hope a sorted Buf span (+ search) will cover most real use cases.
+  Alternatively, check if implementing in userland via e.g. index map, AVL or red-black tree backed by a regular `Buf` is fast enough.
 - (very out of scope but thinking never hurts) imagine what a logic programming language with this concept would look like. I imagine it wouldn't look much different (!) though with some different tradeoffs (e.g. more complex stdlib and compiler output, potentially a different typing and exhaustivess system)
 
 ## rejected ideas (some may be outdated)
@@ -727,6 +729,42 @@ It also makes initial_state much easier to call from the rust side (though we ne
   Not included currently for consistency and simplicity.
 - switch from error{OutOfMemory}! to anyerror! for ease of use with external functions.
   Rejected because zig errors should be explicitly handled by sloe
+
+- somehow provide an alternative mechanism to "part origins".
+  Shamefully, this is the only API I came up with
+  ```sloe
+  ty Erased _index
+  ty Origin-map _origins-record, _count
+  # A mapping from unique origin type to index type. for example
+  # Origin-map (.i0 htmls .i1 .i0 chars .i1 jsons), (.i1 .i1 .)
+  # TODO this only works for isolating, not unisolating
+  
+  fn Origin-map-one Origin origin : Origin-map origin, .
+  
+  fn Origin-map-add{_part}
+      Origin-map _rest, _rest-count
+  : Origin-map .i0 _part .i1 _rest, .i1 _rest-count
+  
+  fn Origin-map-part
+      Origin-map .i0 _part .i1 _rest, .i1 _rest-count
+  :
+      .part Origin-map _part, _rest-count
+      .rest Origin-map _rest, _rest-count
+
+  fn Origin-map-rid Origin-map _origin, _
+  ```
+  preferably there would be a way of preserving the ability to give descriptive names but this seems near impossible.  
+  I think it would be fair to even consider introducing a new language primitive for these descriptive origins creation considering that this also removes the origin part syntax. Something like
+  ```sloe
+  # chars, jsons, htmls are existing origin types
+  ^ .chars, .jsons, .htmls
+  # is a value of type Origins .
+  ```
+  but problems barely start there as mixing this with isolate, unisolate stuff is a headache
+  
+  Then, remove the second parameter in `ty Origin`
+- consider adding `Opaque _value` (maybe should be "foreign" instead), `Opaque-origin-isolate`, `Opaque-origin-unisolate`.
+  `Opaque _value` is compiled to `_value` but is inaccessible in sloe.
 - rename `Call` to `Run`. "call" only makes sense if you've already heard it in that context, no?
 
   Hmm. Actually, considering literally all of programming uses "call", including for technical terms (call site, calling convention, tail-call elimination, etc.) users are way, way more likely to expect the name `Call`.
@@ -875,15 +913,38 @@ I imagine the current style leaves some performance on the table but I'd be surp
 
 - consider renaming `Origin-isolated-merge` to `*-pair` and `*-split` to `*-unpair`
 
-- add `Opaque _value` (maybe should be "foreign" instead), `Opaque-origin-isolate`, `Opaque-origin-unisolate`.
-  `Opaque _value` is compiled to `_value` but is inaccessible in sloe.
+- consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`, `Buf-set-count`, maybe `Buf-combined-set-unset-length`. The first 2 enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more "data-oriented design" (less jumping around) and to make buf handling less painful.
+  The only real reservation I have about this is that is is mutually exclusive to an `Unset-slot`/`Unset-span` API (which I have deliberately removed but it still hurts to have let it go).
+
+- resurrect `Origin-invalid _origin` to return whenever a `Buf` gets stripped of its origin (e.g. with `Buf-rid-step` or potential future additions like `Buf-remove-ordered`, `Buf-revalidate-full-span`).
+  This should optimize better and is often more convenient.
   
   Important! opaque_origin_isolate/_unisolate should not be public in the output code as it's unsafe to use from the output language
 
-- another issue in this space: creating a partial Origin-erased with the erased value using `Origin erased, .` but from an origin that has a part, like `Origin some-origin, .some-part .`.
+- experiment with making origins "universally distinct"? (keyword: skolem?). (if easy to do, apply this to type variables in general)
+  So
+  ```sloe
+  fn Buf-empty{_item} . : [_origin] buf _item, _origin
+  ty state
+      [_mouse-trail]
+      .count u32
+      .mouse-x u32
+      .mouse-y u32
+      .buf (Buf _mouse-trail, .x u32 .y u32)
+      .span Opt Span _mouse-trail
+  ```
+  This means:
+  - no more `^` syntax
+  - no more `ty Origin` and folks
+  - no origin names that differ from collection names
+  - much, much easier origin erasing and unerasing, including multiple different origins
 
-- consider adding `Buf-step`, `Buf-map-or-rid-and-allocate`, `Buf-set-count`, maybe `Buf-combined-set-unset-length`. The first 2 enable "spooky action at a distance" and `Buf-(opt-)span-*` operations should still be prefered if possible. However, adding them is necessary to enable more "data-oriented design" (less jumping around) and to make buf handling less painful.
-  The only real reservation I have about this is that is is mutually exclusive to an `Unset-slot`/`Unset-span` API (which I have deliberately removed but it still hurts to have let it go).
+  This would most likely need to be paired with a "path" system a la carbon with `Buf` as the origin/source of these types. (which are unique just by virtue of path names being unique locally)
+  
+  A lot is left to figure out in this design. For example:
+  - is type checking still reasonably easy?
+  - Is it ever possible to generate safe rust for this?
+  - can this be expanded to cover e.g. generic function pointers?
 
 
 ## not coherently formulated thoughts
