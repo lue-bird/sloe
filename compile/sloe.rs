@@ -8911,7 +8911,7 @@ If there should only ever by one variant, using a record with a single field is 
             let Some(parameter) = parameter else {
                 errors.push(ErrorNode {
                     range: symbol_range(*open_bracket_start, "["),
-                    message: Box::from("missing parameter after open bracket [. An example of a local fn expression is [n u32] _u32-add .a n .b 1 u32"),
+                    message: Box::from("missing parameter after open bracket [. An example of a local fn expression is [n u32] U32-add .a n .b 1 u32"),
                 });
                 return None;
             };
