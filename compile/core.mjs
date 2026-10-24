@@ -433,11 +433,6 @@ export function str_origin_unisolate(c) {
   return c;
 }
 
-/** @template $Yes @param {$Yes} yes @returns {Opt<$Yes>} */
-export function opt_yes(yes) {
-  return { yes: yes };
-}
-
 /** @template $Result @param {never} never @returns {$Result} */
 export function choice_empty_to(never) {
   return never;
@@ -677,14 +672,6 @@ export function opt_span_step(step) {
     step: step.step,
   });
 }
-/** @template $Done, $Going @param {$Done} done @returns {{ going: $Going } | { done: $Done }} */
-export function done(done) {
-  return { done: done };
-}
-/** @template $Done, $Going @param {$Going} going @returns {{ done: $Done } | { going: $Going }} */
-export function going(going) {
-  return { going: going };
-}
 /** @template $Done, $Going, $Origin
  * @param {{
  *     span: Span<$Origin>,
@@ -750,7 +737,7 @@ export function opt_span_step_while(step) {
   });
 }
 
-/** @template $Item, $Origin, $Part @param {Origin<$Origin, $Part>} _ @returns {Buf<$Origin, $Item>} */
+/** @template $Item, $Origin, $Part @param {Origin<$Origin, $Part>} _ @returns {Buf<Origin<$Origin, $Part>, $Item>} */
 export function buf_empty(_) {
   return [];
 }
@@ -1415,7 +1402,7 @@ export function buf_to_unset(buf) {
   buf.length = 0;
   return buf;
 }
-/** @template $Item, $Origin, $Part @param {{ origin: Origin<$Origin, $Part>, slice: Unset_slice<$Item>, }} reuse @returns {Buf<$Origin, $Item>} */
+/** @template $Item, $Origin, $Part @param {{ origin: Origin<$Origin, $Part>, slice: Unset_slice<$Item>, }} reuse @returns {Buf<Origin<$Origin, $Part>, $Item>} */
 export function buf_reuse(reuse) {
   return reuse.slice;
 }
