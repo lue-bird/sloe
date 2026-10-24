@@ -1205,7 +1205,7 @@ export function buf_span_sort(sort) {
     });
     sort.buf[left] = ordered.left;
     sort.buf[right] = ordered.right;
-    return "less" in sort.order ? -1 : "greater" in sort.order ? 1 : 0;
+    return "less" in ordered.order ? -1 : "greater" in ordered.order ? 1 : 0;
   });
   span_indexes.forEach((buf_index_sorted, old_offset_within_span) => {
     if (sort.span.start + old_offset_within_span < buf_index_sorted) {
