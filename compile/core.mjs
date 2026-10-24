@@ -837,10 +837,18 @@ export function buf_opt_span_alter(alter) {
  * @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, state: $State, }} */
 export function buf_span_step(step) {
   let state = step.state;
-  for (let i = step.span.start; i < step.span.start + step.span.length; i++) {
-    const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
-    step.buf[i] = stepped.item;
-    state = stepped.state;
+  if ("up" in step.direction) {
+    for (let i = step.span.start; i < step.span.start + step.span.length; i++) {
+      const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
+      step.buf[i] = stepped.item;
+      state = stepped.state;
+    }
+  } else {
+    for (let i = step.span.start + step.span.length - 1; i >= step.span.start; i--) {
+      const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
+      step.buf[i] = stepped.item;
+      state = stepped.state;
+    }
   }
   return { buf: step.buf, span: step.span, state: state };
 }
@@ -854,19 +862,17 @@ export function buf_span_step(step) {
  * }} step
  * @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>>, state: $State, }} */
 export function buf_opt_span_step(step) {
-  let state = step.state;
   if ("yes" in step.span) {
-    for (
-      let i = step.span.yes.start;
-      i < step.span.yes.start + step.span.yes.length;
-      i++
-    ) {
-      const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
-      step.buf[i] = stepped.item;
-      state = stepped.state;
-    }
+    const stepped = buf_span_step({
+      buf: step.buf,
+      span: step.span.yes,
+      direction: step.direction,
+      state: step.state,
+      step: step.step,
+    });
+    return { buf: step.buf, span: step.span, state: stepped.state };
   }
-  return { buf: step.buf, span: step.span, state: state };
+  return { buf: step.buf, span: step.span, state: step.state };
 }
 /** @template $Item, $Done, $Origin, $State
  * @param {{
@@ -879,13 +885,24 @@ export function buf_opt_span_step(step) {
  * @returns {{ buf: Buf<$Origin, $Item>, span: Span<$Origin>, state: { going: $State} | { done: $Done }, }} */
 export function buf_span_step_while(step) {
   let state = step.state;
-  for (let i = step.span.start; i < step.span.start + step.span.length; i++) {
-    const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
-    step.buf[i] = stepped.item;
-    if ("done" in stepped.state) {
-      return { buf: step.buf, span: step.span, state: stepped.state };
+  if ("up" in step.direction) {
+    for (let i = step.span.start; i < step.span.start + step.span.length; i++) {
+      const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
+      step.buf[i] = stepped.item;
+      if ("done" in stepped.state) {
+        return { buf: step.buf, span: step.span, state: stepped.state };
+      }
+      state = stepped.state.going;
     }
-    state = stepped.state.going;
+  } else {
+    for (let i = step.span.start + step.span.length - 1; i >= step.span.start; i--) {
+      const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
+      step.buf[i] = stepped.item;
+      if ("done" in stepped.state) {
+        return { buf: step.buf, span: step.span, state: stepped.state };
+      }
+      state = stepped.state.going;
+    }
   }
   return { buf: step.buf, span: step.span, state: { going: state } };
 }
@@ -899,22 +916,17 @@ export function buf_span_step_while(step) {
  * }} step
  * @returns {{ buf: Buf<$Origin, $Item>, span: Opt<Span<$Origin>>, state: { going: $State} | { done: $Done }, }} */
 export function buf_opt_span_step_while(step) {
-  let state = step.state;
   if ("yes" in step.span) {
-    for (
-      let i = step.span.yes.start;
-      i < step.span.yes.start + step.span.yes.length;
-      i++
-    ) {
-      const stepped = step.step({ state: state, item: /** @type $Item */ (step.buf[i]) });
-      step.buf[i] = stepped.item;
-      if ("done" in stepped.state) {
-        return { buf: step.buf, span: step.span, state: stepped.state };
-      }
-      state = stepped.state.going;
-    }
+    const stepped = buf_span_step_while({
+      buf: step.buf,
+      span: step.span.yes,
+      direction: step.direction,
+      state: step.state,
+      step: step.step,
+    });
+    return { buf: step.buf, span: step.span, state: stepped.state };
   }
-  return { buf: step.buf, span: step.span, state: { going: state } };
+  return { buf: step.buf, span: step.span, state: { going: step.state } };
 }
 /** @template $Item, $Origin @param {{ buf: Buf<$Origin, $Item>, length: U32, }} pre_allocate @returns {Buf<$Origin, $Item>} */
 export function buf_pre_allocate_at_least(pre_allocate) {
