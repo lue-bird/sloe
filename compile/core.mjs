@@ -1058,19 +1058,19 @@ export function buf_remove(remove) {
   }
 }
 /** @template $Item, $Origin
- * @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, new: $Item, }} replace
+ * @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, newø: $Item, }} replace
  * @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, item: $Item,}} */
 export function buf_replace(replace) {
   const old_item = /** @type {$Item} */ (replace.buf[replace.slot]);
-  replace.buf[replace.slot] = replace.new;
+  replace.buf[replace.slot] = replace.newø;
   return { buf: replace.buf, slot: replace.slot, item: old_item };
 }
 /** @template $In, $Item, $Origin, $Out
- * @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, in: $In, step: Fn<{in:$In, item:$Item}, {item: $Item, out:$Out}>,}} step
+ * @param {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, inø: $In, step: Fn<{inø:$In, item:$Item}, {item: $Item, out:$Out}>,}} step
  * @returns {{ buf: Buf<$Origin, $Item>, slot: Slot<$Origin>, out: $Out }} */
 export function buf_item_step(step) {
   const item = /** @type {$Item} */ (step.buf[step.slot]);
-  const stepped = step.step({ in: step.in, item: item });
+  const stepped = step.step({ inø: step.inø, item: item });
   step.buf[step.slot] = stepped.item;
   return { buf: step.buf, slot: step.slot, out: stepped.out };
 }

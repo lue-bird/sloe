@@ -14219,7 +14219,7 @@ An example use case is removing a specific index in a Span
 where you don't care about order among the items:
 You can take the last slot and swap its item with the item at the specific index,
 then remove the last slot with the item from the original certain index.
-(Drectly removing the last item and replacing the item at the specific index with the last item also works)",
+(Directly removing the last item and replacing the item at the specific index with the last item also works)",
                 type_parameters: vec![],
                 parameter_type: type_record([
                     (
