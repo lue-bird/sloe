@@ -4739,7 +4739,7 @@ fn syntax_query_case_pattern_check<'a, Patterns, Types>(
             };
             let Type::Choice(origin_choice_type_variants) = &expected_type else {
                 let mut error_message: String = String::from(
-                    "A variant is part of a choice type (for example |a u32 |b str) but the expected type here is\n",
+                    "A variant is part of a choice type (for example 'a u32 'b str) but the expected type here is\n",
                 );
                 type_format(&mut error_message, 0, expected_type);
                 error_message.push_str("\nYou might have intended this pattern to belong to a different query. Use parens for the query case results of queries with multiple cases");
