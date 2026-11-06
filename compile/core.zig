@@ -2625,7 +2625,7 @@ pub fn buf_opt_span_move_to_end(
         .no => return .{ .buf = @"%".buf, .span = .{ .no = {} } },
         .yes => |@"%span"| {
             const @"%moved_span" = @"%".buf.spanMoveToEnd(@"%allocator", @"%span");
-            return .{ .buf = @"%".buf, .span = .{ .preent = @"%moved_span" } };
+            return .{ .buf = @"%".buf, .span = .{ .yes = @"%moved_span" } };
         },
     }
 }
