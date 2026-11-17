@@ -872,9 +872,8 @@ ty Pair-alias _a, _b
 fn Using-the-alias arguments Pair-alias i32, i32 : i32 =
     I32-mul-clamp arguments
 "#,
-            explainer: "Any expression can have its explicit type in front which is checked to match.
-This can make it easier to know what for example a long chain of operations returns.
-More importantly though, some syntax requires explicit types, like function parameters or empty vectors.
+            explainer: "Some syntax requires explicit types, like function parameters or parameter variables.
+
 Variable types are represented as _ followed by a lowercase name.
 They represent a type that is filled in when constructed; for example `Stringify u32` fills in the `_from` variable with `u32`.
 
@@ -1107,14 +1106,13 @@ fn U32s-sum
 This is super convenient, as we can store it on the stack and pass it around freely,
 never having to think about hoow to free it. Create one by prefixing all items with ;.
 
-A Buf holds a variable amount of items of the same item type.
-To get its full power we need to store its items on the heap.
+A Buf holds a variable amount of items of the same item type on the heap.
 To refer to slices or specific items inside the heap, one might think
 a simple pointer is enough but...
 If the Buf has fully occupied its allotted space on the heap and a new item gets added,
 the Buf must move its items to a larger space, invalidating your pointers
 To combat this, you could move all slices and specific items to each their own little space on the heap.
-This works well! But it can be slower as related memory is more fragmented and thus harder to find by the CPU.
+This works well! But it can be slower as related memory is more fragmented and thus harder to find.
 So, indexes and ranges? Yes! If we address the problems
 - we don't know which Buf to search in. Indexes are easy to confuse, leading to bugs
 - because we cannot guarantee you've chosen the right Buf,
