@@ -12966,7 +12966,7 @@ Try not to divide by 0.0, as 0.0 will be returned which is not mathematically co
                 name: "F32-square-root",
                 documentation: "n ^ 0.5, returning 'no . when n < 0.0",
                 type_parameters: vec![],
-                parameter_type:  type_i32,
+                parameter_type:  type_f32,
                 result_type: type_opt(type_f32),
             },
             CoreFnInfo {
